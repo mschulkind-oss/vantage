@@ -18,8 +18,10 @@ stage or `next` does. `path:` finds its text anywhere in a path, as GitHub's
 code search does, with `*` and `**` as wildcards, and a leading `/` ties it to
 the start of the path. `is:open` keeps only open questions, as in
 `path:/docs/design/search.md is:open`, and a `-` before a term leaves out what
-it matches. The page keeps its order, and a notice says what the filter hides.
-See [Filtering the page](userguide/guides/planning.md#filtering-the-page).
+it matches. The page keeps its order, a notice says what the filter hides, and
+a filter that keeps nothing says *Nothing matches* where the sections would be,
+and why. See
+[Filtering the page](userguide/guides/planning.md#filtering-the-page).
 
 Press `/` to reach the box. Paste a link to a planning page into it, as a whole
 address or as the line `vantage-check index --filter` prints, and the link's

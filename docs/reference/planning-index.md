@@ -3,7 +3,7 @@ title: "The planning index — planning facts written once, and shown wherever t
 status: accepted
 stage: CURRENT
 verified: 2026-10-06
-verified_commit: 09a0914
+verified_commit: 3fbfaa4
 covers:
   - packages/vantage-md/src/planning/
   - internal/planning/
@@ -45,7 +45,7 @@ summary: "Vantage reads a repository's planning documents as a set — frontmatt
 
 # The planning index — planning facts written once, and shown wherever they are linked
 
-**Status:** Verified 2026-10-06 against `09a0914`. The planning filter's design
+**Status:** Verified 2026-10-06 against `3fbfaa4`. The planning filter's design
 graduated into this document from `b759024`: the filter's principles, terms and
 sections ([§1.4](#14-principles-of-the-planning-filter),
 [§6.11](#611-the-planning-filter) to [§6.19](#619-across-releases),
@@ -59,10 +59,14 @@ canonical text as it was keeping its page on screen
 ([§6.16](#616-typing-and-the-url)). Those passages, the filter's rows of
 [Current values](#current-values), and the code comments and test titles that
 cite them were then checked against `09a0914`'s code, whose perimeter differs
-from `b759024`'s only by `b5a0860` and by comments. The rest was verified on
-2026-09-30 against `0a872d9`, the commit that added this document, and amended
-since by each commit that changed what it describes, in that commit. Of the
-perimeter's other commits since, `06e8797`, `ffb1676`, `6b62ed1`, `db5c01f` and
+from `b759024`'s only by `b5a0860` and by comments. *Nothing matches*, what a
+filter that keeps no entry shows and prints (`fdc6f06`, `4d18878`), and the
+caution for a `target` before 0.8 (`3fbfaa4`) were then written in from
+`3fbfaa4`'s code ([§6.18](#618-the-filter-notice-and-nothing-matches)), whose
+perimeter differs from `09a0914`'s only by those three commits. The rest was
+verified on 2026-09-30 against `0a872d9`, the commit that added this document,
+and amended since by each commit that changed what it describes, in that commit.
+Of the perimeter's other commits since, `06e8797`, `ffb1676`, `6b62ed1`, `db5c01f` and
 `519cd66` were read against it at graduation and change none of its claims; the
 amendments were not read again.
 **MEASURED at scale on 2026-10-01**, against `46c4091`'s code: every scale target
@@ -304,8 +308,9 @@ git.
   wins. A text that keeps no entry at all waits for the idle pause instead, so the
   page does not empty under a half-typed word while the keys keep coming. The pause
   is 300 ms, and a gap that long between two keys is a pause too: the page then
-  empties, and stays empty until a key types a text that keeps an entry
-  ([§6.16](#616-typing-and-the-url)).
+  says *Nothing matches* in place of its sections, and goes on saying it until a
+  key types a text that keeps an entry ([§6.16](#616-typing-and-the-url),
+  [§6.18](#618-the-filter-notice-and-nothing-matches)).
 
 ---
 
@@ -387,7 +392,8 @@ Their text is in git; this is now where the terms are defined.
 | **Applied filter** | The filter whose results the page shows, or is bringing in. While the reader types, the box's newest understood text, unless that text keeps no entry, which waits for the idle pause; otherwise the URL's ([§6.16](#616-typing-and-the-url)) | the box's text, which may not be understood; and not the URL's either, which lags the box by up to the idle pause | the planning-filter design, 2026-10-05; amended 2026-10-06 |
 | **Idle pause** | The short stillness of the box's text after which the URL takes the box's newest understood text ([§6.16](#616-typing-and-the-url)) | a wait before the page applies a text, except one that keeps no entry: no other text's results wait for it | the planning-filter design |
 | **Filter line** | The fixed-height row at the top of the planning page that holds the Filter box ([§6.17](#617-the-filter-line)) | the frame, or the header | the planning-filter design |
-| **Filter notice** | The sentences, shared by the page and the checker, saying a page is filtered and what that hides ([§6.18](#618-the-filter-notice)) | the box | the planning-filter design |
+| **Filter notice** | The sentences, shared by the page and the checker, saying a page is filtered and what that hides ([§6.18](#618-the-filter-notice-and-nothing-matches)) | the box | the planning-filter design |
+| ***Nothing matches*** | What the page shows, and the checker prints, in place of the sections when an applied filter keeps no entry: a headline naming the filter, then one line saying why ([§6.18](#618-the-filter-notice-and-nothing-matches)). Where all it keeps is on other roadmaps, the headline is *Nothing on this roadmap matches* | *Nothing this filter keeps needs you*, said only where the filter keeps an entry; a filter that is not understood, which shows every entry | coined for this page by the empty-state ruling of 2026-10-06 (`fdc6f06`) |
 | **Planning link** | A URL to the planning page that carries a planning filter, as `--filter` prints it ([§13.5](#135-handing-the-human-a-filtered-page)) | the address bar after a flip, which may also hold page parameters | the planning-filter design |
 | **Root-relative link** | A planning link that starts at `/.vantage/planning`, with no scheme, host or port, because the checker does not know them: what [RFC 3986 §4.2](https://www.rfc-editor.org/rfc/rfc3986#section-4.2) calls an absolute-path reference | a relative Markdown link; it is never resolved against the page it is opened from | the planning-filter design |
 | **Pasted link** | A planning link, whole or root-relative, pasted into the Filter box on its own or inside the lines the checker prints around it. The box applies its filter at once ([§6.17](#617-the-filter-line)) | filter text: `filter=` and `--filter` never read a link | the planning-filter design |
@@ -930,7 +936,10 @@ section's title, the line that explains it, and its actor.
     text in the fixture of forms whose request is not empty
     ([§6.19](#619-across-releases)).
 
-- An empty section is not shown, and neither is one a filter empties.
+- An empty section is not shown, and neither is one a filter empties. When a
+  filter empties every section,
+  [*Nothing matches*](#618-the-filter-notice-and-nothing-matches) stands in their
+  place.
 - A document whose stage has the `done` role appears in no section.
 - If no document outside the `done` role has an open question, the page says
   **Nothing needs you**. That line can sit above a *Needs you* holding only ✅
@@ -941,7 +950,8 @@ section's title, the line that explains it, and its actor.
   sections rather than among the notices, since it is drawn from the reviews the
   sections are painted with. Under a filter both count kept questions only, and
   the first reads *Nothing this filter keeps needs you*
-  ([§6.15](#615-what-a-filter-does-to-the-sections)).
+  ([§6.15](#615-what-a-filter-does-to-the-sections)). Neither is said where the
+  filter keeps no entry, since *Nothing matches* says that.
 - **A question only another roadmap routes** is in neither *Needs you* nor
   *Not on a roadmap*: it is routed, just not by the chosen roadmap. The page counts those
   questions beside its roadmap picker rather than listing them in a section of
@@ -969,8 +979,9 @@ and it commits inside the transition at once.
   then, while the contents column is drawn, the planning outline with the roadmap
   picker at its head, and otherwise the roadmap line when two or more roadmaps
   route; then the section bar and the notices (the
-  [filter notice](#618-the-filter-notice), first, then *Nothing needs you*, no
-  roadmap, a listed roadmap not read, no stages, refused). The
+  [filter notice](#618-the-filter-notice-and-nothing-matches), first, then
+  *Nothing needs you*, no roadmap, a listed roadmap not read, no stages, refused).
+  The
   [filter line](#617-the-filter-line) stands above all of it, outside the frame,
   since the frame is not drawn in the error and refused states.
 - **The section bar** names each non-empty section and its count, for example
@@ -982,7 +993,9 @@ and it commits inside the transition at once.
   from rendering, so they are exact at first paint, and every count is written in
   one format, `1,200`, in the bar, the headings and the pagers alike. At the end
   of the bar's line, whenever a section holds question cards, is **Expand all**
-  or **Collapse all** ([§6.6](#66-question-cards)), drawn with the bar.
+  or **Collapse all** ([§6.6](#66-question-cards)), drawn with the bar. Under
+  [*Nothing matches*](#618-the-filter-notice-and-nothing-matches) the bar's whole
+  row is not drawn.
 - Once sections are on screen, the roadmap line, the bar and the notices are drawn
   from the index those sections were laid out from, so an index update changes
   them in the commit that changes the sections.
@@ -1578,15 +1591,18 @@ question; the row tests inside `applyPlanningFilter` for the rest):
   resolve is matched by its reference's id and path alone, and any `is:` term drops
   it.
 - **No match is an answer, not an error.** A text term that matches nothing leaves
-  an empty result, which the notice counts; it is never an unmatched term.
+  an empty result, which the notice counts and *Nothing matches* explains
+  ([§6.18](#618-the-filter-notice-and-nothing-matches)); it is never an unmatched
+  term.
 
 **The rest of the rules:**
 
 - **An unknown key draws a hint.** A text term whose part before its first `:` is
   one or more lowercase ASCII letters, is not a key, and is not followed by a `/`
   gets a line in the notice saying that word is not a filter key
-  ([§6.18](#618-the-filter-notice)). So `stage:ready` and `-title:x` draw one;
-  `http://x`, `Note:` and `Path:x` do not, and neither does a quoted phrase.
+  ([§6.18](#618-the-filter-notice-and-nothing-matches)). So `stage:ready` and
+  `-title:x` draw one; `http://x`, `Note:` and `Path:x` do not, and neither does a
+  quoted phrase.
 - **`is:open` keeps a question answered by a comment.** The index reads no
   comments, so the card stays, under its section's *(N answered)* count
   ([§6.7](#67-answering-and-copy-answers)). That collision is also why a value for ✅
@@ -1753,13 +1769,13 @@ text holds no control characters, so it can sit in any newline-joined cache key.
 
 | Value | Under a filter, on the page and in the checker's `filter.sections` |
 | :--- | :--- |
-| Every section's entries: *Needs you*, *Not on a roadmap*, *Blocked* (both kinds), *Ready to build*, *Ready to graduate*, *Stage conflict*, *Too large*, *Unreadable* | The kept entries, in the same order. A section the filter empties is not shown |
-| Section bar, section headings, pagers, page bounds, outline | From the filtered sections. Page bounds still come from index facts alone, so they are exact at first paint |
-| `onOtherRoadmaps`, and the line counting questions on other roadmaps | Kept questions only. They stay counted questions, never entries, and the filter notice names each roadmap that holds them ([§6.18](#618-the-filter-notice)) |
+| Every section's entries: *Needs you*, *Not on a roadmap*, *Blocked* (both kinds), *Ready to build*, *Ready to graduate*, *Stage conflict*, *Too large*, *Unreadable* | The kept entries, in the same order. A section the filter empties is not shown, and when it empties every one, *Nothing matches* stands in their place ([§6.18](#618-the-filter-notice-and-nothing-matches)) |
+| Section bar, section headings, pagers, page bounds, outline | From the filtered sections. Page bounds still come from index facts alone, so they are exact at first paint. Under *Nothing matches*, no section bar and no outline entry |
+| `onOtherRoadmaps`, and the line counting questions on other roadmaps | Kept questions only. They stay counted questions, never entries, and the filter notice names each roadmap that holds them ([§6.18](#618-the-filter-notice-and-nothing-matches)) |
 | Each roadmap's `needsYouCount`, the picker's count and the page's recount of it | Counted over kept questions; the recount (`frontend/src/lib/planningAnswers.ts`) applies the same predicate |
 | The roadmap list, each roadmap's state, `chosenRoadmap`, `stagesDeclared` | Unchanged. A filter never changes which roadmap is chosen |
-| `nothingNeedsYou` | True when no open question in a live document is kept, so a kept question on another roadmap counts. The frame's line then reads *Nothing this filter keeps needs you* |
-| The head-of-sections line saying every open question has the human's answer | Over kept questions |
+| `nothingNeedsYou` | True when no open question in a live document is kept, so a kept question on another roadmap counts. The frame's line then reads *Nothing this filter keeps needs you*, unless the filter keeps no entry, where *Nothing matches* is said instead |
+| The head-of-sections line saying every open question has the human's answer | Over kept questions; not drawn under *Nothing matches* |
 | A *Blocked* document row | Kept when the filter keeps it as a row, with every blocker still named and linked, because the row comes from the whole derivation. An `is:` term drops it. Either way, the notice names each blocker the filter leaves out |
 | The roadmap notice, the no-stages notice, the refusal past `max-candidates` | Unchanged: they are facts about the repository |
 | Copy agent request, Copy all agent requests | The kept entries, with a `Filter:` line ([§6.2](#62-sections-top-to-bottom)) |
@@ -1797,16 +1813,22 @@ handed the unfiltered sections for those facts, beside the filtered ones it list
     box, the page goes on showing the filter it applied last (`lastApplied`). So
     `-m`, which every `.md` path holds, or a half word that matches nothing, does not
     empty the page between two keystrokes less than 300 ms apart. A longer gap is the
-    pause, and the page then empties, and stays empty until a key types a text that
-    keeps an entry, since the filter it applied last is now one that keeps none: at
-    about 30 words a minute, a key every 400 ms, it can empty at `pat` on the way to
-    `path:`, where no entry holds either word, and stay empty through `path` and
-    `path:`. Once typing stops, the notice says the filter keeps 0 entries, followed
-    by *Nothing this filter keeps needs you* unless an open question it keeps is on
-    another roadmap ([§6.18](#618-the-filter-notice)). The page judges it in the
+    pause, and the page then shows
+    [*Nothing matches*](#618-the-filter-notice-and-nothing-matches) in place of its
+    sections, and goes on showing it until a key types a text that keeps an
+    entry, since the filter it applied last is now one that keeps none: at about 30
+    words a minute, a key every 400 ms, it can say *Nothing matches* at `pat` on the
+    way to `path:`, where no entry holds either word, and go on saying it through
+    `path` and `path:`, never showing the results from before `pat` between two keys.
+    The first key whose text keeps an entry applies at once, as any other does. Once
+    typing stops, the notice says the filter keeps 0 entries, and *Nothing matches*
+    under it says why. A page test holds both halves (*keeps Nothing matches up
+    through a further key that keeps nothing* in
+    `frontend/src/pages/PlanningPage.test.tsx`). The page judges a text in the
     render the keystroke's transition runs, through the same cache its sections come
-    from, never in the keystroke's own task (F7). A text whose only matches are questions on
-    other roadmaps keeps no entry, since those are counted and not listed.
+    from, never in the keystroke's own task (F7). A text whose only matches are
+    questions on other roadmaps keeps no entry, since those are counted and not
+    listed, and its *Nothing matches* reads *Nothing on this roadmap matches*.
   - **A text with the canonical text the box typed last,** such as one with a space
     added, changes nothing, and the page inputs are not told of it: `followFilter`
     runs only when a keystroke changes the canonical text. While a text is held back,
@@ -2004,7 +2026,9 @@ page ([OQ-PF5](#why-its-this-way)).
 - **✕ clears and applies in one step,** and the focus stays in the box: ✕ is a
   control a reader aims at, and the link the agent handed over still holds the
   filter. It prevents its own `mousedown`, so pressing it does not take the focus
-  from the box and write what it is about to clear.
+  from the box and write what it is about to clear. *Nothing matches*' Clear the
+  filter is the same action: the filter line hands the page its handler
+  (`clearRef`) ([§6.18](#618-the-filter-notice-and-nothing-matches)).
 - **Esc puts back the box's newest understood text** when the box holds a text that
   is not applied: the one the idle pause is about to write, else the URL's.
   Otherwise it returns the focus to the pane. **Esc never clears:** it is pressed by
@@ -2057,16 +2081,20 @@ So *press `/`, paste* reaches the filtered page from any origin, in any mode and
 through any tunnel, and nothing stores an address.
 
 - **For screen readers.** The input's `aria-describedby` names the filter notice, and
-  the filtered *Nothing needs you* with it. A polite live region speaks the notice
-  when the URL takes the reader's text: at once on an Enter, a ✕ or a paste, and for
-  typing once the box has been still for longer than the idle pause, or when the
-  focus leaves it. The idle pause is shorter, so a slow typist's every key is
-  followed by a write, and speaking at each write would speak per keystroke. It
-  never speaks per keystroke, and never as the page opens; a push or a pop clears
-  it. A filter change that resets a section to page 1 is not announced as a flip.
+  with it, while one shows, the filtered *Nothing needs you* or
+  [*Nothing matches*](#618-the-filter-notice-and-nothing-matches)' headline and
+  reason line. A polite live region speaks the notice, followed by whichever of
+  those shows, when the URL takes the reader's text: at once on an Enter, a ✕ or a
+  paste, and for typing once the box has been still for longer than the idle
+  pause, or when the focus leaves it. The idle pause is shorter, so a slow
+  typist's every key is followed by a write, and speaking at each write would speak
+  per keystroke. It never speaks per keystroke, and never as the page opens; a push
+  or a pop clears it. A filter change that resets a section to page 1 is not
+  announced as a flip.
 - **In print,** the input row is hidden, and with no filter the whole line, margin
   and all. A print-only line reads `Filter: <canonical text>`, and the notice prints,
-  so a printout always says it is filtered and by how much.
+  so a printout always says it is filtered and by how much. *Nothing matches* and
+  its reason line print too, and its buttons do not.
 
 > [!NOTE]
 > **A known gap.** The *Comments could not be loaded* alert sits inside the sections'
@@ -2074,10 +2102,12 @@ through any tunnel, and nothing stores an address.
 > the reviews request has failed, a screen reader may announce it again on every
 > filter change.
 
-### 6.18 The filter notice
+### 6.18 The filter notice, and Nothing matches
 
 The notice is the first of the frame's notices. It arrives with the section bar, it
-describes the results on screen rather than the box's text, and it prints. Its words
+describes the results on screen rather than the box's text, and it prints. A filter
+that keeps no entry also says *Nothing matches* in place of the sections, after it
+(below). Its words
 are `PLANNING_NOTICES`' (`filtered`, `notFiltered`), so the page and the checker
 share them, and each reader ends it in its own words. The filter text in it is set
 off as code, on the page as code and in the checker between backticks, so the `:`
@@ -2086,8 +2116,8 @@ after it cannot be read as part of it. It takes four forms:
 | Form | Says |
 | :--- | :--- |
 | Applied | A first line: the canonical text, then entries shown of the unfiltered total, kept documents of the paths the index lists when its path terms leave a path out, and how many kept entries are open questions, as ``Filtered by `path:/docs/design/x.md is:open`: 5 of 15 entries, in 1 of 20 paths, 5 of them open questions.`` Then one line per clause below that applies. Last, the page's *Clear the filter to see the other 10.* or the checker's *Run without --filter to see the other 10.*, or *It hides no entry.* when it hides none |
-| Applied, nothing kept | The same, with none shown, followed by *Nothing this filter keeps needs you*, unless an open question it keeps is on another roadmap, which the *Other roadmaps* clause then counts |
-| Unmatched term | One line per term, under the first: `` `path:docs/desing` matches no path the index lists. `` |
+| Applied, nothing kept | The same, with none shown, and *Nothing matches* after it. It leaves out what *Nothing matches*' reason line says: the *Other roadmaps* clause when the questions it keeps are all on other roadmaps, and the unmatched lines when they are why it keeps no document. On the page it also leaves out *Clear the filter to see the other 10.*, which the button under *Nothing matches* does; the checker, which has no button, keeps *Run without --filter …*. *Nothing this filter keeps needs you* is not said |
+| Unmatched term | One line per term, under the first: `` `path:docs/desing` matches no path the index lists. ``, unless the filter keeps nothing for that reason, which *Nothing matches* then says |
 | Not understood | ``Not filtered: this Vantage cannot read `<term>`.``, then what the language reads, with a real example, and *Every entry is shown.* Where there is no term to name, the reason stands in its place: an unclosed quote, or a filter past the term or code-point limit |
 
 The clauses of the applied form, after its unmatched lines:
@@ -2120,6 +2150,76 @@ both counts. The total of entries is the unfiltered section bar's sum, and a que
 on another roadmap is never an entry. "Not understood" is the words chosen so as to
 collide with none of the roadmap state `unreadable`, the *Unreadable* section and the
 refusal past `max-candidates`.
+
+**Nothing matches.** An applied filter that keeps no entry in any section says so in
+place of the sections, on the page and in the checker, in the words of
+`PLANNING_NOTICES.nothingMatches` (P7): a headline, then one reason line. Until
+`fdc6f06` such a filter left a blank page under a notice that counted 0 entries and
+said *Nothing this filter keeps needs you*, which reads as though something were
+kept, and the ruling of 2026-10-06 was that an empty result must say nothing
+matches. No filter, and a filter that is not understood, which shows every entry,
+never show it.
+
+- **The headline** is ``Nothing matches `zqxj`.``, the canonical text set off as code.
+  Where all the filter keeps is questions only other roadmaps route, which are
+  counted and never listed, it does match something, so the headline is
+  ``Nothing on this roadmap matches `oq-b1`.`` instead. The two share no words past
+  *Nothing*, so a search for *Nothing matches* never finds the second.
+- **The reason line** is the first of these that holds. `applyPlanningFilter` works
+  it out, as the summary's `nothingMatches`, only for a filter that keeps no entry,
+  so typing pays for it only on an empty result:
+
+| Reason | When | The line says |
+| :--- | :--- | :--- |
+| Other roadmaps | A question it keeps needs the human, and only other roadmaps route it | ``1 question it keeps is on another roadmap: `docs/plans/roadmap.md` (1).``, then the page's *The filter stays when you choose that roadmap.* or the checker's *Rerun with --roadmap naming it.* With two or more roadmaps, ``2 questions it keeps are on other roadmaps: `a/roadmap.md` (1), `b/roadmap.md` (1).``, then *The filter stays when you choose one of them.* or *Rerun with --roadmap naming one.* |
+| No entries | The sections list no entry even without a filter | The page's *The page lists no entry without a filter either.*, the checker's *The index lists no entry without --filter either.* |
+| Documents | It has `path:` or `-path:` terms, and they alone keep nothing | *It keeps 1 document, and it has no question or next step listed here.*, *It keeps 3 documents, and none of them has a question or a next step listed here.*, or *It keeps no document the index lists.* Where it keeps no document and a term matches no path, which only the page applies, the term is the reason instead: `` `path:docs/desing` matches no path the index lists. `` |
+| State | Its `is:` terms leave out every entry the rest of it keeps | ``Without `is:open` it would keep 1 entry, and it is not an open question.``, or *4 entries, and none of them is an open question*. For `-is:open`, *and it is an open question* or *and every one of them is an open question*; for both, the count alone |
+| Excluded | Its `-` words and phrases leave out every entry the rest of it keeps | ``Without `-m` it would keep 12 entries, and every one of them matches `m`.``, or ``Without `-a -b` it would keep 1 entry, and it matches `a` or `b`.`` Where neither its `-` terms nor its `is:` terms alone empty the result and both together do, it names both and gives the count alone: ``Without `-graduate is:open` it would keep 1 entry.`` |
+| Words | Anything else: its words and phrases keep none of what the rest of it keeps | *Words and quoted phrases are matched only against a question's id, title and leaning, and a document's path, stage and next step.* |
+
+Each reason after the first two runs the filter again with terms left out: without
+its words, phrases and `is:` terms for *Documents*, without its `is:` terms for
+*State*, and without its `-` words and phrases, then without those and its `is:`
+terms, for *Excluded*. Each rerun counts a question only another roadmap routes as
+kept, since the left-out terms would bring it back, and where a rerun keeps only
+such questions the *State* and *Excluded* lines count them instead: *it would keep 1
+question on another roadmap*. So `path:/docs/b.md zz`, whose word leaves out the one
+question of a document another roadmap routes, gets the *Words* line and not the
+*Documents* one. A word that matches nothing at all, such as `zqxj`, gets the
+*Words* line too.
+
+**On the page,** *Nothing matches* is drawn in the sections' box, in the commit that
+would have drawn the sections, so it moves nothing painted
+([§12](#12-late-data-never-moves-painted-content)). Its headline is a heading at the
+page's own text size and in no warning's color, its reason line is under it, and its
+buttons are the way on:
+
+- **Choose `<roadmap>`,** one for each roadmap the *Other roadmaps* line names, comes
+  first. It chooses that roadmap as the picker does, keeping the filter, in a
+  replace navigation, and puts the focus in the box.
+- **Clear the filter** does exactly what the box's ✕ does, through the filter line's
+  own handler ([§6.17](#617-the-filter-line)): it clears and applies the empty
+  filter at once, and puts the focus in the box. Like ✕, both buttons prevent their
+  `mousedown`, so pressing one does not take the focus from the box first and write
+  the box's text.
+
+The section bar's row is not drawn, and Expand all and Copy all agent requests go
+with it: there is no section to jump to and no card to unfold, and the row's reserved
+height left a blank band and an empty *Sections* landmark between the box and the
+notice. It goes in the same commit, and the row is keyed by the filter, so nothing
+painted moves. The line saying every open question has the human's answer is not
+drawn either. *Nothing matches* prints without its buttons, and a screen reader hears
+its headline and reason line after the notice, which describe the box with it
+([§6.17](#617-the-filter-line)).
+
+**In the checker,** the headline and the reason line are one block where the sections
+would be, after the notices and the Roadmaps block, and the run exits `0`
+([§13.4](#134-vantage-check-index---filter)). No section prints, so neither does an
+`Agent requests:` line. The notices still count the questions that need the human on
+other roadmaps, as the page's roadmap line does. The JSON is as for any other filter,
+with `filter.entries.shown` at `0` and no key for the reason, and `--request` prints
+nothing and says why on stderr.
 
 ### 6.19 Across releases
 
@@ -2960,6 +3060,7 @@ by number.
 | The roadmap line | planning page | ready at first paint, from the index and the remembered choice, which is read synchronously; it takes the progress line's place with the section bar |
 | The filter line | planning page | drawn at first paint from the URL alone, one fixed-height row above every state of the route; its ✕, hint and spinner have slots of their own; its notice is the frame's ([§6.17](#617-the-filter-line)) |
 | A typed filter's results | planning page | the next render the reader causes: the old results stay until the new set's inputs are in, then change in one commit, the sections' box put back in place before the paint; the roadmap line's counts keep the unfiltered sections' room ([§6.16](#616-typing-and-the-url)) |
+| *Nothing matches* | planning page | the sections' box, in the commit that would have drawn the sections; the section bar's row leaves in that commit, keyed by the filter, so nothing painted moves ([§6.18](#618-the-filter-notice-and-nothing-matches)) |
 | Comments filed before the visit | cards | ready at first paint, through the gate |
 | Comments past the reviews deadline | cards | a fixed-width *N comments* count in the card's control row, which is always there, expanding on click; nothing inline |
 | The planning outline's head: its label and the roadmap picker | planning page, contents column | drawn with the outline, in the commit that draws the section bar; the column's width is held by its empty frame meanwhile |
@@ -3257,15 +3358,19 @@ handed an empty page, or a fuller one than the agent meant (F5). A text term tha
 matches nothing is not one: a search that finds nothing is an answer, and the page
 shows it the same way.
 
-**Text output.** The [filter notice](#618-the-filter-notice) comes first, its clauses
-included, in the checker's words. Then the `Planning page:` line and its hint lines
+**Text output.** The [filter notice](#618-the-filter-notice-and-nothing-matches)
+comes first, its clauses included, in the checker's words. Then the
+`Planning page:` line and its hint lines
 ([§13.5](#135-handing-the-human-a-filtered-page)). Then the output a run without the
 filter prints, over the filtered sections: the notices, with *Nothing needs you* in
 its filtered form, the Roadmaps block with the filtered counts, the filtered
 sections, and, when an agent section has entries, `Agent requests: vantage-check
 index --request --filter '<canonical text>'`, shell-quoted, each `'` written
 `'\''`, since a quoted path can hold one. The chosen roadmap's source follows
-unchanged.
+unchanged. A filter that keeps no entry prints no section: its
+[*Nothing matches*](#618-the-filter-notice-and-nothing-matches) headline and
+reason line stand where the sections would be, *Nothing this filter keeps needs
+you* is not printed, and there is no `Agent requests:` line.
 
 **JSON.** Without `--filter` it is byte-identical. With it, **every existing key keeps
 its meaning:** `index` is the whole index, `sections` the unfiltered derivation, and
@@ -3304,7 +3409,7 @@ shape of `sections` and the values of
 [§6.15](#615-what-a-filter-does-to-the-sections). A refused project prints `null` for
 `filter`, as it does for `sections`. The format version stays 2, because a new key
 does not bump it, and the summary's other names (`requestText`, `unmatched`,
-`onOtherRoadmaps`) are no keys of it.
+`onOtherRoadmaps`, `nothingMatches`) are no keys of it.
 
 **`--request --filter`** prints the filtered request with its `Filter:` line
 ([§6.2](#62-sections-top-to-bottom)), byte-equal to what a filtered page's Copy agent
@@ -3354,7 +3459,10 @@ Planning page: /.vantage/planning?filter=path:/docs/design/x.md+is:open
 - **An older viewer.** When `.vantage.toml`'s `target` names a release before the
   filter's, a hint line says a viewer before that release ignores the filter and
   shows every entry, using `target`'s meaning: the oldest release the repository's
-  readers use. The release is `FILTER_RELEASE`, assumed until the tag
+  readers use. A `target` before 0.8, such as `target = "0.7"`, names readers whose
+  viewer has no planning page at all, so the line says that first: *A Vantage viewer
+  before 0.8 has no planning page, and one before 0.9 ignores this filter and shows
+  every entry.* The releases are `PLANNING_PAGE_RELEASE` and `FILTER_RELEASE`
   ([Current values](#current-values)). Both cautions are text only, with no JSON key.
 
 **The encoding.** One function in the planning module, `encodePlanningQueryValue`,
@@ -3406,9 +3514,10 @@ the Filter box of a project's page, it needs no click at all.
    checkout, such as a worktree, opens the served checkout's documents. A word
    narrows it further when the human asked about one part of the work. Exit `2`
    names the bad term; `unknown option for index: --filter` means the checker
-   predates the filter, and a current one is the fix. If the notice names other
-   roadmaps, the agent reruns with `--roadmap` naming each and hands over each link;
-   if it names a blocker the filter leaves out, it adds that document and reruns.
+   predates the filter, and a current one is the fix. If the notice, or the line
+   under *Nothing on this roadmap matches*, names other roadmaps, the agent reruns
+   with `--roadmap` naming each and hands over each link; if the notice names a
+   blocker the filter leaves out, it adds that document and reruns.
 4. **It hands over the `Planning page:` line, the filter text in a code span, and
    the counts,** and tells the human to press `/` on their planning page and paste
    the line. It puts an address in front only when the human has told it theirs:
@@ -3416,8 +3525,14 @@ the Filter box of a project's page, it needs no click at all.
 5. **The human answers on the page** and presses Copy answers, which follows the
    filter ([§6.7](#67-answering-and-copy-answers)).
 6. **The agent applies the answers** and reruns the same command until it reports
-   *Nothing this filter keeps needs you*. The *Blocked* clause says whether another
-   round will follow.
+   *Nothing this filter keeps needs you*, or, once no entry is left at all,
+   [*Nothing matches*](#618-the-filter-notice-and-nothing-matches), as the last
+   round can: with every question ruled, `is:open` keeps none, and the line reads,
+   for one, ``Without `is:open` it would keep 3 entries, and none of them is an
+   open question.`` *Nothing on this
+   roadmap matches* is not the end, since the questions it keeps still need the
+   human on the roadmaps its line names: the agent reruns with `--roadmap` naming
+   each. The *Blocked* clause says whether another round will follow.
 
 The loop also runs the other way: a human who filtered the page by hand and presses
 Copy agent request hands the agent the `Filter:` line, whose text `--filter` takes as
@@ -3542,7 +3657,7 @@ declares its stage vocabulary; and runs `planning/unrouted` as a warning.
 | More candidates than `max-candidates` | No scan at all. The planning page says how many files there are and to narrow `include`; `vantage-check index` prints the same and exits `3` |
 | Multi-repo mode | One index per repository; a link from one repository into another is never decorated |
 | A planning filter that is not understood | Applied not at all (F3). Opened from a URL or entered with Enter, the page shows every entry under the *Not filtered* notice, naming the first term it cannot read or the reason, and keeps the text in the box and the URL as written, with the box marked invalid; typed, it keeps the page as it was, and the hint says the text is not applied. `vantage-check index --filter` exits `2` before the scan ([§6.14](#614-what-is-not-understood-and-canonical-text)) |
-| A filter's `path:` or `-path:` term matches no path the index lists | The page applies it, keeping nothing or excluding nothing, and names the term in the notice; the checker exits `2` with stdout empty, naming each such term ([§13.4](#134-vantage-check-index---filter)) |
+| A filter's `path:` or `-path:` term matches no path the index lists | The page applies it, keeping nothing or excluding nothing, and names the term in the notice, or in *Nothing matches* when the term is why it keeps no document ([§6.18](#618-the-filter-notice-and-nothing-matches)); the checker exits `2` with stdout empty, naming each such term ([§13.4](#134-vantage-check-index---filter)) |
 | A filter past `max-candidates` | No sections, so nothing is applied: the page shows its refusal, with the filter line still reading and writing the URL, and `index --filter` exits `3`, never holding a term to the tree |
 | A 0.8.x viewer opens a planning link | It keeps `filter=`, ignores it and shows every entry, with no notice; its Copy agent request has no `Filter:` line ([§6.19](#619-across-releases)) |
 | A 0.8.x checker is given `--filter` | `unknown option for index: --filter`, exit `2` |
@@ -3952,7 +4067,7 @@ questions, [OQ-E1](../../frontend/e2e/fixtures/test_repo/plans/design.md#OQ-E1) 
 
 ## Current values
 
-Verified at `09a0914`. The prose above explains what each of these is for; this table
+Verified at `3fbfaa4`. The prose above explains what each of these is for; this table
 is the only place most of the numbers are stated.
 
 | Value | Setting | Defined in |
@@ -3977,7 +4092,9 @@ is the only place most of the numbers are stated.
 | The `Filter:` line of an agent request | `` Filter: `<text>`. Only the entries it keeps are listed. `` | `planningAgentRequest` in `guide.ts` |
 | Parsed filters kept / filtered sections kept per derivation | 16 / 16, the last used last out | `FILTERS_KEPT`, `FILTERED_KEPT` in `frontend/src/lib/planningPages.ts` |
 | The typing slot | 2 sets: the one on screen and the newest | `dropTyped` in `frontend/src/hooks/usePlanningPageInputs.ts` |
-| The release a filtered link's caution names | 0.9.0, assumed until it is tagged: confirm before the tag | `FILTER_RELEASE` in `packages/vantage-check/src/core/target.ts` |
+| The release a filtered link's caution names | 0.9.0 | `FILTER_RELEASE` in `packages/vantage-check/src/core/target.ts` |
+| The release before which the caution says a viewer has no planning page | 0.8.0 | `PLANNING_PAGE_RELEASE`, same file |
+| *Nothing matches*' headlines | ``Nothing matches `<filter>`.``; where all it keeps is on other roadmaps, ``Nothing on this roadmap matches `<filter>`.`` | `PLANNING_NOTICES.nothingMatches` in `packages/vantage-md/src/planning/sections.ts` |
 | The fixture of forms | 179 `read` and 47 `notUnderstood` entries, over an index of 18 files and one *Too large* path | `packages/vantage-md/src/planning/filterForms.json` |
 | The typing flow | `generator is:open`, a key every 150 ms; the burst, a key every 30 ms | `--query`, `--type-gap` and `--burst-gap` defaults in `frontend/perf/planning/run.ts` |
 | Section titles | Needs you, Not on a roadmap, Blocked, Ready to build, Ready to graduate, Stage conflict, Too large, Unreadable | `PLANNING_SECTION_GUIDE`, same file |
@@ -4068,6 +4185,7 @@ into the text above or are in git.
 | Plan Q19 | The planning module is internal to `vantage-md`; `FrontmatterDisplay`'s optional `linkIds` is the one public addition (P4) | 2026-09-28 |
 | Plan Q20 | The degenerate cases: a header that does not parse makes its file unreadable; a non-string or empty `stage` and a non-string or multi-line `next` are ignored; a single `depends-on` path is a one-entry list and a non-string entry is dropped; stage matching is exact and case-sensitive; an empty stages table is none; a `depends-on` target outside the repository, or whose id appears nowhere in it, is a finding; a skipped or unreadable roadmap does not route; an empty document badge is not drawn; `next` links only an id a question carries ([§3.4](#34-the-header-of-record-stage-next-depends-on)) | 2026-09-28 |
 | — | **Open document** lands at the top of the document, not at the question ([§6.6](#66-question-cards)) | 2026-09-28 |
+| — | An empty result says so: an applied filter that keeps no entry shows *Nothing matches* and the one reason that applies in place of the sections, with the way on, rather than a blank page under a notice whose *Nothing this filter keeps needs you* reads as though something matched. Where all it keeps is on other roadmaps it says *Nothing on this roadmap matches*, and offers each roadmap before Clear the filter ([§6.18](#618-the-filter-notice-and-nothing-matches)) | 2026-10-06 |
 | — | **Open document** opens a new tab, as its `ExternalLink` icon says, and the planning page stays where it is; the document's name above the question opens it in this tab, with Back to the same pages and scroll. A plain click on Open document took this tab, which a reader did not expect of that icon ([§6.6](#66-question-cards)) | 2026-10-01 |
 | — | A comment pending for the agent on a question is the human's answer, whatever its text: a take, an Answer…, or a comment typed anywhere in the question. The question's card and its row in the document show it answered, and it stops counting as needing the human while it stays listed. A reviewer who does not take the leaning comments on the question, and that comment is the action the agent gets; offering Take beside it, or counting the question as still needing them, asked twice for what they had given ([§6.7](#67-answering-and-copy-answers)) | 2026-10-01 |
 | — | A question outside a list runs from its host over the blocks after it, up to the next heading, rule or question, in the scan and the page alike. The user asked for a question's controls at its end whether it is a list item, a paragraph or a title with blocks under it, and for a comment anywhere around a question to answer it; as the one block its directive stamped, such a question put its row between its title and its context, and a comment on its leaning answered nothing ([§3.3](#33-questions)) | 2026-10-01 |
