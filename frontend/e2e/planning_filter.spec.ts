@@ -2,17 +2,17 @@ import { test, expect, type Page } from "@playwright/test";
 
 // The planning filter in a real browser, against test_repo
 // (docs/design/planning-filter.md §15). Its roadmap routes plans/design.md's
-// two open questions, OQ-E1 and OQ-E2, which `path:plans/design.md is:open`
+// two open questions, OQ-E1 and OQ-E2, which `path:/plans/design.md is:open`
 // keeps and nothing else: criterion 2's page. Unfiltered, Needs you holds
 // them and paged.md's twelve, ten to a page.
 
-const FILTER = "path:plans/design.md is:open";
-const FILTERED = "/.vantage/planning?filter=path:plans/design.md+is:open";
+const FILTER = "path:/plans/design.md is:open";
+const FILTERED = "/.vantage/planning?filter=path:/plans/design.md+is:open";
 const KEPT = ["OQ-E1: Which way does it go?", "OQ-E2: How soon?"];
 
 /** What `vantage-check index --filter 'path:/plans/design.md is:open'` prints around its link (criterion 1). */
 const CHECKER_BLOCK = [
-  "Filtered by `path:plans/design.md is:open`: 2 of 52 entries, in 1 of 20 paths, 2 of them open questions.",
+  "Filtered by `path:/plans/design.md is:open`: 2 of 52 entries, in 1 of 20 paths, 2 of them open questions.",
   "Run without --filter to see the other 50.",
   `Planning page: ${FILTERED}`,
   "  Press / on the planning page and paste this line, or put the scheme, host and port you open Vantage at in front of the link.",
@@ -147,7 +147,7 @@ test.describe("the planning filter", () => {
       "Clear the filter to see the other",
     );
     expect(new URL(page.url()).search).toBe(
-      "?filter=path:plans/design.md+is:open",
+      "?filter=path:/plans/design.md+is:open",
     );
     const shifts = await shiftsOf(page);
     expect(shifts, JSON.stringify(shifts)).toEqual([]);
@@ -173,7 +173,7 @@ test.describe("the planning filter", () => {
     );
     const entries = await page.evaluate(() => history.length);
     await expect(page).toHaveURL(
-      /\/\.vantage\/planning\?filter=path:plans\/design\.md\+is:open$/,
+      /\/\.vantage\/planning\?filter=path:\/plans\/design\.md\+is:open$/,
     );
     await expect(box(page)).toHaveValue(FILTER);
     await expect(cards(page, "Needs you")).toHaveCount(2);
@@ -310,6 +310,53 @@ test.describe("the planning filter", () => {
     await reportLongTasks(page, "Enter");
   });
 
+  // §6.4: a typed text that keeps no entry applies only once the idle pause
+  // has written it into the address, so the sections never take its filter
+  // before the URL does. Every test_repo path ends in `.md`, so `-m` keeps
+  // nothing.
+  test("holds a typed text that keeps nothing until the idle pause, so the page never empties under it", async ({
+    page,
+  }) => {
+    await page.goto("/.vantage/planning");
+    await expect(cards(page, "Needs you")).toHaveCount(10);
+    await page.evaluate(() => {
+      const seen: { filter: string | null; search: string }[] = [];
+      (window as unknown as { __shown: typeof seen }).__shown = seen;
+      new MutationObserver(() => {
+        seen.push({
+          filter:
+            document
+              .querySelector("[data-planning-sections]")
+              ?.getAttribute("data-planning-filter") ?? null,
+          search: location.search,
+        });
+      }).observe(document, {
+        subtree: true,
+        attributes: true,
+        attributeFilter: ["data-planning-filter"],
+      });
+    });
+    await box(page).click();
+    await page.keyboard.type("-m");
+    await expect(page).toHaveURL(/\?filter=-m$/);
+    await expect(notice(page)).toContainText("Filtered by -m: 0 of ");
+    await expect(cards(page, "Needs you")).toHaveCount(0);
+    const shown = await page.evaluate(
+      () =>
+        (
+          window as unknown as {
+            __shown: { filter: string | null; search: string }[];
+          }
+        ).__shown,
+    );
+    const held = shown.filter((s) => s.filter === "-m");
+    expect(held.length, JSON.stringify(shown)).toBeGreaterThan(0);
+    expect(
+      held.every((s) => s.search === "?filter=-m"),
+      JSON.stringify(shown),
+    ).toBe(true);
+  });
+
   test("shows the page of criterion 2 after / and a paste of the checker's output (criterion 11)", async ({
     page,
   }) => {
@@ -318,7 +365,7 @@ test.describe("the planning filter", () => {
     await page.keyboard.press("/");
     await expect(box(page)).toBeFocused();
     await paste(page, CHECKER_BLOCK);
-    await expect(page).toHaveURL(/\?filter=path:plans\/design\.md\+is:open$/);
+    await expect(page).toHaveURL(/\?filter=path:\/plans\/design\.md\+is:open$/);
     await expect(cards(page, "Needs you")).toHaveCount(2);
     await expect(box(page)).toHaveValue(FILTER);
   });
@@ -335,7 +382,7 @@ test.describe("the planning filter", () => {
     await expect(cards(page, "Needs you")).toHaveCount(10);
     await expect(notice(page)).toHaveCount(0);
     await page.goBack();
-    await expect(page).toHaveURL(/\?filter=path:plans\/design\.md\+is:open$/);
+    await expect(page).toHaveURL(/\?filter=path:\/plans\/design\.md\+is:open$/);
     await expect(box(page)).toHaveValue(FILTER);
     await expect(cards(page, "Needs you")).toHaveCount(2);
   });
@@ -446,11 +493,11 @@ test.describe("the planning filter", () => {
   test("opens a document's own filter, as its Referenced by line links it, with the box holding it", async ({
     page,
   }) => {
-    await page.goto("/.vantage/planning?filter=path:plans/design.md");
-    await expect(box(page)).toHaveValue("path:plans/design.md");
+    await page.goto("/.vantage/planning?filter=path:/plans/design.md");
+    await expect(box(page)).toHaveValue("path:/plans/design.md");
     await expect(cards(page, "Needs you")).toHaveCount(2);
     await expect(notice(page)).toContainText(
-      "Filtered by path:plans/design.md: 2 of ",
+      "Filtered by path:/plans/design.md: 2 of ",
     );
   });
 });

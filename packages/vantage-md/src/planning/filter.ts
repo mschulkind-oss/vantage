@@ -10,7 +10,9 @@
  *
  * The language is a search box's (§5): words and `"quoted phrases"` search
  * what the index holds about each entry, as case-insensitive substrings;
- * `path:` and `is:open` narrow; a leading `-` excludes. What it promises:
+ * `path:` narrows to the paths that hold its text, as GitHub's code search
+ * reads it, and `is:open` to open questions; a leading `-` excludes. What it
+ * promises:
  *
  * - **Malformed text applies nothing (F3).** A text holding a term this
  *   module cannot read (§5.5) is not understood, and is applied not at all,
@@ -31,7 +33,6 @@
 
 import { dependsOnLabel } from "./guide.js";
 import { findDocument, type PlanningIndex } from "./model.js";
-import { compileIgnorePatterns } from "./patterns.js";
 import type {
   PlanningDocument,
   PlanningQuestion,
@@ -75,8 +76,9 @@ export const PLANNING_FILTER_KEYS: readonly string[] = Object.freeze([
  */
 export type PlanningFilterTerm =
   /**
-   * `value` is unquoted, unescaped, and has §5.6 rule 2 applied. `quoted`
-   * says the canonical term is quoted, so its value is compared as a literal.
+   * `value` is unquoted, unescaped, and has §5.6 rule 2 applied, in its own
+   * case. `quoted` says the canonical term is quoted, so a `*` in its value
+   * is a `*` and no wildcard.
    */
   | {
       key: "path";
@@ -150,14 +152,10 @@ export type NotUnderstoodPlanningFilter = Extract<
 /**
  * White space, as the grammar has it (§5.2): space, tab, CR and LF only.
  * JavaScript's `\s` also matches U+00A0 and U+2000 to U+200A, which here are
- * characters a term holds: a word may hold one, and a bare `path:` pattern
- * may not.
+ * characters a term holds, a word and a bare `path:` value alike.
  */
 const isSpace = (c: string): boolean =>
   c === " " || c === "\t" || c === "\r" || c === "\n";
-
-/** A bare pattern's characters (§5.2 `pchar`). */
-const PATTERN_CHAR = /^[A-Za-z0-9._\-/*]$/;
 
 /**
  * The excluded code points (§5.5): controls and invisible format characters,
@@ -256,47 +254,9 @@ function splitTerms(
   return { terms, cut: false };
 }
 
-/**
- * The rules both forms of a path value share (§5.5), over a value with one
- * leading `./` already made `/`: no two `/` in a row, and no `.` or `..`
- * segment.
- */
-function segmentsUnderstood(value: string): boolean {
-  if (value.includes("//")) return false;
-  return value.split("/").every((s) => s !== "." && s !== "..");
-}
-
-/** §5.6 rule 2's first half: one leading `./` becomes `/`. */
+/** §5.6 rule 2: one leading `./` becomes `/`, which means the same. */
 const rootedDot = (value: string): string =>
   value.startsWith("./") ? `/${value.slice(2)}` : value;
-
-/**
- * §5.6 rule 2's second half: a leading `/` is dropped when what remains still
- * has a `/` before its last character, since it then anchors without it.
- */
-function canonicalValue(value: string): string {
-  if (!value.startsWith("/")) return value;
-  const rest = value.slice(1);
-  return rest.slice(0, -1).includes("/") ? rest : value;
-}
-
-/**
- * Whether a bare pattern, rule 2's first half applied, is one the language
- * reads (§5.5): pattern characters only, the shared segment rules, a
- * character other than `/` and `*`, and every `**` a whole segment that is
- * neither last, nor before a trailing `/`, nor beside another.
- */
-function bareUnderstood(value: string): boolean {
-  if (![...value].every((c) => PATTERN_CHAR.test(c))) return false;
-  if (!segmentsUnderstood(value)) return false;
-  if (!/[^/*]/.test(value)) return false;
-  const segments = value.split("/");
-  for (const [i, segment] of segments.entries()) {
-    if (segment.includes("**") && segment !== "**") return false;
-    if (segment === "**" && segments[i + 1] === "**") return false;
-  }
-  return !value.endsWith("/**") && !value.endsWith("**/");
-}
 
 /**
  * A quoted value's text, unescaped, or `null` when it is not one the
@@ -330,21 +290,25 @@ const escapeQuoted = (value: string): string =>
 type PathTerm = Extract<PlanningFilterTerm, { key: "path" }>;
 type TextTerm = Extract<PlanningFilterTerm, { key: "text" }>;
 
-/** One `path:` value read, without its `-`, or `null` when it is not understood. */
+/**
+ * Whether a `path:` value reads the same written bare as quoted (§5.6 rule
+ * 3): it holds no white space, no `"`, and no `*`, which bare is a wildcard.
+ */
+const pathReadsBare = (value: string): boolean =>
+  ![...value].some((c) => isSpace(c) || c === '"' || c === "*");
+
+/**
+ * One `path:` value read, without its `-`, or `null` when it is not
+ * understood (§5.5): an empty value, or a quote that does not wrap the whole
+ * of it. Any other character it may hold, bare or quoted, is its own.
+ */
 function readPathValue(raw: string): Omit<PathTerm, "exclude"> | null {
   if (raw === "") return null;
   if (raw.startsWith('"')) {
     const literal = unquote(raw);
     if (literal === null) return null;
-    const rooted = rootedDot(literal);
-    if (rooted === "/" || !segmentsUnderstood(rooted)) return null;
-    const value = canonicalValue(rooted);
-    // Rule 3: written bare where every character is a pattern character
-    // other than `*`, and the bare form is understood.
-    const bare =
-      [...value].every((c) => c !== "*" && PATTERN_CHAR.test(c)) &&
-      bareUnderstood(value);
-    return bare
+    const value = rootedDot(literal);
+    return pathReadsBare(value)
       ? { key: "path", text: `path:${value}`, value, quoted: false }
       : {
           key: "path",
@@ -353,9 +317,9 @@ function readPathValue(raw: string): Omit<PathTerm, "exclude"> | null {
           quoted: true,
         };
   }
-  const rooted = rootedDot(raw);
-  if (!bareUnderstood(rooted)) return null;
-  const value = canonicalValue(rooted);
+  // A quote may only wrap a whole value (§5.5): `path:docs/"a".md`.
+  if (raw.includes('"')) return null;
+  const value = rootedDot(raw);
   return { key: "path", text: `path:${value}`, value, quoted: false };
 }
 
@@ -500,49 +464,53 @@ export function parsePlanningFilter(
  * Matching
  * ------------------------------------------------------------------ */
 
-/**
- * Whether a value anchors to the root: a `/` before its last character, as
- * in git. A `/` only at the end does not.
- */
-const anchored = (value: string): boolean => value.slice(0, -1).includes("/");
+/** `text` with every character a regular expression reads as syntax escaped. */
+const escapeRegExp = (text: string): string =>
+  text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /**
- * A bare pattern's matcher: the port of the server's gitignore matcher, given
- * an anchored pattern with a leading `/`, and an unanchored one as written
- * (§5.4). With the `/`, the port anchors exactly as git does.
+ * A `path:` value's matcher (§5.4), over a path already lowercased: the value,
+ * lowercased too, found anywhere in the path. A leading `/` pins it to the
+ * path's start. Bare, a `*` stands for any characters within one folder or
+ * file name, and two or more for any characters across folders; quoted,
+ * every character is itself.
  */
-function bareMatcher(value: string): (path: string) => boolean {
-  const pattern =
-    anchored(value) && !value.startsWith("/") ? `/${value}` : value;
-  return compileIgnorePatterns([pattern]);
-}
-
-/**
- * A quoted value's matcher: a literal, compared code point for code point
- * under the bare form's anchoring and folder rules (§5.4). Anchored, it keeps
- * the path equal to it and every path under it; unanchored, every path one of
- * whose segments equals it; and a trailing `/` keeps only paths under it.
- */
-function literalMatcher(value: string): (path: string) => boolean {
-  const under = value.endsWith("/");
-  const name = value.replace(/^\//, "").replace(/\/$/, "");
-  if (anchored(value)) {
-    return under
-      ? (path) => path.startsWith(`${name}/`)
-      : (path) => path === name || path.startsWith(`${name}/`);
+function pathMatcher(
+  value: string,
+  quoted: boolean,
+): (lowered: string) => boolean {
+  const lowered = value.toLowerCase();
+  const pinned = lowered.startsWith("/");
+  const text = pinned ? lowered.slice(1) : lowered;
+  if (quoted || !text.includes("*")) {
+    return pinned
+      ? (path) => path.startsWith(text)
+      : (path) => path.includes(text);
   }
-  return under
-    ? (path) => path.split("/").slice(0, -1).includes(name)
-    : (path) => path.split("/").includes(name);
+  const source = text
+    .split(/(\*+)/)
+    .map((part, i) =>
+      i % 2 === 0
+        ? escapeRegExp(part)
+        : part.length === 1
+          ? "[^/]*"
+          : "[\\s\\S]*",
+    )
+    .join("");
+  const pattern = new RegExp(pinned ? `^${source}` : source);
+  return (path) => pattern.test(path);
 }
 
 /** A filter's terms, compiled. */
 interface Compiled {
-  /** One matcher per `path:` term, with or without its `-`, in order. */
+  /**
+   * One matcher per `path:` term, with or without its `-`, in order, each
+   * over a path already lowercased.
+   */
   paths: {
     text: string;
     exclude: boolean;
-    matches: (path: string) => boolean;
+    matches: (lowered: string) => boolean;
   }[];
   /** The states its `is:` terms keep; `null` when it has none. */
   states: ReadonlySet<QuestionState> | null;
@@ -554,7 +522,8 @@ interface Compiled {
   excludedNeedles: readonly string[];
   /**
    * Whether a path is a kept document: one `path:` term matches it, or there
-   * are none, and no `-path:` term matches it.
+   * are none, and no `-path:` term matches it. Each path's answer is kept,
+   * since a page tests one path once per entry it holds.
    */
   keepsPath: (path: string) => boolean;
 }
@@ -576,9 +545,7 @@ function compiled(filter: UnderstoodPlanningFilter): Compiled {
         paths.push({
           text: term.text,
           exclude: term.exclude,
-          matches: term.quoted
-            ? literalMatcher(term.value)
-            : bareMatcher(term.value),
+          matches: pathMatcher(term.value, term.quoted),
         });
         break;
       case "is":
@@ -598,9 +565,21 @@ function compiled(filter: UnderstoodPlanningFilter): Compiled {
   }
   const kept = paths.filter((p) => !p.exclude);
   const dropped = paths.filter((p) => p.exclude);
-  const keepsPath = (path: string) =>
-    (kept.length === 0 || kept.some((p) => p.matches(path))) &&
-    !dropped.some((p) => p.matches(path));
+  const verdicts = new Map<string, boolean>();
+  const keepsPath =
+    paths.length === 0
+      ? () => true
+      : (path: string) => {
+          let verdict = verdicts.get(path);
+          if (verdict === undefined) {
+            const lowered = path.toLowerCase();
+            verdict =
+              (kept.length === 0 || kept.some((p) => p.matches(lowered))) &&
+              !dropped.some((p) => p.matches(lowered));
+            verdicts.set(path, verdict);
+          }
+          return verdict;
+        };
   const made: Compiled = {
     paths,
     states,
@@ -935,8 +914,10 @@ export function applyPlanningFilter(
     ...index.skipped,
     ...index.unreadable,
   ].map((entry) => entry.path);
+  const lowered =
+    c.paths.length === 0 ? [] : listed.map((path) => path.toLowerCase());
   const unmatched = c.paths
-    .filter((term) => !listed.some((path) => term.matches(path)))
+    .filter((term) => !lowered.some((path) => term.matches(path)))
     .map((term) => term.text);
   // An unmatched `path:` term keeps nothing and an unmatched `-path:` term
   // excludes nothing, so leaving them out keeps the same entries, unless
@@ -1093,10 +1074,10 @@ export function planningLink(
 
 /**
  * The filter that keeps one document, `path:/<path>`, in canonical text
- * (§5.6): `path:plans/design.md`, `path:/roadmap.md`, or quoted where the path
- * holds a character a bare pattern may not, such as a space or a `*`. `null`
- * when even quoted it is not understood, as for a path holding a control
- * character.
+ * (§5.6): `path:/plans/design.md`, or quoted where the path holds a space, a
+ * `"` or a `*`. It keeps every path that starts with that one's text too, as
+ * `plans/design.md/x.md` or `plans/design.mdx`. `null` when even quoted it is
+ * not understood, as for a path holding a control character.
  */
 export function documentFilter(path: string): string | null {
   const parsed = parsePlanningFilter(`path:"/${escapeQuoted(path)}"`);

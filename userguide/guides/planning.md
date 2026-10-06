@@ -327,9 +327,9 @@ role it gives the count alone. With one roadmap that routes, it is *the
 roadmap*, however many others are retired by a `done` stage or cannot be read.
 
 **Its questions on the planning page** opens the planning page with its
-[Filter box](#filtering-the-page) holding this document's path, as
-`path:docs/design/search.md`, or `path:/notes.md` for a file at the root. That
-filter keeps everything the page lists for the document: its open questions,
+[Filter box](#filtering-the-page) holding this document's path from the root,
+as `path:/docs/design/search.md`, or `path:/notes.md` for a file at the root.
+That filter keeps everything the page lists for the document: its open questions,
 its 🔒 and ✅ ones, and its own rows, such as *Ready to build*. It is a link of
 its own after the part you click to see who links here, so Ctrl-click or a
 middle click opens it in a new tab, and it prints as text. Where the line is
@@ -806,7 +806,7 @@ leaves out what it matches:
 | Term | Keeps |
 | :--- | :--- |
 | A word, such as `generator`, or a phrase, such as `"command surface"` | Entries that hold it, in any case. A question is matched by its id, its title, its leaning and its document's path; a row under *Blocked*, *Ready to build*, *Ready to graduate* or *Stage conflict* by its path, its `stage` and its `next`; a *Too large* or *Unreadable* entry by its path. A phrase is matched whole, spaces included |
-| `path:<pattern>` | Entries whose path the pattern matches: for a question, its document's path; for a row under *Blocked*, *Ready to build* or any other section that lists documents, the row's own path |
+| `path:<pattern>` | Entries whose path holds the pattern, in any case: for a question, its document's path; for a row under *Blocked*, *Ready to build* or any other section that lists documents, the row's own path |
 | `is:open` | Questions still open: 💬, 💬 🤷 or no marker. Never a 🔒 or ✅ question, and never a document's row |
 | `-` and a term, such as `-payload`, `-path:docs/archive` or `-is:open` | Everything but what that term keeps. `-is:open` leaves out open questions and keeps every row |
 
@@ -828,41 +828,44 @@ leaves out what it matches:
   colon is a lowercase word, as in `stage:ready`, the notice says *`stage:` is
   not a filter key*, so you know a key you meant was read as a word. The keys
   are lowercase: `Path:docs` is a word too.
-- **A word is the quick way to a path.** `path:` matches whole folder and file
-  names, so `path:docs/des` matches nothing until `design` is complete, while
-  the word `docs/des` keeps every entry whose path holds it.
+- **`path:` searches the path and nothing else.** `path:design` keeps every
+  entry whose path holds *design*, while the word `design` also keeps a
+  question whose title holds it.
 - **`is:open` keeps a question you have already answered** with a comment,
   since Vantage reads no comments to decide what is open. It stays under its
   section's *(N answered)* count.
 - **A filter never reorders anything.** *Needs you* keeps its roadmap's order,
   and a section the filter empties is not shown.
 
-A `path:` pattern is written as in a `.gitignore` file, with fewer forms:
+A `path:` pattern is found anywhere in a path, in any case, as in GitHub's
+code search. A `*` stands for any characters within one folder or file name,
+`**` for any characters across folders, and a leading `/` ties the pattern to
+the start of the path:
 
 | Pattern | Keeps |
 | :--- | :--- |
-| `path:docs/design/search.md` | That file. A `/` anywhere but at the end ties a pattern to the repository root |
-| `path:search.md`, `path:*search*` | That name in any folder: with no `/` inside, a pattern matches at any depth |
-| `path:/roadmap.md` | Only the root's file, since `path:roadmap.md` keeps `docs/roadmap.md` too |
-| `path:docs/design` or `path:docs/design/` | Everything under that folder |
-| `path:docs/design/search*` | The design and its `search-plan.md`: a `*` matches within one folder |
-| `path:docs/**/*.md` | Any depth below `docs`: a `**` that is a whole folder of its own crosses folders |
-| `path:"docs/my notes.md"` | A path holding a space, or any character but `A`–`Z`, `a`–`z`, `0`–`9`, `.`, `_`, `-` and `/`. Inside double quotes every character stands for itself, `*` included, and `"` and `\` are written `\"` and `\\` |
+| `path:docs/des` | Every path that holds `docs/des`, such as everything under `docs/design` and `notes/docs/design`, so a path keeps matching as you type it |
+| `path:search` | Every path with `search` in a folder's name or a file's |
+| `path:/roadmap.md` | The root's `roadmap.md`, and any path that starts with that text, but not `docs/roadmap.md`, which `path:roadmap.md` keeps too |
+| `path:/docs/design/search.md` | That file: how Vantage and the checker name one document |
+| `path:*.md` | Every Markdown file |
+| `path:/docs/design/search*` | The design and its `search-plan.md`: a `*` stays within one name |
+| `path:/docs/**.md` | Every `.md` under the root's `docs`, at any depth: `**` crosses folders |
+| `path:"docs/my notes.md"` | A path holding a space. Inside double quotes every character stands for itself, `*` included, and `"` and `\` are written `\"` and `\\` |
 
-A leading `./` means the root, as `/` does. A `path:` pattern is matched
-exactly: `path:Docs` does not keep `docs`, and a name is matched in the Unicode
-form it is written in. A word is the way to find a path in any case.
+A leading `./` means the root, as `/` does. Every other character is itself:
+`?`, `[`, `+` and `#` are no wildcards, and a `/` that does not lead is part of
+the text, so `path:docs/` keeps a `docs` folder at any depth. Since `**` is any
+characters, `path:docs/**/*.md` keeps the `.md` files at least one folder below
+a `docs` folder; `path:docs/**.md` keeps those directly in it too. Only case is
+folded: a name is matched in the Unicode form it is written in. A `-path:`
+term leaves out exactly what the same `path:` term keeps.
 
 **What Vantage does not understand.** Only text that is malformed: an
 unclosed quote; a quote around part of a term, as in `a"b"`; an empty `""`; a
 `\` inside quotes before anything but `"` or `\`; a `-` on its own; an empty
 `path:` or `is:`; an `is:` value other than `open`, such as `is:closed`; a
-bare `path:` pattern holding any character the table above puts in quotes; a
-`**` that is not a whole folder with more of the path after it, as in
-`docs/**`, where `/docs/` keeps everything under the root's `docs` folder, or
-two `**` folders in a row; two `/` in a row, or a `.` or `..` folder past a
-leading `./`, in a `path:` value; a control or invisible character inside a
-term, such as a zero-width space, though a tab or a line break between terms
+control or invisible character inside a term, such as a zero-width space, though a tab or a line break between terms
 is only a space; and more than 64 terms or 2,048 code points. Such a
 filter is **not understood**, and none of it is applied, since applying only
 the terms it reads could hide entries the filter asked for:
@@ -883,8 +886,8 @@ the terms it reads could hide entries the filter asked for:
 Under a filter, the first of the page's notices says how much of the page it
 shows:
 
-*Filtered by `path:docs/design/search.md is:open`: 5 of 15 entries, in 1 of 20
-paths, 5 of them open questions.*
+*Filtered by `path:/docs/design/search.md is:open`: 5 of 15 entries, in 1 of
+20 paths, 5 of them open questions.*
 
 That is the entries shown, of all the entries the page would list without it;
 the documents its `path:` terms keep, of every path the index lists; and how
@@ -928,15 +931,20 @@ filter keeps needs you* in place of *Nothing needs you*.
   those of the last text you typed. A key that leaves the filter as it was, such as a second
   space, changes nothing. While an input method composes, as for Japanese or
   Chinese, nothing applies until the composition ends.
+- **A text that keeps nothing waits until you stop typing.** While you type
+  a word that is not there yet, or a `-` whose first letter leaves out
+  everything, as `-m` does when every path ends in `.md`, the page keeps the
+  last results. Once you stop for 300 ms the text applies, and the page says
+  nothing matches. Enter, ✕, a paste and leaving the box apply it at once.
 - **Enter** applies the box's text and writes it into the address at once,
   and the box then shows it in its [canonical text](#the-address). On a text
   Vantage does not understand, Enter is how you see why: the page shows every
   entry, and the notice names what it could not read.
 - **✕** clears the filter and applies that at once, and the focus stays in the
   box.
-- **Esc** puts back the filter the page shows when the box holds a text that
-  is not applied, and otherwise gives the focus back to the page. It never
-  clears the filter.
+- **Esc** puts back the last filter you typed that Vantage understands when
+  the box holds a text that is not applied, and otherwise gives the focus
+  back to the page. It never clears the filter.
 - **Leaving the box** writes the filter into the address at once, if the
   address does not hold it yet. A text that is not applied stays in the box,
   with its hint.
@@ -957,14 +965,14 @@ filter keeps needs you* in place of *Nothing needs you*.
 #### The address
 
 The page's address carries the filter, as
-`/.vantage/planning?filter=path:docs/design/search.md+is:open`. That is how
+`/.vantage/planning?filter=path:/docs/design/search.md+is:open`. That is how
 the checker prints it too: `:` and `/` stay readable, a space is a `+`, and
 every other character but `A`–`Z`, `a`–`z`, `0`–`9`, `-`, `.`, `_` and `~` is
 percent-encoded, such as `*` as `%2A`. A `.` or `_` that would end the address
 is encoded too, so a sentence's period after a pasted address cannot take it.
 
 - **The address follows the box.** Once you stop typing for 300 ms, the
-  address takes the filter the page shows. Enter, ✕, a paste and leaving the
+  address takes the last filter you typed that Vantage understands. Enter, ✕, a paste and leaving the
   box write it at once, so an address you copy right after typing holds the
   filter on screen.
 - **Typing never adds a history entry.** Each write replaces the history entry
@@ -973,9 +981,9 @@ is encoded too, so a sentence's period after a pasted address cannot take it.
   roadmap and the rest of the address, and drops a `#` anchor.
 - **Vantage writes an understood filter in one spelling,** its canonical text:
   a repeated term is dropped, quotes that are not needed are dropped, as in
-  `"pypi"`, and a leading `./` or `/` that changes nothing is dropped, so
-  `path:./docs/x.md` reads `path:docs/x.md`, while `path:./roadmap.md` reads
-  `path:/roadmap.md`. A word keeps the case you typed it in. The address holds
+  `"pypi"` and `path:"docs/x.md"`, and a leading `./` is written `/`, so
+  `path:./docs/x.md` reads `path:/docs/x.md`. A word or a path keeps the case
+  you typed it in. The address holds
   the canonical text, and the box shows it after Enter and when a link opens,
   but never while you type: what you typed stays as you typed it, so the
   caret never jumps.

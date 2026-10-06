@@ -333,7 +333,7 @@ describe("run", () => {
     );
     expect(USAGE).toMatch(/\n {39}word {12}text a question's id,\n/);
     expect(USAGE).toMatch(/\n {39}"a phrase" {6}the same, for words\n/);
-    expect(USAGE).toMatch(/\n {39}path:<pattern> {2}a document: /);
+    expect(USAGE).toMatch(/\n {39}path:<pattern> {2}a document whose path\n/);
     expect(USAGE).toMatch(/\n {39}is:open {9}a question still open\n/);
     expect(USAGE).toMatch(/\n {39}-<term> {9}leave out what the\n/);
     expect(help).toContain(
@@ -346,7 +346,7 @@ describe("run", () => {
       "Paste the link into the planning page's Filter box: press / there.",
     );
     expect(help).toContain(
-      'Put a path holding any character but A-Z a-z 0-9 . _ - / in "quotes", which match it as written',
+      'a document whose path holds the text, in any case. A * matches within a folder or file name, ** across folders, and a leading / pins it to the path\'s start. In "quotes", every character matches itself, a space too',
     );
     expect(help).toContain(
       "For index, also a --filter it cannot read, checked before anything is scanned, or one with a path: or -path: term that matches no path",
@@ -368,14 +368,37 @@ describe("run", () => {
     ]);
   });
 
-  // §5.5: a bare pattern reads only A-Z a-z 0-9 . _ - / and *, so the help
-  // names that set, and a path holding any other character is understood in
-  // quotes and nowhere else.
+  // §5.4, §5.5: a bare value holds any character but white space and a
+  // quote, so the help says only what quotes are for: a space, and a `*`
+  // that is a `*`.
   it("says which paths go in quotes as the parser reads them", () => {
-    for (const ch of ["A", "Z", "a", "z", "0", "9", ".", "_", "-"]) {
-      expect(parsePlanningFilter(`path:docs/a${ch}b.md`).kind).toBe(
-        "understood",
-      );
+    for (const ch of [
+      "A",
+      "z",
+      "0",
+      ".",
+      "_",
+      "-",
+      "'",
+      "+",
+      "(",
+      "#",
+      "~",
+      ",",
+      "@",
+      "?",
+      "[",
+      "\u00fc",
+    ]) {
+      expect(parsePlanningFilter(`path:docs/a${ch}b.md`), ch).toMatchObject({
+        kind: "understood",
+        canonical: `path:docs/a${ch}b.md`,
+      });
+      // Quoted, it is written bare, since bare it reads the same.
+      expect(parsePlanningFilter(`path:"docs/a${ch}b.md"`), ch).toMatchObject({
+        kind: "understood",
+        canonical: `path:docs/a${ch}b.md`,
+      });
     }
     // Bare, a space ends the path: what follows it is a word of its own.
     expect(parsePlanningFilter("path:docs/a b.md")).toMatchObject({
@@ -388,16 +411,15 @@ describe("run", () => {
     });
     expect(parsePlanningFilter('path:"docs/a b.md"')).toMatchObject({
       kind: "understood",
+      canonical: 'path:"docs/a b.md"',
       terms: [{ key: "path", value: "docs/a b.md" }],
     });
-    for (const ch of ["'", "+", "(", "#", "~", ",", "@", "ü"]) {
-      expect(parsePlanningFilter(`path:docs/a${ch}b.md`).kind).toBe(
-        "not-understood",
-      );
-      expect(parsePlanningFilter(`path:"docs/a${ch}b.md"`).kind).toBe(
-        "understood",
-      );
-    }
+    // Quoted, a `*` is a `*`, so it stays quoted.
+    expect(parsePlanningFilter('path:"docs/*.md"')).toMatchObject({
+      kind: "understood",
+      canonical: 'path:"docs/*.md"',
+      terms: [{ key: "path", value: "docs/*.md", quoted: true }],
+    });
   });
 
   it("prints usage to stderr and exits 2 on --filter with no value", async () => {

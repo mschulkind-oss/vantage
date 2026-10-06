@@ -514,7 +514,7 @@ describe("the chosen roadmap (planning-index.md §6.8)", () => {
 describe("the planning filter (planning-filter.md §6.4, §6.5)", () => {
   const forms = filterForms();
   const index = filterFormsIndex(forms);
-  const DESIGN = "path:docs/design/a.md";
+  const DESIGN = "path:/docs/design/a.md";
 
   it("derives the filtered sections once per index, roadmap and filter, from the whole index's", () => {
     const filtered = sectionsOf(index, null, DESIGN);
@@ -602,7 +602,7 @@ describe("the planning filter (planning-filter.md §6.4, §6.5)", () => {
 
   it("writes a text as its canonical text, as typed when not understood, and as nothing when empty", () => {
     expect(filterValue("path:./docs/x.md  is:open")).toBe(
-      "path:docs/x.md is:open",
+      "path:/docs/x.md is:open",
     );
     expect(filterValue(' a"b" ')).toBe(' a"b" ');
     expect(filterValue(' "OR" ')).toBe("OR");
@@ -640,7 +640,7 @@ describe("the planning filter (planning-filter.md §6.4, §6.5)", () => {
         rewrite(
           "x=1&filter=path:./docs/design/a.md&roadmap=roadmap.md&filter=is:open",
         ),
-      ).toBe("x=1&filter=path:docs/design/a.md+is:open&roadmap=roadmap.md");
+      ).toBe("x=1&filter=path:/docs/design/a.md+is:open&roadmap=roadmap.md");
     });
 
     it("removes an empty filter", () => {
@@ -668,7 +668,7 @@ describe("the planning filter (planning-filter.md §6.4, §6.5)", () => {
         rewrite(
           "filter=path:/docs/design/a.md&needs-you=9&waiting=2&roadmap=roadmap.md",
         ),
-      ).toBe("filter=path:docs/design/a.md&needs-you=4&roadmap=roadmap.md");
+      ).toBe("filter=path:/docs/design/a.md&needs-you=4&roadmap=roadmap.md");
     });
   });
 
@@ -677,7 +677,7 @@ describe("the planning filter (planning-filter.md §6.4, §6.5)", () => {
       "needs-you=2&x=1&roadmap=roadmap.md&waiting=3&filter=path:a.md",
     );
     expect(planningQuery(withFilter(search, "path:./docs/a.md is:open"))).toBe(
-      "filter=path:docs/a.md+is:open&x=1&roadmap=roadmap.md",
+      "filter=path:/docs/a.md+is:open&x=1&roadmap=roadmap.md",
     );
     expect(planningQuery(withFilter(search, "  "))).toBe(
       "x=1&roadmap=roadmap.md",

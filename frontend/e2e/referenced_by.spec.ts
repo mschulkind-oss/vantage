@@ -198,11 +198,11 @@ test("a document nothing links to still counts its unrouted questions", async ({
 });
 
 // planning-filter.md §7: a live document holding a question links to the
-// planning page filtered to it, `path:/plans/paged.md` in canonical text.
+// planning page filtered to it, `path:/plans/paged.md`, pinned to the root.
 test("a live document's line links to the planning page filtered to it", async ({
   page,
 }) => {
-  const filtered = "/.vantage/planning?filter=path:plans/paged.md";
+  const filtered = "/.vantage/planning?filter=path:/plans/paged.md";
   await page.goto("/plans/paged.md");
   await expect(lineRow(page)).toHaveText(
     "Referenced by 1 document · on the roadmap under Later · its questions on the planning page",
@@ -238,10 +238,10 @@ test("a live document's line links to the planning page filtered to it", async (
   const needsYou = page.getByRole("region", { name: /^Needs you/ });
   await expect(needsYou).toBeVisible();
   await expect(page.getByRole("textbox", { name: "Filter" })).toHaveValue(
-    "path:plans/paged.md",
+    "path:/plans/paged.md",
   );
   await expect(page.getByTestId("filter-notice")).toContainText(
-    "Filtered by path:plans/paged.md: ",
+    "Filtered by path:/plans/paged.md: ",
   );
   await expect(needsYou.getByRole("article").first()).toContainText("OQ-P");
   await expect(
@@ -310,7 +310,6 @@ for (const width of [1280, 320]) {
   });
 }
 
-
 test("on a narrow screen the line wraps rather than hide the roadmap's answer", async ({
   page,
 }) => {
@@ -345,7 +344,9 @@ test("on a narrow screen, with the index at first paint, the line wraps and the 
     .first()
     .evaluate((el) => el.scrollWidth > el.clientWidth);
   expect(clipped).toBe(false);
-  await expect(toggle(page).getByText("on the roadmap under Later")).toBeVisible();
+  await expect(
+    toggle(page).getByText("on the roadmap under Later"),
+  ).toBeVisible();
   const box = await planningLink(page).boundingBox();
   expect(box!.x + box!.width).toBeLessThanOrEqual(320);
   const scroll = page.locator("[data-content-scroll]");
@@ -374,8 +375,9 @@ for (const [path, width] of [
     await openWithIndex(page, path);
     await expect(planningLink(page)).toBeVisible();
     const geometry = await planningLink(page).evaluate((link) => {
-      const row = link.closest("[data-vantage-referenced-by]")!
-        .firstElementChild!;
+      const row = link.closest(
+        "[data-vantage-referenced-by]",
+      )!.firstElementChild!;
       const separator = link.previousElementSibling as HTMLElement;
       // The words' own box: inside the button, past its chevron, or the
       // plain-text line itself.

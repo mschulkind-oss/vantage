@@ -197,7 +197,7 @@ describe("PlanningFilterLine, before the URL holds what it applied", () => {
     });
     expect(onApply).toHaveBeenLastCalledWith("path:./plans/c.md", null);
     // Enter shows the canonical text.
-    expect(box.value).toBe("path:plans/c.md");
+    expect(box.value).toBe("path:/plans/c.md");
     // Entered, a text it cannot read is applied as written, and so is not
     // "not applied" while the URL takes it.
     fireEvent.change(box, { target: { value: 'path:plans/c.md "is' } });
