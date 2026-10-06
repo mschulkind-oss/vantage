@@ -10,22 +10,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-**A planning page filtered to one piece of work.** The planning page has a new
-**Filter** box, and the page narrows as you type. A word, such as `generator`,
-finds the questions whose id, title, leaning or path holds it, in any case, and
-the documents whose path, stage or `next` does. `path:`, which finds its text
-anywhere in a path as GitHub's code search does, and `is:open` narrow further,
-as in `path:/docs/design/search.md is:open`, and a `-` before a term leaves out
-what it matches. The page keeps its order, a notice says what the filter hides,
-and **Copy answers** and **Copy agent request** cover only what it keeps. Press
-`/` to reach the box. The address follows the box without adding to your
-history. See [Filtering the page](userguide/guides/planning.md#filtering-the-page).
+**A planning page filtered to one piece of work.** The planning page has a
+**Filter** box at its top, there as soon as the page opens, and the page
+narrows as you type. A word, such as `generator`, finds the questions whose id,
+title, leaning or path holds it, in any case, and the documents whose path,
+stage or `next` does. `path:` finds its text anywhere in a path, as GitHub's
+code search does, with `*` and `**` as wildcards. `is:open` keeps only open
+questions, as in `path:/docs/design/search.md is:open`, and a `-` before a term
+leaves out what it matches. The page keeps its order, and a notice says what
+the filter hides. See
+[Filtering the page](userguide/guides/planning.md#filtering-the-page).
 
-A planning document that holds a question, and whose stage does not map to
-`done`, now ends its Referenced by line with *its questions on the planning
-page*, a link to the planning page filtered to that document. A document that
-had no line, because nothing links to it and the roadmap misses none of its
-questions, now shows a line with only that link. See
+Press `/` to reach the box. Paste a link to a planning page into it, as a whole
+address or as the line `vantage-check index --filter` prints, and the link's
+filter applies at once to the project on screen, whatever address the link was
+made for. The page's address follows the box without adding to your history.
+**Copy answers** and **Copy agent request** cover only what the filter keeps,
+and the agent request names the filter on a `Filter:` line.
+
+A planning document that holds a question now ends its Referenced by line with
+*its questions on the planning page*, a link to the planning page filtered to
+that document, unless its stage has the
+[`done` role](userguide/guides/planning.md#stage-roles). A document that had no
+line, because nothing links to it and the roadmap misses none of its questions,
+now shows a line with only that link. See
 [Referenced by](userguide/guides/planning.md#referenced-by).
 
 **`vantage-check index --filter`** takes the same text, prints only what it
@@ -34,8 +42,10 @@ keeps, and prints a `Planning page:` line for your agent to hand you.
 need your rulings. The checker cannot know the address you open Vantage at, so
 the link starts at `/.vantage/planning`: press `/` on your planning page and
 paste the line, or put your address in front. In daemon mode, opening it lists
-each project's planning page with the filter kept. With `--format json`, the
-output gains a `filter` key, and the format version stays 2.
+each project's planning page with the filter kept. If your `.vantage.toml` sets
+a `target` before 0.9, a line under the link says that an older Vantage shows
+every entry. With `--format json`, the output gains a `filter` key, and the
+format version stays 2.
 
 `--filter` exits `2` on a filter it cannot read, such as one with an unclosed
 quote, and on a `path:` or `-path:` term that matches no path. A word that
