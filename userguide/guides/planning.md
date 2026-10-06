@@ -370,7 +370,7 @@ while viewing a document or a folder to open it, or click the checklist icon
 beside **Vantage** at the top of the sidebar. It is built from the index every time and stores nothing of its
 own: no snooze, no assignment, no read state, no remembered filter. It changes
 when the documents do, without a reload. Its **Filter** box, at the top, narrows
-it to one piece of work ([below](#filtering-the-page)).
+it to one piece of work as you type ([below](#filtering-the-page)).
 
 It sits in the app as a document does: the sidebar is beside it, with its file
 tree, bookmarks and recent files (**`b`** puts it away and brings it back), and
@@ -774,20 +774,22 @@ Filter: `path:docs/design/search.md is:open`. Only the entries it keeps are list
 ```
 
 The agent can run `vantage-check index --request --filter` with that text and
-get the same request. The line leaves out a term that matches no path, which
-keeps nothing anyway, so the checker accepts its text as it is. What an entry
-is *blocked on* is still read from the
-whole page, so a filter never hides that a document waits on another. A filter
-the page does not understand is not applied, so its request has no `Filter:`
-line.
+get the same request. The line leaves out a `path:` term that matches no
+path, with or without its `-`, since leaving it out keeps the same entries,
+so the checker accepts its text as it is. What an entry is *blocked on* is
+still read from the whole page, so a filter never hides that a document waits
+on another. A filter the page does not understand is not applied, so its
+request has no `Filter:` line.
 
 ### Filtering the page
 
 The **Filter** box at the top of the planning page narrows it to one piece of
-work. Type a filter, such as `path:docs/design/search.md is:open`, and press
-Enter: the page then lists only the entries the filter keeps, in the order they
-had, and a notice above the sections says what it hides. The box is there in
-every state of the page, from its first paint, before the index is ready too.
+work, the way a search box does. Type a word, such as `generator`, or a filter
+such as `path:docs/design/search.md is:open`, and the page follows as you
+type, with no Enter to press: it lists only the entries the filter keeps, in
+the order they had, and a notice above the sections says what it hides. The
+box is there in every state of the page, from its first paint, before the
+index is ready too.
 
 A **filter** is one line of text, and the same text works in three places: the
 box, the page's address, and `vantage-check index --filter`
@@ -797,18 +799,38 @@ type is what the agent's command takes.
 
 #### Writing a filter
 
-A filter is **terms** separated by spaces, each a key, a `:` and a value.
-Vantage reads two keys:
+A filter is **terms** separated by spaces. A term is a word, a phrase in
+double quotes, or a key, a `:` and a value, and a `-` in front of any of them
+leaves out what it matches:
 
 | Term | Keeps |
 | :--- | :--- |
+| A word, such as `generator`, or a phrase, such as `"command surface"` | Entries that hold it, in any case. A question is matched by its id, its title, its leaning and its document's path; a row under *Blocked*, *Ready to build*, *Ready to graduate* or *Stage conflict* by its path, its `stage` and its `next`; a *Too large* or *Unreadable* entry by its path. A phrase is matched whole, spaces included |
 | `path:<pattern>` | Entries whose path the pattern matches: for a question, its document's path; for a row under *Blocked*, *Ready to build* or any other section that lists documents, the row's own path |
 | `is:open` | Questions still open: 💬, 💬 🤷 or no marker. Never a 🔒 or ✅ question, and never a document's row |
+| `-` and a term, such as `-payload`, `-path:docs/archive` or `-is:open` | Everything but what that term keeps. `-is:open` leaves out open questions and keeps every row |
 
-- **Terms with the same key keep any of their matches, and terms with
-  different keys must all match.** So
+- **Every word must match, and `path:` terms keep any of their matches.** So
+  `generator is:open` keeps the open questions that hold *generator*, and
   `path:docs/design/search.md path:docs/design/search-plan.md is:open` keeps
-  the open questions of both documents.
+  the open questions of both documents. Words match in any order, and each in
+  a field of its own, so a question can match one word by its title and
+  another by its path.
+- **A word matches any part of a field, and nothing more.** `gen` matches
+  *generator*, and `pypi` matches *PyPI*, but a typo matches nothing, and
+  neither does `cafe` match *café*. Outside `path:`, `*` and `?` are just
+  characters.
+- **Only those fields are searched:** never a question's body or its
+  comments, the rest of a document's frontmatter, or a file that is not a
+  planning document.
+- **Only `path` and `is` are keys.** Any other term with a colon in it is a
+  word: `Note:` and `http://x` are searched as text. When the part before the
+  colon is a lowercase word, as in `stage:ready`, the notice says *`stage:` is
+  not a filter key*, so you know a key you meant was read as a word. The keys
+  are lowercase: `Path:docs` is a word too.
+- **A word is the quick way to a path.** `path:` matches whole folder and file
+  names, so `path:docs/des` matches nothing until `design` is complete, while
+  the word `docs/des` keeps every entry whose path holds it.
 - **`is:open` keeps a question you have already answered** with a comment,
   since Vantage reads no comments to decide what is open. It stays under its
   section's *(N answered)* count.
@@ -827,23 +849,32 @@ A `path:` pattern is written as in a `.gitignore` file, with fewer forms:
 | `path:docs/**/*.md` | Any depth below `docs`: a `**` that is a whole folder of its own crosses folders |
 | `path:"docs/my notes.md"` | A path holding a space, or any character but `A`–`Z`, `a`–`z`, `0`–`9`, `.`, `_`, `-` and `/`. Inside double quotes every character stands for itself, `*` included, and `"` and `\` are written `\"` and `\\` |
 
-A leading `./` means the root, as `/` does. Matching is exact: `Docs` is not
-`docs`, and a name is matched in the Unicode form it is written in.
+A leading `./` means the root, as `/` does. A `path:` pattern is matched
+exactly: `path:Docs` does not keep `docs`, and a name is matched in the Unicode
+form it is written in. A word is the way to find a path in any case.
 
-**What Vantage does not understand.** Anything else: another key, `Path:`
-included; a word with no `:`, such as `OR` or `search`; a term starting with
-`-` or `!`; an empty `path:`; an unclosed quote; a bare pattern holding any
-character the table above puts in quotes; a `**` that is not a whole folder
-with more of the path after it, as in `docs/**`, where `/docs/` keeps
-everything under the root's `docs` folder, or two `**` folders in a row; two
-`/` in a row, or a `.` or `..` folder past a leading `./`; and more than 64
-terms or 2,048 code points. Such a filter is **not understood**, and none of it
-is applied: the page shows every entry, the box gets an amber ring, and the
-notice names what it could not read, as in *Not filtered: this Vantage does not
-understand `OR`. It reads path: and is: terms, such as
-`path:docs/design/*.md is:open`. Every entry is shown.* Applying only the terms
-it reads could hide entries the filter asked for, and a later Vantage may give
-those forms a meaning.
+**What Vantage does not understand.** Only text that is malformed: an
+unclosed quote; a quote around part of a term, as in `a"b"`; an empty `""`; a
+`\` inside quotes before anything but `"` or `\`; a `-` on its own; an empty
+`path:` or `is:`; an `is:` value other than `open`, such as `is:closed`; a
+bare `path:` pattern holding any character the table above puts in quotes; a
+`**` that is not a whole folder with more of the path after it, as in
+`docs/**`, where `/docs/` keeps everything under the root's `docs` folder, or
+two `**` folders in a row; two `/` in a row, or a `.` or `..` folder past a
+leading `./`, in a `path:` value; a control or invisible character anywhere,
+such as a zero-width space; and more than 64 terms or 2,048 code points. Such a
+filter is **not understood**, and none of it is applied, since applying only
+the terms it reads could hide entries the filter asked for:
+
+- **While you type one,** such as a phrase whose closing quote is still to
+  come, the page keeps what it shows, and the box's hint says *Not applied:
+  Enter says why*.
+- **Press Enter on it, or open a link that holds one,** and the page shows
+  every entry, the box gets an amber ring, and the notice names what it could
+  not read, as in *Not filtered: this Vantage cannot read `is:closed`. It
+  reads words, "quoted phrases", path: and is:open terms, and a - before any of
+  them to leave out what it matches, such as
+  `generator path:docs/design/*.md is:open`. Every entry is shown.*
 
 #### What the notice says
 
@@ -858,16 +889,20 @@ the documents it keeps, of every path the index lists; and how many of the
 entries shown are open questions. A line follows for each of these that
 applies:
 
-- **A term that matches nothing:** *`path:docs/desing` matches no path the
-  index lists.* The rest of the filter still applies, and that term keeps
-  nothing.
+- **A `path:` term that matches no path:** *`path:docs/desing` matches no
+  path the index lists.* The rest of the filter still applies, and that term
+  keeps nothing, or with a `-` in front leaves nothing out. A word that matches
+  nothing gets no line: the counts already say what it kept.
+- **A word before a `:` that is not a key:** *`stage:` is not a filter key, so
+  `stage:ready` is searched as text. The keys are `path:` and `is:`.*
 - **Questions on other roadmaps:** *2 more questions it keeps are on other
   roadmaps: `docs/a/roadmap.md` (1), `docs/b/roadmap.md` (1). Choose one to
   see them; the filter stays.* A question only another roadmap routes is in
   no section, so it is counted here rather than shown.
 - **Blocked questions left out:** *3 of its questions are blocked and will
-  need you later.* `is:open` leaves out the 🔒 questions of the documents it
-  keeps, and this says whether another round of rulings will come.
+  need you later.* It counts the 🔒 questions the rest of the filter keeps and
+  `is:open` leaves out, so you know whether another round of rulings will
+  come.
 - **A document waiting outside the filter:** *docs/design/x.md waits on
   docs/design/y.md, which this filter leaves out.* Add a `path:` term for that
   document to see what it holds.
@@ -883,25 +918,38 @@ filter keeps needs you* in place of *Nothing needs you*.
   shortcuts** on in Settings, and the focus outside a text field. If the
   shortcuts help is open, `/` closes it first. Tab and a click reach the box
   either way. On a document `/` does nothing, so Firefox's quick find keeps it.
-- **Typing** changes only the box. **Enter** applies it. Until then the box's
-  hint says *Enter to apply*, and leaving the box applies nothing.
+- **Typing applies.** Each key that changes the filter changes the page, and
+  the box shows what you type at once, whatever the page is doing. The page
+  keeps the shown entries until the new ones are ready, then swaps them in
+  together without moving anything, and the results that stay are always
+  those of the last text you typed. A key that leaves the filter as it was, such as a second
+  space, changes nothing. While an input method composes, as for Japanese or
+  Chinese, nothing applies until the composition ends.
+- **Enter** applies the box's text and writes it into the address at once,
+  and the box then shows it in its [canonical text](#the-address). On a text
+  Vantage does not understand, Enter is how you see why: the page shows every
+  entry, and the notice names what it could not read.
 - **✕** clears the filter and applies that at once, and the focus stays in the
   box.
-- **Esc** puts back the applied filter when the box holds something else, and
-  otherwise gives the focus back to the page. It never clears the filter.
+- **Esc** puts back the filter the page shows when the box holds a text that
+  is not applied, and otherwise gives the focus back to the page. It never
+  clears the filter.
+- **Leaving the box** writes the filter into the address at once, if the
+  address does not hold it yet. A text that is not applied stays in the box,
+  with its hint.
 - **Pasting a planning link** applies its filter at once, as Enter does. The
   link can be a whole URL or start at `/.vantage/planning`, on its own or
   inside the lines `vantage-check index --filter` prints around it. Backticks,
   quotes, brackets or the `*` of emphasis around it, and a period after it,
-  are not read as part of it. Only its filter, and its roadmap when it names one, are read, never its
-  scheme, host, port, repository or pages, so a link made for another address
-  or another machine applies to the repository on screen. The roadmap it names
-  is shown, not remembered. A link with no filter in it clears the filter.
-  Pasted text that holds no planning link is text, applied on Enter.
-- **The filtered page** replaces the shown one only once its cards are ready,
-  and then all at once. Until then the shown page's pagers and contents column
-  do nothing, and a spinner in the box's row shows when the wait takes more
-  than 150 ms. Applying the filter already shown does nothing.
+  are not read as part of it. Only its filter, and its roadmap when it names
+  one, are read, never its scheme, host, port, repository or pages, so a link
+  made for another address or another machine applies to the repository on
+  screen. The roadmap it names is shown, not remembered. A link with no filter
+  in it clears the filter. Pasted text that holds no planning link applies as
+  typed text does, and goes into the address at once.
+- **While a filtered page is on its way,** the shown page's pagers and
+  contents column do nothing, and a spinner in the box's row shows when the
+  wait takes more than 150 ms.
 
 #### The address
 
@@ -912,16 +960,25 @@ every other character but `A`–`Z`, `a`–`z`, `0`–`9`, `-`, `.`, `_` and `~`
 percent-encoded, such as `*` as `%2A`. A `.` or `_` that would end the address
 is encoded too, so a sentence's period after a pasted address cannot take it.
 
-- **Enter, ✕ and a paste** replace the history entry rather than adding one,
-  as a flip does. They show every section from its first page, keep the
-  roadmap and the rest of the address, and drop a `#` anchor.
-- **Vantage writes an understood filter in one spelling,** its canonical text,
-  in the address and in the box, on open and on Enter: a repeated term is
-  dropped, quotes that are not needed are dropped, and a leading `./` or `/`
-  that changes nothing is dropped, so `path:./docs/x.md` reads
-  `path:docs/x.md`, while `path:./roadmap.md` reads `path:/roadmap.md`.
+- **The address follows the box.** Once you stop typing for 300 ms, the
+  address takes the filter the page shows. Enter, ✕, a paste and leaving the
+  box write it at once, so an address you copy right after typing holds the
+  filter on screen.
+- **Typing never adds a history entry.** Each write replaces the history entry
+  rather than adding one, as a flip does, so **Back** goes where it went before
+  you typed. A write shows every section from its first page, keeps the
+  roadmap and the rest of the address, and drops a `#` anchor.
+- **Vantage writes an understood filter in one spelling,** its canonical text:
+  a repeated term is dropped, quotes that are not needed are dropped, as in
+  `"pypi"`, and a leading `./` or `/` that changes nothing is dropped, so
+  `path:./docs/x.md` reads `path:docs/x.md`, while `path:./roadmap.md` reads
+  `path:/roadmap.md`. A word keeps the case you typed it in. The address holds
+  the canonical text, and the box shows it after Enter and when a link opens,
+  but never while you type: what you typed stays as you typed it, so the
+  caret never jumps.
 - **A filter Vantage does not understand** stays in the address and the box
-  exactly as written, so you can fix it.
+  exactly as written once you press Enter, or open a link that holds one, so
+  you can fix it.
 - **A flip, a roadmap choice and the contents column's links keep the
   filter,** written the same way. An address written by hand may spell it
   with `%3A` and `%2F` for `:` and `/`, and both read alike.
@@ -929,7 +986,7 @@ is encoded too, so a sentence's period after a pasted address cannot take it.
   whatever document you were on, and **Back** returns to the filtered page,
   with the box holding its filter again.
 - **Nothing remembers a filter.** It lives in the address and in the box, and
-  a link that holds it is the way to keep it or share it.
+  a link that holds it is the way to share it.
 
 #### Everything else under a filter
 
@@ -943,9 +1000,10 @@ is encoded too, so a sentence's period after a pasted address cannot take it.
 - In print, the box is left out. A line, *Filter:* and the filter, prints in
   its place, and the notice prints too, so a printout always says it is
   filtered and by how much.
-- A screen reader hears the notice after you apply a filter, and that every
-  entry is shown after you clear one, never as the page opens. The box is
-  described by the notice.
+- A screen reader hears the notice when the address takes a filter, after
+  the pause or on Enter, ✕ or a paste, and that every entry is shown after you
+  clear one. It hears nothing per key, and nothing as the page opens. The box
+  is described by the notice.
 
 #### Filtered links
 
@@ -965,6 +1023,11 @@ A filtered page is usually reached by a link:
   so opened with an address in front it lists each repository's planning page,
   every one with the same filter. Pasted into a repository's Filter box, it
   needs no click.
+
+A filtered link is for handing over, not for keeping. A later Vantage may keep
+other entries for the same text, so an agent runs `vantage-check index
+--filter` again rather than reuse an old link, and the notice always says what
+the page in front of you shows.
 
 A Vantage from before the filter, 0.8.1 or earlier, has no Filter box and opens
 a filtered link as the whole planning page, without saying so. A page with no
@@ -1089,11 +1152,12 @@ every candidate on every page load, and everything else works the same.
 - **The planning scan stopped:** the background thread that scans the files
   ended in the middle of a build. The planning page says so, and Retry starts
   a new one.
-- **A filter Vantage does not understand:** the page applies none of it and
-  shows every entry, under *Not filtered* and the term it could not read
-  ([Filtering the page](#filtering-the-page)). `vantage-check index --filter`
-  exits `2` instead, and so it does for a term that matches no path, which the
-  page applies and names.
+- **A filter Vantage does not understand:** the page applies none of it.
+  While you type it, the page keeps what it shows; on Enter, or opened from a
+  link, it shows every entry, under *Not filtered* and the term it could not
+  read ([Filtering the page](#filtering-the-page)). `vantage-check index
+  --filter` exits `2` instead, and so it does for a `path:` term that matches
+  no path, which the page applies and names.
 - **A filtered link opened in Vantage 0.8.1 or earlier:** the whole planning
   page, with no notice, since that release has no filter.
 - **The comments cannot be loaded:** the planning page's sections appear

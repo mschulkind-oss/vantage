@@ -691,7 +691,7 @@ How it works:
 | `--format text\|json` | Output format. Default `text`. |
 | `--request [<section>…]` | Print the [agent request](#agent-requests) for these sections instead: `unrouted` (*Not on a roadmap*), `ready` (*Ready to build*), `graduate` (*Ready to graduate*) or `disagrees` (*Stage conflict*), any of them, separated by spaces. Default: all four. Takes no `--format json`. |
 | `--roadmap <path>` | The roadmap *Needs you* follows, and whose source is printed. Relative to the project root, with one leading `./` dropped; given twice, the last wins. Default: the nearest the root of the roadmaps it can follow, which are those it can read whose stage has no `done` role. |
-| `--filter <text>` | Show only the entries a [planning filter](planning.md#filtering-the-page) keeps, the text the planning page's Filter box takes, such as `'path:/docs/design/search.md is:open'`, and print a link to the page filtered the same way ([Filtering](#filtering)). Also `--filter=<text>`. Given twice, the texts join with a space; an empty one is no filter. Works with `--format json`, `--request` and `--roadmap`. |
+| `--filter <text>` | Show only the entries a [planning filter](planning.md#filtering-the-page) keeps, the text the planning page's Filter box takes, such as `'path:/docs/design/search.md is:open'` or `'generator is:open'`, and print a link to the page filtered the same way ([Filtering](#filtering)). Also `--filter=<text>`. Given twice, the texts join with a space; an empty one is no filter. Works with `--format json`, `--request` and `--roadmap`. |
 | `--config <path>` | Read this `.vantage.toml`. It never changes which project is scanned. |
 | `--no-config` | Ignore `.vantage.toml` and use the built-in defaults. |
 
@@ -837,11 +837,22 @@ the sections' names from before the titles were settled.
 ### Filtering
 
 `--filter` takes a planning filter: the text the planning page's Filter box
-and its `filter=` address read, with the same code. It is `path:<pattern>` and
-`is:open` terms, separated by spaces. Terms with one key keep any of their
-matches, and terms with different keys must all match.
-[Writing a filter](planning.md#writing-a-filter) has every form, and
-`vantage-check help` lists them. Quote the text for your shell.
+and its `filter=` address read, with the same code. Its terms are separated by
+spaces:
+
+- **Words and `"quoted phrases"`** search what the index holds about each
+  entry, in any case: a question's id, title, leaning and path, a document
+  row's path, `stage` and `next`, and a *Too large* or *Unreadable* path.
+  Every word must match.
+- **`path:<pattern>`** keeps documents by their path, and **`is:open`** open
+  questions. `path:` terms keep any of their matches.
+- **A `-` before any term** leaves out what it matches, as in `-payload` or
+  `-path:docs/archive`.
+
+A word before a `:` that is not `path` or `is`, as in `stage:ready`, is
+searched as text, and a line under the notice's first line says *`stage:` is
+not a filter key*. [Writing a filter](planning.md#writing-a-filter) has every
+form, and `vantage-check help` lists them. Quote the text for your shell.
 
 The text output starts with the filter notice, in the page's words with code
 between backticks, then the `Planning page:` line and how to use it, then the
@@ -906,6 +917,7 @@ sections emptied:
     "waitsOutside": [
       { "path": "docs/design/search.md", "target": "docs/design/indexing.md" }
     ],
+    "unknownKeys": [],
     "sections": {}
   }
 }
@@ -917,14 +929,17 @@ sections emptied:
   lists; **`entries`** the entries shown, of every entry the unfiltered
   sections hold; **`openQuestions`** how many of those shown are open
   questions.
-- **`blockedLeftOut`** counts the 🔒 questions of the kept documents that an
-  `is:` term leaves out.
+- **`blockedLeftOut`** counts the 🔒 questions that every other term keeps
+  and an `is:` term leaves out.
 - **`otherRoadmaps`** names each roadmap other than the chosen one that routes
   a kept question, with how many it routes; a question two of them route counts
   under both.
 - **`waitsOutside`** lists each kept document that waits on something the
   filter leaves out, with the `target` as its `depends-on` names it, `#OQ-…`
   included.
+- **`unknownKeys`** lists each word before a `:` that is not a filter key,
+  once, in the order written: `["stage"]` for `stage:ready`. The text output
+  says the same in its *not a filter key* line.
 - **`sections`** is the filtered sections, in the shape of the top-level
   `sections`.
 
@@ -977,22 +992,24 @@ it prints nothing, says so on stderr, and exits `0`.
 
 | Code | Meaning |
 | :--- | :--- |
-| `0` | It ran. |
-| `2` | Bad arguments, a `--roadmap` that names no roadmap it can follow, a config file that cannot be trusted, a `--filter` it does not understand, or a `--filter` term that matches no path. |
+| `0` | It ran. That includes a `--filter` whose words match nothing, and one with a word before a `:` that is not a key. |
+| `2` | Bad arguments, a `--roadmap` that names no roadmap it can follow, a config file that cannot be trusted, a `--filter` it does not understand, or a `--filter` with a `path:` or `-path:` term that matches no path. |
 | `3` | It could not run, which includes a project with more candidates than `max-candidates`, whatever `--roadmap` or `--filter` says. It prints how many there are, and nothing is scanned. |
 
 It never exits `1`: `index` reports and does not judge. Failing a build on what
 the index finds is `check`'s job, through the planning rules above.
 
 A `--filter` it does not understand is refused before anything is scanned,
-naming the first term it cannot read:
+naming the first term it cannot read, or the reason where there is no term to
+name, such as an unclosed quote:
 
 ```text
-vantage-check: --filter: this checker does not understand `OR`; it reads path: and is: terms
+vantage-check: --filter: this checker cannot read `is:closed`; it reads words, "quoted phrases", path: and is:open terms, and a - before any of them to leave out what it matches
 ```
 
-A term that matches no path the index lists is refused after the scan, one
-line for each such term, with nothing on stdout:
+A `path:` term that matches no path the index lists, with or without its
+`-`, is refused after the scan, one line for each such term, with nothing on
+stdout:
 
 ```text
 vantage-check: --filter: `path:docs/desing` matches no path the index lists
@@ -1000,8 +1017,10 @@ vantage-check: --filter: `path:docs/desing` matches no path the index lists
 
 The planning page applies such a term, keeps nothing for it and names it. The
 checker stops instead, because a mistyped path is an agent's likeliest mistake,
-and the human should never be handed an empty page for it. A checker from
-before the filter exits `2` with `unknown option for index: --filter`.
+and the human should never be handed an empty page for it. A word that matches
+nothing is not refused: a search that finds nothing is an answer, and the
+notice's counts say so. A checker from before the filter exits `2` with
+`unknown option for index: --filter`.
 
 ### Handing the human a filtered planning page
 
@@ -1018,7 +1037,8 @@ them the planning page filtered to that work. The loop:
    `vantage-check index --filter 'path:/docs/design/search.md path:/docs/design/search-plan.md is:open'`.
    A link made in another checkout, such as a worktree, opens the documents of
    the checkout Vantage serves, which may not hold the questions as they are
-   where you ran it.
+   where you ran it. When the human asked about one part of the work, a word
+   narrows it further, as in `'indexing path:/docs/design/search.md is:open'`.
    - Exit `2` names the term to fix.
    - `unknown option for index: --filter` means the checker predates the
      filter: run `uvx vantage-check@latest`.
@@ -1052,6 +1072,10 @@ The loop also runs the other way. A human who filtered the page by hand and
 pressed **Copy agent request** hands you its `Filter:` line, and `--filter`
 takes its text as it is. The [style guide](#vantage-check-style-guide) teaches
 this loop in one rule, so an agent that reads it before writing learns it too.
+
+A link is for handing over now, not for keeping. A later release may keep
+other entries for the same filter text, so rerun the command rather than
+reuse a link from an earlier round.
 
 ---
 

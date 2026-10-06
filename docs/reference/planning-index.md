@@ -2606,6 +2606,7 @@ is the only place most of the numbers are stated.
 | Page select offered from | 5 pages | `pageSelectFrom` |
 | One commit of the sections | at most 30 cards and 96 Ki characters | `commitCards`, `commitMarkdownChars` |
 | Spinner delay | 150 ms | `spinnerMs` |
+| The Filter box's idle pause, before the address takes the filter ([`planning-filter.md` §6.4](../design/planning-filter.md#64-typing-and-the-url)) | 300 ms | `filterIdleMs` |
 | Reviews deadline / Mermaid deadline | 1 s / 1 s | `reviewsDeadlineMs`, `mermaidDeadlineMs` |
 | Late Mermaid frame | 240 px tall | `mermaidFramePx` |
 | Page-input sets kept | 8 | `pageInputsKept` |
