@@ -1287,7 +1287,7 @@ describe("index --filter, with words, phrases and exclusions", () => {
     expect(text.code).toBe(EXIT_OK);
     expect(text.stderr).toBe("");
     expect(text.stdout.split("\n").slice(0, 3)).toEqual([
-      "Filtered by `nothing-holds-this`: 0 of 13 entries, in 10 of 10 paths, none of them open questions.",
+      "Filtered by `nothing-holds-this`: 0 of 13 entries, none of them open questions.",
       "Run without --filter to see the other 13.",
       "Planning page: /.vantage/planning?filter=nothing-holds-this",
     ]);
@@ -1322,7 +1322,7 @@ describe("index --filter, with words, phrases and exclusions", () => {
     expect(code).toBe(EXIT_OK);
     expect(stderr).toBe("");
     expect(stdout.split("\n").slice(0, 3)).toEqual([
-      "Filtered by `stage:ready`: 0 of 13 entries, in 10 of 10 paths, none of them open questions.",
+      "Filtered by `stage:ready`: 0 of 13 entries, none of them open questions.",
       "`stage:` is not a filter key, so `stage:ready` is searched as text. The keys are `path:` and `is:`.",
       "Run without --filter to see the other 13.",
     ]);
@@ -1606,7 +1606,7 @@ describe("index --filter, as text", () => {
 
     expect(await head(worktree)).toBe(
       [
-        "Filtered by `path:/a.md`: 1 of 1 entry, in 1 of 1 path, 1 of them an open question.",
+        "Filtered by `path:/a.md`: 1 of 1 entry, 1 of them an open question.",
         "It hides no entry.",
         "Planning page: /.vantage/planning?filter=path:/a.md",
         PASTE_HINT,

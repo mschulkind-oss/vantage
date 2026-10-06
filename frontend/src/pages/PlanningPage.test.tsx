@@ -4585,7 +4585,7 @@ describe("the planning filter (planning-filter.md)", () => {
       expect(cardsIn("Needs you")).toEqual(["OQ-D3: Question OQ-D3?"]);
       expect(querySection("Not on a roadmap")).toBeNull();
       expect(noticeLines()[0]).toBe(
-        "Filtered by QUESTION oq-d3: 1 of 10 entries, in 9 of 9 paths, 1 of them an open question.",
+        "Filtered by QUESTION oq-d3: 1 of 10 entries, 1 of them an open question.",
       );
       expect(box()).not.toHaveAttribute("aria-invalid");
       expect(router.location).toBe("/.vantage/planning?filter=QUESTION+oq-d3");
@@ -5010,7 +5010,7 @@ describe("the planning filter (planning-filter.md)", () => {
       expect(box()).not.toHaveAttribute("aria-invalid");
       expect(querySection("Needs you")).toBeNull();
       expect(noticeLines()[0]).toBe(
-        "Filtered by Path:plans/design.md: 0 of 10 entries, in 9 of 9 paths, none of them open questions.",
+        "Filtered by Path:plans/design.md: 0 of 10 entries, none of them open questions.",
       );
     });
 
@@ -5643,6 +5643,432 @@ describe("the planning filter (planning-filter.md)", () => {
       expect(box().value).toBe('x"');
       expect(hint()).toBe(FILTER_HINT);
       expect(cardsIn("Needs you")).toEqual([D3]);
+    });
+
+    it("puts the spinner away once the page of a text typed after an Enter is on screen, though the entered text's page never came", async () => {
+      limits({ pageEntries: 2, spinnerMs: 150 });
+      let held = true;
+      let release: () => void = () => {};
+      serveTree(TREE, "/api", (inline) => ({
+        cards: (repo, want, options) =>
+          held && want.some((w) => w.path === "plans/answered.md")
+            ? new Promise<CardAnswer[]>((resolve) => {
+                release = () => resolve(inline.cards(repo, want, options));
+              })
+            : inline.cards(repo, want, options),
+      }));
+      await renderPage();
+      box().focus();
+      await enter("path:plans/answered.md");
+      expect(spinning()).toBe(true);
+      // Typed past the entered text before its page came.
+      await type("path:plans/design.md");
+      await settle();
+      expect(cardsIn("Needs you")).toEqual([D1, D3]);
+      expect(spinning()).toBe(false);
+      held = false;
+      release();
+      await settle();
+      await idle();
+      expect(filterOf()).toBe("path:plans/design.md");
+      expect(cardsIn("Needs you")).toEqual([D1, D3]);
+      expect(spinning()).toBe(false);
+    });
+
+    it("puts the spinner away once the page of a text typed after a cold ✕ is on screen", async () => {
+      limits({ pageEntries: 2, spinnerMs: 150 });
+      let held = false;
+      const releases: (() => void)[] = [];
+      serveTree(TREE, "/api", (inline) => ({
+        cards: (repo, want, options) =>
+          held
+            ? new Promise<CardAnswer[]>((resolve) => {
+                releases.push(() => resolve(inline.cards(repo, want, options)));
+              })
+            : inline.cards(repo, want, options),
+      }));
+      await renderPage("/.vantage/planning?filter=path:plans/design.md");
+      expect(cardsIn("Needs you")).toEqual([D1, D3]);
+      box().focus();
+      held = true;
+      await act(async () => {
+        fireEvent.click(
+          screen.getByRole("button", { name: "Clear the filter" }),
+        );
+      });
+      await settle();
+      expect(spinning()).toBe(true);
+      held = false;
+      await type("oq-u");
+      await settle();
+      for (const release of releases) release();
+      await settle();
+      expect(noticeLines()[0]).toMatch(/^Filtered by oq-u:/);
+      expect(spinning()).toBe(false);
+      await idle();
+      expect(filterOf()).toBe("oq-u");
+      expect(spinning()).toBe(false);
+    });
+
+    it("writes the newest text typed when a pager is pressed before that keystroke's render commits, and flips no page of the old filter's", async () => {
+      limits({ pageEntries: 1 });
+      await renderPage();
+      box().focus();
+      await typeKeys("oq-d");
+      await idle();
+      expect(router.location).toBe("/.vantage/planning?filter=oq-d");
+      const next = within(
+        screen.getByRole("navigation", { name: "Needs you pages" }),
+      ).getByRole("button", { name: "Next ›" });
+      // One more key, then a press on Next: in one act scope, so React
+      // renders the keystroke's transition only once both are handled, as a
+      // press landing during a slow render does.
+      await act(async () => {
+        fireEvent.change(box(), { target: { value: "oq-d3" } });
+        fireEvent.mouseDown(next);
+        fireEvent.blur(box());
+        fireEvent.click(next);
+      });
+      await settle();
+      await idle();
+      expect(router.location).toBe("/.vantage/planning?filter=oq-d3");
+      expect(noticeLines()[0]).toMatch(/^Filtered by oq-d3:/);
+      expect(cardsIn("Needs you")).toEqual([D3]);
+    });
+
+    it("carries the newest text typed into a roadmap pick made before that keystroke's render commits", async () => {
+      const NESTED = "docs/plans/roadmap.md";
+      seed({
+        ...TREE,
+        [NESTED]: "# Plans\n\n1. [The unrouted one](../../plans/unrouted.md)\n",
+      });
+      await renderPage();
+      box().focus();
+      await typeKeys("oq-");
+      await act(async () => {
+        fireEvent.change(box(), { target: { value: "oq-u" } });
+        fireEvent.change(screen.getByRole("combobox", { name: "Roadmap" }), {
+          target: { value: NESTED },
+        });
+      });
+      await settle();
+      expect(filterOf()).toBe("oq-u");
+      expect(
+        new URLSearchParams(router.location.split("?")[1]).get("roadmap"),
+      ).toBe(NESTED);
+      expect(cardsIn("Needs you")).toEqual(["OQ-U1: Question OQ-U1?"]);
+    });
+
+    it("says a text is not applied while the box leads, though the URL holds that same text it cannot read, and Esc puts back the text the page shows", async () => {
+      await renderPage("/.vantage/planning?filter=oq-d+%22");
+      expect(noticeLines()[0]).toMatch(/^Not filtered/);
+      expect(hint()).toBe("");
+      box().focus();
+      await type("oq-d ");
+      await settle();
+      expect(noticeLines()[0]).toMatch(/^Filtered by oq-d:/);
+      // Back to the URL's text, which the page does not show.
+      await type('oq-d "');
+      await settle();
+      expect(noticeLines()[0]).toMatch(/^Filtered by oq-d:/);
+      expect(hint()).toBe(FILTER_HINT);
+      await press("Escape", box());
+      expect(box().value).toBe("oq-d");
+      expect(document.activeElement).toBe(box());
+      expect(hint()).toBe("");
+      await idle();
+      expect(filterOf()).toBe("oq-d");
+    });
+
+    it("says a text is not applied once the box leads, after an Enter that changed nothing", async () => {
+      await renderPage("/.vantage/planning?filter=oq-d+%22");
+      box().focus();
+      // Enter on the URL's own text: nothing to do.
+      await enter();
+      expect(filterOf()).toBe('oq-d "');
+      await type("oq-d ");
+      await settle();
+      await type('oq-d "');
+      await settle();
+      expect(noticeLines()[0]).toMatch(/^Filtered by oq-d:/);
+      expect(hint()).toBe(FILTER_HINT);
+    });
+
+    it("never shows the page of a text typed past, though its inputs come in before the newer text's render commits (§6.4)", async () => {
+      limits({ pageEntries: 1 });
+      let held = false;
+      let release: () => void = () => {};
+      serveTree(TREE, "/api", (inline) => ({
+        cards: (repo, want, options) =>
+          held
+            ? new Promise<CardAnswer[]>((resolve) => {
+                release = () => resolve(inline.cards(repo, want, options));
+              })
+            : inline.cards(repo, want, options),
+      }));
+      await renderPage();
+      const sections = document.querySelector("[data-planning-sections]")!;
+      const seen: (string | null)[] = [];
+      const observer = new MutationObserver((records) => {
+        for (const record of records) seen.push(record.oldValue);
+      });
+      observer.observe(sections, {
+        attributes: true,
+        attributeFilter: ["data-planning-filter"],
+        attributeOldValue: true,
+      });
+      box().focus();
+      // OQ-U1's block is not in hand, so its page waits on the scanner.
+      held = true;
+      await type("oq-u");
+      await settle();
+      expect(cardsIn("Needs you")).toEqual([D1]);
+      held = false;
+      // The next key, and the first text's inputs coming in before React
+      // renders it: one act scope.
+      await act(async () => {
+        fireEvent.change(box(), { target: { value: "oq-d" } });
+        release();
+        for (let i = 0; i < 10; i++) {
+          await new Promise((resolve) => setTimeout(resolve, 0));
+        }
+      });
+      await settle();
+      observer.disconnect();
+      seen.push(sections.getAttribute("data-planning-filter"));
+      expect(seen).toEqual(["", "oq-d"]);
+      expect(cardsIn("Needs you")).toEqual([D1]);
+      expect(noticeLines()[0]).toMatch(/^Filtered by oq-d:/);
+    });
+
+    it("never shows the page of a text typed past, though its inputs came in while it was the newest, before React rendered them (§6.4)", async () => {
+      limits({ pageEntries: 1 });
+      let held = false;
+      let release: () => void = () => {};
+      serveTree(TREE, "/api", (inline) => ({
+        cards: (repo, want, options) =>
+          held
+            ? new Promise<CardAnswer[]>((resolve) => {
+                release = () => resolve(inline.cards(repo, want, options));
+              })
+            : inline.cards(repo, want, options),
+      }));
+      await renderPage();
+      const sections = document.querySelector("[data-planning-sections]")!;
+      const seen: (string | null)[] = [];
+      const observer = new MutationObserver((records) => {
+        for (const record of records) seen.push(record.oldValue);
+      });
+      observer.observe(sections, {
+        attributes: true,
+        attributeFilter: ["data-planning-filter"],
+        attributeOldValue: true,
+      });
+      box().focus();
+      held = true;
+      await type("oq-u");
+      await settle();
+      held = false;
+      // The first text's inputs come in while it is still the newest, and
+      // the next key lands before React renders them: one act scope.
+      await act(async () => {
+        release();
+        for (let i = 0; i < 10; i++) {
+          await new Promise((resolve) => setTimeout(resolve, 0));
+        }
+        fireEvent.change(box(), { target: { value: "oq-d" } });
+      });
+      await settle();
+      observer.disconnect();
+      seen.push(sections.getAttribute("data-planning-filter"));
+      expect(seen).toEqual(["", "oq-d"]);
+      expect(noticeLines()[0]).toMatch(/^Filtered by oq-d:/);
+    });
+
+    it("shows the page of a text typed past and typed again, when its inputs came in between", async () => {
+      limits({ pageEntries: 1 });
+      let held = false;
+      let release: () => void = () => {};
+      serveTree(TREE, "/api", (inline) => ({
+        cards: (repo, want, options) =>
+          held
+            ? new Promise<CardAnswer[]>((resolve) => {
+                release = () => resolve(inline.cards(repo, want, options));
+              })
+            : inline.cards(repo, want, options),
+      }));
+      await renderPage();
+      box().focus();
+      held = true;
+      await type("oq-u");
+      await settle();
+      held = false;
+      // Typed past, its inputs in, and typed back, all before React renders
+      // the text typed past.
+      await act(async () => {
+        fireEvent.change(box(), { target: { value: "oq-u1" } });
+        release();
+        for (let i = 0; i < 10; i++) {
+          await new Promise((resolve) => setTimeout(resolve, 0));
+        }
+        fireEvent.change(box(), { target: { value: "oq-u" } });
+      });
+      await settle();
+      expect(noticeLines()[0]).toMatch(/^Filtered by oq-u:/);
+      expect(cardsIn("Not on a roadmap")).toEqual(["OQ-U1: Question OQ-U1?"]);
+      expect(spinning()).toBe(false);
+    });
+
+    it("speaks a typed filter's notice once, after the reader stops, though the URL takes each text a slow typist pauses on (§7)", async () => {
+      limits({ filterIdleMs: 300, filterSpeechMs: 1000 });
+      await renderPage();
+      box().focus();
+      const said: string[] = [];
+      const observer = new MutationObserver(() => {
+        said.push(status().textContent ?? "");
+      });
+      observer.observe(status(), {
+        childList: true,
+        characterData: true,
+        subtree: true,
+      });
+      const written: (string | null)[] = [];
+      // 400 ms a key: past the idle pause after every one.
+      for (const text of ["o", "oq", "oq-", "oq-d"]) {
+        await type(text);
+        await idle(400);
+        written.push(filterOf());
+      }
+      expect(written).toEqual(["o", "oq", "oq-", "oq-d"]);
+      expect(said.filter((s) => s !== "")).toEqual([]);
+      await idle(600);
+      expect(said.filter((s) => s !== "")).toEqual([
+        expect.stringMatching(/^Filtered by oq-d: 3 of 10 entries/),
+      ]);
+      // Leaving the box says what is owed at once.
+      said.length = 0;
+      await type("oq-d3");
+      await idle(400);
+      expect(filterOf()).toBe("oq-d3");
+      expect(said.filter((s) => s !== "")).toEqual([]);
+      act(() => scroller().focus());
+      await settle();
+      observer.disconnect();
+      expect(said.filter((s) => s !== "")).toEqual([
+        expect.stringMatching(/^Filtered by oq-d3: 1 of 10 entries/),
+      ]);
+    });
+
+    it("changes nothing for a text with the applied canonical text, such as one with a space added (§6.4)", async () => {
+      await renderPage();
+      box().focus();
+      await typeKeys("oq-d");
+      const held = heldPlanningPageInputs();
+      const d1 = cardFor("OQ-D1");
+      const keys = router.keys.length;
+      viewerRenders.clear();
+      await type("oq-d ");
+      await settle();
+      await type(" oq-d  ");
+      await settle();
+      expect(heldPlanningPageInputs()).toEqual(held);
+      expect(cardFor("OQ-D1")).toBe(d1);
+      expect([...viewerRenders.values()].reduce((a, b) => a + b, 0)).toBe(0);
+      expect(router.keys).toHaveLength(keys);
+      await idle();
+      expect(filterOf()).toBe("oq-d");
+      expect(router.keys).toHaveLength(keys + 1);
+    });
+
+    it("applies a typed text the URL has not taken to an index update (§6.4)", async () => {
+      await renderPage();
+      box().focus();
+      await typeKeys("oq-d");
+      expect(cardsIn("Needs you")).toEqual([D1, D3]);
+      const MORE: Record<string, string> = {
+        ...TREE,
+        "plans/design.md": doc(
+          "status: in-review\nstage: DESIGN",
+          q("OQ-D1", OPEN),
+          q("OQ-D2", BLOCKED),
+          q("OQ-D3", OPEN),
+          q("OQ-D4", OPEN),
+        ),
+      };
+      serveTree(MORE);
+      setLoad(readyOf(MORE));
+      await settle();
+      expect(router.location).toBe("/.vantage/planning");
+      expect(noticeLines()[0]).toMatch(/^Filtered by oq-d: /);
+      expect(cardsIn("Needs you")).toEqual([D1, D3, "OQ-D4: Question OQ-D4?"]);
+      expect(box().value).toBe("oq-d");
+      await idle();
+      expect(filterOf()).toBe("oq-d");
+    });
+
+    it("reserves the room of the picker's count and of the other-roadmaps line from the unfiltered index, so typing moves neither (planning-index.md §12)", async () => {
+      const NESTED = "docs/plans/roadmap.md";
+      const MORE: Record<string, string> = {
+        ...TREE,
+        "plans/other.md": doc("stage: DESIGN", q("OQ-O1", OPEN)),
+        [NESTED]: [
+          "# Plans",
+          "",
+          "1. [The unrouted one](../../plans/unrouted.md)",
+          "2. [Another](../../plans/other.md)",
+          "",
+        ].join("\n"),
+      };
+      seed(MORE);
+      await renderPage();
+      const count = () =>
+        screen.getByTestId("roadmap-shown").querySelector(".hdr-reserve")!;
+      const others = () => screen.getByTestId("other-roadmaps");
+      expect(count()).toHaveTextContent("(3 need you)");
+      expect(others()).toHaveTextContent(PLANNING_NOTICES.otherRoadmaps(2));
+      const rooms = () => [
+        count().getAttribute("data-reserve"),
+        others().getAttribute("data-reserve"),
+      ];
+      expect(rooms()).toEqual([
+        "(3 needs you)",
+        PLANNING_NOTICES.otherRoadmaps(2),
+      ]);
+      box().focus();
+      await typeKeys("oq-u");
+      // Both counts are the filter's, and the room for them the index's.
+      expect(count()).toHaveTextContent("(0 need you)");
+      expect(others()).toHaveTextContent(PLANNING_NOTICES.otherRoadmaps(1));
+      expect(rooms()).toEqual([
+        "(3 needs you)",
+        PLANNING_NOTICES.otherRoadmaps(2),
+      ]);
+    });
+
+    it("writes the URL as the reader types in the load error and the refusal, where there are no sections to filter (§7)", async () => {
+      setLoad({ status: "error", message: "Could not load: boom" });
+      await renderPage();
+      expect(screen.getByText(/Could not load: boom/)).toBeTruthy();
+      box().focus();
+      await typeKeys("oq-d");
+      expect(router.location).toBe("/.vantage/planning");
+      await idle();
+      expect(router.location).toBe("/.vantage/planning?filter=oq-d");
+      cleanup();
+      seed(
+        {},
+        { maxCandidates: 5000 },
+        { refused: true, candidateCount: 5001 },
+      );
+      await renderPage();
+      expect(
+        screen.getByText(PLANNING_NOTICES.refused(5001, 5000)),
+      ).toBeTruthy();
+      box().focus();
+      await typeKeys("path:x");
+      expect(router.location).toBe("/.vantage/planning");
+      await idle();
+      expect(router.location).toBe("/.vantage/planning?filter=path:x");
     });
   });
 

@@ -206,11 +206,18 @@ function filteredNotice(
       : openQuestions === 1
         ? "1 of them an open question"
         : `${count(openQuestions)} of them open questions`;
+  // The paths only where the filter's path terms leave one out: a filter
+  // with none keeps every path, and saying so of a word that keeps nothing
+  // reads as a contradiction (planning-filter.md §6.7).
+  const paths =
+    documents.kept < documents.of
+      ? ` in ${count(documents.kept)} of ${plural(documents.of, "path", "paths")},`
+      : "";
   const lines: PlanningNoticeLine[] = [
     [
       "Filtered by ",
       { code: summary.canonical },
-      `: ${count(entries.shown)} of ${plural(entries.of, "entry", "entries")}, in ${count(documents.kept)} of ${plural(documents.of, "path", "paths")}, ${open}.`,
+      `: ${count(entries.shown)} of ${plural(entries.of, "entry", "entries")},${paths} ${open}.`,
     ],
   ];
   for (const term of summary.unmatched) {
