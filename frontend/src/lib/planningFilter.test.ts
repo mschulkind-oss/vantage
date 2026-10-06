@@ -1003,11 +1003,146 @@ describe("matching (§5.3, §5.4)", () => {
     expect(keeps("path:docs/**.md", "docs/design/sub/a.md")).toBe(true);
     expect(keeps("path:/docs/**.md", "docs/a.md")).toBe(true);
     expect(keeps("path:/docs/**.md", "x/docs/a.md")).toBe(false);
-    // `**/` is any characters, then a `/`: one folder at least.
-    expect(keeps("path:docs/**/a.md", "docs/design/sub/a.md")).toBe(true);
-    expect(keeps("path:docs/**/a.md", "docs/a.md")).toBe(false);
     // Three or more are two.
     expect(keeps("path:docs/***a.md", "docs/x/y/a.md")).toBe(true);
+    // A value need not reach the path's end, so a trailing `*` adds nothing,
+    // and a `*` stays within one name only where text follows it.
+    for (const path of [
+      "docs/design/search.md",
+      "docs/design/search/old.md",
+      "docs/design/searchlight/x.md",
+    ]) {
+      expect(keeps("path:/docs/design/search*", path), path).toBe(true);
+      expect(keeps("path:/docs/design/search", path), path).toBe(true);
+    }
+    expect(
+      keeps("path:/docs/design/search*.md", "docs/design/search-plan.md"),
+    ).toBe(true);
+    expect(
+      keeps("path:/docs/design/search*.md", "docs/design/search/old.md"),
+    ).toBe(false);
+    expect(keeps("path:/docs/*.md", "docs/a.md/inner.md")).toBe(true);
+  });
+
+  // As gitignore and GitHub read it: a `**` that is a whole folder name
+  // stands for any number of folders, none included.
+  it("reads a /**/ as zero or more folders, and a leading **/ as zero or more leading folders", () => {
+    expect(keeps("path:docs/**/a.md", "docs/a.md")).toBe(true);
+    expect(keeps("path:docs/**/a.md", "docs/design/a.md")).toBe(true);
+    expect(keeps("path:docs/**/a.md", "docs/design/sub/a.md")).toBe(true);
+    expect(keeps("path:docs/**/a.md", "x/docs/a.md")).toBe(true);
+    // Whole folders, their `/` included: what follows starts a name.
+    expect(keeps("path:docs/**/a.md", "docs/data.md")).toBe(false);
+    expect(keeps("path:docs/**/a.md", "docs/x/data.md")).toBe(false);
+    expect(keeps("path:/docs/**/a.md", "x/docs/a.md")).toBe(false);
+    expect(keeps("path:/docs/**/*.md", "docs/a.md")).toBe(true);
+    expect(keeps("path:/docs/**/*.md", "docs/x/y/a.md")).toBe(true);
+    // A leading `**/`: what follows starts the path, or a name in it.
+    expect(keeps("path:**/a.md", "a.md")).toBe(true);
+    expect(keeps("path:**/a.md", "docs/x/a.md")).toBe(true);
+    expect(keeps("path:**/a.md", "data.md")).toBe(false);
+    expect(keeps("path:**/a.md", "docs/data.md")).toBe(false);
+    expect(keeps("path:/**/a.md", "a.md")).toBe(true);
+    expect(keeps("path:/**/a.md", "x/y/a.md")).toBe(true);
+    expect(keeps("path:/**/a.md", "x/data.md")).toBe(false);
+    // Each of several may stand for none, and three or more `*` are two.
+    expect(keeps("path:**/**/a.md", "a.md")).toBe(true);
+    expect(keeps("path:docs/**/**/a.md", "docs/a.md")).toBe(true);
+    expect(keeps("path:docs/***/a.md", "docs/a.md")).toBe(true);
+    expect(keeps("path:***/a.md", "a.md")).toBe(true);
+    // At its least it is none, so a trailing `/**/` adds nothing, and
+    // `**/` alone keeps every path.
+    expect(keeps("path:docs/**/", "docs/a.md")).toBe(true);
+    expect(keeps("path:**/", "a.md")).toBe(true);
+    // Anywhere else, `**` is still any characters: beside other characters
+    // in a name, or with no `/` after it.
+    expect(keeps("path:de**/c.md", "docs/design/sub/c.md")).toBe(true);
+    expect(keeps("path:de**/c.md", "docs/de/c.md")).toBe(true);
+    expect(keeps("path:docs**/a.md", "docs/a.md")).toBe(true);
+    expect(keeps("path:docs/**x", "docs/designx/d.md")).toBe(true);
+    expect(keeps("path:docs/**", "docs/a.md")).toBe(true);
+    expect(keeps("path:docs/**.md", "docs/a.md")).toBe(true);
+    // Quoted, it is two characters.
+    expect(keeps('path:"docs/**/a.md"', "docs/a.md")).toBe(false);
+    expect(keeps('path:"docs/**/a.md"', "docs/**/a.md")).toBe(true);
+  });
+
+  // §5.4's rules written apart from the module, as one regular expression
+  // per value, held against the module's matcher over every value of up to
+  // five characters from `a`, `/` and `*`, and every path of up to five from
+  // `a`, `b` and `/`. The module does not match with a regular expression,
+  // which backtracks (below).
+  it("keeps what §5.4's rules, written as a regular expression, keep", () => {
+    const expression = (value: string): RegExp => {
+      const pinned = value.startsWith("/");
+      const text = pinned ? value.slice(1) : value;
+      let source = "";
+      let anchored = pinned;
+      for (let i = 0; i < text.length;) {
+        if (text[i] !== "*") {
+          source += text[i] === "/" ? "\\/" : text[i];
+          i++;
+          continue;
+        }
+        let end = i;
+        while (text[end] === "*") end++;
+        const startsName = i === 0 || text[i - 1] === "/";
+        if (end - i >= 2 && startsName && text[end] === "/") {
+          // `/**/`, or a leading `**/`: zero or more folders, each with its
+          // `/`. Leading, the folders it stands for lead the path.
+          source += "(?:[\\s\\S]*\\/)?";
+          if (i === 0) anchored = true;
+          i = end + 1;
+        } else {
+          source += end - i === 1 ? "[^/]*" : "[\\s\\S]*";
+          i = end;
+        }
+      }
+      return new RegExp(`${anchored ? "^" : ""}${source}`);
+    };
+    const strings = (alphabet: string, longest: number): string[] => {
+      const out = [""];
+      for (let at = 0; out[at].length < longest; at++) {
+        for (const c of alphabet) out.push(out[at] + c);
+      }
+      return out;
+    };
+    const paths = strings("ab/", 5);
+    let compared = 0;
+    for (const value of strings("a/*", 5)) {
+      if (value === "") continue;
+      const filter = understood(`path:${value}`);
+      const pattern = expression(value);
+      for (const path of paths) {
+        if (filterKeepsDocument(filter, path) !== pattern.test(path)) {
+          expect(filterKeepsDocument(filter, path), `${value} on ${path}`).toBe(
+            pattern.test(path),
+          );
+        }
+        compared++;
+      }
+    }
+    expect(compared).toBe(363 * 364);
+  });
+
+  // A value's wildcards are matched without backtracking, so no short value
+  // stalls the page, which tests every path against each text typed, or the
+  // checker, on a path that repeats a character the value holds. As a
+  // regular expression, each of these took seconds on the one path.
+  it("matches a value of many wildcards in time that grows with the path, not its matches", () => {
+    const path = `docs/${"a".repeat(30)}.md`;
+    const slashes = `${"a/".repeat(30)}x.md`;
+    for (const [value, on] of [
+      [`${"*a".repeat(12)}*b`, path],
+      [`${"**a".repeat(12)}**b`, path],
+      [`${"a/**/".repeat(12)}b`, slashes],
+      [`${"**/a".repeat(12)}/b`, slashes],
+    ]) {
+      const filter = understood(`path:${value}`);
+      const started = performance.now();
+      expect(filterKeepsDocument(filter, on), value).toBe(false);
+      expect(performance.now() - started, value).toBeLessThan(250);
+    }
   });
 
   it("matches a quoted value with every character literal, * included, and spaces allowed", () => {

@@ -464,16 +464,116 @@ export function parsePlanningFilter(
  * Matching
  * ------------------------------------------------------------------ */
 
-/** `text` with every character a regular expression reads as syntax escaped. */
-const escapeRegExp = (text: string): string =>
-  text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+/**
+ * A bare `path:` value's steps (§5.4), one per UTF-16 code unit of its text,
+ * which `globMatcher` walks: a code unit is itself, and the rest stand for
+ * runs of the path's.
+ */
+const NAME = -1; // `*`: any run of code units holding no `/`.
+const ANY = -2; // `**` elsewhere: any run at all.
+// A `**` that is a whole folder name, with the `/` after it: zero or more
+// folders, each with its `/`. Written as three steps, this one, then `ANY`
+// and a `/`, which it may skip together for none.
+const FOLDERS = -3;
+const SLASH = 0x2f;
+
+/**
+ * `text`'s steps, and whether they must match from the path's start: a
+ * value's first `**` that is a whole folder name stands for the folders
+ * that lead the path, as a leading `/` would pin it.
+ */
+function globSteps(text: string): { steps: number[]; leads: boolean } {
+  const steps: number[] = [];
+  let leads = false;
+  for (let i = 0; i < text.length;) {
+    if (text.charCodeAt(i) !== 0x2a) {
+      steps.push(text.charCodeAt(i));
+      i++;
+      continue;
+    }
+    let end = i;
+    while (text.charCodeAt(end) === 0x2a) end++;
+    const startsName = i === 0 || text.charCodeAt(i - 1) === SLASH;
+    if (end - i >= 2 && startsName && text.charCodeAt(end) === SLASH) {
+      steps.push(FOLDERS, ANY, SLASH);
+      if (i === 0) leads = true;
+      i = end + 1;
+    } else {
+      steps.push(end - i === 1 ? NAME : ANY);
+      i = end;
+    }
+  }
+  return { steps, leads };
+}
+
+/**
+ * Whether `steps` match a run of a path's code units, from its start when
+ * `pinned`, and anywhere otherwise: a value need not reach the path's end.
+ *
+ * Every place the steps could have reached is tracked at once, one code unit
+ * of the path at a time, so it takes time in proportion to the path's length
+ * times the steps' count, whatever they hold. A regular expression backtracks
+ * instead, and `**a**a…b` against a path of repeated `a`s took seconds.
+ */
+function globMatcher(
+  steps: readonly number[],
+  pinned: boolean,
+): (lowered: string) => boolean {
+  const end = steps.length;
+  return (path) => {
+    let at = new Uint8Array(end + 1);
+    let next = new Uint8Array(end + 1);
+    let live: number[] = [];
+    let after: number[] = [];
+    const pending: number[] = [];
+    // `step` and every step reachable from it without reading a code unit,
+    // into `set`: true once the steps' end is among them, which is a match.
+    const reach = (step: number, set: Uint8Array, into: number[]): boolean => {
+      pending.push(step);
+      while (pending.length > 0) {
+        const s = pending.pop()!;
+        if (set[s] === 1) continue;
+        set[s] = 1;
+        if (s === end) {
+          pending.length = 0;
+          return true;
+        }
+        into.push(s);
+        const kind = steps[s];
+        if (kind === NAME || kind === ANY) pending.push(s + 1);
+        else if (kind === FOLDERS) pending.push(s + 1, s + 3);
+      }
+      return false;
+    };
+    if (reach(0, at, live)) return true;
+    for (let i = 0; i < path.length; i++) {
+      const c = path.charCodeAt(i);
+      for (const s of live) {
+        const kind = steps[s];
+        if (kind === c) {
+          if (reach(s + 1, next, after)) return true;
+        } else if (kind === ANY || (kind === NAME && c !== SLASH)) {
+          if (reach(s, next, after)) return true;
+        }
+      }
+      if (!pinned && reach(0, next, after)) return true;
+      for (const s of live) at[s] = 0;
+      [at, next, live, after] = [next, at, after, live];
+      after.length = 0;
+      if (live.length === 0) return false;
+    }
+    return false;
+  };
+}
 
 /**
  * A `path:` value's matcher (§5.4), over a path already lowercased: the value,
  * lowercased too, found anywhere in the path. A leading `/` pins it to the
  * path's start. Bare, a `*` stands for any characters within one folder or
- * file name, and two or more for any characters across folders; quoted,
- * every character is itself.
+ * file name, and two or more for any characters across folders, except where
+ * they are a whole folder name, between two `/` or leading the value with a
+ * `/` after them: there they stand for zero or more folders. Quoted, every
+ * character is itself.
  */
 function pathMatcher(
   value: string,
@@ -487,18 +587,8 @@ function pathMatcher(
       ? (path) => path.startsWith(text)
       : (path) => path.includes(text);
   }
-  const source = text
-    .split(/(\*+)/)
-    .map((part, i) =>
-      i % 2 === 0
-        ? escapeRegExp(part)
-        : part.length === 1
-          ? "[^/]*"
-          : "[\\s\\S]*",
-    )
-    .join("");
-  const pattern = new RegExp(pinned ? `^${source}` : source);
-  return (path) => pattern.test(path);
+  const { steps, leads } = globSteps(text);
+  return globMatcher(steps, pinned || leads);
 }
 
 /** A filter's terms, compiled. */

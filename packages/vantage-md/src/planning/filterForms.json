@@ -636,6 +636,7 @@
       "text": "path:**/a.md",
       "canonical": "path:**/a.md",
       "documents": [
+        "a.md",
         "docs/design/a.md",
         "x/docs/design/a.md",
         "y/a.md/inner.md"
@@ -663,13 +664,17 @@
       "text": "path:docs/**/*.md",
       "canonical": "path:docs/**/*.md",
       "documents": [
+        "docs/big.md",
+        "docs/caf\u00e9.md",
         "docs/design/a-plan.md",
         "docs/design/a.md",
         "docs/design/sub/c.md",
         "docs/designx/d.md",
+        "docs/my notes.md",
         "x/docs/design/a.md"
       ],
       "questions": [
+        "docs/caf\u00e9.md#OQ-K1",
         "docs/design/a.md#OQ-A1",
         "docs/design/a.md#OQ-A2",
         "docs/design/a.md#OQ-A3",
@@ -678,6 +683,8 @@
         "docs/design/sub/c.md#OQ-C1",
         "docs/design/sub/c.md#OQ-C2",
         "docs/designx/d.md#OQ-D1",
+        "docs/my notes.md#OQ-N1",
+        "docs/my notes.md#OQ-N2",
         "x/docs/design/a.md#OQ-X1"
       ],
       "keeps": [
@@ -685,11 +692,15 @@
         "needs-you docs/design/a.md#OQ-A3",
         "needs-you docs/design/a.md#OQ-A4",
         "needs-you docs/design/a.md#OQ-A5",
+        "unrouted docs/caf\u00e9.md#OQ-K1",
         "unrouted docs/design/sub/c.md#OQ-C2",
         "unrouted docs/designx/d.md#OQ-D1",
+        "unrouted docs/my notes.md#OQ-N1",
+        "unrouted docs/my notes.md#OQ-N2",
         "unrouted x/docs/design/a.md#OQ-X1",
         "waiting docs/design/a-plan.md",
-        "waiting docs/design/a.md#OQ-A2"
+        "waiting docs/design/a.md#OQ-A2",
+        "skipped docs/big.md"
       ],
       "unmatched": [],
       "unknownKeys": []
@@ -3402,6 +3413,7 @@
       "text": "path:***/a.md",
       "canonical": "path:***/a.md",
       "documents": [
+        "a.md",
         "docs/design/a.md",
         "x/docs/design/a.md",
         "y/a.md/inner.md"
@@ -3641,8 +3653,10 @@
       "text": "path:**/**/a.md",
       "canonical": "path:**/**/a.md",
       "documents": [
+        "a.md",
         "docs/design/a.md",
-        "x/docs/design/a.md"
+        "x/docs/design/a.md",
+        "y/a.md/inner.md"
       ],
       "questions": [
         "docs/design/a.md#OQ-A1",
@@ -3666,26 +3680,57 @@
     {
       "text": "path:docs/**/**/a.md",
       "canonical": "path:docs/**/**/a.md",
-      "documents": [],
-      "questions": [],
-      "keeps": [],
-      "unmatched": [
-        "path:docs/**/**/a.md"
+      "documents": [
+        "docs/design/a.md",
+        "x/docs/design/a.md"
       ],
+      "questions": [
+        "docs/design/a.md#OQ-A1",
+        "docs/design/a.md#OQ-A2",
+        "docs/design/a.md#OQ-A3",
+        "docs/design/a.md#OQ-A4",
+        "docs/design/a.md#OQ-A5",
+        "x/docs/design/a.md#OQ-X1"
+      ],
+      "keeps": [
+        "needs-you docs/design/a.md#OQ-A1",
+        "needs-you docs/design/a.md#OQ-A3",
+        "needs-you docs/design/a.md#OQ-A4",
+        "needs-you docs/design/a.md#OQ-A5",
+        "unrouted x/docs/design/a.md#OQ-X1",
+        "waiting docs/design/a.md#OQ-A2"
+      ],
+      "unmatched": [],
       "unknownKeys": []
     },
     {
       "text": "path:docs/design/**/",
       "canonical": "path:docs/design/**/",
       "documents": [
-        "docs/design/sub/c.md"
+        "docs/design/a-plan.md",
+        "docs/design/a.md",
+        "docs/design/sub/c.md",
+        "x/docs/design/a.md"
       ],
       "questions": [
+        "docs/design/a.md#OQ-A1",
+        "docs/design/a.md#OQ-A2",
+        "docs/design/a.md#OQ-A3",
+        "docs/design/a.md#OQ-A4",
+        "docs/design/a.md#OQ-A5",
         "docs/design/sub/c.md#OQ-C1",
-        "docs/design/sub/c.md#OQ-C2"
+        "docs/design/sub/c.md#OQ-C2",
+        "x/docs/design/a.md#OQ-X1"
       ],
       "keeps": [
-        "unrouted docs/design/sub/c.md#OQ-C2"
+        "needs-you docs/design/a.md#OQ-A1",
+        "needs-you docs/design/a.md#OQ-A3",
+        "needs-you docs/design/a.md#OQ-A4",
+        "needs-you docs/design/a.md#OQ-A5",
+        "unrouted docs/design/sub/c.md#OQ-C2",
+        "unrouted x/docs/design/a.md#OQ-X1",
+        "waiting docs/design/a-plan.md",
+        "waiting docs/design/a.md#OQ-A2"
       ],
       "unmatched": [],
       "unknownKeys": []
@@ -3694,6 +3739,7 @@
       "text": "path:**/",
       "canonical": "path:**/",
       "documents": [
+        "a.md",
         "docs/big.md",
         "docs/caf\u00e9.md",
         "docs/design/a-plan.md",
@@ -3701,11 +3747,13 @@
         "docs/design/sub/c.md",
         "docs/designx/d.md",
         "docs/my notes.md",
+        "my notes.md",
         "notes/b.md",
         "notes/broken.md",
         "notes/e.md",
         "notes/f.md",
         "ref/r.md",
+        "roadmap.md",
         "x/docs/design/a.md",
         "x/roadmap.md",
         "y/a.md/inner.md",
@@ -4798,6 +4846,184 @@
       ],
       "keeps": [
         "unrouted x/docs/design/a.md#OQ-X1"
+      ],
+      "unmatched": [],
+      "unknownKeys": []
+    },
+    {
+      "text": "path:design/**/a.md",
+      "canonical": "path:design/**/a.md",
+      "documents": [
+        "docs/design/a.md",
+        "x/docs/design/a.md"
+      ],
+      "questions": [
+        "docs/design/a.md#OQ-A1",
+        "docs/design/a.md#OQ-A2",
+        "docs/design/a.md#OQ-A3",
+        "docs/design/a.md#OQ-A4",
+        "docs/design/a.md#OQ-A5",
+        "x/docs/design/a.md#OQ-X1"
+      ],
+      "keeps": [
+        "needs-you docs/design/a.md#OQ-A1",
+        "needs-you docs/design/a.md#OQ-A3",
+        "needs-you docs/design/a.md#OQ-A4",
+        "needs-you docs/design/a.md#OQ-A5",
+        "unrouted x/docs/design/a.md#OQ-X1",
+        "waiting docs/design/a.md#OQ-A2"
+      ],
+      "unmatched": [],
+      "unknownKeys": []
+    },
+    {
+      "text": "path:/docs/**/c.md",
+      "canonical": "path:/docs/**/c.md",
+      "documents": [
+        "docs/design/sub/c.md"
+      ],
+      "questions": [
+        "docs/design/sub/c.md#OQ-C1",
+        "docs/design/sub/c.md#OQ-C2"
+      ],
+      "keeps": [
+        "unrouted docs/design/sub/c.md#OQ-C2"
+      ],
+      "unmatched": [],
+      "unknownKeys": []
+    },
+    {
+      "text": "path:/**/a.md",
+      "canonical": "path:/**/a.md",
+      "documents": [
+        "a.md",
+        "docs/design/a.md",
+        "x/docs/design/a.md",
+        "y/a.md/inner.md"
+      ],
+      "questions": [
+        "docs/design/a.md#OQ-A1",
+        "docs/design/a.md#OQ-A2",
+        "docs/design/a.md#OQ-A3",
+        "docs/design/a.md#OQ-A4",
+        "docs/design/a.md#OQ-A5",
+        "x/docs/design/a.md#OQ-X1"
+      ],
+      "keeps": [
+        "needs-you docs/design/a.md#OQ-A1",
+        "needs-you docs/design/a.md#OQ-A3",
+        "needs-you docs/design/a.md#OQ-A4",
+        "needs-you docs/design/a.md#OQ-A5",
+        "unrouted x/docs/design/a.md#OQ-X1",
+        "waiting docs/design/a.md#OQ-A2"
+      ],
+      "unmatched": [],
+      "unknownKeys": []
+    },
+    {
+      "text": "path:/docs/**/*.md",
+      "canonical": "path:/docs/**/*.md",
+      "documents": [
+        "docs/big.md",
+        "docs/caf\u00e9.md",
+        "docs/design/a-plan.md",
+        "docs/design/a.md",
+        "docs/design/sub/c.md",
+        "docs/designx/d.md",
+        "docs/my notes.md"
+      ],
+      "questions": [
+        "docs/caf\u00e9.md#OQ-K1",
+        "docs/design/a.md#OQ-A1",
+        "docs/design/a.md#OQ-A2",
+        "docs/design/a.md#OQ-A3",
+        "docs/design/a.md#OQ-A4",
+        "docs/design/a.md#OQ-A5",
+        "docs/design/sub/c.md#OQ-C1",
+        "docs/design/sub/c.md#OQ-C2",
+        "docs/designx/d.md#OQ-D1",
+        "docs/my notes.md#OQ-N1",
+        "docs/my notes.md#OQ-N2"
+      ],
+      "keeps": [
+        "needs-you docs/design/a.md#OQ-A1",
+        "needs-you docs/design/a.md#OQ-A3",
+        "needs-you docs/design/a.md#OQ-A4",
+        "needs-you docs/design/a.md#OQ-A5",
+        "unrouted docs/caf\u00e9.md#OQ-K1",
+        "unrouted docs/design/sub/c.md#OQ-C2",
+        "unrouted docs/designx/d.md#OQ-D1",
+        "unrouted docs/my notes.md#OQ-N1",
+        "unrouted docs/my notes.md#OQ-N2",
+        "waiting docs/design/a-plan.md",
+        "waiting docs/design/a.md#OQ-A2",
+        "skipped docs/big.md"
+      ],
+      "unmatched": [],
+      "unknownKeys": []
+    },
+    {
+      "text": "-path:**/a.md",
+      "canonical": "-path:**/a.md",
+      "documents": [
+        "docs/big.md",
+        "docs/caf\u00e9.md",
+        "docs/design/a-plan.md",
+        "docs/design/sub/c.md",
+        "docs/designx/d.md",
+        "docs/my notes.md",
+        "my notes.md",
+        "notes/b.md",
+        "notes/broken.md",
+        "notes/e.md",
+        "notes/f.md",
+        "ref/r.md",
+        "roadmap.md",
+        "x/roadmap.md",
+        "y/my notes.md/inner.md"
+      ],
+      "questions": [
+        "docs/caf\u00e9.md#OQ-K1",
+        "docs/design/sub/c.md#OQ-C1",
+        "docs/design/sub/c.md#OQ-C2",
+        "docs/designx/d.md#OQ-D1",
+        "docs/my notes.md#OQ-N1",
+        "docs/my notes.md#OQ-N2",
+        "notes/b.md#OQ-B1",
+        "notes/f.md#OQ-F1",
+        "ref/r.md#OQ-R1"
+      ],
+      "keeps": [
+        "unrouted docs/caf\u00e9.md#OQ-K1",
+        "unrouted docs/design/sub/c.md#OQ-C2",
+        "unrouted docs/designx/d.md#OQ-D1",
+        "unrouted docs/my notes.md#OQ-N1",
+        "unrouted docs/my notes.md#OQ-N2",
+        "unrouted notes/f.md#OQ-F1",
+        "waiting docs/design/a-plan.md",
+        "waiting notes/b.md",
+        "waiting notes/b.md#OQ-B1",
+        "ready notes/b.md",
+        "graduate notes/e.md",
+        "disagrees notes/f.md",
+        "skipped docs/big.md",
+        "could-not-read notes/broken.md"
+      ],
+      "unmatched": [],
+      "unknownKeys": []
+    },
+    {
+      "text": "path:de**/c.md",
+      "canonical": "path:de**/c.md",
+      "documents": [
+        "docs/design/sub/c.md"
+      ],
+      "questions": [
+        "docs/design/sub/c.md#OQ-C1",
+        "docs/design/sub/c.md#OQ-C2"
+      ],
+      "keeps": [
+        "unrouted docs/design/sub/c.md#OQ-C2"
       ],
       "unmatched": [],
       "unknownKeys": []

@@ -846,9 +846,10 @@ spaces:
   Every word must match.
 - **`path:<pattern>`** keeps documents whose path holds the pattern, in any
   case, and **`is:open`** open questions. A `*` in a pattern stands for any
-  characters within one folder or file name, `**` for any across folders, and
-  a leading `/` ties it to the start of the path. `path:` terms keep any of
-  their matches.
+  characters within one folder or file name, `**` for any across folders, or
+  for any number of folders as a folder's whole name, as in `docs/**/x.md`,
+  and a leading `/` ties it to the start of the path. `path:` terms keep any
+  of their matches.
 - **A `-` before any term** leaves out what it matches, as in `-payload` or
   `-path:docs/archive`.
 
