@@ -895,7 +895,11 @@ Open or answered questions on this roadmap, in its order. Rule each open one, th
   that the page shows the checkout the human's Vantage serves, which may not
   hold these documents as they are here. And when `.vantage.toml`'s `target`
   names a release from before the filter, one saying that a viewer before the
-  release that added it ignores the filter and shows every entry.
+  release that added it ignores the filter and shows every entry. A `target`
+  before 0.8, such as `target = "0.7"`, makes that line say first that a
+  viewer before 0.8 has no planning page at all: *A Vantage viewer before 0.8
+  has no planning page, and one before 0.9 ignores this filter and shows every
+  entry.*
 - **Everything after it is filtered.** *Nothing needs you* reads *Nothing this
   filter keeps needs you*, the Roadmaps block counts the questions the filter
   keeps, and the `Agent requests:` line carries the filter, as

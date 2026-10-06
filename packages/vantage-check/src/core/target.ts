@@ -206,22 +206,21 @@ export function readsOnlyOq(target: Target | null): boolean {
   return target !== null && compare(target.version, QUESTION_RELEASE) < 0;
 }
 
+/** A release as a target writes it: `0.9`, or `0.9.1` with a patch. */
+function targetName(release: readonly [number, number, number]): string {
+  return (release[2] === 0 ? release.slice(0, 2) : release).join(".");
+}
+
 /**
  * The release that added the planning filter
  * (`docs/reference/planning-index.md` §13.5): a viewer before it keeps
  * `filter=` and ignores it, so a filtered link opens the whole planning page
  * there, and says nothing (that reference's §6.19).
- *
- * Not known for certain until the release is tagged: a feature is a minor, so
- * this assumes the next one. Confirm it before the tag, since a wrong value
- * cautions the wrong repositories.
  */
 export const FILTER_RELEASE = [0, 9, 0] as const;
 
-/** `FILTER_RELEASE` as a target writes it: `0.9`, or `0.9.1` with a patch. */
-export const FILTER_RELEASE_NAME = (
-  FILTER_RELEASE[2] === 0 ? FILTER_RELEASE.slice(0, 2) : FILTER_RELEASE
-).join(".");
+/** `FILTER_RELEASE` as a target writes it: `0.9`. */
+export const FILTER_RELEASE_NAME = targetName(FILTER_RELEASE);
 
 /**
  * Whether a target says some of the repository's readers run a viewer before
@@ -230,6 +229,26 @@ export const FILTER_RELEASE_NAME = (
  */
 export function predatesFilter(target: Target | null): boolean {
   return target !== null && compare(target.version, FILTER_RELEASE) < 0;
+}
+
+/**
+ * The release that added the planning page: a viewer before it has none, so a
+ * planning link, filtered or not, opens nothing there (`planning-index.md`
+ * §6.19).
+ */
+export const PLANNING_PAGE_RELEASE = [0, 8, 0] as const;
+
+/** `PLANNING_PAGE_RELEASE` as a target writes it: `0.8`. */
+export const PLANNING_PAGE_RELEASE_NAME = targetName(PLANNING_PAGE_RELEASE);
+
+/**
+ * Whether a target says some of the repository's readers run a viewer before
+ * `PLANNING_PAGE_RELEASE`, so `index --filter`'s caution under its link says
+ * that such a viewer has no planning page, and not only that one before
+ * `FILTER_RELEASE` ignores the filter (`planning-index.md` §13.5).
+ */
+export function predatesPlanningPage(target: Target | null): boolean {
+  return target !== null && compare(target.version, PLANNING_PAGE_RELEASE) < 0;
 }
 
 /**
