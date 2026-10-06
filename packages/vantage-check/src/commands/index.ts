@@ -255,6 +255,13 @@ export function indexCommand(options: IndexOptions, io: Io): number {
           : {
               head: filterHead(project, applied, targets),
               canonical: applied.filtered.summary.canonical,
+              nothingMatches:
+                PLANNING_NOTICES.nothingMatches(
+                  applied.filtered.summary,
+                  "checker",
+                )
+                  ?.map(noticeText)
+                  .join("\n") ?? null,
             },
       ),
     );
@@ -695,19 +702,29 @@ function roadmapLine(roadmap: PlanningRoadmap, chosen: string | null): string {
  * the Roadmaps block with the filtered counts, and a `--request` line that
  * carries the filter, shell-quoted. The roadmap's source is the index's, and
  * unchanged.
+ *
+ * A filter that keeps no entry has `filter.nothingMatches`, the page's words
+ * for it: *Nothing matches* and its reason line stand where the sections
+ * would, after the Roadmaps block, and *Nothing this filter keeps needs you*
+ * is not printed, as the page does not show it.
  */
 function renderText(
   project: ScannedProject,
   sections: PlanningSections,
-  filter: { head: string; canonical: string } | null = null,
+  filter: {
+    head: string;
+    canonical: string;
+    nothingMatches: string | null;
+  } | null = null,
 ): string {
   const { index } = project;
   const { config } = index;
   const blocks: (string | null)[] = [];
   if (filter !== null) blocks.push(filter.head);
+  const nothingMatches = filter?.nothingMatches ?? null;
 
   const notices: string[] = [];
-  if (sections.nothingNeedsYou) {
+  if (sections.nothingNeedsYou && nothingMatches === null) {
     notices.push(
       filter === null
         ? PLANNING_NOTICES.nothingNeedsYou
@@ -734,6 +751,8 @@ function renderText(
       ),
     );
   }
+  // Every section below is empty, and not printed.
+  if (nothingMatches !== null) blocks.push(nothingMatches);
 
   blocks.push(
     section(

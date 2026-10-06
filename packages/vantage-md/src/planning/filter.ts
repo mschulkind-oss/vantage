@@ -44,6 +44,7 @@ import {
   routeQuestions,
   type PlanningSections,
   type QuestionRef,
+  type WaitingEntry,
 } from "./sections.js";
 import {
   PLANNING_FILTER_LIMITS,
@@ -850,7 +851,46 @@ export interface PlanningFilterSummary {
    * The checker's JSON lists the keys alone.
    */
   unknownKeys: { key: string; terms: string[] }[];
+  /**
+   * Why it keeps no entry in any section, when it keeps none: what the page
+   * shows and the checker prints in place of the sections, after *Nothing
+   * matches* and the filter. `null` when it keeps an entry. The checker's JSON
+   * does not carry it.
+   */
+  nothingMatches: PlanningNothingMatches | null;
 }
+
+/**
+ * Why an applied filter keeps no entry in any section: the first of these
+ * that holds, in this order, each a reason line of its own
+ * (`PLANNING_NOTICES.nothingMatches`).
+ */
+export type PlanningNothingMatches =
+  /**
+   * Questions it keeps need you, and only other roadmaps route them, so they
+   * are counted and not listed: `questions` of them, each once, on `roadmaps`
+   * roadmaps other than the chosen one.
+   */
+  | { kind: "other-roadmaps"; questions: number; roadmaps: number }
+  /** The sections list no entry even without it. */
+  | { kind: "no-entries" }
+  /**
+   * Its `path:` and `-path:` terms alone keep no entry: the `documents` they
+   * keep, which may be none, list nothing on the page, as a document whose
+   * stage has the `done` role does, or one with no question and no stage row.
+   */
+  | { kind: "documents"; documents: number }
+  /**
+   * Its `is:` terms leave out every entry the rest of it keeps: `terms`, their
+   * canonical texts in the order written, and the `entries` it would keep
+   * without them.
+   */
+  | { kind: "state"; terms: string[]; entries: number }
+  /**
+   * Its words and quoted phrases keep none of what the rest of it keeps. No
+   * other kind is left by then, so the filter has at least one of them.
+   */
+  | { kind: "words" };
 
 export interface FilteredPlanningSections {
   sections: PlanningSections;
@@ -906,6 +946,132 @@ function entryCount(sections: PlanningSections): number {
   );
 }
 
+/** What a compiled filter keeps of each kind of entry the sections list. */
+interface EntryTests {
+  /** A question entry: Needs you, Not on a roadmap, a Blocked question. */
+  keepsRef: (ref: QuestionRef) => boolean;
+  /** A document's row: a Blocked document, or a stage section's row. */
+  keepsDocumentRow: (path: string) => boolean;
+  /** A Blocked entry, a question's or a document's. */
+  keepsWaiting: (entry: WaitingEntry) => boolean;
+  /** A Too large or Unreadable entry. */
+  keepsEntry: (entry: { path: string }) => boolean;
+}
+
+/**
+ * The tests of §6.12 for each kind of entry, over `index`: a question by its
+ * own fields, a document's row by the document's path, `stage` and `next`,
+ * and a Too large or Unreadable entry by its path.
+ */
+function entryTests(index: PlanningIndex, c: Compiled): EntryTests {
+  /** A question the index cannot resolve has its reference's fields alone. */
+  const unresolved = (ref: QuestionRef) =>
+    fieldsOf(ref, () => [ref.id, ref.path]);
+  const keepsRef = (ref: QuestionRef): boolean => {
+    const q = questionOf(index, ref);
+    if (q !== undefined) return keepsQuestionWith(c, q);
+    return (
+      c.keepsPath(ref.path) &&
+      stateKeeps(c, null) &&
+      textKeeps(c, () => unresolved(ref))
+    );
+  };
+  const keepsDocumentRow = (path: string): boolean =>
+    keepsRowWith(c, path, () => {
+      const doc = findDocument(index, path);
+      return doc === undefined ? [path.toLowerCase()] : documentFields(doc);
+    });
+  return {
+    keepsRef,
+    keepsDocumentRow,
+    keepsWaiting: (entry) =>
+      entry.kind === "document"
+        ? keepsDocumentRow(entry.path)
+        : keepsRef(entry.question),
+    keepsEntry: (entry) =>
+      keepsRowWith(c, entry.path, () => fieldsOf(entry, () => [entry.path])),
+  };
+}
+
+/**
+ * How many entries of `sections` `c` keeps: `entryCount` of the sections
+ * `applyPlanningFilter` would leave, counted without building them.
+ */
+function keptCount(
+  index: PlanningIndex,
+  sections: PlanningSections,
+  c: Compiled,
+): number {
+  const tests = entryTests(index, c);
+  const kept = <T>(
+    entries: readonly T[] | null,
+    keeps: (entry: T) => boolean,
+  ): number =>
+    entries === null
+      ? 0
+      : entries.reduce((n, entry) => (keeps(entry) ? n + 1 : n), 0);
+  return (
+    kept(sections.needsYou, tests.keepsRef) +
+    kept(sections.unrouted, tests.keepsRef) +
+    kept(sections.waiting, tests.keepsWaiting) +
+    kept(sections.ready, tests.keepsDocumentRow) +
+    kept(sections.graduate, tests.keepsDocumentRow) +
+    kept(sections.disagrees, tests.keepsDocumentRow) +
+    kept(sections.skipped, tests.keepsEntry) +
+    kept(sections.unreadable, tests.keepsEntry)
+  );
+}
+
+/**
+ * Why `filter` keeps no entry of `sections`, the first reason that holds
+ * (`PlanningNothingMatches`). `questions` and `roadmaps` are the summary's
+ * `onOtherRoadmaps` and the length of its `otherRoadmaps`, `of` its
+ * unfiltered entries and `documents` its kept documents.
+ *
+ * Each later reason is the filter run again with terms left out: without its
+ * words and `is:` terms, what its `path:` terms keep; without its `is:`
+ * terms, what the rest keeps. Only an empty result is asked why, so typing
+ * pays for neither run.
+ */
+function whyNothingMatches(
+  index: PlanningIndex,
+  sections: PlanningSections,
+  filter: UnderstoodPlanningFilter,
+  c: Compiled,
+  counts: {
+    questions: number;
+    roadmaps: number;
+    of: number;
+    documents: number;
+  },
+): PlanningNothingMatches {
+  if (counts.questions > 0) {
+    return {
+      kind: "other-roadmaps",
+      questions: counts.questions,
+      roadmaps: counts.roadmaps,
+    };
+  }
+  if (counts.of === 0) return { kind: "no-entries" };
+  const stateless: Compiled = { ...c, states: null, dropsStates: new Set() };
+  const pathsAlone: Compiled = {
+    ...stateless,
+    needles: [],
+    excludedNeedles: [],
+  };
+  if (c.paths.length > 0 && keptCount(index, sections, pathsAlone) === 0) {
+    return { kind: "documents", documents: counts.documents };
+  }
+  const terms = filter.terms
+    .filter((term) => term.key === "is")
+    .map((term) => term.text);
+  if (terms.length > 0) {
+    const entries = keptCount(index, sections, stateless);
+    if (entries > 0) return { kind: "state", terms, entries };
+  }
+  return { kind: "words" };
+}
+
 /**
  * `sections` with what `filter` does not keep removed (§6.11, §6.15), and what
  * that hides, summed up.
@@ -926,27 +1092,12 @@ export function applyPlanningFilter(
   filter: UnderstoodPlanningFilter,
 ): FilteredPlanningSections {
   const c = compiled(filter);
-  /** A question the index cannot resolve has its reference's fields alone. */
-  const unresolved = (ref: QuestionRef) =>
-    fieldsOf(ref, () => [ref.id, ref.path]);
-  const keepsRef = (ref: QuestionRef): boolean => {
-    const q = questionOf(index, ref);
-    if (q !== undefined) return keepsQuestionWith(c, q);
-    return (
-      c.keepsPath(ref.path) &&
-      stateKeeps(c, null) &&
-      textKeeps(c, () => unresolved(ref))
-    );
-  };
-  const keepsDocumentRow = (path: string): boolean =>
-    keepsRowWith(c, path, () => {
-      const doc = findDocument(index, path);
-      return doc === undefined ? [path.toLowerCase()] : documentFields(doc);
-    });
+  const { keepsRef, keepsDocumentRow, keepsWaiting, keepsEntry } = entryTests(
+    index,
+    c,
+  );
   const rows = (paths: string[] | null): string[] | null =>
     paths === null ? null : paths.filter(keepsDocumentRow);
-  const keepsEntry = (entry: { path: string }): boolean =>
-    keepsRowWith(c, entry.path, () => fieldsOf(entry, () => [entry.path]));
 
   const needsYou = sections.needsYou.filter(keepsRef);
   const onOtherRoadmaps = sections.onOtherRoadmaps.filter(keepsRef);
@@ -987,11 +1138,7 @@ export function applyPlanningFilter(
     needsYou,
     onOtherRoadmaps,
     unrouted,
-    waiting: sections.waiting.filter((entry) =>
-      entry.kind === "document"
-        ? keepsDocumentRow(entry.path)
-        : keepsRef(entry.question),
-    ),
+    waiting: sections.waiting.filter(keepsWaiting),
     ready: rows(sections.ready),
     graduate: rows(sections.graduate),
     disagrees: rows(sections.disagrees),
@@ -1069,16 +1216,18 @@ export function applyPlanningFilter(
       .map((term) => term.text),
   }));
 
+  const entries = { shown: entryCount(filtered), of: entryCount(sections) };
+  const documents = {
+    kept: listed.filter((path) => c.keepsPath(path)).length,
+    of: listed.length,
+  };
   return {
     sections: filtered,
     summary: {
       canonical: filter.canonical,
       requestText,
-      entries: { shown: entryCount(filtered), of: entryCount(sections) },
-      documents: {
-        kept: listed.filter((path) => c.keepsPath(path)).length,
-        of: listed.length,
-      },
+      entries,
+      documents,
       openQuestions: [...needsYou, ...(unrouted ?? [])].filter(isOpenRef)
         .length,
       blockedLeftOut,
@@ -1087,6 +1236,15 @@ export function applyPlanningFilter(
       waitsOutside,
       unmatched,
       unknownKeys,
+      nothingMatches:
+        entries.shown > 0
+          ? null
+          : whyNothingMatches(index, sections, filter, c, {
+              questions: onOtherRoadmaps.length,
+              roadmaps: otherRoadmaps.length,
+              of: entries.of,
+              documents: documents.kept,
+            }),
     },
   };
 }

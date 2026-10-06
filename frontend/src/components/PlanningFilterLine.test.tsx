@@ -15,6 +15,7 @@ function renderLine(urlText: string, printText = "", appliedText = urlText) {
   const onFlush = vi.fn();
   const onLeave = vi.fn();
   const inputRef = createRef<HTMLInputElement>();
+  const clearRef = createRef<(() => void) | null>();
   render(
     <MemoryRouter>
       <PlanningFilterLine
@@ -27,6 +28,7 @@ function renderLine(urlText: string, printText = "", appliedText = urlText) {
         onFlush={onFlush}
         onLeave={onLeave}
         inputRef={inputRef}
+        clearRef={clearRef}
         announcement=""
         printText={printText}
       />
@@ -36,7 +38,7 @@ function renderLine(urlText: string, printText = "", appliedText = urlText) {
     name: "Filter",
   }) as HTMLInputElement;
   const hint = () => screen.getByTestId("planning-filter-hint").textContent;
-  return { onType, onApply, onFlush, onLeave, box, hint };
+  return { onType, onApply, onFlush, onLeave, box, hint, clearRef };
 }
 
 describe("PlanningFilterLine, as the reader types", () => {
@@ -208,6 +210,29 @@ describe("PlanningFilterLine, before the URL holds what it applied", () => {
     expect(onApply).toHaveBeenLastCalledWith('path:plans/c.md "is', null);
     expect(box.value).toBe('path:plans/c.md "is');
     expect(hint()).toBe("");
+  });
+});
+
+describe("PlanningFilterLine's ✕, for the page", () => {
+  // The page's Clear the filter, under Nothing matches, does what ✕ does.
+  it("hands the page what ✕ does: the box emptied, the clear applied, and the focus in the box", () => {
+    const { onApply, onFlush, box, clearRef } = renderLine("zz");
+    expect(document.activeElement).not.toBe(box);
+    act(() => {
+      clearRef.current!();
+    });
+    expect(onApply).toHaveBeenCalledTimes(1);
+    expect(onApply).toHaveBeenLastCalledWith("", null);
+    expect(box.value).toBe("");
+    expect(document.activeElement).toBe(box);
+    expect(onFlush).not.toHaveBeenCalled();
+    // With the box's own ✕, which is gone once the box is empty, alike.
+    fireEvent.change(box, { target: { value: "qq" } });
+    act(() => {
+      fireEvent.click(screen.getByRole("button", { name: "Clear the filter" }));
+    });
+    expect(onApply).toHaveBeenLastCalledWith("", null);
+    expect(box.value).toBe("");
   });
 });
 

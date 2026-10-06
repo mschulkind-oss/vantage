@@ -924,6 +924,27 @@ The last line says how to see the rest, as *Clear the filter to see the other
 10.* When nothing the filter keeps needs a ruling, the page says *Nothing this
 filter keeps needs you* in place of *Nothing needs you*.
 
+#### When nothing matches
+
+A filter that keeps no entry in any section says so where the sections would
+be: *Nothing matches `zqxj`.*, with the filter in its
+[canonical text](#the-address). One line under it says why, the first of these
+that applies:
+
+| Why | The line |
+| :--- | :--- |
+| The questions it keeps are on other roadmaps only | *1 question it keeps is on another roadmap. Choose that roadmap in the Roadmap menu to see it; the filter stays.* With [several roadmaps](#several-roadmaps), a question only another roadmap routes is in no section, so it is counted rather than shown |
+| The page has no entry at all | *The page lists no entry without a filter either.* |
+| Its `path:` terms keep documents that list nothing here | *It keeps 1 document, and it has no question or next step listed here.*, as for a document whose stage has the `done` role. A pattern that keeps no path at all says *It keeps no document the index lists.* |
+| `is:open` leaves out everything else it keeps | *Without `is:open` it would keep 1 entry, and it is not an open question.*, as when every question of a document has been ruled |
+| Anything else: a word or phrase keeps none of it | *Words and quoted phrases are matched only against a question's id, title and leaning, and a document's path, stage and next step.* |
+
+**Clear the filter**, the button under it, does what the box's ✕ does: it
+clears the filter at once and puts the focus in the box. *Nothing this filter
+keeps needs you* is not shown beside it, since there is nothing it keeps to
+need you. A filter Vantage does not understand never says *Nothing matches*:
+it shows every entry.
+
 #### Using the box
 
 - **`/`** puts the focus in the box and selects its text, so what you type or
@@ -941,10 +962,11 @@ filter keeps needs you* in place of *Nothing needs you*.
 - **A text that keeps nothing waits until you stop typing.** While you type
   a word that is not there yet, or a `-` whose first letter leaves out
   everything, as `-m` does when every path ends in `.md`, the page keeps the
-  last results. Once you stop for 300 ms the text applies, and the notice
-  says it keeps 0 entries and that nothing it keeps needs you. A gap that long
-  between two keys counts as stopping, so a slow typist sees the page empty,
-  and it stays empty until a key brings back a text that keeps something.
+  last results. Once you stop for 300 ms the text applies: the notice says
+  it keeps 0 entries, and [*Nothing matches*](#when-nothing-matches) stands
+  in place of the sections. A gap that long between two keys counts as
+  stopping, so a slow typist sees *Nothing matches*, and it stays until a key
+  brings back a text that keeps something.
   Enter, ✕, a paste and leaving the box apply it at once.
 - **Enter** applies the box's text and writes it into the address at once,
   and the box then shows it in its [canonical text](#the-address). On a text
@@ -1020,12 +1042,15 @@ is encoded too, so a sentence's period after a pasted address cannot take it.
   keeps.
 - In print, the box is left out. A line, *Filter:* and the filter, prints in
   its place, and the notice prints too, so a printout always says it is
-  filtered and by how much.
+  filtered and by how much. So do *Nothing matches* and its line, without
+  its button.
 - A screen reader hears the notice when the address takes a filter: at once
   on Enter, ✕ or a paste, and for typing once you have stopped for a second
-  or left the box. It hears that every entry is shown after you clear one. It
+  or left the box, followed by *Nothing matches* when the filter keeps no
+  entry. It hears that every entry is shown after you clear one. It
   hears nothing per key, however slowly you type, and nothing as the page
-  opens. The box is described by the notice, and by its hint while it shows.
+  opens. The box is described by the notice, by *Nothing matches* while it
+  shows, and by its hint while that shows.
 
 #### Filtered links
 
