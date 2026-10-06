@@ -230,12 +230,23 @@ test("a live document's line links to the planning page filtered to it", async (
   await expect(page).toHaveURL(/\/plans\/paged\.md$/);
   await expect(toggle(page)).toHaveAttribute("aria-expanded", "false");
 
-  // A click follows it in the app, opening the planning page.
+  // A click follows it in the app, opening the planning page filtered to the
+  // document: the box holds its filter and only its entries are shown
+  // (planning-filter.md §15, criterion 12).
   await link.click();
   await expect(page).toHaveURL(`${new URL(page.url()).origin}${filtered}`);
+  const needsYou = page.getByRole("region", { name: /^Needs you/ });
+  await expect(needsYou).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Filter" })).toHaveValue(
+    "path:plans/paged.md",
+  );
+  await expect(page.getByTestId("filter-notice")).toContainText(
+    "Filtered by path:plans/paged.md: ",
+  );
+  await expect(needsYou.getByRole("article").first()).toContainText("OQ-P");
   await expect(
-    page.getByRole("region", { name: /^Needs you/ }),
-  ).toBeVisible();
+    needsYou.getByRole("article").filter({ hasNotText: /OQ-P\d+:/ }),
+  ).toHaveCount(0);
 });
 
 // §12.2: the line is reserved at first paint for a planning document, and the
