@@ -8,6 +8,8 @@ import {
   PLANNING_SECTION_GUIDE,
   PLANNING_SECTION_IDS,
   PLANNING_SECTION_TITLES,
+  planningLink,
+  readPastedPlanningLink,
   type PlanningConfig,
 } from "vantage-md/planning";
 import {
@@ -634,12 +636,12 @@ describe("the planning filter (planning-filter.md §6.4, §6.5)", () => {
 
     it("clamps the pages against the filtered sections, in the same rewrite", () => {
       setPlanningLimitsForTests({ pageEntries: 1 });
-      // docs/design/a.md: three cards under Needs you, one under Blocked.
+      // docs/design/a.md: four cards under Needs you, one under Blocked.
       expect(
         rewrite(
           "filter=path:/docs/design/a.md&needs-you=9&waiting=2&roadmap=roadmap.md",
         ),
-      ).toBe("filter=path:docs/design/a.md&needs-you=3&roadmap=roadmap.md");
+      ).toBe("filter=path:docs/design/a.md&needs-you=4&roadmap=roadmap.md");
     });
   });
 
@@ -648,7 +650,7 @@ describe("the planning filter (planning-filter.md §6.4, §6.5)", () => {
       "needs-you=2&x=1&roadmap=roadmap.md&waiting=3&filter=path:a.md",
     );
     expect(planningQuery(withFilter(search, "path:./docs/a.md is:open"))).toBe(
-      "x=1&roadmap=roadmap.md&filter=path:docs/a.md+is:open",
+      "filter=path:docs/a.md+is:open&x=1&roadmap=roadmap.md",
     );
     expect(planningQuery(withFilter(search, "  "))).toBe(
       "x=1&roadmap=roadmap.md",
@@ -656,8 +658,40 @@ describe("the planning filter (planning-filter.md §6.4, §6.5)", () => {
     expect(withFilter(search, "a OR b").get("filter")).toBe("a OR b");
     // A pasted link's roadmap.
     expect(planningQuery(withFilter(search, "is:open", "x/roadmap.md"))).toBe(
-      "x=1&roadmap=x%2Froadmap.md&filter=is:open",
+      "filter=is:open&x=1&roadmap=x%2Froadmap.md",
     );
+  });
+
+  it("writes the filter first, so the address is the agent's link where a roadmap is named (criterion 3)", () => {
+    // The page names the roadmap once two or more route, before any filter.
+    for (const [search, roadmap] of [
+      ["roadmap=roadmap.md", "roadmap.md"],
+      ["roadmap=roadmap.md&filter=is:open", "roadmap.md"],
+      ["", null],
+    ] as const) {
+      expect(
+        `/.vantage/planning?${planningQuery(withFilter(new URLSearchParams(search), "path:docs/design/a.md is:open"))}`,
+        search,
+      ).toBe(planningLink("path:docs/design/a.md is:open", { roadmap }));
+    }
+  });
+
+  it("never ends a query with a character a pasted link's end drops", () => {
+    for (const [search, query] of [
+      ["filter=path:docs/x_", "filter=path:docs/x%5F"],
+      ["filter=path:docs/v1.", "filter=path:docs/v1%2E"],
+      ["filter=path:docs/x_&needs-you=2", "filter=path:docs/x_&needs-you=2"],
+      ["needs-you=2&filter=path:docs/x_", "needs-you=2&filter=path:docs/x%5F"],
+    ] as const) {
+      const written = planningQuery(new URLSearchParams(search));
+      expect(written, search).toBe(query);
+      expect(new URLSearchParams(written).get("filter")).toBe(
+        new URLSearchParams(search).get("filter"),
+      );
+      expect(
+        readPastedPlanningLink(`Open /.vantage/planning?${written}.`)?.filter,
+      ).toBe(new URLSearchParams(search).get("filter"));
+    }
   });
 
   it("writes the filter as a planning link does, and the rest as the page does", () => {

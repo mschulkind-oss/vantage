@@ -316,6 +316,36 @@ test.describe("the planning filter", () => {
     await expect(box(page)).toHaveValue("abc");
   });
 
+  test("takes no room in a printout with no filter, and prints the filter it has", async ({
+    page,
+  }) => {
+    await page.goto("/.vantage/planning");
+    await expect(cards(page, "Needs you").first()).toBeVisible();
+    await page.emulateMedia({ media: "print" });
+    const line = filterLine(page).locator("..");
+    await expect(line).toBeHidden();
+    // The section bar's row is the first thing printed, as it was before
+    // the filter line was on the page.
+    const gap = await page.evaluate(() => {
+      const main = document.querySelector("main")!;
+      const row = document.querySelector(
+        'nav[aria-label="Sections"]',
+      )!.parentElement!;
+      return Math.round(
+        row.getBoundingClientRect().top - main.getBoundingClientRect().top,
+      );
+    });
+    expect(gap).toBe(0);
+    await page.emulateMedia({ media: "screen" });
+    await page.goto(FILTERED);
+    await expect(cards(page, "Needs you")).toHaveCount(2);
+    await page.emulateMedia({ media: "print" });
+    await expect(filterLine(page)).toBeHidden();
+    await expect(page.getByTestId("planning-filter-print")).toHaveText(
+      `Filter: ${FILTER}`,
+    );
+  });
+
   test("opens a document's own filter, as its Referenced by line links it, with the box holding it", async ({
     page,
   }) => {

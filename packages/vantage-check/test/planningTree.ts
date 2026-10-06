@@ -155,6 +155,7 @@ export interface PlanningFilterForms {
     text: string;
     canonical: string;
     documents: string[];
+    questions: string[];
     keeps: string[];
     unmatched: string[];
   }[];

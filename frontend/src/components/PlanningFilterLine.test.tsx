@@ -8,7 +8,7 @@ import { FILTER_HINT, PlanningFilterLine } from "./PlanningFilterLine";
 // it navigates to (docs/design/planning-filter.md §7). The router commits a
 // location in a transition, so for that while the URL still holds the old
 // text: here it holds it for good, since nothing navigates.
-function renderLine(urlText: string) {
+function renderLine(urlText: string, printText = "") {
   const onApply = vi.fn();
   const onLeave = vi.fn();
   const inputRef = createRef<HTMLInputElement>();
@@ -17,12 +17,12 @@ function renderLine(urlText: string) {
       <PlanningFilterLine
         urlText={urlText}
         invalid={false}
-        busy={false}
+        busyAfter={null}
         onApply={onApply}
         onLeave={onLeave}
         inputRef={inputRef}
         announcement=""
-        printText=""
+        printText={printText}
       />
     </MemoryRouter>,
   );
@@ -77,5 +77,27 @@ describe("PlanningFilterLine, before the URL holds what it applied", () => {
     fireEvent.keyDown(box, { key: "Escape" });
     expect(box.value).toBe("path:plans/c.md");
     expect(hint()).toBe("");
+  });
+});
+
+describe("PlanningFilterLine in print", () => {
+  it("takes no room with no filter, and says the filter it has", () => {
+    renderLine("");
+    const line = screen.getByRole("search", {
+      name: "Filter the planning page",
+    }).parentElement!;
+    expect(line).toHaveClass("print:hidden");
+    expect(screen.queryByTestId("planning-filter-print")).toBeNull();
+  });
+
+  it("prints the Filter line in place of the box when filtered", () => {
+    renderLine("path:plans/a.md", "path:plans/a.md");
+    const line = screen.getByRole("search", {
+      name: "Filter the planning page",
+    }).parentElement!;
+    expect(line).not.toHaveClass("print:hidden");
+    expect(screen.getByTestId("planning-filter-print")).toHaveTextContent(
+      "Filter: path:plans/a.md",
+    );
   });
 });
