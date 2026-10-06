@@ -11,8 +11,13 @@
  * - **The building flow** holds the planning stream at the network until `g p`
  *   has painted, so the index is still building when the page opens (D5).
  * - **The first build** is the cold load alone (D7 cold, on this repository).
+ * - **The typing flow** opens the planning page with `g p`, waits for its
+ *   first pages and the visit's review requests, presses `/`, and types a
+ *   query into the Filter box one key at a time (T1 to T4 of
+ *   `docs/design/planning-filter.md` §16).
  */
-import type { Browser, CDPSession, Page } from "@playwright/test";
+import type { Browser, CDPSession, Page, Request } from "@playwright/test";
+import { appliedBy } from "./filterText.ts";
 import { installProbe, type ProbeState } from "./probe.ts";
 
 export interface FlowOptions {
@@ -40,8 +45,11 @@ export interface AttributedTask {
   /**
    * `build`: the index's first build of the page session, from its first need
    * to ready. `page`: from the `p` of `g p` until the page has settled.
+   * `typing`: from a typed query's first keydown until the last results it
+   * made painted (T3). `after`: from then until the typing flow's wait ends,
+   * which holds the URL's write after the idle pause.
    */
-  window: "build" | "page";
+  window: "build" | "page" | "typing" | "after";
   /**
    * Whether planning code ran it. In `page`, every task: the planning page's
    * render, from the frame's commit to the sections'. In `build`, a task that
@@ -194,7 +202,7 @@ function attribute(
         duration: round(s.duration),
       }));
     const planning =
-      window.name === "page" ||
+      window.name !== "build" ||
       inlineClient ||
       scripts.some((s) => s.invoker.startsWith("Worker."));
     return [
@@ -513,4 +521,307 @@ export async function warmUp(
   options: FlowOptions,
 ): Promise<void> {
   await firstBuildRun(browser, served, options);
+}
+
+/** What the typing flow types, and how fast. */
+export interface TypingPass {
+  /** Typed one key at a time into the Filter box of an unfiltered page. */
+  query: string;
+  /** Ms from one keydown to the next, kept to a schedule from the first. */
+  gapMs: number;
+}
+
+/** One key of a typed query (T1, T2). */
+export interface Keystroke {
+  key: string;
+  /** The keydown's `timeStamp`, on the page's clock. */
+  at: number;
+  /** The box's text after it. */
+  text: string;
+  /**
+   * T1: the longest Event Timing duration of the events this key caused
+   * (keydown, keypress, beforeinput, input, keyup), from the keydown to the
+   * next paint after its handlers. `null` when each was under 16 ms, the
+   * lowest threshold the browser reports.
+   */
+  interactionMs: number | null;
+  /** Each of those events' own duration, `null` under 16 ms. */
+  events: Record<string, number | null>;
+  /** From the keydown to the frame that drew the box's new text, painted. */
+  echoMs: number | null;
+  /**
+   * The canonical text this key makes the applied filter, or `null` when it
+   * changes nothing: the same canonical text, or a text not understood.
+   */
+  applies: string | null;
+  /** From the keydown to the sections being swapped for `applies`, in the DOM. */
+  committedMs: number | null;
+  /** T2: from the keydown to the frame that painted those sections. */
+  resultsMs: number | null;
+  /**
+   * Its results never painted: a later key's came first, or none came. T2
+   * counts it as over its target.
+   */
+  superseded: boolean;
+}
+
+export interface TypingRun extends TypingPass {
+  keys: Keystroke[];
+  /**
+   * Every filter the sections were swapped to from the first key on, in
+   * order, in ms after the first keydown: committed, and painted (`null`
+   * when a later one came before a frame did).
+   */
+  shown: { filter: string; committed: number; painted: number | null }[];
+  /** The whole query's results painted, in ms after the last keydown. */
+  settledMs: number | null;
+  /**
+   * Sections committed under a text the reader had typed past, after the page
+   * had handled the last key's input: a backlog, which the newest text winning
+   * leaves at 0.
+   */
+  staleAfterLast: number;
+  /** The painted texts never went back to an earlier key's. */
+  inOrder: boolean;
+  /** T3: every long task from the first keydown on, by window. */
+  longTasks: AttributedTask[];
+  /** Long animation frames, 50 ms or more, from the first keydown to the last results painted. */
+  longFrames: { at: number; duration: number; blocking: number }[];
+  /** T4: layout shift from the first keydown on, as the browser scores it. */
+  cls: number;
+  /** The same, counting the shifts it forgives within 500 ms of an input. */
+  clsAll: number;
+  /** History entries the typing added: 0, as the design requires. */
+  historyAdded: number;
+  /** The URL's `filter` once the flow's wait was over. */
+  urlFilter: string | null;
+  /** POSTs to the planning reviews endpoint in the visit (D11: at most 2). */
+  reviews: number;
+}
+
+const sleep = (ms: number) =>
+  new Promise<void>((resolve) => setTimeout(resolve, Math.max(0, ms)));
+
+/** The events one key press causes, as Event Timing names them. */
+const KEY_EVENTS = ["keydown", "keypress", "beforeinput", "input", "keyup"];
+
+/**
+ * One run of the typing flow: a new profile, the start document, `g p`, the
+ * first pages painted and the visit's review requests answered, then `/` and
+ * `pass.query` into the Filter box one key at a time, every `pass.gapMs` ms,
+ * and a wait of `settleMs` once the whole query's results have painted.
+ */
+export async function typingRun(
+  browser: Browser,
+  served: Served,
+  options: FlowOptions,
+  pass: TypingPass,
+): Promise<TypingRun> {
+  const chars = [...pass.query];
+  const texts = chars.map((_, i) => chars.slice(0, i + 1).join(""));
+  let applied = "";
+  const applies = texts.map((text) => {
+    const made = appliedBy(text);
+    if (made === null || made === applied) return null;
+    applied = made;
+    return made;
+  });
+  const final = appliedBy(pass.query);
+  if (final === null || final === "") {
+    throw new Error(
+      `the typing query ${JSON.stringify(pass.query)} is not a filter`,
+    );
+  }
+
+  const { context, page, cdp } = await newPage(browser, options);
+  const isReview = (request: Request) =>
+    request.method() === "POST" &&
+    new URL(request.url()).pathname.endsWith("/planning/reviews");
+  const reviews = { sent: 0, done: 0, last: Date.now() };
+  page.on("request", (request) => {
+    if (!isReview(request)) return;
+    reviews.sent += 1;
+    reviews.last = Date.now();
+  });
+  const answered = (request: Request) => {
+    if (!isReview(request)) return;
+    reviews.done += 1;
+    reviews.last = Date.now();
+  };
+  page.on("requestfinished", answered);
+  page.on("requestfailed", answered);
+  try {
+    await page.goto(urlOf(served, served.start));
+    await documentShown(page, served.start, options);
+    await indexReady(page, options);
+    await gp(page, cdp, options, false);
+    // The visit's second review request answered (§6.5), or none out for
+    // a settle's time when the first page's request covered every document.
+    const deadline = Date.now() + options.timeoutMs;
+    while (
+      reviews.done < reviews.sent ||
+      (reviews.done < 2 && Date.now() - reviews.last < options.settleMs)
+    ) {
+      if (Date.now() > deadline) {
+        throw new Error("the visit's review requests never settled");
+      }
+      await sleep(50);
+    }
+    await page.waitForTimeout(options.settleMs);
+
+    await page.keyboard.press("/");
+    await page.waitForFunction(
+      () =>
+        document.activeElement?.matches(
+          '[data-testid="planning-filter"] input',
+        ) === true,
+      null,
+      { timeout: options.timeoutMs, polling: 50 },
+    );
+    const entries = await page.evaluate(() => history.length);
+    await page.waitForTimeout(300);
+    const from = await page.evaluate(() => performance.now());
+    const t0 = Date.now();
+    for (const [i, char] of chars.entries()) {
+      await sleep(t0 + i * pass.gapMs - Date.now());
+      await page.keyboard.type(char);
+    }
+    await page
+      .waitForFunction(
+        ([filter, from]) =>
+          window.__planningPerf?.shown.some(
+            (s) => s.filter === filter && s.committed >= from && s.painted,
+          ) === true,
+        [final, from] as const,
+        { timeout: 10_000, polling: 50 },
+      )
+      .catch(() => {});
+    await page.waitForTimeout(options.settleMs);
+    const state = await probe(page);
+    const historyAdded = (await page.evaluate(() => history.length)) - entries;
+    const urlFilter = new URL(page.url()).searchParams.get("filter");
+    return {
+      ...pass,
+      ...readTyping(state, from, chars, texts, applies, final),
+      historyAdded,
+      urlFilter,
+      reviews: reviews.sent,
+    };
+  } finally {
+    await context.close();
+  }
+}
+
+/** The typing flow's clocks, read from the probe. */
+function readTyping(
+  state: ProbeState,
+  from: number,
+  chars: string[],
+  texts: string[],
+  applies: (string | null)[],
+  final: string,
+) {
+  const downs = state.keys.filter((k) => k.at >= from);
+  if (downs.length !== chars.length) {
+    throw new Error(
+      `typed ${chars.length} keys, and the page saw ${downs.length} keydowns`,
+    );
+  }
+  const shown = state.shown
+    .filter((s) => s.committed >= from)
+    .sort((a, b) => a.committed - b.committed);
+  // The key whose text a painted filter is: the last that applied it.
+  const keyOf = (filter: string) => applies.lastIndexOf(filter);
+  const keys: Keystroke[] = downs.map((down, i) => {
+    const at = down.at;
+    const next = downs[i + 1]?.at ?? Number.POSITIVE_INFINITY;
+    const mine = state.events.filter(
+      (e) => KEY_EVENTS.includes(e.name) && e.start >= at - 1 && e.start < next,
+    );
+    const events = Object.fromEntries(
+      KEY_EVENTS.map((name) => {
+        const longest = mine
+          .filter((e) => e.name === name)
+          .reduce<number | null>((m, e) => Math.max(m ?? 0, e.duration), null);
+        return [name, longest];
+      }),
+    );
+    const durations = mine.map((e) => e.duration);
+    const input = state.inputs.find((x) => x.at >= at - 1 && x.at < next);
+    const wanted = applies[i];
+    let committedMs: number | null = null;
+    let resultsMs: number | null = null;
+    let superseded = false;
+    if (wanted !== null) {
+      superseded = true;
+      for (const s of shown) {
+        if (s.committed < at) continue;
+        if (s.filter === wanted) {
+          committedMs = round(s.committed - at);
+          if (s.painted !== null) {
+            resultsMs = round(s.painted - at);
+            superseded = false;
+          }
+          break;
+        }
+        // A later key's results came first: this key's never will.
+        if (keyOf(s.filter) > i) break;
+      }
+    }
+    return {
+      key: down.key,
+      at: round(at),
+      text: texts[i],
+      interactionMs: durations.length === 0 ? null : Math.max(...durations),
+      events,
+      echoMs: input?.painted == null ? null : round(input.painted - at),
+      applies: wanted,
+      committedMs,
+      resultsMs,
+      superseded,
+    };
+  });
+  const first = downs[0].at;
+  const last = downs[downs.length - 1].at;
+  // When the page had seen the whole query: its last input handled.
+  const seen =
+    state.inputs.filter((x) => x.at >= last - 1).at(0)?.handled ?? last;
+  const settled = shown.find(
+    (s) => s.filter === final && s.committed >= last && s.painted !== null,
+  );
+  const order = shown
+    .filter((s) => s.painted !== null)
+    .map((s) => keyOf(s.filter));
+  const end =
+    settled?.painted ??
+    Math.max(from, ...shown.map((s) => s.painted ?? s.committed));
+  const shifts = state.shifts.filter((s) => s.start >= first);
+  const sum = (values: number[]) =>
+    Math.round(values.reduce((a, b) => a + b, 0) * 1000) / 1000;
+  return {
+    keys,
+    shown: shown.map((s) => ({
+      filter: s.filter,
+      committed: round(s.committed - first),
+      painted: s.painted === null ? null : round(s.painted - first),
+    })),
+    settledMs: settled?.painted == null ? null : round(settled.painted - last),
+    staleAfterLast: shown.filter(
+      (s) => s.committed > seen && s.filter !== final,
+    ).length,
+    inOrder: order.every((k, i) => i === 0 || k >= order[i - 1]),
+    longTasks: attribute(state, [
+      { name: "typing", start: first, end },
+      { name: "after", start: end, end: Number.POSITIVE_INFINITY },
+    ]),
+    longFrames: state.frames
+      .filter((f) => f.start + f.duration > first && f.start < end)
+      .map((f) => ({
+        at: round(f.start - first),
+        duration: round(f.duration),
+        blocking: round(f.blocking),
+      })),
+    cls: sum(shifts.filter((s) => !s.input).map((s) => s.value)),
+    clsAll: sum(shifts.map((s) => s.value)),
+  };
 }
