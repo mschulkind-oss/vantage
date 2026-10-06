@@ -3,6 +3,7 @@ import { parseArgs, run } from "../src/cli.js";
 import { bufferIo } from "../src/io.js";
 import { EXIT_OK, EXIT_USAGE } from "../src/exit.js";
 import { STYLE_GUIDE } from "../../vantage-md/src/styleGuide.js";
+import { parsePlanningFilter } from "../../vantage-md/src/planning/index.js";
 import { styleGuideHeader } from "../src/commands/styleGuide.js";
 
 describe("parseArgs", () => {
@@ -338,6 +339,9 @@ describe("run", () => {
       "Paste the link into the planning page's Filter box: press / there.",
     );
     expect(help).toContain(
+      'Put a path holding any character but A-Z a-z 0-9 . _ - / in "quotes", which match it as written',
+    );
+    expect(help).toContain(
       "For index, also a --filter it does not understand, checked before anything is scanned, or one with a path: term that matches no path",
     );
     // Options for index, in order: --filter sits beside --roadmap.
@@ -355,6 +359,25 @@ describe("run", () => {
       "--config <path>",
       "--no-config",
     ]);
+  });
+
+  // §5.5: a bare pattern reads only A-Z a-z 0-9 . _ - / and *, so the help
+  // names that set, and a path holding any other character is understood in
+  // quotes and nowhere else.
+  it("says which paths go in quotes as the parser reads them", () => {
+    for (const ch of ["A", "Z", "a", "z", "0", "9", ".", "_", "-"]) {
+      expect(parsePlanningFilter(`path:docs/a${ch}b.md`).kind).toBe(
+        "understood",
+      );
+    }
+    for (const ch of [" ", "'", "+", "(", "#", "~", ",", "@", "ü"]) {
+      expect(parsePlanningFilter(`path:docs/a${ch}b.md`).kind).toBe(
+        "not-understood",
+      );
+      expect(parsePlanningFilter(`path:"docs/a${ch}b.md"`).kind).toBe(
+        "understood",
+      );
+    }
   });
 
   it("prints usage to stderr and exits 2 on --filter with no value", async () => {
