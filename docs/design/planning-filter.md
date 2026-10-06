@@ -2,19 +2,19 @@
 title: "An agent's planning link is a filter the human could have typed"
 date: 2026-10-05
 status: accepted
-stage: DECIDED
-next: "Open the implementation sketch beside this file, then build it"
+stage: BUILT
+next: "Graduate into docs/reference/planning-index.md with the sketch beside this file, then delete both"
 tags: [planning, vantage-check, agents, url, forward-compatibility]
 summary: "A planning filter is one line of text, such as path:docs/design/x.md is:open, that the planning page's Filter box, its filter= URL parameter and vantage-check index --filter all read with one parser. It hides entries of sections derived from the whole index and never reorders them. A release that cannot read every term shows every entry and says why. The checker prints a root-relative link to the filtered page, which the human pastes into the Filter box or puts their address in front of."
 ---
 
 # An agent's planning link is a filter the human could have typed
 
-**Status:** 2026-10-05. Nothing built. Evidence read at `db5c01f`, where the planning code is unchanged since `v0.8.1`, so every released 0.8.x viewer and checker behaves as [§3](#3-what-exists-today) says. The path dialect ([§5.4](#54-path-patterns)) was probed that day against the port in `patterns.ts` and against git 2.55.0. This design merges three proposals and the reviews of them. All five of its questions were ruled the same day, as the [Decision Ledger](#decision-ledger) records.
+**Status:** 2026-10-05 (`d22eedc`). Built, with every ruling in the [Decision Ledger](#decision-ledger): the filter module the page and the checker share, `index --filter`, the filter line with `/` and the pasted link, and Referenced by's link. The user guide, the checker's help and the style guide teach it. Where the build chose what this design delegates, or departed from a line of it, the sketch's [As built](planning-filter-plan.md#as-built) says. MEASURED: in Chromium on the e2e fixture, a cold filtered link and an Enter in the box shift nothing painted and leave `history.length` as it was, and a filtered visit then cleared makes at most two review requests (`frontend/e2e/planning_filter.spec.ts`). UNMEASURED: the no-long-task half of [criterion 8](#15-success-criteria), since a cold dev-server load showed 2 to 5 long tasks of up to about 180 ms that no run could pin on the filter; D6 and D12 on a large index; a 0.8.x viewer given a filtered link, which is the written model of [§10.4](#104-how-p0-is-checked), not a run; the filter line with assistive technology; and how accurately agents write the grammar. [§3](#3-what-exists-today) describes `db5c01f`, the tree `v0.8.1` was cut from. The path dialect ([§5.4](#54-path-patterns)) was probed against the port in `patterns.ts` and against git 2.55.0. This design merges three proposals and the reviews of them.
 
 > **In short.** The link an agent hands over and the text a person types are the same thing: one **planning filter** that the Filter box, `?filter=` and `vantage-check index --filter` read with one parser. It only hides entries of sections derived from the whole index, and a release that cannot read all of it applies none of it, which is what keeps every key added later safe.
 
-**Why it matters.** You asked to be handed "all of the questions I need to answer" for one feature. Today the planning page shows every entry in the repository, nothing on it filters, and the checker cannot learn the address you open Vantage at ([§3](#3-what-exists-today)).
+**Why it matters.** You asked to be handed "all of the questions I need to answer" for one feature. In 0.8.1 the planning page shows every entry in the repository, nothing on it filters, and the checker cannot learn the address you open Vantage at ([§3](#3-what-exists-today)).
 
 **The shape.** A parser and predicate in `vantage-md`'s planning module, applied after the sections are derived. The page reads and writes `filter=` and draws a filter line. The checker takes `--filter` and prints a root-relative link, which the Filter box applies when it is pasted in. A document's Referenced by line links to the page filtered to that document.
 
@@ -716,8 +716,8 @@ The tree is a copy of the e2e fixture [`frontend/e2e/fixtures/test_repo/`](../..
 
 | ID | Ruling / Decision | Date | Settled in | Built |
 | :--- | :--- | :--- | :--- | :--- |
-| OQ-PF1 | The first release reads `path:` and `is:open`, nothing more. Other `is:` values, bare words and a leading `-` stay not understood, to come later under names chosen then | 2026-10-05 | [§5.3](#53-keys-and-how-terms-combine) | — |
-| OQ-PF2 | Copy answers follows the filter: its payload and count cover kept questions only, and its tooltip says how many pending answers the filter leaves out | 2026-10-05 | [§6.6](#66-copy-agent-request-and-copy-answers) | — |
-| OQ-PF3 | No address is stored or printed, so no `VANTAGE_PLANNING_URL`: it is a fact about a machine with no right home, and a machine may open one repository at several. The checker prints a root-relative link, and pasting it into the Filter box, alone or with the lines around it, applies its filter | 2026-10-05 | [§9.3](#93-no-address-is-kept), [§7](#7-the-filter-line) | — |
-| OQ-PF4 | Besides typing, `/` focuses the box, and a document's Referenced by line links to the page filtered to that document. No per-card toggle | 2026-10-05 | [§7](#7-the-filter-line) | — |
-| OQ-PF5 | The filter line is always on the page: one fixed-height row in every state, from first paint | 2026-10-05 | [§7](#7-the-filter-line) | — |
+| OQ-PF1 | The first release reads `path:` and `is:open`, nothing more. Other `is:` values, bare words and a leading `-` stay not understood, to come later under names chosen then | 2026-10-05 | [§5.3](#53-keys-and-how-terms-combine) | ✅ `parsePlanningFilter` in `packages/vantage-md/src/planning/filter.ts`; `is:blocked`, `search` and `-path:x` exit 2 |
+| OQ-PF2 | Copy answers follows the filter: its payload and count cover kept questions only, and its tooltip says how many pending answers the filter leaves out | 2026-10-05 | [§6.6](#66-copy-agent-request-and-copy-answers) | ✅ `pendingAnswers` in `frontend/src/lib/planningAnswers.ts`; the button's name and tooltip in `PlanningPage.tsx` |
+| OQ-PF3 | No address is stored or printed, so no `VANTAGE_PLANNING_URL`: it is a fact about a machine with no right home, and a machine may open one repository at several. The checker prints a root-relative link, and pasting it into the Filter box, alone or with the lines around it, applies its filter | 2026-10-05 | [§9.3](#93-no-address-is-kept), [§7](#7-the-filter-line) | ✅ `planningLink` and `readPastedPlanningLink` in `filter.ts`; the paste in `PlanningFilterLine.tsx`; no address read or kept anywhere |
+| OQ-PF4 | Besides typing, `/` focuses the box, and a document's Referenced by line links to the page filtered to that document. No per-card toggle | 2026-10-05 | [§7](#7-the-filter-line) | ✅ `/` in `useKeyboardShortcuts.ts`; the link in `ReferencedBy.tsx`; no toggle on a card |
+| OQ-PF5 | The filter line is always on the page: one fixed-height row in every state, from first paint | 2026-10-05 | [§7](#7-the-filter-line) | ✅ `PlanningFilterLine` drawn first in `PlanningPage.tsx`'s `<main>`, every state but a static export |

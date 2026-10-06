@@ -277,7 +277,31 @@ the one thing the command reads (the `target` in the project root's
 the planning page copies for an agent. It is documented in
 [`planning-index.md` §13.2](planning-index.md#132-vantage-check-index); it
 shares the CLI's dispatch, configuration loader and exit codes, and takes no
-paths. `version` names the release a binary was stamped with, or says
+paths.
+
+`index --filter <text>` shows only the entries a planning filter keeps, and
+prints a link to the planning page filtered the same way. The text is the one
+the page's Filter box and its `filter=` parameter take, read by the same
+parser in `vantage-md`'s planning module, so a link an agent hands over is a
+filter the human could have typed
+([`planning-filter.md`](../design/planning-filter.md), until it graduates into
+[`planning-index.md`](planning-index.md)). A text it does not understand exits
+`2` before the scan, and a `path:` term that matches no path exits `2` after
+it, with stdout empty. The flag is a flag on purpose: a checker that predates
+it exits `2` with *unknown option*, where one that ignored an environment
+variable would print the whole index to an agent that believes it filtered.
+
+**The link is root-relative, `/.vantage/planning?filter=…`, because of
+[P1](#11-principles).** Only the browser knows the address the human opens
+Vantage at, and the checker may not ask a server: the port falls forward when
+8000 is busy, a daemon names a repository by its own rule, and a tunnel or a
+container puts the agent's `localhost` on another machine. Nothing stores the
+address either, since one machine can serve a repository at several at once.
+So the checker prints the link without an origin, and the line it prints says
+the two ways to use it: paste it into the Filter box, which reads only its
+query, or put an address in front.
+
+`version` names the release a binary was stamped with, or says
 `development build` and names the commit for one built from the manifest's
 placeholder version ([§8](#8-one-binary-built-and-shipped)). `help` prints the
 usage, every

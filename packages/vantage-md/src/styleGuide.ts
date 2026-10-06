@@ -100,6 +100,7 @@ BUILT = "built"
 SUPERSEDED = "done"
 \`\`\`
 - **Each stage word maps to one of four roles**, which is what the word means to Vantage: \`open\` is still being decided, \`ready\` is decided and not built, \`built\` is built, and \`done\` is no longer a live proposal, so its questions leave every list of what needs a ruling. \`vantage-check index\` prints those lists.
+- **To ask a human for the rulings a piece of work needs, hand them a filtered planning page.** In the checkout their Vantage serves, name the work's documents from the root with a leading \`/\`: the design, its \`-plan.md\` if one exists, and what its \`depends-on\` names. Run \`vantage-check index --filter 'path:/<design> path:/<plan> is:open'\`, and give the human the \`Planning page:\` line: they press \`/\` on their planning page and paste it, or type the filter text into its Filter box. Once you have applied their answers, the same command lists what is still open.
 - **Never change \`target\`.** A \`target = "X.Y"\` line at the top of \`.vantage.toml\` names the oldest Vantage release the repository's readers use, and only a human edits it. A \`vantage-check\` older than the target refuses to run and names the release it needs: run that release, and leave the target as it is.
 
 ### Mermaid diagrams

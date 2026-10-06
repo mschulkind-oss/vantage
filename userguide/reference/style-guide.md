@@ -80,8 +80,10 @@ Every question carries a `question` directive, in every state.
 
 The guide also covers the frontmatter Vantage reads a repository's plans
 from: `stage`, `next` and `depends-on` beside `status`, the rule that a stage is
-written in the frontmatter and nowhere else, how a roadmap is written, and the
-`[planning]` table in `.vantage.toml` that declares the stage words. What
+written in the frontmatter and nowhere else, how a roadmap is written, the
+`[planning]` table in `.vantage.toml` that declares the stage words, and how to
+hand you a [filtered planning page](../guides/planning.md#filtering-the-page)
+when an agent needs your rulings on one piece of work. What
 Vantage does with them, the badges on links, the planning page and
 `vantage-check index`, is in [Planning Documents](../guides/planning.md).
 
