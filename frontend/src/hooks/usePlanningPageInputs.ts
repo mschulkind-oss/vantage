@@ -44,8 +44,10 @@
  */
 import {
   startTransition,
+  useCallback,
   useEffect,
   useLayoutEffect,
+  useReducer,
   useRef,
   useState,
 } from "react";
@@ -537,13 +539,26 @@ function shownOf(inputs: PageInputs): ShownInputs {
  *
  * On the first render there is nothing to show, so the frame commits alone,
  * unless this is a return to a history entry whose set is cached.
+ *
+ * `follow` is told, as the reader makes it, the filter their newest change to
+ * the Filter box asks for, as `PlanningLayout.filter` names it, and `null`
+ * once a push or a pop has committed (`planning-filter.md` §6.4). A set that
+ * comes in for another filter than that one is not shown: the reader has
+ * typed past it, though the layout of their newer text has not committed yet.
+ * It is turned down, and offered again should they type its text again before
+ * another set is asked for.
  */
 export function usePlanningPageInputs(
   repo: string | null,
   ready: ReadyLoad | null,
   layout: PlanningLayout | null,
   typed = false,
-): { shown: ShownInputs | null; waiting: boolean; slow: boolean } {
+): {
+  shown: ShownInputs | null;
+  waiting: boolean;
+  slow: boolean;
+  follow: (filter: string | null) => void;
+} {
   const navigationType = useNavigationType();
   const { key: locationKey } = useLocation();
   const wanted =
@@ -551,11 +566,36 @@ export function usePlanningPageInputs(
       ? inputsKey(repo, ready.version, layout)
       : null;
 
-  const [shown, setShown] = useState<ShownInputs | null>(() => {
-    if (navigationType !== "POP" || wanted === null) return null;
-    const result = cache.get(wanted)?.result;
-    return result ? shownOf(result) : null;
-  });
+  // The filter the reader's newest change asks for, set as they make it,
+  // ahead of the render that lays it out; `null` while no change of theirs
+  // is ahead of the layout committed.
+  const newest = useRef<string | null>(null);
+  // The set on screen. A set is offered once its inputs are in, and taken
+  // or turned down as the render that would show it runs, never when it is
+  // offered: a keystroke can land between the two, and the text it typed
+  // past is then never shown (§6.4). It is taken only while it is the set
+  // that render asks for, and the reader has typed nothing past it. So a
+  // reducer, which React runs only in the render, with that render's
+  // `wanted`, where `useState` may run an update as it is dispatched. The
+  // newest text is read from a ref, since the keystroke that sets it renders
+  // the box alone (planning-filter.md F7): no state of the page's holds it
+  // until its layout's transition commits, which is the moment that counts.
+  const [shown, offer] = useReducer(
+    // eslint-disable-next-line react-hooks/refs -- reads the newest keystroke's filter in the render it must judge, as above
+    (prev: ShownInputs | null, inputs: PageInputs): ShownInputs | null => {
+      if (prev?.inputs.key === inputs.key) return prev;
+      if (inputs.key !== wanted) return prev;
+      const ahead = newest.current;
+      if (ahead !== null && ahead !== inputs.layout.filter) return prev;
+      return shownOf(inputs);
+    },
+    null,
+    (): ShownInputs | null => {
+      if (navigationType !== "POP" || wanted === null) return null;
+      const result = cache.get(wanted)?.result;
+      return result ? shownOf(result) : null;
+    },
+  );
 
   // `wanted` names the set; the load and the layout only say how to build it.
   const latest = useRef({ ready, layout });
@@ -597,6 +637,30 @@ export function usePlanningPageInputs(
     });
   }, [warm]);
 
+  // The set the live effect below last offered, and the way to offer it
+  // again: turned down for a text typed past, it is offered again should
+  // the reader type its text again, since nothing else asks for it anew.
+  const offered = useRef<{
+    key: string;
+    filter: string;
+    offer: () => void;
+  } | null>(null);
+  const follow = useCallback((filter: string | null) => {
+    // The filter already laid out and committed is nothing ahead of it.
+    newest.current =
+      filter !== null && filter === latest.current.layout?.filter
+        ? null
+        : filter;
+    const last = offered.current;
+    if (
+      last !== null &&
+      last.key !== shownKey.current &&
+      (filter === null || filter === last.filter)
+    ) {
+      last.offer();
+    }
+  }, []);
+
   useEffect(() => {
     const { ready, layout } = latest.current;
     if (repo === null || ready === null || layout === null || wanted === null) {
@@ -608,21 +672,36 @@ export function usePlanningPageInputs(
       visit: visitId,
     });
     let live = true;
+    let mine: typeof offered.current = null;
     void Promise.all([entry.promise, gate.current]).then(([inputs]) => {
       if (!live || inputs === null) return;
-      startTransition(() =>
-        setShown((prev) =>
-          prev?.inputs.key === inputs.key ? prev : shownOf(inputs),
-        ),
-      );
+      mine = {
+        key: inputs.key,
+        filter: inputs.layout.filter,
+        offer: () => {
+          if (live) startTransition(() => offer(inputs));
+        },
+      };
+      offered.current = mine;
+      mine.offer();
     });
     return () => {
       live = false;
+      if (mine !== null && offered.current === mine) offered.current = null;
     };
     // `visitId` only says whose typing it was; a new visit asks again only
     // with a new `wanted`.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [repo, wanted, typed]);
+  // The reader's newest filter laid out and committed: no change of theirs
+  // is ahead of the page any more, so a later navigation of the URL's own
+  // is not taken for a text typed past. After the effect above, whose last
+  // set is no longer live by now.
+  useEffect(() => {
+    if (layout !== null && newest.current === layout.filter) {
+      newest.current = null;
+    }
+  }, [layout]);
 
   const waiting = wanted !== null && shown?.inputs.key !== wanted;
   const [slowFor, setSlowFor] = useState<string | null>(null);
@@ -638,5 +717,5 @@ export function usePlanningPageInputs(
     return () => clearTimeout(timer);
   }, [waiting, wanted]);
 
-  return { shown, waiting, slow: waiting && slowFor === wanted };
+  return { shown, waiting, slow: waiting && slowFor === wanted, follow };
 }

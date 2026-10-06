@@ -1775,7 +1775,7 @@ describe("the filter notice (§6.7)", () => {
       canonical: "path:a is:open",
       requestText: "path:a is:open",
       entries: { shown: 1234, of: 5678 },
-      documents: { kept: 1, of: 1 },
+      documents: { kept: 1, of: 2 },
       openQuestions: 1234,
       blockedLeftOut: 3,
       onOtherRoadmaps: 2,
@@ -1792,7 +1792,7 @@ describe("the filter notice (§6.7)", () => {
       unknownKeys: [{ key: "stage", terms: ["stage:x"] }],
     };
     expect(checker(summary)).toEqual([
-      "Filtered by `path:a is:open`: 1,234 of 5,678 entries, in 1 of 1 path, 1,234 of them open questions.",
+      "Filtered by `path:a is:open`: 1,234 of 5,678 entries, in 1 of 2 paths, 1,234 of them open questions.",
       "`path:z` matches no path the index lists.",
       "`stage:` is not a filter key, so `stage:x` is searched as text. The keys are `path:` and `is:`.",
       "2 more questions it keeps are on another roadmap: `b/roadmap.md` (2). Rerun with --roadmap naming it.",
@@ -1837,11 +1837,17 @@ describe("the filter notice (§6.7)", () => {
     expect(checker(apply("a:1 a:2 a:3").summary)[1]).toBe(
       "`a:` is not a filter key, so `a:1`, `a:2` and `a:3` are searched as text. The keys are `path:` and `is:`.",
     );
-    // A text term that matches nothing is counted, and named nowhere.
+    // A text term that matches nothing is counted, and named nowhere; with
+    // no path term leaving a path out, the notice counts no paths, which
+    // would read as every one kept.
     expect(checker(apply("nothing-holds-this").summary)).toEqual([
-      "Filtered by `nothing-holds-this`: 0 of 20 entries, in 19 of 19 paths, none of them open questions.",
+      "Filtered by `nothing-holds-this`: 0 of 20 entries, none of them open questions.",
       "Run without --filter to see the other 20.",
     ]);
+    expect(apply("nothing-holds-this").summary.documents).toEqual({
+      kept: 19,
+      of: 19,
+    });
   });
 
   it("says when it hides nothing", () => {

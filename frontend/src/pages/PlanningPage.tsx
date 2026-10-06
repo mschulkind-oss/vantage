@@ -1020,6 +1020,14 @@ const RoadmapLine: React.FC<{
   others: number;
   /** The same, less those a pending comment answers. */
   othersLeft?: number;
+  /**
+   * The room the counts are drawn in: each roadmap's count, and `others`, in
+   * the unfiltered sections, which no filter can raise (planning-filter.md
+   * F2). So a filter applied as the reader types, which changes the counts,
+   * moves nothing on the line, as answers lowering them do not. Without it,
+   * the counts given.
+   */
+  rooms?: { roadmaps: ReadonlyMap<string, number>; others: number };
   busy: boolean;
   onPick: (path: string) => void;
   /**
@@ -1033,12 +1041,15 @@ const RoadmapLine: React.FC<{
   value,
   others,
   othersLeft = others,
+  rooms,
   busy,
   onPick,
   stacked = false,
 }) => {
   const id = React.useId();
   const chosen = roadmaps.find((roadmap) => roadmap.path === value);
+  const roomOf = (roadmap: PlanningRoadmap) =>
+    rooms?.roadmaps.get(roadmap.path) ?? roadmap.needsYouCount;
   const countOf = (roadmap: PlanningRoadmap) =>
     needYou?.get(roadmap.path) ?? roadmap.needsYouCount;
   return (
@@ -1077,7 +1088,7 @@ const RoadmapLine: React.FC<{
                 {chosen.path}{" "}
                 <span
                   className="hdr-reserve tabular-nums"
-                  data-reserve={needYouRoom(chosen.needsYouCount)}
+                  data-reserve={needYouRoom(roomOf(chosen))}
                 >
                   {needYouCount(countOf(chosen))}
                 </span>
@@ -1122,7 +1133,9 @@ const RoadmapLine: React.FC<{
         <span
           data-testid="other-roadmaps"
           className="hdr-reserve"
-          data-reserve={PLANNING_NOTICES.otherRoadmaps(others)}
+          data-reserve={PLANNING_NOTICES.otherRoadmaps(
+            Math.max(others, rooms?.others ?? 0),
+          )}
         >
           {otherRoadmapsLine(othersLeft)}
         </span>
@@ -1383,6 +1396,124 @@ export const PlanningPage: React.FC = () => {
     clearTimeout(idleRef.current);
     idleRef.current = null;
   }, []);
+  // What the idle pause's write goes on from: the URL as last committed.
+  const latestRef = useRef({ search, urlValue, key: location.key });
+  useLayoutEffect(() => {
+    latestRef.current = { search, urlValue, key: location.key };
+  });
+  // What the URL took of the reader's filter, on the idle pause, an Enter, ✕,
+  // a paste or the focus leaving the box: the filter it holds for it, and
+  // the location it was written from. Held until the page it asks for is on
+  // screen under a URL as the page writes it, when the live region speaks
+  // its notice: once per write, and never as the page opens (§7). Matched
+  // by its filter, not its query, since the in-place rewrite and an index
+  // still building may change the rest.
+  const [announceFor, setAnnounceFor] = useState<{
+    filter: string;
+    from: string;
+  } | null>(null);
+  const [announcement, setAnnouncement] = useState("");
+  // The filter a reader's Enter, ✕ or paste is bringing in, as the layout
+  // names it, until its page is on screen or the reader types past it: the
+  // filter line's spinner is drawn in the commit of the reader's own change,
+  // and the browser shows it once `spinnerMs` have passed. The router
+  // commits the URL, and the page its new inputs, in transitions, and an
+  // update a timer makes while one renders commits only with it, so a
+  // spinner a timer asked for showed only once it was no longer needed
+  // (planning-filter.md §6.4).
+  const [applying, setApplying] = useState<string | null>(null);
+  // The notice of what the idle pause last wrote, still to be said, and the
+  // timer saying it (§7). The pause is short, so a slow typist's every key
+  // is followed by a write; the region speaks only once the box has been
+  // still for `filterSpeechMs`, so never per keystroke, and at once when
+  // the focus leaves the box or a paste writes.
+  const speechRef = useRef<{ filter: string; from: string } | null>(null);
+  const speechTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const holdSpeech = useCallback(() => {
+    if (speechTimerRef.current === null) return;
+    clearTimeout(speechTimerRef.current);
+    speechTimerRef.current = null;
+  }, []);
+  const dropSpeech = useCallback(() => {
+    holdSpeech();
+    speechRef.current = null;
+  }, [holdSpeech]);
+  const speak = useCallback(() => {
+    const owed = speechRef.current;
+    dropSpeech();
+    if (owed === null) return;
+    setAnnounceFor(owed);
+    // Emptied first, so that a notice the same as the last one said is
+    // still a change, and is said.
+    setAnnouncement("");
+  }, [dropSpeech]);
+  // A push or a pop wins over the box (§6.4): it drops a write the idle
+  // pause still owes, which would otherwise write the old text onto the
+  // entry the reader went to, and the text it was owed for. Back and
+  // Forward are heard as they happen, before the router renders them; a
+  // push the page sees when it commits, and nothing the reader does in the
+  // box makes one.
+  useEffect(() => {
+    const onPop = () => {
+      cancelIdle();
+      dropSpeech();
+      typedRef.current = null;
+    };
+    window.addEventListener("popstate", onPop);
+    return () => {
+      window.removeEventListener("popstate", onPop);
+      cancelIdle();
+      dropSpeech();
+    };
+  }, [cancelIdle, dropSpeech]);
+  useLayoutEffect(() => {
+    if (navigationType === "REPLACE") return;
+    cancelIdle();
+    dropSpeech();
+    typedRef.current = null;
+  }, [location.key, navigationType, cancelIdle, dropSpeech]);
+  // The URL takes the filter typed (§6.4): one replace navigation, as Enter
+  // writes it, made on the idle pause, on a paste and when the focus leaves
+  // the box. Nothing is written when the URL already holds it. Its notice
+  // is owed until `speak`.
+  const writeTyped = useCallback(() => {
+    cancelIdle();
+    const text = typedRef.current;
+    const { search, urlValue, key } = latestRef.current;
+    if (text === null || text === urlValue) return;
+    const next = withFilter(search, text);
+    const query = planningQuery(next);
+    scrollToRef.current = null;
+    jumpRef.current = null;
+    speechRef.current = { filter: readFilterRequest(next), from: key };
+    startTransition(() => {
+      navigate({ search: query === "" ? "" : `?${query}` }, { replace: true });
+    });
+  }, [cancelIdle, navigate]);
+  // The idle pause: the write, and its notice once the box has been still
+  // for `filterSpeechMs` in all, counted from the same keystroke.
+  const writeOnPause = useCallback(() => {
+    writeTyped();
+    holdSpeech();
+    if (speechRef.current === null) return;
+    speechTimerRef.current = setTimeout(
+      speak,
+      Math.max(0, planningLimits.filterSpeechMs - planningLimits.filterIdleMs),
+    );
+  }, [writeTyped, holdSpeech, speak]);
+  // A write owed made now, and its notice said: a paste, and a press that
+  // lands before a keystroke's render (`typedPast`).
+  const writeNow = useCallback(() => {
+    writeTyped();
+    speak();
+  }, [writeTyped, speak]);
+  // The focus left the box: a write still owed is made now, so an address
+  // copied right after typing holds the filter on screen, and what the URL
+  // took is said (§7).
+  const flushFilter = useCallback(() => {
+    if (idleRef.current !== null) writeTyped();
+    speak();
+  }, [writeTyped, speak]);
   // The page's own replace navigations, a flip, a pick and an outline jump,
   // write the query as Enter does, `filter` in a planning link's encoding,
   // so the address bar shows what an agent's link shows and a copy of it
@@ -1397,6 +1528,18 @@ export const PlanningPage: React.FC = () => {
     },
     [navigate, cancelIdle],
   );
+  // The text typed last, when the render a handler belongs to has not yet
+  // applied it: a press that lands while a keystroke's layout renders. The
+  // handler then goes on from that text, not from the render's, so the URL
+  // never takes an older filter than the one the page goes on to show
+  // (planning-filter.md §6.4).
+  const typedPast = useCallback(
+    (): string | null =>
+      typedRef.current !== null && typedRef.current !== appliedFilter
+        ? typedRef.current
+        : null,
+    [appliedFilter],
+  );
   // Picking a roadmap is a flip (§6.8): the URL's roadmap replaced with no
   // history entry, Needs you back on its first page, and the pick
   // remembered for the repository.
@@ -1406,9 +1549,17 @@ export const PlanningPage: React.FC = () => {
       setRemembered({ repo: pageRepo, path });
       scrollToRef.current = null;
       jumpRef.current = null;
-      replaceSearch(withRoadmap(appliedSearch, path));
+      const past = typedPast();
+      replaceSearch(
+        withRoadmap(
+          past === null
+            ? appliedSearch
+            : withFilter(latestRef.current.search, past),
+          path,
+        ),
+      );
     },
-    [pageRepo, replaceSearch, appliedSearch],
+    [pageRepo, replaceSearch, appliedSearch, typedPast],
   );
 
   // The inputs of the pages shown (§6.5). The sections render only from a
@@ -1425,6 +1576,14 @@ export const PlanningPage: React.FC = () => {
     inputs.shown !== null && ready !== null && inputs.shown.inputs.repo === repo
       ? inputs.shown
       : null;
+  // Told the filter each change of the reader's asks for, as they make it,
+  // so a set laid out for a text they have typed past is never shown
+  // (planning-filter.md §6.4); and, once a push or a pop has committed, that
+  // the URL's filter is the one that counts again.
+  const followFilter = inputs.follow;
+  useEffect(() => {
+    if (navigationType !== "REPLACE") followFilter(null);
+  }, [location.key, navigationType, followFilter]);
   // The layout the URL asks for is a flip of the one on screen while both
   // are laid out under one filter. Another filter's is no flip: the old page
   // stays up whole, its pagers included, until the new page's inputs are in,
@@ -1441,13 +1600,19 @@ export const PlanningPage: React.FC = () => {
   const flip = useCallback<OnFlip>(
     (id, page, place) => {
       if (!askedIsFlip) return;
+      // A keystroke this render has not applied: its text is the filter
+      // now, and this pager's page is the old filter's.
+      if (typedPast() !== null) {
+        writeNow();
+        return;
+      }
       // The bottom pager brings its section's heading back into view, and
       // the focus with it; the top one leaves both alone.
       scrollToRef.current = place === "bottom" ? id : null;
       jumpRef.current = null;
       replaceSearch(withPage(appliedSearch, id, page));
     },
-    [replaceSearch, appliedSearch, askedIsFlip],
+    [replaceSearch, appliedSearch, askedIsFlip, typedPast, writeNow],
   );
   // A pager the pointer or the focus reaches asks for the next page ahead.
   const prefetch = useCallback<OnPrefetch>(
@@ -1748,6 +1913,21 @@ export const PlanningPage: React.FC = () => {
   // for, as soon as it is asked for (§6.8).
   const frameRoutes =
     frameSections === null ? [] : routingRoadmaps(frameSections.roadmaps);
+  // The room the roadmap line draws its counts in: the unfiltered ones.
+  const frameRooms = useMemo(
+    () =>
+      frameUnfiltered === null
+        ? undefined
+        : {
+            roadmaps: new Map(
+              frameUnfiltered.roadmaps.map(
+                (r) => [r.path, r.needsYouCount] as const,
+              ),
+            ),
+            others: frameUnfiltered.onOtherRoadmaps.length,
+          },
+    [frameUnfiltered],
+  );
   const pickerValue =
     chosenRoadmap !== null && frameRoutes.some((r) => r.path === chosenRoadmap)
       ? chosenRoadmap
@@ -1993,8 +2173,13 @@ export const PlanningPage: React.FC = () => {
   const jumpToDocument = useCallback(
     (id: SectionId, document: OutlineDocument) => {
       // The outline is the old filter's while another's page is on its way,
-      // and goes nowhere until it is in, as the pagers do (above).
+      // and goes nowhere until it is in, as the pagers do (above); so is it
+      // when a keystroke this render has not applied is.
       if (!askedIsFlip) return;
+      if (typedPast() !== null) {
+        writeNow();
+        return;
+      }
       const target = outlineTargetId(id, document);
       const onScreen = shownLayout?.sections.find((s) => s.id === id)?.page;
       const asked = layout?.sections.find((s) => s.id === id)?.page;
@@ -2009,7 +2194,15 @@ export const PlanningPage: React.FC = () => {
         jumpRef.current = { section: id, page: document.page, target };
       }
     },
-    [shownLayout, layout, replaceSearch, appliedSearch, askedIsFlip],
+    [
+      shownLayout,
+      layout,
+      replaceSearch,
+      appliedSearch,
+      askedIsFlip,
+      typedPast,
+      writeNow,
+    ],
   );
   // Its link, for a modified click and a new tab: the page it flips to, and
   // the entry it goes to as the fragment.
@@ -2100,78 +2293,6 @@ export const PlanningPage: React.FC = () => {
   const leaveFilter = useCallback(() => {
     contentRef.current?.focus({ preventScroll: true });
   }, []);
-  // What the URL took of the reader's filter, on the idle pause, an Enter, ✕,
-  // a paste or the focus leaving the box: the filter it holds for it, and
-  // the location it was written from. Held until the page it asks for is on
-  // screen under a URL as the page writes it, when the live region speaks
-  // its notice: once per write, so after a pause in typing and never per
-  // keystroke, and never as the page opens (§7). Matched by its filter, not
-  // its query, since the in-place rewrite and an index still building may
-  // change the rest.
-  const [announceFor, setAnnounceFor] = useState<{
-    filter: string;
-    from: string;
-  } | null>(null);
-  const [announcement, setAnnouncement] = useState("");
-  // The filter a reader's Enter, ✕ or paste is bringing in, as the layout
-  // names it, until its page is on screen: the filter line's spinner is
-  // drawn in the commit of the reader's own change, and the browser shows
-  // it once `spinnerMs` have passed. The router commits the URL, and the
-  // page its new inputs, in transitions, and an update a timer makes while
-  // one renders commits only with it, so a spinner a timer asked for showed
-  // only once it was no longer needed (planning-filter.md §6.4).
-  const [applying, setApplying] = useState<string | null>(null);
-  // What the idle pause's write goes on from: the URL as last committed.
-  const latestRef = useRef({ search, urlValue, key: location.key });
-  useLayoutEffect(() => {
-    latestRef.current = { search, urlValue, key: location.key };
-  });
-  // A push or a pop wins over the box (§6.4): it drops a write the idle
-  // pause still owes, which would otherwise write the old text onto the
-  // entry the reader went to, and the text it was owed for. Back and
-  // Forward are heard as they happen, before the router renders them; a
-  // push the page sees when it commits, and nothing the reader does in the
-  // box makes one.
-  useEffect(() => {
-    const onPop = () => {
-      cancelIdle();
-      typedRef.current = null;
-    };
-    window.addEventListener("popstate", onPop);
-    return () => {
-      window.removeEventListener("popstate", onPop);
-      cancelIdle();
-    };
-  }, [cancelIdle]);
-  useLayoutEffect(() => {
-    if (navigationType === "REPLACE") return;
-    cancelIdle();
-    typedRef.current = null;
-  }, [location.key, navigationType, cancelIdle]);
-  // The URL takes the filter typed (§6.4): one replace navigation, as Enter
-  // writes it, made on the idle pause, on a paste and when the focus leaves
-  // the box. Nothing is written when the URL already holds it.
-  const writeTyped = useCallback(() => {
-    cancelIdle();
-    const text = typedRef.current;
-    const { search, urlValue, key } = latestRef.current;
-    if (text === null || text === urlValue) return;
-    const next = withFilter(search, text);
-    const query = planningQuery(next);
-    scrollToRef.current = null;
-    jumpRef.current = null;
-    // With the URL, so the region's words wait for the page it asks for.
-    startTransition(() => {
-      setAnnounceFor({ filter: readFilterRequest(next), from: key });
-      setAnnouncement("");
-      navigate({ search: query === "" ? "" : `?${query}` }, { replace: true });
-    });
-  }, [cancelIdle, navigate]);
-  // The focus left the box: a write still owed is made now, so an address
-  // copied right after typing holds the filter on screen (§7).
-  const flushFilter = useCallback(() => {
-    if (idleRef.current !== null) writeTyped();
-  }, [writeTyped]);
   // The visit's second review request goes once the reader changes the
   // filter, if the sections have not painted yet, and before the typed
   // text's inputs ask for anything: they then wait for its answer rather
@@ -2186,9 +2307,15 @@ export const PlanningPage: React.FC = () => {
       const parsed = parsePlanningFilter(text);
       if (parsed.kind !== "not-understood") {
         const canonical = parsed.kind === "understood" ? parsed.canonical : "";
+        followFilter(canonical);
         if (canonical !== (typedRef.current ?? latestRef.current.urlValue)) {
           typedRef.current = canonical;
-          startTransition(() => setLead(canonical));
+          // Typed past an Enter, ✕ or paste whose page is still on its way:
+          // the spinner waits for the typed text's page instead.
+          startTransition(() => {
+            setLead(canonical);
+            setApplying(null);
+          });
         }
         if (
           !restAskedRef.current &&
@@ -2201,12 +2328,23 @@ export const PlanningPage: React.FC = () => {
         }
       }
       cancelIdle();
-      if (now) writeTyped();
+      holdSpeech();
+      if (now) writeNow();
       else {
-        idleRef.current = setTimeout(writeTyped, planningLimits.filterIdleMs);
+        idleRef.current = setTimeout(writeOnPause, planningLimits.filterIdleMs);
       }
     },
-    [cancelIdle, writeTyped, onThisRepo, repo, listedPaths, visitStart],
+    [
+      cancelIdle,
+      holdSpeech,
+      writeNow,
+      writeOnPause,
+      onThisRepo,
+      repo,
+      listedPaths,
+      visitStart,
+      followFilter,
+    ],
   );
   // Enter, ✕ or a pasted link (§6.4): one replace navigation, written with
   // the link encoding for `filter`, every section back on its first page,
@@ -2217,6 +2355,7 @@ export const PlanningPage: React.FC = () => {
   const applyFilter = useCallback(
     (text: string, roadmap: string | null) => {
       cancelIdle();
+      dropSpeech();
       typedRef.current = null;
       let next = withFilter(search, text, roadmap);
       // A pasted link's roadmap, written as the in-place rewrite would leave
@@ -2236,6 +2375,9 @@ export const PlanningPage: React.FC = () => {
             : null;
         next = withFilter(search, text, chosen);
       }
+      const parsed = parsePlanningFilter(readFilterRequest(next));
+      const filter = parsed.kind === "understood" ? parsed.canonical : "";
+      followFilter(filter);
       const sameRoadmap =
         readRoadmapRequest(next) === readRoadmapRequest(search);
       if (readFilterRequest(next) === filterValue(filterText) && sameRoadmap) {
@@ -2243,8 +2385,7 @@ export const PlanningPage: React.FC = () => {
         return;
       }
       const query = planningQuery(next);
-      const parsed = parsePlanningFilter(readFilterRequest(next));
-      setApplying(parsed.kind === "understood" ? parsed.canonical : "");
+      setApplying(filter);
       setAnnounceFor({ filter: readFilterRequest(next), from: location.key });
       // Emptied first, so that a notice the same as the last one said is
       // still a change, and is said.
@@ -2269,6 +2410,8 @@ export const PlanningPage: React.FC = () => {
       rememberedRoadmap,
       location.key,
       cancelIdle,
+      dropSpeech,
+      followFilter,
     ],
   );
   // The filter notice's lines, for the frame: what the page on screen shows.
@@ -2361,6 +2504,7 @@ export const PlanningPage: React.FC = () => {
             value={pickerValue}
             others={frameSections.onOtherRoadmaps.length}
             othersLeft={frameNeedYou?.others}
+            rooms={frameRooms}
             busy={roadmapSwapSlow}
             onPick={pickRoadmap}
             stacked={stacked}
@@ -2554,6 +2698,7 @@ export const PlanningPage: React.FC = () => {
                 <PlanningFilterLine
                   urlText={filterText}
                   appliedText={boxLeads ? appliedFilter : filterText}
+                  leads={boxLeads}
                   invalid={!boxLeads && urlFilter.kind === "not-understood"}
                   busyAfter={
                     filterSwapSlow

@@ -26,8 +26,10 @@
  *   ✕ or paste, which set the text they navigate to first.
  * - **It never moves anything.** Its height is fixed, its text is complete
  *   at first paint, and its ✕, hint and spinner each have a slot that is
- *   always there. At narrow widths the hint gives way first, then the
- *   visible label, which stays the accessible name; the row never wraps.
+ *   always there. At narrow widths the hint's words give way first, to an
+ *   icon in a slot of its own, then the visible label, which stays the
+ *   accessible name; the row never wraps. The input's description names the
+ *   hint while it shows, at every width.
  * - **Esc never clears** (§7): it puts back the applied filter's text over a
  *   text that is not applied, and otherwise hands the focus back to the pane.
  *
@@ -36,7 +38,7 @@
  */
 import React, { useId, useLayoutEffect, useRef, useState } from "react";
 import { useLocation, useNavigationType } from "react-router-dom";
-import { Loader2, X } from "lucide-react";
+import { AlertCircle, Loader2, X } from "lucide-react";
 import {
   parsePlanningFilter,
   readPastedPlanningLink,
@@ -67,6 +69,12 @@ export const PlanningFilterLine: React.FC<{
    * not taken it, else the URL's text.
    */
   appliedText: string;
+  /**
+   * The page applies the reader's newest understood text, which the URL has
+   * not taken: no text the URL holds is the applied one then, so one the
+   * language cannot read is not applied even where the URL holds it.
+   */
+  leads?: boolean;
   /**
    * A not-understood filter is applied, from the URL or an Enter:
    * `aria-invalid`, and an amber ring. Never for one only typed (§7).
@@ -108,6 +116,7 @@ export const PlanningFilterLine: React.FC<{
 }> = ({
   urlText,
   appliedText,
+  leads = false,
   invalid,
   busyAfter,
   onType,
@@ -129,9 +138,10 @@ export const PlanningFilterLine: React.FC<{
     textRef.current = text;
   });
   // What the box's own Enter, ✕ or paste just applied, as the URL will hold
-  // it, until the next location: the router commits a location in a
-  // transition, and until it does the URL still holds the old text, which
-  // the box neither calls not applied nor puts back on Esc (§7).
+  // it, until the next location or the reader's next change: the router
+  // commits a location in a transition, and until it does the URL still
+  // holds the old text, which the box neither calls not applied nor puts
+  // back on Esc (§7).
   const [applied, setApplied] = useState<string | null>(null);
 
   // Reset from the URL on every navigation the box did not cause, before it
@@ -172,10 +182,18 @@ export const PlanningFilterLine: React.FC<{
   const pasted = useRef(false);
 
   // Not applied: a text the language cannot read, which the reader has not
-  // entered. Every other text the box holds is applied, or on its way.
-  const entered = applied ?? urlText;
+  // entered. Every other text the box holds is applied, or on its way. While
+  // the page applies a text typed since, what the URL holds is not entered.
+  const entered = applied ?? (leads ? null : urlText);
   const unapplied =
     text !== entered && parsePlanningFilter(text).kind === "not-understood";
+  // The hint's words, which describe the box while it shows: at a narrow
+  // width only an icon is drawn, and the words are for assistive technology
+  // alone (§7).
+  const hintId = useId();
+  const described =
+    [describedBy, unapplied ? hintId : undefined].filter(Boolean).join(" ") ||
+    undefined;
   return (
     // In print the input row is hidden, and with no filter the line with
     // it, margin and all: a printout of the page changes only to say it is
@@ -218,10 +236,11 @@ export const PlanningFilterLine: React.FC<{
             autoCapitalize="off"
             autoCorrect="off"
             aria-invalid={invalid || undefined}
-            aria-describedby={describedBy}
+            aria-describedby={described}
             onChange={(e) => {
               const value = e.target.value;
               setText(value);
+              setApplied(null);
               const now = pasted.current;
               pasted.current = false;
               const native = e.nativeEvent as Partial<InputEvent>;
@@ -284,13 +303,34 @@ export const PlanningFilterLine: React.FC<{
           </span>
         </div>
         {/* The hint's slot: as wide as its one text, and the first thing to
-            give way at a narrow width. */}
+            give way at a narrow width, to an icon in a slot of its own, so
+            the page's not following the box is never left unsaid. The words
+            stay for assistive technology, which the input's description
+            names while they show. */}
         <span
           data-testid="planning-filter-hint"
           className="hidden w-44 shrink-0 text-xs whitespace-nowrap text-slate-500 @lg:block dark:text-slate-400"
         >
           {unapplied && FILTER_HINT}
         </span>
+        <span
+          data-testid="planning-filter-hint-icon"
+          title={unapplied ? FILTER_HINT : undefined}
+          className="flex size-3.5 shrink-0 items-center justify-center @lg:hidden"
+        >
+          {unapplied && (
+            <AlertCircle
+              size={14}
+              className="text-amber-600 dark:text-amber-400"
+              aria-hidden="true"
+            />
+          )}
+        </span>
+        {unapplied && (
+          <span id={hintId} className="sr-only">
+            {FILTER_HINT}
+          </span>
+        )}
         <span
           data-testid="planning-filter-spinner-slot"
           className="flex size-3.5 shrink-0 items-center justify-center"
