@@ -1,6 +1,6 @@
 /**
  * The planning filter (`docs/design/planning-filter.md`): one line of text,
- * such as `path:docs/design/x.md is:open`, deciding which entries of the
+ * such as `generator path:docs/design is:open`, deciding which entries of the
  * planning page's sections are shown.
  *
  * The one reader of that text (F1). The page's Filter box and its `filter=`
@@ -8,28 +8,35 @@
  * here, and print a link to the filtered page with the function here, so a
  * link an agent prints is a filter the human could have typed.
  *
- * What it promises, and what a later release may never change (§10.3):
+ * The language is a search box's (§5): words and `"quoted phrases"` search
+ * what the index holds about each entry, as case-insensitive substrings;
+ * `path:` and `is:open` narrow; a leading `-` excludes. What it promises:
  *
- * - **All or nothing (F3).** A text holding any term or form this release
- *   gives no meaning is not understood, and is applied not at all. Every such
- *   form stays free for a later release to define, which can then only show
- *   more than this one does, never less.
+ * - **Malformed text applies nothing (F3).** A text holding a term this
+ *   module cannot read (§5.5) is not understood, and is applied not at all,
+ *   since dropping the term could hide entries the reader asked for.
  * - **Only remove (F2).** A filter takes in sections derived from the whole
  *   index and returns them with entries removed, in the same order. It never
  *   reaches into the index, so Blocked and routing still see what it hides.
- * - **The canonical text (§5.6)** of every filter this release understands,
- *   and what each one keeps, are frozen: `filterForms.json` holds them, and a
- *   test compares it with its copy at the previous release's tag.
+ * - **One meaning within a release (P7).** The page and the checker both read
+ *   it here, and both suites hold it to `filterForms.json`. Nothing freezes
+ *   it across releases (§10.3, OQ-PF7): a later release may read a text
+ *   differently.
  *
  * Plain data only crosses this boundary (`planning/index.ts`): a parsed filter
- * holds no compiled matcher. Its matchers are compiled once per filter object
- * and kept beside it in a `WeakMap`.
+ * holds no compiled matcher. Its matchers are compiled once per filter object,
+ * and the searched fields are lowercased once per question, document and
+ * entry object the index holds, each kept beside its object in a `WeakMap`.
  */
 
 import { dependsOnLabel } from "./guide.js";
-import type { PlanningIndex } from "./model.js";
+import { findDocument, type PlanningIndex } from "./model.js";
 import { compileIgnorePatterns } from "./patterns.js";
-import type { QuestionState } from "./scan.js";
+import type {
+  PlanningDocument,
+  PlanningQuestion,
+  QuestionState,
+} from "./scan.js";
 import {
   isLive,
   questionFor,
@@ -52,15 +59,53 @@ export const PLANNING_ROADMAP_PARAM = "roadmap";
 /** The planning page's route, before any repository segment. */
 export const PLANNING_PAGE_PATH = "/.vantage/planning";
 
-/** One term of an understood filter. */
+/**
+ * The keys a qualifier may have (§5.2): a term is a qualifier exactly when
+ * the part before its first `:` is one of them.
+ */
+export const PLANNING_FILTER_KEYS: readonly string[] = Object.freeze([
+  "path",
+  "is",
+]);
+
+/**
+ * One term of an understood filter. In each, `text` is the canonical term,
+ * its leading `-` included, and `exclude` says it has one: an exclusion drops
+ * every entry the same term without the `-` would keep (§5.3).
+ */
 export type PlanningFilterTerm =
   /**
-   * `text` is the canonical term (`path:docs/x.md`, `path:"docs/my notes.md"`);
-   * `value` is unquoted, unescaped, and has §5.6 rule 2 applied. `quoted` says
-   * the canonical term is quoted, so its value is compared as a literal.
+   * `value` is unquoted, unescaped, and has §5.6 rule 2 applied. `quoted`
+   * says the canonical term is quoted, so its value is compared as a literal.
    */
-  | { key: "path"; text: string; value: string; quoted: boolean }
-  | { key: "is"; text: "is:open"; value: "open" };
+  | {
+      key: "path";
+      text: string;
+      value: string;
+      quoted: boolean;
+      exclude: boolean;
+    }
+  | {
+      key: "is";
+      text: "is:open" | "-is:open";
+      value: "open";
+      exclude: boolean;
+    }
+  /**
+   * A word or a quoted phrase (§5.3). `value` is what it searches for,
+   * unquoted and unescaped, in its own case; `quoted` says the canonical term
+   * is quoted. `unknownKey` is the word before its first `:` when that word
+   * draws the notice's *Not a key* line, as `stage` in `stage:ready`, and
+   * `null` otherwise.
+   */
+  | {
+      key: "text";
+      text: string;
+      value: string;
+      quoted: boolean;
+      exclude: boolean;
+      unknownKey: string | null;
+    };
 
 /** Why a filter is not understood where there is no term to name (§6.7). */
 export type PlanningFilterReason =
@@ -74,12 +119,17 @@ export type PlanningFilter =
       /** The terms' canonical texts, joined by one space, repeats dropped. */
       canonical: string;
       terms: readonly PlanningFilterTerm[];
+      /**
+       * Each text term's `unknownKey`, once, in the order written: the words
+       * the notice says are not filter keys.
+       */
+      unknownKeys: readonly string[];
     }
   /** `text` as written; exactly one of `term` and `reason` is non-null. */
   | {
       kind: "not-understood";
       text: string;
-      /** The first term this release cannot read, as written. */
+      /** The first term it cannot read, as written. */
       term: string | null;
       reason: PlanningFilterReason | null;
     };
@@ -100,7 +150,8 @@ export type NotUnderstoodPlanningFilter = Extract<
 /**
  * White space, as the grammar has it (§5.2): space, tab, CR and LF only.
  * JavaScript's `\s` also matches U+00A0 and U+2000 to U+200A, which here are
- * characters a term holds, and so make it not understood.
+ * characters a term holds: a word may hold one, and a bare `path:` pattern
+ * may not.
  */
 const isSpace = (c: string): boolean =>
   c === " " || c === "\t" || c === "\r" || c === "\n";
@@ -110,8 +161,8 @@ const PATTERN_CHAR = /^[A-Za-z0-9._\-/*]$/;
 
 /**
  * The excluded code points (§5.5): controls and invisible format characters,
- * which a quoted value may not hold. A fixed table, never the engine's
- * Unicode data, so a browser and the checker agree on every one.
+ * which no term may hold. A fixed table, never the engine's Unicode data, so
+ * a browser and the checker agree on every one.
  */
 const EXCLUDED: readonly (readonly [number, number])[] = [
   [0x0000, 0x001f],
@@ -134,9 +185,9 @@ const isLoneSurrogate = (c: string): boolean =>
   c.length === 1 && c >= "\ud800" && c <= "\udfff";
 
 /**
- * Whether a quoted value may not hold `c`: an excluded code point, or a lone
- * surrogate, which the table does not list and which is not understood for
- * the same reason a control is not.
+ * Whether no term may hold `c`: an excluded code point, or a lone surrogate,
+ * which the table does not list and which is not understood for the same
+ * reason a control is not.
  */
 function isExcluded(c: string): boolean {
   if (isLoneSurrogate(c)) return true;
@@ -158,9 +209,10 @@ interface RawTerm {
 
 /**
  * The text's first `limit` code points split at white space outside double
- * quotes (§5.2), and whether the text went on past them (`cut`). Inside
- * quotes a `\` takes the character after it with it, so `\"` does not close
- * them, and an unclosed quote runs to the end of the text.
+ * quotes (§5.2), and whether the text went on past them (`cut`). A `"` opens
+ * a quote anywhere in a term. Inside quotes a `\` takes the character after
+ * it with it, so `\"` does not close them, and an unclosed quote runs to the
+ * end of the text.
  *
  * Nothing past the limit is read but the one code point after it, which says
  * whether the term the limit falls in ends there. A term the limit cuts off is
@@ -229,7 +281,7 @@ function canonicalValue(value: string): string {
 }
 
 /**
- * Whether a bare pattern, rule 2's first half applied, is one this release
+ * Whether a bare pattern, rule 2's first half applied, is one the language
  * reads (§5.5): pattern characters only, the shared segment rules, a
  * character other than `/` and `*`, and every `**` a whole segment that is
  * neither last, nor before a trailing `/`, nor beside another.
@@ -247,8 +299,8 @@ function bareUnderstood(value: string): boolean {
 }
 
 /**
- * A quoted value's text, unescaped, or `null` when it is not one this
- * release reads: it must close on its last character, hold at least one
+ * A quoted value's text, unescaped, or `null` when it is not one the
+ * language reads: it must close on its last character, hold at least one
  * character, and escape only `"` and `\`.
  */
 function unquote(value: string): string | null {
@@ -271,18 +323,19 @@ function unquote(value: string): string | null {
   return null;
 }
 
-/** `"` and `\` escaped, and nothing else (§5.6 rule 4). */
+/** `"` and `\` escaped, and nothing else (§5.6 rule 6). */
 const escapeQuoted = (value: string): string =>
   value.replace(/[\\"]/g, (c) => `\\${c}`);
 
-/** One `path:` value read, or `null` when it is not understood. */
-function readPathValue(
-  raw: string,
-): Extract<PlanningFilterTerm, { key: "path" }> | null {
+type PathTerm = Extract<PlanningFilterTerm, { key: "path" }>;
+type TextTerm = Extract<PlanningFilterTerm, { key: "text" }>;
+
+/** One `path:` value read, without its `-`, or `null` when it is not understood. */
+function readPathValue(raw: string): Omit<PathTerm, "exclude"> | null {
   if (raw === "") return null;
   if (raw.startsWith('"')) {
     const literal = unquote(raw);
-    if (literal === null || [...literal].some(isExcluded)) return null;
+    if (literal === null) return null;
     const rooted = rootedDot(literal);
     if (rooted === "/" || !segmentsUnderstood(rooted)) return null;
     const value = canonicalValue(rooted);
@@ -306,22 +359,86 @@ function readPathValue(
   return { key: "path", text: `path:${value}`, value, quoted: false };
 }
 
-/** One term read, or `null` when it is not understood (§5.5). */
+/**
+ * The word before a bare text term's first `:`, when it draws the notice's
+ * *Not a key* line (§5.3): one or more ASCII lowercase letters, not a key,
+ * and no `/` straight after the `:`. So `stage:ready` and `title:` draw one,
+ * and `http://x`, `Note:` and `Path:x` do not.
+ */
+function unknownKeyOf(word: string): string | null {
+  const key = /^([a-z]+):(?!\/)/.exec(word)?.[1];
+  return key === undefined || PLANNING_FILTER_KEYS.includes(key) ? null : key;
+}
+
+/**
+ * Whether a quoted phrase, written bare, reads as the same text term and
+ * draws no hint (§5.6 rule 4): it holds no white space, no `"` and no `:`,
+ * and does not start with `-`.
+ */
+const readsBare = (phrase: string): boolean =>
+  !phrase.startsWith("-") &&
+  ![...phrase].some((c) => isSpace(c) || c === '"' || c === ":");
+
+/** One text term read, without its `-`, or `null` when it is not understood. */
+function readText(raw: string): Omit<TextTerm, "exclude"> | null {
+  if (raw.startsWith('"')) {
+    const phrase = unquote(raw);
+    if (phrase === null) return null;
+    const quoted = !readsBare(phrase);
+    return {
+      key: "text",
+      text: quoted ? `"${escapeQuoted(phrase)}"` : phrase,
+      value: phrase,
+      quoted,
+      unknownKey: null,
+    };
+  }
+  // A quote may only wrap a whole value (§5.5): `a"b"`, `stage:"ready"`.
+  if (raw.includes('"')) return null;
+  return {
+    key: "text",
+    text: raw,
+    value: raw,
+    quoted: false,
+    unknownKey: unknownKeyOf(raw),
+  };
+}
+
+/** One term read, or `null` when it is not understood (§5.2, §5.5). */
 function readTerm(raw: string): PlanningFilterTerm | null {
-  const colon = raw.indexOf(":");
-  if (colon === -1) return null;
-  const key = raw.slice(0, colon);
-  const value = raw.slice(colon + 1);
-  switch (key) {
-    case "path":
-      return readPathValue(value);
+  if ([...raw].some(isExcluded)) return null;
+  // One leading `-` is the exclusion's, and what follows is read as a term on
+  // its own, so `--x` excludes the text `-x`; a lone `-` excludes nothing.
+  const exclude = raw.startsWith("-");
+  const body = exclude ? raw.slice(1) : raw;
+  if (body === "") return null;
+  const dash = exclude ? "-" : "";
+  const colon = body.indexOf(":");
+  // The colon rule: a qualifier exactly when the part before the first `:`
+  // is a key, and then it must read as one.
+  switch (colon === -1 ? null : body.slice(0, colon)) {
+    case "path": {
+      const path = readPathValue(body.slice(colon + 1));
+      return path === null
+        ? null
+        : { ...path, text: `${dash}${path.text}`, exclude };
+    }
     case "is":
-      // `open` is the only value this release reads (OQ-PF1), and only bare.
-      return value === "open"
-        ? { key: "is", text: "is:open", value: "open" }
+      // `open` is the only value the language reads (OQ-PF1), and only bare.
+      return body.slice(colon + 1) === "open"
+        ? {
+            key: "is",
+            text: exclude ? "-is:open" : "is:open",
+            value: "open",
+            exclude,
+          }
         : null;
-    default:
-      return null;
+    default: {
+      const text = readText(body);
+      return text === null
+        ? null
+        : { ...text, text: `${dash}${text.text}`, exclude };
+    }
   }
 }
 
@@ -330,10 +447,10 @@ function readTerm(raw: string): PlanningFilterTerm | null {
  * joined with one space (§5.1). `limits` is for tests, which configure the
  * limits down rather than build long inputs.
  *
- * A not-understood filter names the first term this release cannot read
- * (§10.2), and gives a reason only where there is no term to name (§6.7):
- * past the code-point limit, then past the term limit (repeats counted), then
- * an unclosed quote. So no more than `limits.codePoints` code points are ever
+ * A not-understood filter names the first term it cannot read (§10.2), and
+ * gives a reason only where there is no term to name (§6.7): past the
+ * code-point limit, then past the term limit (repeats counted), then an
+ * unclosed quote. So no more than `limits.codePoints` code points are ever
  * split, and only the terms that end within them can be named.
  */
 export function parsePlanningFilter(
@@ -364,10 +481,18 @@ export function parsePlanningFilter(
   if (cut) return notUnderstood(null, "too-long");
   if (raw.length > limits.terms) return notUnderstood(null, "too-many-terms");
   if (unclosed) return notUnderstood(null, "unclosed-quote");
+  const unknownKeys: string[] = [];
+  for (const term of terms) {
+    if (term.key !== "text" || term.unknownKey === null) continue;
+    if (!unknownKeys.includes(term.unknownKey)) {
+      unknownKeys.push(term.unknownKey);
+    }
+  }
   return {
     kind: "understood",
     canonical: terms.map((term) => term.text).join(" "),
     terms,
+    unknownKeys,
   };
 }
 
@@ -413,11 +538,24 @@ function literalMatcher(value: string): (path: string) => boolean {
 
 /** A filter's terms, compiled. */
 interface Compiled {
-  /** One matcher per `path:` term, in order; empty when there are none. */
-  paths: { text: string; matches: (path: string) => boolean }[];
+  /** One matcher per `path:` term, with or without its `-`, in order. */
+  paths: {
+    text: string;
+    exclude: boolean;
+    matches: (path: string) => boolean;
+  }[];
   /** The states its `is:` terms keep; `null` when it has none. */
   states: ReadonlySet<QuestionState> | null;
-  /** Whether a path is a kept document: one `path:` term matches it, or there are none. */
+  /** The states its `-is:` terms drop; empty when it has none. */
+  dropsStates: ReadonlySet<QuestionState>;
+  /** Its text terms' values, lowercased: every one must match. */
+  needles: readonly string[];
+  /** Its `-` text terms' values, lowercased: none may match. */
+  excludedNeedles: readonly string[];
+  /**
+   * Whether a path is a kept document: one `path:` term matches it, or there
+   * are none, and no `-path:` term matches it.
+   */
   keepsPath: (path: string) => boolean;
 }
 
@@ -429,40 +567,157 @@ function compiled(filter: UnderstoodPlanningFilter): Compiled {
   if (known !== undefined) return known;
   const paths: Compiled["paths"] = [];
   let states: Set<QuestionState> | null = null;
+  const dropsStates = new Set<QuestionState>();
+  const needles: string[] = [];
+  const excludedNeedles: string[] = [];
   for (const term of filter.terms) {
-    if (term.key === "path") {
-      paths.push({
-        text: term.text,
-        matches: term.quoted
-          ? literalMatcher(term.value)
-          : bareMatcher(term.value),
-      });
-    } else {
-      states ??= new Set();
-      states.add(term.value);
+    switch (term.key) {
+      case "path":
+        paths.push({
+          text: term.text,
+          exclude: term.exclude,
+          matches: term.quoted
+            ? literalMatcher(term.value)
+            : bareMatcher(term.value),
+        });
+        break;
+      case "is":
+        if (term.exclude) {
+          dropsStates.add(term.value);
+        } else {
+          states ??= new Set();
+          states.add(term.value);
+        }
+        break;
+      case "text":
+        (term.exclude ? excludedNeedles : needles).push(
+          term.value.toLowerCase(),
+        );
+        break;
     }
   }
+  const kept = paths.filter((p) => !p.exclude);
+  const dropped = paths.filter((p) => p.exclude);
   const keepsPath = (path: string) =>
-    paths.length === 0 || paths.some((p) => p.matches(path));
-  const made: Compiled = { paths, states, keepsPath };
+    (kept.length === 0 || kept.some((p) => p.matches(path))) &&
+    !dropped.some((p) => p.matches(path));
+  const made: Compiled = {
+    paths,
+    states,
+    dropsStates,
+    needles,
+    excludedNeedles,
+    keepsPath,
+  };
   compiledFilters.set(filter, made);
   return made;
 }
 
 /**
- * Whether `filter` keeps a question: its path is a kept document, and an
- * `is:` term, if the filter has any, matches its state (§5.3). Same key OR,
- * different keys AND.
+ * Each object's searched fields (§5.3), lowercased once: a question's id,
+ * title, leaning and path; a document's path, `stage` and `next`; a Too
+ * large or Unreadable entry's path. A field the index holds as `null` is
+ * left out, since it matches nothing. Kept beside the index's own objects,
+ * so typing lowercases nothing twice, and an index update that keeps an
+ * object keeps its fields.
+ */
+const searchedFields = new WeakMap<object, readonly string[]>();
+
+function fieldsOf(
+  owner: object,
+  fields: () => readonly (string | null)[],
+): readonly string[] {
+  let lowered = searchedFields.get(owner);
+  if (lowered === undefined) {
+    lowered = fields()
+      .filter((field): field is string => field !== null)
+      .map((field) => field.toLowerCase());
+    searchedFields.set(owner, lowered);
+  }
+  return lowered;
+}
+
+/** What a text term reads of a question. */
+export type PlanningFilterQuestion = Pick<
+  PlanningQuestion,
+  "path" | "id" | "title" | "leaning" | "state"
+>;
+
+const questionFields = (q: PlanningFilterQuestion) =>
+  fieldsOf(q, () => [q.id, q.title, q.leaning, q.path]);
+
+const documentFields = (doc: PlanningDocument) =>
+  fieldsOf(doc, () => [doc.path, doc.stage, doc.next]);
+
+/**
+ * Whether the text terms keep an entry with these fields: every text term is
+ * a substring of one of them, and no `-` text term is. Each field is compared
+ * on its own, so no term spans two.
+ */
+function textKeeps(c: Compiled, fields: () => readonly string[]): boolean {
+  if (c.needles.length === 0 && c.excludedNeedles.length === 0) return true;
+  const own = fields();
+  const holds = (needle: string) => own.some((field) => field.includes(needle));
+  return c.needles.every(holds) && !c.excludedNeedles.some(holds);
+}
+
+/**
+ * The state test of §5.3: no `is:` term, or one that matches; and no `-is:`
+ * term that matches. `null` is a question the index cannot resolve, whose
+ * state is unknown: any `is:` term drops it, and no `-is:` term does.
+ */
+function stateKeeps(c: Compiled, state: QuestionState | null): boolean {
+  if (c.states !== null && (state === null || !c.states.has(state))) {
+    return false;
+  }
+  return state === null || !c.dropsStates.has(state);
+}
+
+/** The four tests of §5.3, for a question. */
+function keepsQuestionWith(c: Compiled, q: PlanningFilterQuestion): boolean {
+  return (
+    c.keepsPath(q.path) &&
+    stateKeeps(c, q.state) &&
+    textKeeps(c, () => questionFields(q))
+  );
+}
+
+/**
+ * The four tests of §5.3, for a row: a document's, or a Too large or
+ * Unreadable path's. A row has no state, so any `is:` term drops it, and a
+ * `-is:` term never does.
+ */
+function keepsRowWith(
+  c: Compiled,
+  path: string,
+  fields: () => readonly string[],
+): boolean {
+  return c.states === null && c.keepsPath(path) && textKeeps(c, fields);
+}
+
+/**
+ * Whether `filter` keeps a question (§5.3): its path is a kept document, its
+ * state passes the `is:` and `-is:` terms, every text term matches one of its
+ * id, title, leaning and path, and no `-` text term matches any of them.
+ * Same key OR, different keys AND.
  */
 export function filterKeepsQuestion(
   filter: UnderstoodPlanningFilter,
-  question: { path: string; state: QuestionState },
+  question: PlanningFilterQuestion,
 ): boolean {
-  const c = compiled(filter);
-  return (
-    c.keepsPath(question.path) &&
-    (c.states === null || c.states.has(question.state))
-  );
+  return keepsQuestionWith(compiled(filter), question);
+}
+
+/**
+ * Whether `path` is a document `filter` keeps (§2, *Kept document*): one of
+ * its `path:` terms matches it, or it has none, and none of its `-path:`
+ * terms does. Text and `is:` terms never change which documents are kept.
+ */
+export function filterKeepsDocument(
+  filter: UnderstoodPlanningFilter,
+  path: string,
+): boolean {
+  return compiled(filter).keepsPath(path);
 }
 
 /* ------------------------------------------------------------------ *
@@ -479,8 +734,10 @@ export interface PlanningFilterSummary {
   /**
    * `canonical` less its unmatched terms (§6.6): the text the request's
    * `Filter:` line carries, which `--filter` accepts and which keeps the same
-   * entries. `null` when every `path:` term is unmatched, since dropping them
-   * all would keep more, and nothing is kept.
+   * entries. `null` when it has a `path:` term without a `-` and every such
+   * term is unmatched, since dropping them all would keep more, and nothing
+   * is kept. `""` when every term is an unmatched `-path:` term, which
+   * excludes nothing: the request is then the unfiltered one.
    */
   requestText: string | null;
   /** Entries the filtered sections list, of those the unfiltered ones do. */
@@ -489,7 +746,10 @@ export interface PlanningFilterSummary {
   documents: { kept: number; of: number };
   /** How many shown entries are open questions. */
   openQuestions: number;
-  /** 🔒 questions in kept documents that an `is:` term leaves out. */
+  /**
+   * 🔒 questions Blocked lists that every term but the `is:` terms keeps,
+   * and an `is:` term leaves out (§6.7).
+   */
   blockedLeftOut: number;
   /**
    * Kept questions that need you and that other roadmaps route and the chosen
@@ -510,8 +770,17 @@ export interface PlanningFilterSummary {
    * fragment included. In order of the Blocked rows, then their entries.
    */
   waitsOutside: { path: string; target: string }[];
-  /** The canonical texts of the `path:` terms that match no path the index lists, in order. */
+  /**
+   * The canonical texts of the `path:` terms, with or without their `-`, that
+   * match no path the index lists, in order.
+   */
   unmatched: string[];
+  /**
+   * Each unknown key (§5.3), once, in the order written, with the canonical
+   * texts of the terms it opens: what the notice's *Not a key* lines say.
+   * The checker's JSON lists the keys alone.
+   */
+  unknownKeys: { key: string; terms: string[] }[];
 }
 
 export interface FilteredPlanningSections {
@@ -521,6 +790,38 @@ export interface FilteredPlanningSections {
 
 /** One question's identity: its line is unique within its document. */
 const questionKey = (ref: QuestionRef): string => `${ref.path}\n${ref.line}`;
+
+/** Each index's questions by path, then line, built once per index object. */
+const questionsByLine = new WeakMap<
+  PlanningIndex,
+  Map<string, Map<number, PlanningQuestion>>
+>();
+
+/**
+ * `questionFor(index, ref)`, in constant time: a page lays its sections out
+ * again per keystroke, and the sections' references are many. A line holds
+ * one question; where the line's question is not the reference's, the
+ * search `questionFor` makes decides.
+ */
+function questionOf(
+  index: PlanningIndex,
+  ref: QuestionRef,
+): PlanningQuestion | undefined {
+  let byPath = questionsByLine.get(index);
+  if (byPath === undefined) {
+    byPath = new Map();
+    for (const doc of index.documents) {
+      const byLine = new Map<number, PlanningQuestion>();
+      for (const q of doc.questions) {
+        if (!byLine.has(q.line)) byLine.set(q.line, q);
+      }
+      byPath.set(doc.path, byLine);
+    }
+    questionsByLine.set(index, byPath);
+  }
+  const q = byPath.get(ref.path)?.get(ref.line);
+  return q !== undefined && q.id === ref.id ? q : questionFor(index, ref);
+}
 
 /** How many entries a set of sections lists: the section bar's sum. */
 function entryCount(sections: PlanningSections): number {
@@ -543,11 +844,12 @@ function entryCount(sections: PlanningSections): number {
  * `sections` is `derivePlanningSections` over the whole of `index` (F2), under
  * whichever roadmap is chosen. The result has its shape and its order, and the
  * chosen roadmap, the roadmaps' states and `stagesDeclared` are its own. A
- * question entry is kept by `filterKeepsQuestion`; a document's row (a Blocked
- * document, a stage row, a Too large or an Unreadable path) when a `path:`
- * term matches its own path and the filter has no `is:` term, since a row has
- * no question state to match (§5.3). Each roadmap's `needsYouCount` and
- * `nothingNeedsYou` are counted again over kept questions only.
+ * question entry is kept by the four tests of §5.3 over the question's own
+ * fields; a document's row (a Blocked document, a stage row) by them over the
+ * document's path, `stage` and `next`; a Too large or Unreadable entry by
+ * them over its path. A row has no state, so any `is:` term drops it. Each
+ * roadmap's `needsYouCount` and `nothingNeedsYou` are counted again over kept
+ * questions only.
  */
 export function applyPlanningFilter(
   index: PlanningIndex,
@@ -555,16 +857,27 @@ export function applyPlanningFilter(
   filter: UnderstoodPlanningFilter,
 ): FilteredPlanningSections {
   const c = compiled(filter);
+  /** A question the index cannot resolve has its reference's fields alone. */
+  const unresolved = (ref: QuestionRef) =>
+    fieldsOf(ref, () => [ref.id, ref.path]);
   const keepsRef = (ref: QuestionRef): boolean => {
-    if (!c.keepsPath(ref.path)) return false;
-    if (c.states === null) return true;
-    const state = questionFor(index, ref)?.state;
-    return state !== undefined && c.states.has(state);
+    const q = questionOf(index, ref);
+    if (q !== undefined) return keepsQuestionWith(c, q);
+    return (
+      c.keepsPath(ref.path) &&
+      stateKeeps(c, null) &&
+      textKeeps(c, () => unresolved(ref))
+    );
   };
-  const keepsRow = (path: string): boolean =>
-    c.states === null && c.keepsPath(path);
+  const keepsDocumentRow = (path: string): boolean =>
+    keepsRowWith(c, path, () => {
+      const doc = findDocument(index, path);
+      return doc === undefined ? [path.toLowerCase()] : documentFields(doc);
+    });
   const rows = (paths: string[] | null): string[] | null =>
-    paths === null ? null : paths.filter(keepsRow);
+    paths === null ? null : paths.filter(keepsDocumentRow);
+  const keepsEntry = (entry: { path: string }): boolean =>
+    keepsRowWith(c, entry.path, () => fieldsOf(entry, () => [entry.path]));
 
   const needsYou = sections.needsYou.filter(keepsRef);
   const onOtherRoadmaps = sections.onOtherRoadmaps.filter(keepsRef);
@@ -577,10 +890,11 @@ export function applyPlanningFilter(
       .map(({ path }) => [
         path,
         routeQuestions(index, path).filter((ref) => {
-          const state = questionFor(index, ref)?.state;
+          const q = questionOf(index, ref);
           return (
-            (state === "open" || state === "answered") &&
-            filterKeepsQuestion(filter, { path: ref.path, state })
+            q !== undefined &&
+            (q.state === "open" || q.state === "answered") &&
+            keepsQuestionWith(c, q)
           );
         }),
       ]),
@@ -598,7 +912,7 @@ export function applyPlanningFilter(
       (doc) =>
         isLive(index, doc) &&
         doc.questions.some(
-          (q) => q.state === "open" && filterKeepsQuestion(filter, q),
+          (q) => q.state === "open" && keepsQuestionWith(c, q),
         ),
     ),
     needsYou,
@@ -606,14 +920,14 @@ export function applyPlanningFilter(
     unrouted,
     waiting: sections.waiting.filter((entry) =>
       entry.kind === "document"
-        ? keepsRow(entry.path)
+        ? keepsDocumentRow(entry.path)
         : keepsRef(entry.question),
     ),
     ready: rows(sections.ready),
     graduate: rows(sections.graduate),
     disagrees: rows(sections.disagrees),
-    skipped: sections.skipped.filter((entry) => keepsRow(entry.path)),
-    unreadable: sections.unreadable.filter((entry) => keepsRow(entry.path)),
+    skipped: sections.skipped.filter(keepsEntry),
+    unreadable: sections.unreadable.filter(keepsEntry),
   };
 
   const listed = [
@@ -624,16 +938,23 @@ export function applyPlanningFilter(
   const unmatched = c.paths
     .filter((term) => !listed.some((path) => term.matches(path)))
     .map((term) => term.text);
-  const kept = filter.terms.filter((term) => !unmatched.includes(term.text));
+  // An unmatched `path:` term keeps nothing and an unmatched `-path:` term
+  // excludes nothing, so leaving them out keeps the same entries, unless
+  // every `path:` term without a `-` is unmatched: then nothing is kept.
+  const keeping = c.paths.filter((term) => !term.exclude);
   const requestText =
     unmatched.length === 0
       ? filter.canonical
-      : kept.some((term) => term.key === "path")
-        ? kept.map((term) => term.text).join(" ")
-        : null;
+      : keeping.length > 0 &&
+          keeping.every((term) => unmatched.includes(term.text))
+        ? null
+        : filter.terms
+            .filter((term) => !unmatched.includes(term.text))
+            .map((term) => term.text)
+            .join(" ");
 
   const isOpenRef = (ref: QuestionRef) =>
-    questionFor(index, ref)?.state === "open";
+    questionOf(index, ref)?.state === "open";
   // Every roadmap but the chosen one that routes a kept question the chosen
   // one does not list, with how many it routes (§6.2). A question two of them
   // route counts once in `onOtherRoadmaps` and once under each roadmap here.
@@ -649,7 +970,14 @@ export function applyPlanningFilter(
   let blockedLeftOut = 0;
   for (const entry of sections.waiting) {
     if (entry.kind === "question") {
-      if (c.keepsPath(entry.question.path) && !keepsRef(entry.question)) {
+      // Kept by every term but the `is:` terms, and left out by one of them.
+      const q = questionOf(index, entry.question);
+      if (
+        q !== undefined &&
+        c.keepsPath(q.path) &&
+        textKeeps(c, () => questionFields(q)) &&
+        !stateKeeps(c, q.state)
+      ) {
         blockedLeftOut++;
       }
       continue;
@@ -662,6 +990,13 @@ export function applyPlanningFilter(
       }
     }
   }
+
+  const unknownKeys = filter.unknownKeys.map((key) => ({
+    key,
+    terms: filter.terms
+      .filter((term) => term.key === "text" && term.unknownKey === key)
+      .map((term) => term.text),
+  }));
 
   return {
     sections: filtered,
@@ -680,6 +1015,7 @@ export function applyPlanningFilter(
       otherRoadmaps,
       waitsOutside,
       unmatched,
+      unknownKeys,
     },
   };
 }
@@ -809,8 +1145,7 @@ const PAGE_PATH_AT = new RegExp(
  * GitHub's autolinks leave out (`?`, `.`, `,`, `:`, `_` and `~`; GFM's
  * extended autolink rule) is dropped, so a sentence's period after it is too,
  * and so is a trailing `*` for each `*` before the link in its run, which
- * opened emphasis around it. What counts as a pasted link may only widen
- * (§10.3).
+ * opened emphasis around it.
  */
 export function readPastedPlanningLink(
   text: string,

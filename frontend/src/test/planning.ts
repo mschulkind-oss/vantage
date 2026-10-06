@@ -161,16 +161,16 @@ export const FILTER_FORMS_PATH =
  * keeps there, and texts it does not understand with the term each names, or
  * the reason where there is none.
  *
- * In `read`, `documents` are the kept documents, every path the index lists
- * that one of the text's `path:` terms keeps (all of them when it has none),
- * as `git check-ignore --no-index` answered for each term on 2026-10-05;
- * `questions` are the index's questions it keeps, `<path>#<id>`, sorted: those
- * in a kept document, and under an `is:` term only the open ones, as their
- * markers say; and `keeps` are the entries the filtered sections list under
- * the default roadmap, in page order, as `sectionEntryKeys` writes them. A
- * later release may move an entry from `notUnderstood` to `read`, and never
- * edit or remove a `read` entry, but for its `keeps`: those say where the
- * derivation puts each entry, which is not the filter's to freeze.
+ * In `read`, `documents` are the kept documents: every path the index lists
+ * that one of the text's `path:` terms keeps (all of them when it has none)
+ * and none of its `-path:` terms does, as `git check-ignore --no-index`
+ * answered for each term; `questions` are the index's questions it keeps,
+ * `<path>#<id>`, sorted, in whatever section or none; `keeps` are the entries
+ * the filtered sections list under the default roadmap, in page order, as
+ * `sectionEntryKeys` writes them; and `unknownKeys` the words its notice says
+ * are not filter keys. It is an ordinary fixture of one release: any entry
+ * may be edited, moved or removed when the language changes, and nothing
+ * compares it with an earlier release's (§10.4, OQ-PF7).
  */
 export interface PlanningFilterForms {
   index: {
@@ -188,8 +188,13 @@ export interface PlanningFilterForms {
     /** The index's questions it keeps, `<path>#<id>`, in any section or none. */
     questions: string[];
     keeps: string[];
-    /** The canonical texts of its `path:` terms that match no listed path. */
+    /**
+     * The canonical texts of its `path:` terms, with or without their `-`,
+     * that match no listed path.
+     */
     unmatched: string[];
+    /** Each unknown key's word, once, in the order written (§5.3). */
+    unknownKeys: string[];
   }[];
   notUnderstood: (
     | { text: string; term: string }

@@ -184,8 +184,15 @@ const notUnderstoodPart = (
  */
 const MATCHES_NO_PATH = " matches no path the index lists";
 
-/** The example the Not filtered notice gives of a filter this release reads. */
-const FILTER_EXAMPLE = "path:docs/design/*.md is:open";
+/** The example the Not filtered notice gives of a filter the language reads. */
+const FILTER_EXAMPLE = "generator path:docs/design/*.md is:open";
+
+/**
+ * What the language reads (§5.2), as the Not filtered notice and the
+ * checker's exit-2 message both say it after the term they cannot read.
+ */
+const FILTER_LANGUAGE =
+  'words, "quoted phrases", path: and is:open terms, and a - before any of them to leave out what it matches';
 
 /** The filter notice's lines for an applied filter (§6.7), first to last. */
 function filteredNotice(
@@ -208,6 +215,25 @@ function filteredNotice(
   ];
   for (const term of summary.unmatched) {
     lines.push([{ code: term }, `${MATCHES_NO_PATH}.`]);
+  }
+  for (const { key, terms } of summary.unknownKeys) {
+    const line: (string | { code: string })[] = [
+      { code: `${key}:` },
+      " is not a filter key, so ",
+    ];
+    terms.forEach((term, i) => {
+      if (i > 0) line.push(i === terms.length - 1 ? " and " : ", ");
+      line.push({ code: term });
+    });
+    line.push(
+      terms.length === 1 ? " is searched as text." : " are searched as text.",
+      " The keys are ",
+      { code: "path:" },
+      " and ",
+      { code: "is:" },
+      ".",
+    );
+    lines.push(line);
   }
 
   const others = summary.otherRoadmaps;
@@ -277,17 +303,18 @@ export const PLANNING_NOTICES: {
   nothingFilteredNeedsYou: string;
   /**
    * The filter notice of an applied filter (§6.7): the first line with its
-   * counts, one line per unmatched term, the clauses that apply (other
-   * roadmaps, blocked questions left out, waits on a document left out), and
-   * a last line saying how to see the rest, in `reader`'s words.
+   * counts, one line per unmatched term, one per unknown key, the clauses
+   * that apply (other roadmaps, blocked questions left out, waits on a
+   * document left out), and a last line saying how to see the rest, in
+   * `reader`'s words.
    */
   filtered(
     summary: PlanningFilterSummary,
     reader: PlanningNoticeReader,
   ): PlanningNoticeLine[];
-  /** The page's notice for a filter it does not understand, and so does not apply. */
+  /** The page's notice for a filter it cannot read, and so does not apply. */
   notFiltered(filter: NotUnderstoodPlanningFilter): PlanningNoticeLine;
-  /** The checker's exit-2 message for a filter it does not understand, unprefixed. */
+  /** The checker's exit-2 message for a filter it cannot read, unprefixed. */
   filterNotUnderstood(filter: NotUnderstoodPlanningFilter): string;
   /**
    * The checker's exit-2 message for a term that matches no path the index
@@ -312,14 +339,14 @@ export const PLANNING_NOTICES: {
   nothingFilteredNeedsYou: "Nothing this filter keeps needs you.",
   filtered: filteredNotice,
   notFiltered: (filter) => [
-    "Not filtered: this Vantage does not understand ",
+    "Not filtered: this Vantage cannot read ",
     notUnderstoodPart(filter),
-    ". It reads path: and is: terms, such as ",
+    `. It reads ${FILTER_LANGUAGE}, such as `,
     { code: FILTER_EXAMPLE },
     ". Every entry is shown.",
   ],
   filterNotUnderstood: (filter) =>
-    `this checker does not understand ${noticeText([notUnderstoodPart(filter)])}; it reads path: and is: terms`,
+    `this checker cannot read ${noticeText([notUnderstoodPart(filter)])}; it reads ${FILTER_LANGUAGE}`,
   filterUnmatched: (term) => noticeText([{ code: term }, MATCHES_NO_PATH]),
   roadmapNotice(config, roadmaps) {
     const unread = roadmaps.filter(

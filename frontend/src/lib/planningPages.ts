@@ -332,7 +332,9 @@ export function layoutPlanningPage(
  * it chose as well as the one asked for: asking for the default by name or by
  * `null` is one derivation, and one object. A filter applies to that
  * derivation, over the whole index (F2), so it is cached under the
- * derivation's object: index, then roadmap, then filter (§6.5).
+ * derivation's object: index, then roadmap, then filter (§6.5). Each
+ * derivation keeps the `FILTERED_KEPT` filters used last, since the page
+ * applies a filter per keystroke and the map would otherwise grow with them.
  */
 const derived = new WeakMap<
   PlanningIndex,
@@ -373,6 +375,9 @@ function derivedSectionsOf(
   return sections;
 }
 
+/** How many filtered sections each derivation keeps, the last used last out. */
+const FILTERED_KEPT = 16;
+
 /**
  * The sections `filter` keeps of `sectionsOf(index, roadmap)`, and what the
  * filter notice says of them (`planning-filter.md` §6.7), from the same
@@ -395,7 +400,14 @@ export function filteredSectionsOf(
   let out = byFilter.get(parsed.canonical);
   if (out === undefined) {
     out = applyPlanningFilter(index, base, parsed);
-    byFilter.set(parsed.canonical, out);
+  } else {
+    byFilter.delete(parsed.canonical);
+  }
+  byFilter.set(parsed.canonical, out);
+  while (byFilter.size > FILTERED_KEPT) {
+    const oldest = byFilter.keys().next().value;
+    if (oldest === undefined) break;
+    byFilter.delete(oldest);
   }
   return out;
 }

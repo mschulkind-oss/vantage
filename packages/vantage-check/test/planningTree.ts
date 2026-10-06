@@ -158,6 +158,7 @@ export interface PlanningFilterForms {
     questions: string[];
     keeps: string[];
     unmatched: string[];
+    unknownKeys: string[];
   }[];
   notUnderstood: (
     | { text: string; term: string }

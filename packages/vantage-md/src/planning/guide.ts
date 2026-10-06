@@ -242,8 +242,10 @@ export interface PlanningAgentRequestOptions {
    * less its unmatched terms, which a `Filter:` line after `Repository:`
    * carries as a code span; `unfiltered` are the sections it was applied to,
    * which every blocked-on fact is read from (§6.3), since a filter can keep a
-   * Ready row and leave out what Blocked holds it for. Absent, the request is
-   * byte for byte what it was before filters.
+   * Ready row and leave out what Blocked holds it for. Absent, or with an
+   * empty `text`, which a filter of unmatched `-path:` terms alone leaves and
+   * which keeps every entry, the request is byte for byte what it was before
+   * filters.
    */
   filter?: { text: string; unfiltered: PlanningSections };
 }
@@ -301,7 +303,7 @@ export function planningAgentRequest(
     requestBlock(index, sections, blockedFrom, id),
   );
   const filter =
-    options.filter === undefined
+    options.filter === undefined || options.filter.text === ""
       ? ""
       : `\nFilter: ${codeSpan(options.filter.text)}. Only the entries it keeps are listed.`;
   return [
