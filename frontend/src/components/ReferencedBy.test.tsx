@@ -611,21 +611,62 @@ describe("the link to the filtered planning page (planning-filter.md §7)", () =
       "roadmap.md": ROADMAP,
     });
     const { unmount } = renderLine(summary, { oneLine: true });
-    expect(planningLinkOf()).toHaveClass("shrink-0", "whitespace-nowrap");
+    // The link's part: the separator and the link, one flex item of the row.
+    const part = () => planningLinkOf().parentElement!;
+    expect(part()).toHaveClass("shrink-0", "whitespace-nowrap");
+    expect(part()).not.toHaveClass("basis-full");
     expect(toggle()).toHaveClass("min-w-0");
     expect(toggle().querySelector("span.min-w-0")).toHaveClass("truncate");
-    expect(planningLinkOf().parentElement).toHaveClass("flex", "flex-nowrap");
+    expect(part().parentElement).toBe(lineRow());
+    expect(lineRow()).toHaveClass("flex", "flex-nowrap");
     unmount();
 
-    // Otherwise from `sm` up only: below it the row wraps, and the link may
-    // take a line of its own.
+    // Otherwise from `sm` up only: below it the row wraps.
     renderLine(summary);
-    expect(planningLinkOf()).toHaveClass("sm:shrink-0", "sm:whitespace-nowrap");
-    expect(planningLinkOf()).not.toHaveClass("shrink-0");
-    expect(planningLinkOf().parentElement).toHaveClass(
-      "flex-wrap",
-      "sm:flex-nowrap",
+    expect(part()).toHaveClass("sm:shrink-0", "sm:whitespace-nowrap");
+    expect(part()).not.toHaveClass("shrink-0");
+    expect(lineRow()).toHaveClass("flex-wrap", "sm:flex-nowrap");
+  });
+
+  // Left to wrap item by item, the separator hung alone at the end of the
+  // words' line or opened the link's, joining nothing, and the link started
+  // under the chevron, left of the words.
+  it("below `sm`, unless it fills a reservation, takes a line of its own under the words, with no separator", () => {
+    const separatorOf = () => planningLinkOf().previousElementSibling;
+    const withButton = summaryOf({
+      [TARGET]: planning(questions("T", 1)),
+      "roadmap.md": ROADMAP,
+    });
+    const { unmount } = renderLine(withButton);
+    const part = planningLinkOf().parentElement!;
+    // The separator and the link are one item, so neither wraps alone.
+    expect(part.parentElement).toBe(lineRow());
+    expect(separatorOf()?.tagName).toBe("SPAN");
+    expect(separatorOf()?.textContent).toBe(" · ");
+    expect(part).toHaveClass("basis-full", "sm:basis-auto");
+    expect(separatorOf()).toHaveClass("hidden", "sm:inline");
+    // Indented past the chevron, as the words and the list behind it are.
+    expect(part).toHaveClass("pl-[18px]", "sm:pl-0");
+    unmount();
+
+    // A plain-text line has no chevron, so its words start at the edge.
+    const { unmount: unmountPlain } = renderLine(
+      summaryOf({
+        [TARGET]: planning(questions("T", 1)),
+        "roadmap.md": "# Roadmap\n",
+      }),
     );
+    expect(planningLinkOf().parentElement).toHaveClass("basis-full");
+    expect(planningLinkOf().parentElement).not.toHaveClass("pl-[18px]");
+    expect(separatorOf()).toHaveClass("hidden", "sm:inline");
+    unmountPlain();
+
+    // Filling a reservation it stays on the words' line, so the separator
+    // shows at every width.
+    renderLine(withButton, { oneLine: true });
+    expect(planningLinkOf().parentElement).not.toHaveClass("basis-full");
+    expect(planningLinkOf().parentElement).not.toHaveClass("pl-[18px]");
+    expect(separatorOf()).not.toHaveClass("hidden");
   });
 
   it("builds no element the document's passes read as the document", () => {

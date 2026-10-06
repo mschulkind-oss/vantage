@@ -220,7 +220,12 @@ test("a live document's line links to the planning page filtered to it", async (
     page.context().waitForEvent("page"),
     link.click({ modifiers: ["ControlOrMeta"] }),
   ]);
-  await expect(tab).toHaveURL(`${new URL(page.url()).origin}${filtered}`);
+  // The address is the point, so wait for the tab to commit to it, not for
+  // its load: a cold planning page on the dev server, beside a full run's
+  // workers, once took longer than `toHaveURL`'s five seconds to fire `load`.
+  await tab.waitForURL(`${new URL(page.url()).origin}${filtered}`, {
+    waitUntil: "commit",
+  });
   await tab.close();
   await expect(page).toHaveURL(/\/plans\/paged\.md$/);
   await expect(toggle(page)).toHaveAttribute("aria-expanded", "false");
@@ -262,19 +267,25 @@ for (const width of [1280, 320]) {
     );
     expect(await title.boundingBox()).toEqual(before);
 
-    // The link is whole and on screen, never cut off.
+    // The link is whole and on screen, never cut off: its part, the
+    // separator and the link, keeps its width, and the link is one box on
+    // one line, inside the row.
     const link = await planningLink(page).evaluate((el) => {
-      const box = el.getBoundingClientRect();
+      const part = el.parentElement!;
+      const row = el
+        .closest("[data-vantage-referenced-by]")!
+        .firstElementChild!.getBoundingClientRect();
       return {
-        right: box.right,
-        clipped: el.scrollWidth > el.clientWidth,
-        lineHeight: parseFloat(getComputedStyle(el).lineHeight),
-        height: box.height,
+        right: el.getBoundingClientRect().right,
+        rowRight: row.right,
+        boxes: el.getClientRects().length,
+        clipped: part.scrollWidth > part.clientWidth,
       };
     });
     expect(link.clipped).toBe(false);
+    expect(link.boxes).toBe(1);
+    expect(link.right).toBeLessThanOrEqual(link.rowRight + 0.5);
     expect(link.right).toBeLessThanOrEqual(width);
-    expect(link.height).toBeLessThan(link.lineHeight * 1.5);
     const scroll = page.locator("[data-content-scroll]");
     expect(
       await scroll.evaluate((el) => el.scrollWidth - el.clientWidth),
@@ -331,6 +342,73 @@ test("on a narrow screen, with the index at first paint, the line wraps and the 
     await scroll.evaluate((el) => el.scrollWidth - el.clientWidth),
   ).toBeLessThanOrEqual(0);
 });
+
+// With nothing reserved, below `sm` the link takes a line of its own,
+// starting where the words start: after the chevron for the disclosure
+// button, at the edge for the plain-text line. Its separator would join
+// nothing there, so it is not drawn. Left to wrap item by item, the separator
+// hung alone at the end of the words' line or opened the link's, and the link
+// started under the chevron. From `sm` up the line is one line, the separator
+// between the words and the link.
+for (const [path, width] of [
+  ["/plans/paged.md", 390],
+  ["/plans/unrouted.md", 390],
+  ["/plans/paged.md", 1280],
+  ["/plans/unrouted.md", 1280],
+] as const) {
+  test(`with the index at first paint, the link's line is laid out whole: ${path} at ${width}px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 800 });
+    await openWithIndex(page, path);
+    await expect(planningLink(page)).toBeVisible();
+    const geometry = await planningLink(page).evaluate((link) => {
+      const row = link.closest("[data-vantage-referenced-by]")!
+        .firstElementChild!;
+      const separator = link.previousElementSibling as HTMLElement;
+      // The words' own box: inside the button, past its chevron, or the
+      // plain-text line itself.
+      const button = row.querySelector("button");
+      const words = (
+        button === null ? row.firstElementChild : button.querySelector("span")
+      )!.getBoundingClientRect();
+      const box = (el: Element) => {
+        const r = el.getBoundingClientRect();
+        return { x: r.x, y: r.y, right: r.right, bottom: r.bottom };
+      };
+      return {
+        wordsLeft: words.x,
+        wordsRight: words.right,
+        wordsTop: words.y,
+        wordsBottom: words.bottom,
+        link: box(link),
+        separatorShown: separator.getClientRects().length > 0,
+        separator: box(separator),
+        lineHeight: parseFloat(getComputedStyle(row).lineHeight),
+        rowHeight: row.getBoundingClientRect().height,
+      };
+    });
+    const { link, separator } = geometry;
+    if (width < 640) {
+      expect(geometry.separatorShown).toBe(false);
+      // Under the words, starting where they start.
+      expect(Math.abs(link.x - geometry.wordsLeft)).toBeLessThanOrEqual(0.5);
+      expect(link.y).toBeGreaterThanOrEqual(geometry.wordsBottom - 0.5);
+      // And one line more than the words, no more.
+      expect(geometry.rowHeight).toBeCloseTo(
+        geometry.wordsBottom - geometry.wordsTop + geometry.lineHeight,
+        0,
+      );
+    } else {
+      // One line: the separator after the words, the link after it.
+      expect(geometry.separatorShown).toBe(true);
+      expect(geometry.rowHeight).toBeCloseTo(geometry.lineHeight, 0);
+      expect(separator.x).toBeGreaterThanOrEqual(geometry.wordsRight - 0.5);
+      expect(link.x).toBeGreaterThanOrEqual(separator.right - 0.5);
+      expect(Math.abs(separator.y - link.y)).toBeLessThanOrEqual(3);
+    }
+  });
+}
 
 test("on a narrow screen a long file name wraps inside its row", async ({
   page,

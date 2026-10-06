@@ -639,8 +639,10 @@ describe("Referenced by (§7)", () => {
         expect(reserved()).not.toBeNull();
         seedReady(indexOf(TREE));
         expect(reserved()).toBeNull();
-        const link = planningLink()!;
-        expect(link).toHaveClass("shrink-0", "whitespace-nowrap");
+        // The link's part, the separator and the link, keeps its width.
+        const part = planningLink()!.parentElement;
+        expect(part).toHaveClass("shrink-0", "whitespace-nowrap");
+        expect(part).not.toHaveClass("basis-full");
         expect(lineRow()).toHaveClass("flex-nowrap");
         expect(lineRow()).not.toHaveClass("flex-wrap");
         expect(toggle().querySelector("span.min-w-0")).toHaveClass("truncate");
@@ -656,7 +658,10 @@ describe("Referenced by (§7)", () => {
       expect(surface()).toHaveTextContent(
         /^its questions on the planning page$/,
       );
-      expect(planningLink()).toHaveClass("shrink-0", "whitespace-nowrap");
+      expect(planningLink()?.parentElement).toHaveClass(
+        "shrink-0",
+        "whitespace-nowrap",
+      );
     });
   });
 
@@ -753,10 +758,15 @@ describe("Referenced by (§7)", () => {
       renderViewer(TARGET, "docs/design.md");
       expect(reserved()).toBeNull();
       expect(surface()).not.toBeNull();
-      // Nothing was reserved, so a phone may wrap it.
+      // Nothing was reserved, so a phone may wrap it, and there the link
+      // takes a line of its own under the words.
       const words = toggle().querySelector("span.min-w-0");
       expect(words).toHaveClass("sm:truncate");
       expect(words).not.toHaveClass("truncate");
+      const part = screen.getByRole("link", {
+        name: "its questions on the planning page",
+      }).parentElement;
+      expect(part).toHaveClass("basis-full", "pl-[18px]", "sm:basis-auto");
     });
 
     it("follows the index live once the first paint had it", () => {
