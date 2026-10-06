@@ -345,6 +345,10 @@ describe("run", () => {
     expect(help).toContain(
       "Paste the link into the planning page's Filter box: press / there.",
     );
+    // What it writes, and why (planning-index.md §13.6).
+    expect(help).toContain(
+      "The link ends with space=, this checkout's id, which the first --filter writes to .vantage/space (and .vantage/.gitignore, when it makes .vantage), so a Vantage serving several projects opens this one.",
+    );
     expect(help).toContain(
       'a document whose path holds the text, in any case. A * matches within a folder or file name, ** across folders, and a leading / pins it to the path\'s start. In "quotes", every character matches itself, a space too',
     );

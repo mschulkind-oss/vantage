@@ -61,6 +61,10 @@ func (h *Handlers) Routes() []Route {
 		// filters by the one open, so one global list serves both modes.
 		{http.MethodGet, "/degraded", h.Degraded, ScopeGlobal},
 
+		// Which served project holds a space id: the question is which
+		// repository, so it cannot be asked under one.
+		{http.MethodGet, "/spaces/{id}", h.Space, ScopeGlobal},
+
 		// --- Repo-scoped: info/version ---
 		{http.MethodGet, "/version", h.Version, ScopeRepo},
 		{http.MethodGet, "/info", h.Info, ScopeRepo},

@@ -20,6 +20,7 @@ import {
 import {
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   realpathSync,
   rmSync,
   writeFileSync,
@@ -4510,8 +4511,11 @@ describe("the planning filter (planning-index.md §6.11)", () => {
         io,
       );
       expect(code).toBe(0);
+      // Its link ends with the space id the run made in the tree
+      // (planning-index.md §13.6).
+      const space = readFileSync(join(root, ".vantage/space"), "utf8").trim();
       expect(io.stdout).toContain(
-        "\nPlanning page: /.vantage/planning?filter=path:/plans/design.md+is:open\n",
+        `\nPlanning page: /.vantage/planning?filter=path:/plans/design.md+is:open&space=${space}\n`,
       );
       return io.stdout;
     } finally {

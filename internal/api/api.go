@@ -153,6 +153,15 @@ type Deps struct {
 	// for a limit. The server keeps them, since watchers and git services
 	// report them from outside any request. Nil means none.
 	Degraded func() []model.Degradation
+	// SpaceRepo, when non-nil, returns the name of the served repository whose
+	// .vantage/space holds the space id it is given ("" in single-repo mode),
+	// and false when none does (see [spaceid]). It is only ever handed an id
+	// [spaceid.Valid] accepts. Nil means no repository holds any.
+	//
+	// A hook for the reason Promoted is one: GET /spaces/{id} is ScopeGlobal,
+	// since which repository is the question, and only the server knows every
+	// root it serves, including the ones source-dir discovery adds later.
+	SpaceRepo func(id string) (string, bool)
 }
 
 // Handlers holds the dependency-injected state for every API handler. Construct
