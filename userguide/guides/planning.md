@@ -839,8 +839,9 @@ leaves out what it matches:
 
 A `path:` pattern is found anywhere in a path, in any case, as in GitHub's
 code search. A `*` stands for any characters within one folder or file name,
-`**` for any characters across folders, and a leading `/` ties the pattern to
-the start of the path:
+`**` for any characters across folders, or for any number of folders where it
+is a folder's whole name, and a leading `/` ties the pattern to the start of
+the path:
 
 | Pattern | Keeps |
 | :--- | :--- |
@@ -849,15 +850,21 @@ the start of the path:
 | `path:/roadmap.md` | The root's `roadmap.md`, and any path that starts with that text, but not `docs/roadmap.md`, which `path:roadmap.md` keeps too |
 | `path:/docs/design/search.md` | That file: how Vantage and the checker name one document |
 | `path:*.md` | Every Markdown file |
-| `path:/docs/design/search*` | The design and its `search-plan.md`: a `*` stays within one name |
+| `path:/docs/design/search*.md` | The design and its `search-plan.md`: a `*` stays within one name |
 | `path:/docs/**.md` | Every `.md` under the root's `docs`, at any depth: `**` crosses folders |
+| `path:/docs/**/search.md` | `docs/search.md`, `docs/design/search.md` and any `search.md` deeper under the root's `docs`: `/**/` is any number of folders, none included |
+| `path:**/search.md` | Every `search.md`, at the root or in a folder, and not `research.md` |
 | `path:"docs/my notes.md"` | A path holding a space. Inside double quotes every character stands for itself, `*` included, and `"` and `\` are written `\"` and `\\` |
 
 A leading `./` means the root, as `/` does. Every other character is itself:
 `?`, `[`, `+` and `#` are no wildcards, and a `/` that does not lead is part of
-the text, so `path:docs/` keeps a `docs` folder at any depth. Since `**` is any
-characters, `path:docs/**/*.md` keeps the `.md` files at least one folder below
-a `docs` folder; `path:docs/**.md` keeps those directly in it too. Only case is
+the text, so `path:docs/` keeps a `docs` folder at any depth. A `**` beside
+other characters is any characters, so `path:docs/**x.md` keeps `docs/ax.md`
+as well as `docs/a/x.md`, while `path:docs/**/x.md` keeps `docs/x.md` and not
+`docs/ax.md`. A pattern only has to occur somewhere in a path, so a `*` at its
+end adds nothing: `path:/docs/design/search*` keeps what
+`path:/docs/design/search` keeps, a `search/` folder included, and
+`path:/docs/*.md` keeps what is under a `docs/a.md/` folder too. Only case is
 folded: a name is matched in the Unicode form it is written in. A `-path:`
 term leaves out exactly what the same `path:` term keeps.
 
@@ -934,8 +941,10 @@ filter keeps needs you* in place of *Nothing needs you*.
 - **A text that keeps nothing waits until you stop typing.** While you type
   a word that is not there yet, or a `-` whose first letter leaves out
   everything, as `-m` does when every path ends in `.md`, the page keeps the
-  last results. Once you stop for 300 ms the text applies, and the page says
-  nothing matches. Enter, ✕, a paste and leaving the box apply it at once.
+  last results. Once you stop for 300 ms the text applies, and the notice
+  says it keeps 0 entries and that nothing it keeps needs you. A gap that long
+  between two keys counts as stopping, so a slow typist sees the page empty
+  until the next key. Enter, ✕, a paste and leaving the box apply it at once.
 - **Enter** applies the box's text and writes it into the address at once,
   and the box then shows it in its [canonical text](#the-address). On a text
   Vantage does not understand, Enter is how you see why: the page shows every

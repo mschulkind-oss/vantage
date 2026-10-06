@@ -28,7 +28,8 @@
  * once on Enter, ✕, a paste or the focus leaving the box (§6.4); the filter
  * notice, first of the frame's notices, says what it hides. A typed text
  * that keeps no entry at all waits for the URL to take it, so a half-typed
- * word never empties the page between two keystrokes. A filter this
+ * word does not empty the page between two keystrokes that come within the
+ * idle pause of each other. A filter this
  * release does not understand is applied not at all: typed, it leaves the
  * page as it was, and entered, the notice names its term (F3).
  *
@@ -1319,11 +1320,12 @@ export const PlanningPage: React.FC = () => {
   // typed text that keeps no entry at all is held back until the URL takes
   // it, on the idle pause, or at once on an Enter, ✕, paste or the focus
   // leaving the box (§6.4): until then the page goes on showing the filter
-  // it last applied, so a half-typed word or a lone `-m` never empties the
-  // page between two keystrokes, and "nothing matches" still shows as soon
-  // as typing stops. The rest of the box's texts apply at once. Judged in
-  // the render, in the transition the keystroke set its text in, so the
-  // keystroke's own echo never waits on it (F7).
+  // it last applied, so a half-typed word or a lone `-m` does not empty the
+  // page between two keystrokes within the pause of each other, and the
+  // notice still counts 0 entries as soon as typing stops. The rest of the
+  // box's texts apply at once. Judged in the render, in the transition the
+  // keystroke set its text in, so the keystroke's own echo never waits on it
+  // (F7).
   const wouldApply = boxLeads ? typed! : urlApplied;
   const keepsNothing = useMemo(
     () =>
@@ -2338,8 +2340,12 @@ export const PlanningPage: React.FC = () => {
       const parsed = parsePlanningFilter(text);
       if (parsed.kind !== "not-understood") {
         const canonical = parsed.kind === "understood" ? parsed.canonical : "";
-        followFilter(canonical);
+        // A key that leaves the canonical text as it was, such as a space,
+        // types nothing newer, so the inputs are not told of it: while a
+        // text is held back, they wait for the page it leaves on screen, and
+        // its own text would turn that page down (§6.4).
         if (canonical !== (typedRef.current ?? latestRef.current.urlValue)) {
+          followFilter(canonical);
           typedRef.current = canonical;
           // Typed past an Enter, ✕ or paste whose page is still on its way:
           // the spinner waits for the typed text's page instead.
