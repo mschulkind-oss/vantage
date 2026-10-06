@@ -6,7 +6,7 @@ are summarized one section per minor line; the commit log has the rest.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.9.0] - 2026-10-06
 
 ### Added
 
@@ -15,29 +15,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 finds the questions whose id, title, leaning or path holds it, in any case, and
 the documents whose path, stage or `next` does. `path:`, which finds its text
 anywhere in a path as GitHub's code search does, and `is:open` narrow further,
-as in `path:docs/design/search.md is:open`, and a `-` before a term leaves out
-what it matches. The page keeps its order, a notice says what the
-filter hides, and **Copy answers** and **Copy agent request** cover only what
-it keeps. Press `/` to reach the box. The address follows the box without
-adding to your history. A document's Referenced by line now ends with *its
-questions on the planning page*, a link to the page filtered to that document.
-See [Filtering the page](userguide/guides/planning.md#filtering-the-page).
+as in `path:/docs/design/search.md is:open`, and a `-` before a term leaves out
+what it matches. The page keeps its order, a notice says what the filter hides,
+and **Copy answers** and **Copy agent request** cover only what it keeps. Press
+`/` to reach the box. The address follows the box without adding to your
+history. See [Filtering the page](userguide/guides/planning.md#filtering-the-page).
+
+A planning document that holds a question, and whose stage does not map to
+`done`, now ends its Referenced by line with *its questions on the planning
+page*, a link to the planning page filtered to that document. A document that
+had no line, because nothing links to it and the roadmap misses none of its
+questions, now shows a line with only that link. See
+[Referenced by](userguide/guides/planning.md#referenced-by).
 
 **`vantage-check index --filter`** takes the same text, prints only what it
-keeps, and prints a `Planning page:` line for your agent to hand you. The
-checker cannot know the address you open Vantage at, so the link starts at
-`/.vantage/planning`: press `/` on your planning page and paste the line, or
-put your address in front. In daemon mode, opening it lists each project's
-planning page with the filter kept. A filter the checker cannot read, such as
-one with an unclosed quote, or a `path:` term that matches no path, exits `2`.
-A word that matches nothing is an empty answer and exits `0`. Vantage 0.8.1 and
-earlier open a filtered link as the whole page, without saying so. See
+keeps, and prints a `Planning page:` line for your agent to hand you.
+`vantage-check style-guide` now tells agents to hand you that line when they
+need your rulings. The checker cannot know the address you open Vantage at, so
+the link starts at `/.vantage/planning`: press `/` on your planning page and
+paste the line, or put your address in front. In daemon mode, opening it lists
+each project's planning page with the filter kept. With `--format json`, the
+output gains a `filter` key, and the format version stays 2.
+
+`--filter` exits `2` on a filter it cannot read, such as one with an unclosed
+quote, and on a `path:` or `-path:` term that matches no path. A word that
+matches nothing is an empty answer and exits `0`. `vantage-check` 0.8.0 and
+0.8.1 exit `2` with `unknown option for index: --filter`: run
+`uvx vantage-check@latest`. Vantage 0.8.0 and 0.8.1 ignore the filter without
+saying so: they show the whole planning page, or, in daemon mode, ask you to
+choose a project. A later release may keep other entries for the same filter
+text, so have your agent rerun `--filter` rather than keep an old link. See
 [Handing the human a filtered planning page](userguide/guides/vantage-check.md#handing-the-human-a-filtered-planning-page).
 
 ### Fixed
 
 - In daemon mode, `g p` and the sidebar's planning entry opened the wrong page
   for a project whose name holds `#` or `?`.
+- On the planning page, the roadmap picker at the top of the contents column
+  drew its focus ring cut off at the left edge.
 
 ## [0.8.1] - 2026-10-02
 
