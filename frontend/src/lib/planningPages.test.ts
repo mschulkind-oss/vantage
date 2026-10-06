@@ -525,9 +525,13 @@ describe("the planning filter (planning-filter.md §6.4, §6.5)", () => {
     expect(sectionsOf(index, null, "is:open")).not.toBe(filtered);
     // No filter, and one not understood, are the derivation itself.
     expect(sectionsOf(index, null, "")).toBe(sectionsOf(index));
-    expect(sectionsOf(index, null, "OR")).toBe(sectionsOf(index));
+    expect(sectionsOf(index, null, "is:closed")).toBe(sectionsOf(index));
     expect(filteredSectionsOf(index, null, "")).toBeNull();
-    expect(filteredSectionsOf(index, null, "OR")).toBeNull();
+    expect(filteredSectionsOf(index, null, 'a"b"')).toBeNull();
+    // A word is a filter: it searches.
+    expect(sectionEntryKeys(sectionsOf(index, null, "outer"))).toEqual([
+      "needs-you docs/design/a.md#OQ-A3",
+    ]);
     // What the fixture says the text keeps, with its notice's numbers.
     const read = forms.read.find((r) => r.text === DESIGN)!;
     expect(sectionEntryKeys(filtered)).toEqual(read.keeps);
@@ -535,6 +539,24 @@ describe("the planning filter (planning-filter.md §6.4, §6.5)", () => {
       filteredSectionsOf(index, null, DESIGN)!.summary,
     );
     expect(filterSummaryOf(index, null, DESIGN)?.canonical).toBe(DESIGN);
+  });
+
+  // Typing applies a text per keystroke (§6.5), so a derivation keeps only
+  // the filters used last, and the one on screen, used with every layout,
+  // stays among them.
+  it("keeps the filtered sections of the last sixteen filters per derivation", () => {
+    const shown = sectionsOf(index, null, DESIGN);
+    const typed = sectionsOf(index, null, "w0");
+    for (let i = 1; i <= 40; i++) {
+      sectionsOf(index, null, `w${i}`);
+      expect(sectionsOf(index, null, DESIGN)).toBe(shown);
+    }
+    const again = sectionsOf(index, null, "w0");
+    expect(again).not.toBe(typed);
+    expect(again).toEqual(typed);
+    for (let i = 25; i <= 40; i++) {
+      expect(filteredSectionsOf(index, null, `w${i}`)).not.toBeNull();
+    }
   });
 
   it("keeps every fixture text's entries, under the default roadmap", () => {
@@ -582,7 +604,8 @@ describe("the planning filter (planning-filter.md §6.4, §6.5)", () => {
     expect(filterValue("path:./docs/x.md  is:open")).toBe(
       "path:docs/x.md is:open",
     );
-    expect(filterValue(" OR ")).toBe(" OR ");
+    expect(filterValue(' a"b" ')).toBe(' a"b" ');
+    expect(filterValue(' "OR" ')).toBe("OR");
     expect(filterValue(" \t ")).toBe("");
     expect(filterValue("")).toBe("");
   });
@@ -629,9 +652,13 @@ describe("the planning filter (planning-filter.md §6.4, §6.5)", () => {
 
     it("leaves one it does not understand exactly as written", () => {
       expect(
-        rewrite("filter=OR&roadmap=roadmap.md&filter=path:a.md"),
+        rewrite("filter=is:closed&roadmap=roadmap.md&filter=path:a.md"),
       ).toBeNull();
-      expect(rewrite("filter=Path:a.md&roadmap=roadmap.md")).toBeNull();
+      expect(rewrite("filter=a%22b%22&roadmap=roadmap.md")).toBeNull();
+      // A word is understood, and written canonically like any other term.
+      expect(rewrite('filter=%22Path:a.md%22+"outer"&roadmap=roadmap.md')).toBe(
+        "filter=%22Path:a.md%22+outer&roadmap=roadmap.md",
+      );
     });
 
     it("clamps the pages against the filtered sections, in the same rewrite", () => {
@@ -655,7 +682,7 @@ describe("the planning filter (planning-filter.md §6.4, §6.5)", () => {
     expect(planningQuery(withFilter(search, "  "))).toBe(
       "x=1&roadmap=roadmap.md",
     );
-    expect(withFilter(search, "a OR b").get("filter")).toBe("a OR b");
+    expect(withFilter(search, 'a"b" OR').get("filter")).toBe('a"b" OR');
     // A pasted link's roadmap.
     expect(planningQuery(withFilter(search, "is:open", "x/roadmap.md"))).toBe(
       "filter=is:open&x=1&roadmap=x%2Froadmap.md",

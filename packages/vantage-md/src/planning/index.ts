@@ -117,6 +117,7 @@ export type {
 } from "./guide.js";
 export { cardBlockFor } from "./cardSource.js";
 export {
+  PLANNING_FILTER_KEYS,
   PLANNING_FILTER_LIMITS,
   PLANNING_FILTER_PARAM,
   PLANNING_PAGE_PATH,
@@ -124,6 +125,7 @@ export {
   applyPlanningFilter,
   documentFilter,
   encodePlanningQueryValue,
+  filterKeepsDocument,
   filterKeepsQuestion,
   parsePlanningFilter,
   planningLink,
@@ -134,6 +136,7 @@ export type {
   NotUnderstoodPlanningFilter,
   PlanningFilter,
   PlanningFilterLimits,
+  PlanningFilterQuestion,
   PlanningFilterReason,
   PlanningFilterSummary,
   PlanningFilterTerm,

@@ -68,6 +68,13 @@ ${REQUEST_SECTION_LIST}
   --filter <text>                    show only the entries the text keeps, as
                                      the planning page's Filter box does, and
                                      print a link to that page. Its terms:
+                                       word            text a question's id,
+                                                       title, leaning or
+                                                       path holds, or a
+                                                       row's path, stage or
+                                                       next; in any case
+                                       "a phrase"      the same, for words
+                                                       side by side
                                        path:<pattern>  a document: a file, a
                                                        folder, or a * or **
                                                        pattern as in
@@ -79,11 +86,13 @@ ${REQUEST_SECTION_LIST}
                                                        "quotes", which match
                                                        it as written
                                        is:open         a question still open
-                                     Terms with one key keep any of their
-                                     matches; terms with different keys must
-                                     all match. Given twice, the texts join.
-                                     Paste the link into the planning page's
-                                     Filter box: press / there.
+                                       -<term>         leave out what the
+                                                       term matches
+                                     path: terms keep any of their matches;
+                                     every other term must match. Given
+                                     twice, the texts join. Paste the link
+                                     into the planning page's Filter box:
+                                     press / there.
   --config <path>                    use this .vantage.toml
   --no-config                        ignore .vantage.toml entirely
 
@@ -100,8 +109,8 @@ Exit codes:
      judge)
   2  bad arguments, a bad .vantage.toml, a .vantage.toml whose target is
      newer than this checker, or a path that does not exist. For index, also
-     a --filter it does not understand, checked before anything is scanned,
-     or one with a path: term that matches no path
+     a --filter it cannot read, checked before anything is scanned, or one
+     with a path: or -path: term that matches no path
   3  a check could not run — the documents were not fully checked, so the
      result is unknown rather than clean. For index: the project has more
      candidate files than [planning] max-candidates, so nothing was scanned

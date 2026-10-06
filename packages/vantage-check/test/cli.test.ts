@@ -137,8 +137,8 @@ describe("parseArgs", () => {
     );
   });
 
-  // The next argument is the value whatever it is, so a filter this release
-  // does not understand is the command's exit 2, never an unknown option.
+  // The next argument is the value whatever it is, so an exclusion, or a
+  // filter the command cannot read, is never an unknown option.
   it("takes the argument after --filter as its value, whatever it is", () => {
     expect(parseArgs(["index", "--filter", "-path:x"])).toEqual({
       kind: "index",
@@ -322,18 +322,25 @@ describe("run", () => {
   });
 
   // The help is where an agent learns the filter (planning-filter.md §9.5):
-  // its keys, how terms combine, and what to do with the link.
-  it("lists --filter and its keys among index's options, and its exit 2", async () => {
+  // its words and keys, the -, how terms combine, and what to do with the
+  // link.
+  it("lists --filter, its words, keys and -, among index's options, and its exit 2", async () => {
     const { USAGE } = await import("../src/help.js");
     const help = USAGE.replace(/\s+/g, " ");
 
     expect(USAGE).toContain(
       "\n  --filter <text>                    show only the entries the text keeps, as\n",
     );
+    expect(USAGE).toMatch(/\n {39}word {12}text a question's id,\n/);
+    expect(USAGE).toMatch(/\n {39}"a phrase" {6}the same, for words\n/);
     expect(USAGE).toMatch(/\n {39}path:<pattern> {2}a document: /);
     expect(USAGE).toMatch(/\n {39}is:open {9}a question still open\n/);
+    expect(USAGE).toMatch(/\n {39}-<term> {9}leave out what the\n/);
     expect(help).toContain(
-      "Terms with one key keep any of their matches; terms with different keys must all match.",
+      "text a question's id, title, leaning or path holds, or a row's path, stage or next; in any case",
+    );
+    expect(help).toContain(
+      "path: terms keep any of their matches; every other term must match.",
     );
     expect(help).toContain(
       "Paste the link into the planning page's Filter box: press / there.",
@@ -342,7 +349,7 @@ describe("run", () => {
       'Put a path holding any character but A-Z a-z 0-9 . _ - / in "quotes", which match it as written',
     );
     expect(help).toContain(
-      "For index, also a --filter it does not understand, checked before anything is scanned, or one with a path: term that matches no path",
+      "For index, also a --filter it cannot read, checked before anything is scanned, or one with a path: or -path: term that matches no path",
     );
     // Options for index, in order: --filter sits beside --roadmap.
     const options = USAGE.split("Options for index:\n")[1]?.split("\n\n")[0];
@@ -370,7 +377,20 @@ describe("run", () => {
         "understood",
       );
     }
-    for (const ch of [" ", "'", "+", "(", "#", "~", ",", "@", "ü"]) {
+    // Bare, a space ends the path: what follows it is a word of its own.
+    expect(parsePlanningFilter("path:docs/a b.md")).toMatchObject({
+      kind: "understood",
+      canonical: "path:docs/a b.md",
+      terms: [
+        { key: "path", value: "docs/a" },
+        { key: "text", value: "b.md" },
+      ],
+    });
+    expect(parsePlanningFilter('path:"docs/a b.md"')).toMatchObject({
+      kind: "understood",
+      terms: [{ key: "path", value: "docs/a b.md" }],
+    });
+    for (const ch of ["'", "+", "(", "#", "~", ",", "@", "ü"]) {
       expect(parsePlanningFilter(`path:docs/a${ch}b.md`).kind).toBe(
         "not-understood",
       );
