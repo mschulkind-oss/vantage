@@ -140,6 +140,7 @@ export type {
   PlanningFilterReason,
   PlanningFilterSummary,
   PlanningFilterTerm,
+  PlanningKeptCount,
   PlanningNothingMatches,
   UnderstoodPlanningFilter,
 } from "./filter.js";

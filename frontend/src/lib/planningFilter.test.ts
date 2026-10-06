@@ -1427,10 +1427,13 @@ describe("applying a filter to the sections (§6.11, §6.15)", () => {
       "b/roadmap.md": 1,
       "c/roadmap.md": 1,
     });
+    // It keeps nothing else, so Nothing on this roadmap matches says it.
     expect(
-      PLANNING_NOTICES.filtered(one.summary, "checker").map(noticeText)[1],
+      PLANNING_NOTICES.nothingMatches(one.summary, "checker")?.map(
+        noticeText,
+      )[1],
     ).toBe(
-      "1 more question it keeps is on other roadmaps: `b/roadmap.md` (1), `c/roadmap.md` (1). Rerun with --roadmap naming one.",
+      "1 question it keeps is on other roadmaps: `b/roadmap.md` (1), `c/roadmap.md` (1). Rerun with --roadmap naming one.",
     );
 
     const both = apply("path:docs/c.md path:docs/d.md", index, sections);
@@ -1994,12 +1997,14 @@ describe("a pasted link (§6.17)", () => {
   });
 });
 
-describe("Nothing matches, when a filter keeps no entry (ruled 2026-10-06)", () => {
+describe("Nothing matches, when a filter keeps no entry (§6.18)", () => {
   const checker = (summary: PlanningFilterSummary) =>
     PLANNING_NOTICES.nothingMatches(summary, "checker")?.map(noticeText) ??
     null;
   const page = (summary: PlanningFilterSummary) =>
     PLANNING_NOTICES.nothingMatches(summary, "page")?.map(noticeText) ?? null;
+  const notice = (summary: PlanningFilterSummary, reader: "page" | "checker") =>
+    PLANNING_NOTICES.filtered(summary, reader).map(noticeText);
   /** The reason line, as both readers have it where they word it alike. */
   const reason = (text: string, index?: PlanningIndex) => {
     const { summary } =
@@ -2009,6 +2014,43 @@ describe("Nothing matches, when a filter keeps no entry (ruled 2026-10-06)", () 
     expect(page(summary)?.[1]).toBe(checker(summary)?.[1]);
     return checker(summary)?.[1];
   };
+  /** What a looser filter keeps: listed entries, and none elsewhere. */
+  const listed = (entries: number) => ({
+    entries,
+    onOtherRoadmaps: 0,
+    otherRoadmaps: 0,
+  });
+  /**
+   * Two roadmaps, with OQ-B1 routed by docs/plans/roadmap.md alone, which is
+   * not the default roadmap: under roadmap.md it is counted, never listed.
+   */
+  const twoRoadmaps = (b1: string) =>
+    indexOf({
+      "roadmap.md": "# Roadmap\n\n- [A's first](docs/a.md#OQ-A1)\n",
+      "docs/plans/roadmap.md": "# Plans\n\n- [B](../b.md)\n",
+      "docs/a.md": [
+        "---\nstatus: draft\n---\n\n# A\n",
+        "1. \u{1F4AC} **OQ-A1: The first?**",
+        "",
+        "   <!-- vantage: question id=OQ-A1 -->",
+        "",
+        "   Either.",
+        "",
+      ].join("\n"),
+      "docs/b.md": [
+        "---\nstatus: draft\n---\n\n# B\n",
+        `1. ${b1} **OQ-B1: The second?**`,
+        "",
+        "   <!-- vantage: question id=OQ-B1 -->",
+        "",
+        "   Either.",
+        "",
+      ].join("\n"),
+    });
+  const WORDS =
+    "Words and quoted phrases are matched only against a question's id, title and leaning, and a document's path, stage and next step.";
+  const B_OPEN = twoRoadmaps("\u{1F4AC}");
+  const B_ANSWERED = twoRoadmaps("\u2705");
 
   it("is said only of a filter that keeps no entry, with the filter as code", () => {
     expect(apply("path:*.md").summary.nothingMatches).toBeNull();
@@ -2027,41 +2069,86 @@ describe("Nothing matches, when a filter keeps no entry (ruled 2026-10-06)", () 
     );
   });
 
-  it("says first that the questions it keeps are on other roadmaps, counted, in each reader's words", () => {
+  it("says nothing on this roadmap matches when the questions it keeps are on other roadmaps, and names them, in each reader's words", () => {
     // OQ-C1 is x/roadmap.md's, which is not the default roadmap.
     const { summary } = apply("oq-c1");
     expect(summary.nothingMatches).toEqual({
       kind: "other-roadmaps",
-      questions: 1,
-      roadmaps: 1,
+      onOtherRoadmaps: 1,
+      otherRoadmaps: [{ path: "x/roadmap.md", count: 1 }],
     });
+    // It does match something, so the headline does not say it matches
+    // nothing.
     expect(checker(summary)).toEqual([
-      "Nothing matches `oq-c1`.",
-      "1 question it keeps is on another roadmap. Rerun with --roadmap naming it.",
+      "Nothing on this roadmap matches `oq-c1`.",
+      "1 question it keeps is on another roadmap: `x/roadmap.md` (1). Rerun with --roadmap naming it.",
     ]);
-    expect(page(summary)?.[1]).toBe(
-      "1 question it keeps is on another roadmap. Choose that roadmap in the Roadmap menu to see it; the filter stays.",
-    );
+    // The page draws a button for the roadmap under the line.
+    expect(page(summary)).toEqual([
+      "Nothing on this roadmap matches `oq-c1`.",
+      "1 question it keeps is on another roadmap: `x/roadmap.md` (1). The filter stays when you choose that roadmap.",
+    ]);
     // Before the is:open reason, which holds too.
     expect(apply("oq-c1 is:open").summary.nothingMatches?.kind).toBe(
       "other-roadmaps",
     );
     const many = (
-      questions: number,
-      roadmaps: number,
+      onOtherRoadmaps: number,
+      otherRoadmaps: { path: string; count: number }[],
     ): PlanningFilterSummary => ({
       ...summary,
-      nothingMatches: { kind: "other-roadmaps", questions, roadmaps },
+      nothingMatches: {
+        kind: "other-roadmaps",
+        onOtherRoadmaps,
+        otherRoadmaps,
+      },
     });
-    expect(page(many(3, 1))?.[1]).toBe(
-      "3 questions it keeps are on another roadmap. Choose that roadmap in the Roadmap menu to see them; the filter stays.",
+    expect(page(many(3, [{ path: "x/roadmap.md", count: 3 }]))?.[1]).toBe(
+      "3 questions it keeps are on another roadmap: `x/roadmap.md` (3). The filter stays when you choose that roadmap.",
     );
-    expect(page(many(1, 2))?.[1]).toBe(
-      "1 question it keeps is on 2 other roadmaps. Choose one in the Roadmap menu to see it; the filter stays.",
+    const two = [
+      { path: "x/roadmap.md", count: 1 },
+      { path: "y/roadmap.md", count: 1 },
+    ];
+    expect(page(many(1, two))?.[1]).toBe(
+      "1 question it keeps is on other roadmaps: `x/roadmap.md` (1), `y/roadmap.md` (1). The filter stays when you choose one of them.",
     );
-    expect(checker(many(1234, 2))?.[1]).toBe(
-      "1,234 questions it keeps are on 2 other roadmaps. Rerun with --roadmap naming one.",
+    expect(checker(many(1234, two))?.[1]).toBe(
+      "1,234 questions it keeps are on other roadmaps: `x/roadmap.md` (1), `y/roadmap.md` (1). Rerun with --roadmap naming one.",
     );
+  });
+
+  it("leaves out of the notice what its reason line says, and on the page the line Clear the filter is a button for", () => {
+    const { summary } = apply("oq-c1");
+    expect(notice(summary, "checker")).toEqual([
+      "Filtered by `oq-c1`: 0 of 20 entries, none of them open questions.",
+      "Run without --filter to see the other 20.",
+    ]);
+    expect(notice(summary, "page")).toEqual([
+      "Filtered by `oq-c1`: 0 of 20 entries, none of them open questions.",
+    ]);
+    // A path: term that matches no path is the reason, and said once, there.
+    const unmatched = apply("path:docs/desing").summary;
+    expect(notice(unmatched, "page")).toEqual([
+      "Filtered by `path:docs/desing`: 0 of 20 entries, in 0 of 19 paths, none of them open questions.",
+    ]);
+    expect(page(unmatched)).toEqual([
+      "Nothing matches `path:docs/desing`.",
+      "`path:docs/desing` matches no path the index lists.",
+    ]);
+    // Where it keeps an entry, the notice says all of it.
+    const kept = apply("path:sub path:docs/desing").summary;
+    expect(kept.nothingMatches).toBeNull();
+    expect(notice(kept, "page")).toEqual([
+      "Filtered by `path:sub path:docs/desing`: 1 of 20 entries, in 1 of 19 paths, 1 of them an open question.",
+      "`path:docs/desing` matches no path the index lists.",
+      "1 more question it keeps is on another roadmap: `x/roadmap.md` (1). Choose that roadmap to see it; the filter stays.",
+      "Clear the filter to see the other 19.",
+    ]);
+    // A filter over a page with no entry still says it hides none.
+    const empty = indexOf({ "a.md": "---\nstatus: draft\n---\n\n# A\n" });
+    const none = apply("zzz", empty, derivePlanningSections(empty)).summary;
+    expect(notice(none, "page").at(-1)).toBe("It hides no entry.");
   });
 
   it("says when there is no entry to match even without it", () => {
@@ -2088,10 +2175,23 @@ describe("Nothing matches, when a filter keeps no entry (ruled 2026-10-06)", () 
     expect(reason("path:/a.md path:ref generator")).toBe(
       "It keeps 2 documents, and none of them has a question or a next step listed here.",
     );
-    // None at all: every path left out, or a term that matches none.
+    // None at all: every path left out, or terms that match none, which
+    // are named.
     expect(reason("-path:.md")).toBe("It keeps no document the index lists.");
     expect(reason("path:docs/desing")).toBe(
-      "It keeps no document the index lists.",
+      "`path:docs/desing` matches no path the index lists.",
+    );
+    expect(reason("path:docs/desing path:nowhere -path:zz")).toBe(
+      "`path:docs/desing`, `path:nowhere` and `-path:zz` match no path the index lists.",
+    );
+  });
+
+  it("does not blame the documents for questions only another roadmap routes", () => {
+    // Under roadmap.md, docs/b.md's question is counted, not listed: a word
+    // that leaves it out is the reason, not the document.
+    expect(reason("path:docs/b.md zzz", B_OPEN)).toBe(WORDS);
+    expect(reason("path:/docs/b.md is:open", B_ANSWERED)).toBe(
+      "Without `is:open` it would keep 1 question on another roadmap, and it is not an open question.",
     );
   });
 
@@ -2100,7 +2200,7 @@ describe("Nothing matches, when a filter keeps no entry (ruled 2026-10-06)", () 
     expect(apply("path:notes/e.md is:open").summary.nothingMatches).toEqual({
       kind: "state",
       terms: ["is:open"],
-      entries: 1,
+      ...listed(1),
     });
     const { summary } = apply("path:notes/e.md is:open");
     expect(PLANNING_NOTICES.nothingMatches(summary, "page")?.[1]).toEqual([
@@ -2120,16 +2220,89 @@ describe("Nothing matches, when a filter keeps no entry (ruled 2026-10-06)", () 
     );
   });
 
+  it("counts what its is: terms leave out on other roadmaps, where that is all the rest keeps", () => {
+    // OQ-C1 is open, and only x/roadmap.md routes it.
+    expect(apply("oq-c1 -is:open").summary.nothingMatches).toEqual({
+      kind: "state",
+      terms: ["-is:open"],
+      entries: 0,
+      onOtherRoadmaps: 1,
+      otherRoadmaps: 1,
+    });
+    expect(reason("oq-c1 -is:open")).toBe(
+      "Without `-is:open` it would keep 1 question on another roadmap, and it is an open question.",
+    );
+    expect(reason("oq-b1 -is:open", B_OPEN)).toBe(
+      "Without `-is:open` it would keep 1 question on another roadmap, and it is an open question.",
+    );
+    // Answered, OQ-B1 needs you and is not open: the agent's last round.
+    expect(reason("oq-b1 is:open", B_ANSWERED)).toBe(
+      "Without `is:open` it would keep 1 question on another roadmap, and it is not an open question.",
+    );
+  });
+
+  it("says its - words leave out everything the rest of it keeps, which every entry matches", () => {
+    // Every path the fixture lists ends in .md.
+    const { summary } = apply("-md");
+    expect(summary.nothingMatches).toEqual({
+      kind: "excluded",
+      terms: ["-md"],
+      withState: false,
+      // OQ-C1 too, which only x/roadmap.md routes.
+      entries: 20,
+      onOtherRoadmaps: 1,
+      otherRoadmaps: 1,
+    });
+    expect(page(summary)).toEqual([
+      "Nothing matches `-md`.",
+      "Without `-md` it would keep 20 entries, and every one of them matches `md`.",
+    ]);
+    expect(PLANNING_NOTICES.nothingMatches(summary, "page")?.[1]).toEqual([
+      "Without ",
+      { code: "-md" },
+      " it would keep 20 entries",
+      ", and every one of them matches ",
+      { code: "md" },
+      ".",
+    ]);
+    expect(reason("-m")).toBe(
+      "Without `-m` it would keep 20 entries, and every one of them matches `m`.",
+    );
+    // notes/e.md's row, whose next step says to graduate it.
+    expect(reason("path:notes/e.md -graduate")).toBe(
+      "Without `-graduate` it would keep 1 entry, and it matches `graduate`.",
+    );
+    expect(reason('path:notes/e.md -"into the" -built')).toBe(
+      'Without `-"into the" -built` it would keep 1 entry, and it matches `"into the"` or `built`.',
+    );
+    // Neither the - word nor is:open alone, but the two together.
+    expect(
+      apply("path:notes/e.md -graduate is:open").summary.nothingMatches,
+    ).toEqual({
+      kind: "excluded",
+      terms: ["-graduate", "is:open"],
+      withState: true,
+      ...listed(1),
+    });
+    expect(reason("path:notes/e.md -graduate is:open")).toBe(
+      "Without `-graduate is:open` it would keep 1 entry.",
+    );
+    // Only on another roadmap.
+    expect(reason("path:docs/b.md -second", B_OPEN)).toBe(
+      "Without `-second` it would keep 1 question on another roadmap, and it matches `second`.",
+    );
+    // A word that matches nothing is the reason, not the - word with it.
+    expect(reason("-md zzz")).toBe(WORDS);
+  });
+
   it("says otherwise what words are matched against", () => {
     expect(apply("nothing-holds-this").summary.nothingMatches).toEqual({
       kind: "words",
     });
-    const words =
-      "Words and quoted phrases are matched only against a question's id, title and leaning, and a document's path, stage and next step.";
-    expect(reason("nothing-holds-this")).toBe(words);
+    expect(reason("nothing-holds-this")).toBe(WORDS);
     // The documents its path: terms keep list entries, and a word keeps none.
-    expect(reason("path:notes zzz")).toBe(words);
-    expect(reason('"first? the" is:open')).toBe(words);
+    expect(reason("path:notes zzz")).toBe(WORDS);
+    expect(reason('"first? the" is:open')).toBe(WORDS);
   });
 });
 
@@ -2253,9 +2426,12 @@ describe("the filter notice (§6.18)", () => {
   });
 
   it("says each unknown key is not a filter key, naming the terms it opens", () => {
+    // path:notes keeps documents, so the unmatched term is no reason for
+    // keeping nothing, and is said here.
     const { summary } = apply(
-      "stage:decided -title:x path:docs/desing stage:built Path:x http://y",
+      "stage:decided -title:x path:docs/desing path:notes stage:built Path:x http://y",
     );
+    expect(summary.nothingMatches).toEqual({ kind: "words" });
     expect(summary.unknownKeys).toEqual([
       { key: "stage", terms: ["stage:decided", "stage:built"] },
       { key: "title", terms: ["-title:x"] },
