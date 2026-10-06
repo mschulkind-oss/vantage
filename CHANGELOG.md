@@ -50,7 +50,8 @@ now lists a link to each project's planning page, keeping any filter. Run in a
 linked worktree, `--filter` adds a line under the link saying that the page
 shows the checkout your Vantage serves, which may not hold the documents as
 they are in the worktree. If your `.vantage.toml` sets a `target` before 0.9,
-another line says that an older Vantage shows every entry. With
+another line says that an older Vantage shows every entry. Under a `target`
+before 0.8, it says first that a Vantage that old has no planning page. With
 `--format json`, the filtered sections are under a new `filter` key. Every
 other key, `sections` included, is what it is without the flag, and the format
 version stays 2.

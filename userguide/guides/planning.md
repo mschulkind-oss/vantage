@@ -921,7 +921,8 @@ each of these that applies:
   document to see what it holds.
 
 The last line says how to see the rest, as *Clear the filter to see the other
-10.* When nothing the filter keeps needs a ruling, the page says *Nothing this
+10.* When the filter hides no entry, the last line is *It hides no entry.*
+When nothing the filter keeps needs a ruling, the page says *Nothing this
 filter keeps needs you* in place of *Nothing needs you*.
 
 #### When nothing matches
