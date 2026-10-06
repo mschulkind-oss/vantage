@@ -180,7 +180,104 @@ test.describe("the planning filter", () => {
     expect(await page.evaluate(() => history.length)).toBe(entries);
   });
 
-  test("applies typed text on Enter: the agent's address and page, in place, moving nothing painted (criteria 3, 8)", async ({
+  test("follows the box a key at a time with no Enter, moving nothing painted, adding no history entry, and the address takes the text after the pause (criterion 13)", async ({
+    page,
+  }) => {
+    const reads: string[] = [];
+    page.on("request", (request) => {
+      const { pathname } = new URL(request.url());
+      if (pathname.endsWith("/planning/reviews")) reads.push("POST");
+      if (pathname.endsWith("/api/review")) reads.push(`GET ${pathname}`);
+    });
+    await watchPaint(page);
+    await page.goto("/.vantage/planning");
+    await expect(cards(page, "Needs you")).toHaveCount(10);
+    const entries = await page.evaluate(() => history.length);
+    const before = await cards(page, "Needs you").evaluateAll((all) =>
+      all.map((a) => a.getAttribute("aria-label")),
+    );
+    await page.keyboard.press("/");
+    await expect(box(page)).toBeFocused();
+    // The long tasks of typing alone, not of the page's load.
+    await page.evaluate(() => {
+      (window as unknown as { __longTasks: number[] }).__longTasks.length = 0;
+    });
+    const sections = page.locator("[data-planning-sections]");
+    const counts: string[] = [];
+    for (const [at, key] of [..."oq-e"].entries()) {
+      await page.keyboard.type(key);
+      // Each key's own results are painted, before the next key and with
+      // no Enter: the sections carry the filter they were laid out under.
+      await expect(sections).toHaveAttribute(
+        "data-planning-filter",
+        "oq-e".slice(0, at + 1),
+      );
+      counts.push((await sectionBar(page).textContent()) ?? "");
+    }
+    expect(
+      await cards(page, "Needs you").evaluateAll((all) =>
+        all.map((a) => a.getAttribute("aria-label")),
+      ),
+    ).toEqual(KEPT);
+    expect(before).not.toEqual(KEPT);
+    await expect(sectionBar(page)).toHaveText(/^Needs you 2$/);
+    expect(counts.at(-1)).toBe("Needs you 2");
+    await expect(notice(page)).toContainText("Filtered by oq-e: 2 of ");
+    // The caret stays where the reader typed.
+    expect(
+      await box(page).evaluate((input: HTMLInputElement) => [
+        input.value,
+        input.selectionStart,
+        input.selectionEnd,
+      ]),
+    ).toEqual(["oq-e", 4, 4]);
+    // The address takes it once the idle pause has passed, in place.
+    await expect(page).toHaveURL(/\/\.vantage\/planning\?filter=oq-e$/);
+    await expect(page.getByTestId("planning-filter-status")).toContainText(
+      "Filtered by oq-e",
+    );
+    await expect(box(page)).toHaveValue("oq-e");
+    await expect(box(page)).toBeFocused();
+    const shifts = await shiftsOf(page);
+    expect(shifts, JSON.stringify(shifts)).toEqual([]);
+    expect(await page.evaluate(() => history.length)).toBe(entries);
+    await page.waitForTimeout(500);
+    expect(reads.filter((read) => read === "POST").length).toBeLessThanOrEqual(
+      2,
+    );
+    expect(reads.filter((read) => read.startsWith("GET"))).toEqual([]);
+    await reportLongTasks(page, "typing oq-e");
+  });
+
+  test("keeps the page while a text it cannot read is typed, says so in a hint that fits its slot, and Enter names it (criterion 14)", async ({
+    page,
+  }) => {
+    await page.goto("/.vantage/planning");
+    await expect(cards(page, "Needs you")).toHaveCount(10);
+    await box(page).click();
+    await page.keyboard.type('path:plans/design.md "is');
+    const hint = page.getByTestId("planning-filter-hint");
+    await expect(hint).toHaveText("Not applied: Enter says why");
+    const fit = await hint.evaluate((node) => ({
+      scrollWidth: node.scrollWidth,
+      clientWidth: node.clientWidth,
+    }));
+    expect(fit.scrollWidth).toBeLessThanOrEqual(fit.clientWidth);
+    await expect(cards(page, "Needs you")).toHaveCount(2);
+    await expect(notice(page)).toContainText(
+      "Filtered by path:plans/design.md: 2 of ",
+    );
+    await expect(box(page)).not.toHaveAttribute("aria-invalid");
+    await page.keyboard.press("Enter");
+    await expect(notice(page)).toContainText(
+      "Not filtered: this Vantage cannot read an unclosed quote.",
+    );
+    await expect(cards(page, "Needs you")).toHaveCount(10);
+    await expect(box(page)).toHaveAttribute("aria-invalid", "true");
+    await expect(hint).toHaveText("");
+  });
+
+  test("applies typed text as it is typed, and Enter writes it at once: the agent's address and page, in place, moving nothing painted (criteria 3, 8)", async ({
     page,
   }) => {
     await watchPaint(page);
@@ -189,9 +286,9 @@ test.describe("the planning filter", () => {
     const entries = await page.evaluate(() => history.length);
     await box(page).click();
     await box(page).fill("path:/plans/design.md is:open");
-    await expect(page.getByTestId("planning-filter-hint")).toHaveText(
-      "Enter to apply",
-    );
+    // Applied with no Enter, and never said to be otherwise.
+    await expect(cards(page, "Needs you")).toHaveCount(2);
+    await expect(page.getByTestId("planning-filter-hint")).toHaveText("");
     // The long tasks of the filter change alone, not of the page's load.
     await page.evaluate(() => {
       (window as unknown as { __longTasks: number[] }).__longTasks.length = 0;
