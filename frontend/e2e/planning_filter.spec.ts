@@ -379,6 +379,14 @@ test.describe("the planning filter", () => {
       "Words and quoted phrases are matched only against a question's id, title and leaning, and a document's path, stage and next step.",
     );
     await expect(notice(page)).toContainText("Filtered by zqxj: 0 of ");
+    // Clear the filter is the button below, so the notice does not say it.
+    await expect(notice(page)).not.toContainText("Clear the filter");
+    // No empty section bar, nor its row's room between the box and the
+    // notice, which read as something that failed to load.
+    await expect(sectionBar(page)).toHaveCount(0);
+    const lineBox = (await filterLine(page).boundingBox())!;
+    const noticeBox = (await notice(page).boundingBox())!;
+    expect(noticeBox.y - (lineBox.y + lineBox.height)).toBeLessThan(28);
     await expect(cards(page, "Needs you")).toHaveCount(0);
     await expect(page.getByTestId("nothing-needs-you")).toHaveCount(0);
     await expect(page.getByTestId("planning-filter-status")).toContainText(
@@ -471,10 +479,18 @@ test.describe("the planning filter", () => {
     const term =
       "path:docs/design/planning_filter_with_a_much_longer_name_than_fits.md";
     await page.goto(`/.vantage/planning?filter=${term}`);
-    await expect(notice(page)).toContainText(
+    await expect(notice(page)).toContainText(`Filtered by ${term}: 0 of `);
+    // It keeps nothing, so the term is named under Nothing matches, as the
+    // reason, and its headline holds the term too.
+    const empty = page.getByTestId("nothing-matches");
+    await expect(empty).toContainText(
       `${term} matches no path the index lists.`,
     );
-    for (const el of [notice(page), page.locator("[data-content-scroll]")]) {
+    for (const el of [
+      notice(page),
+      empty,
+      page.locator("[data-content-scroll]"),
+    ]) {
       const { scrollWidth, clientWidth } = await el.evaluate((node) => ({
         scrollWidth: node.scrollWidth,
         clientWidth: node.clientWidth,

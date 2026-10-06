@@ -905,10 +905,14 @@ Open or answered questions on this roadmap, in its order. Rule each open one, th
   exits `0`. *Nothing this filter keeps needs you* is not printed then, and
   there is no `Agent requests:` line. The reasons, first that applies, are the
   ones [the planning page gives](planning.md#when-nothing-matches): the
-  questions it keeps are on other roadmaps (*Rerun with --roadmap naming
-  it.*), the index lists no entry at all, its `path:` terms keep documents
-  that list nothing, `is:open` leaves out everything else it keeps, or else
-  what words are matched against:
+  questions it keeps are on other roadmaps, the index lists no entry at all,
+  its `path:` terms keep documents that list nothing, `is:open` leaves out
+  everything else it keeps, a `-` word or phrase does, or else what words are
+  matched against. Where the questions it keeps are on other roadmaps, it
+  does match something, so it says *Nothing on this roadmap matches* and
+  names them, and the notice above does not: *1 question it keeps is on
+  another roadmap: `docs/plans/roadmap.md` (1). Rerun with --roadmap naming
+  it.* An `is:open` that leaves out everything else it keeps reads:
 
   ```console
   $ vantage-check index --filter 'path:/docs/design/search.md is:open'
@@ -1071,8 +1075,9 @@ them the planning page filtered to that work. The loop:
    - Exit `2` names the term to fix.
    - `unknown option for index: --filter` means the checker predates the
      filter: run `uvx vantage-check@latest`.
-   - If the notice names other roadmaps, rerun with `--roadmap` naming each,
-     and hand over each link.
+   - If the notice, or the line under *Nothing on this roadmap matches*,
+     names other roadmaps, rerun with `--roadmap` naming each, and hand over
+     each link.
    - If the notice says a kept document waits on one the filter leaves out,
      add a `path:` term for that document and rerun.
 3. **Hand over the `Planning page:` line, the filter text in a code span, and
@@ -1084,8 +1089,10 @@ them the planning page filtered to that work. The loop:
 5. **Apply the answers, and rerun the same command** until it says *Nothing
    this filter keeps needs you*, or, once no entry is left at all, *Nothing
    matches*, as in *Without `is:open` it would keep 1 entry, and it is not an
-   open question.* The line counting blocked questions says whether another
-   round will follow.
+   open question.* *Nothing on this roadmap matches* is not the end: the
+   questions it keeps are on the roadmaps its line names, so rerun with
+   `--roadmap` naming each. The line counting blocked questions says whether
+   another round will follow.
 
 What you hand over can be as short as this:
 

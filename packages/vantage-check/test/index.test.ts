@@ -26,6 +26,7 @@ import {
 } from "../../vantage-md/src/planning/index.js";
 import { makeTree } from "./helpers.js";
 import {
+  ANSWERED,
   FULL_TOML,
   FULL_TREE,
   OPEN,
@@ -1734,6 +1735,77 @@ describe("index --filter, keeping no entry", () => {
     );
   });
 
+  it("says what a - word leaves out when every entry matches it", async () => {
+    // Every path in the tree ends in .md, and every question's title has
+    // "Question" in it.
+    const several = makeTree(SEVERAL);
+    for (const [text, entries] of [
+      ["-md", 3],
+      ["-question", 3],
+    ] as const) {
+      const blocks = await nothing(several, text);
+      expect(blocks[2]).toBe(
+        [
+          `Nothing matches \`${text}\`.`,
+          `Without \`${text}\` it would keep ${entries} entries, and every one of them matches \`${text.slice(1)}\`.`,
+        ].join("\n"),
+      );
+    }
+  });
+
+  it("counts what other roadmaps route when it says what is:open and words leave out", async () => {
+    // OQ-B1 is routed by docs/plans/roadmap.md alone, which is not the
+    // default roadmap, so it is counted under roadmap.md and never listed.
+    const open = makeTree(SEVERAL);
+    const answered = makeTree({
+      ...SEVERAL,
+      "docs/b.md": doc(
+        "status: draft\nstage: DESIGN",
+        questions("B", ANSWERED),
+      ),
+    });
+    const why = async (root: string, text: string) =>
+      (await nothing(root, text)).find((b) => b.startsWith("Nothing "));
+    expect(await why(open, "oq-b1 -is:open")).toBe(
+      [
+        "Nothing matches `oq-b1 -is:open`.",
+        "Without `-is:open` it would keep 1 question on another roadmap, and it is an open question.",
+      ].join("\n"),
+    );
+    // The agent's last round, every question ruled, run without --roadmap.
+    for (const text of ["oq-b1 is:open", "path:/docs/b.md is:open"]) {
+      expect(await why(answered, text)).toBe(
+        [
+          `Nothing matches \`${text}\`.`,
+          "Without `is:open` it would keep 1 question on another roadmap, and it is not an open question.",
+        ].join("\n"),
+      );
+    }
+    // The word is what leaves OQ-B1 out, not the document.
+    expect(await why(open, "path:/docs/b.md zz")).toBe(
+      [
+        "Nothing matches `path:/docs/b.md zz`.",
+        "Words and quoted phrases are matched only against a question's id, title and leaning, and a document's path, stage and next step.",
+      ].join("\n"),
+    );
+    // Kept, OQ-B1 is on this roadmap with --roadmap naming its own.
+    expect(await why(open, "oq-b1")).toBe(
+      [
+        "Nothing on this roadmap matches `oq-b1`.",
+        "1 question it keeps is on another roadmap: `docs/plans/roadmap.md` (1). Rerun with --roadmap naming it.",
+      ].join("\n"),
+    );
+    const there = await index(
+      open,
+      "--roadmap",
+      "docs/plans/roadmap.md",
+      "--filter",
+      "oq-b1",
+    );
+    expect(there.stdout).not.toContain("Nothing ");
+    expect(there.stdout).toContain("OQ-B1");
+  });
+
   it("leaves the JSON and --request as they were", async () => {
     const { payload } = await indexJson(
       fullTree(),
@@ -1780,8 +1852,9 @@ describe("index --filter, with several roadmaps", () => {
     expect(code).toBe(EXIT_OK);
     expect(stdout).toBe(
       [
+        // The other roadmaps are named once, under Nothing on this roadmap
+        // matches, which says what they hold.
         "Filtered by `path:docs/b.md`: 0 of 3 entries, in 1 of 6 paths, none of them open questions.",
-        "1 more question it keeps is on another roadmap: `docs/plans/roadmap.md` (1). Rerun with --roadmap naming it.",
         "Run without --filter to see the other 3.",
         "Planning page: /.vantage/planning?filter=path:docs/b.md&roadmap=roadmap.md",
         PASTE_HINT,
@@ -1793,9 +1866,9 @@ describe("index --filter, with several roadmaps", () => {
         "  docs/old/roadmap.md  ignored: has a stage with the done role",
         "  docs/plans/roadmap.md  1 needs you",
         "",
-        // It keeps no entry, and says why in place of the sections.
-        "Nothing matches `path:docs/b.md`.",
-        "1 question it keeps is on another roadmap. Rerun with --roadmap naming it.",
+        // It keeps no entry here, and says why in place of the sections.
+        "Nothing on this roadmap matches `path:docs/b.md`.",
+        "1 question it keeps is on another roadmap: `docs/plans/roadmap.md` (1). Rerun with --roadmap naming it.",
         "",
         "Roadmap: roadmap.md",
         "",

@@ -4331,7 +4331,7 @@ describe("a comment on a question is its answer (§6.7)", () => {
       );
       expect(screen.queryByTestId("nothing-needs-you")).toBeNull();
       expect(screen.getByTestId("nothing-matches")).toHaveTextContent(
-        /^Nothing matches path:plans\/unrouted\.md\./,
+        /^Nothing on this roadmap matches path:plans\/unrouted\.md\./,
       );
     });
 
@@ -4435,6 +4435,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
   const hint = () => screen.getByTestId("planning-filter-hint").textContent;
   const status = () => screen.getByTestId("planning-filter-status");
   const bar = () => screen.getByRole("navigation", { name: "Sections" });
+  const queryBar = () => screen.queryByRole("navigation", { name: "Sections" });
   /** What stands in place of the sections when a filter keeps no entry. */
   const nothingMatches = () => screen.queryByTestId("nothing-matches");
   /** Its headline, then its reason line, as read; `null` while it is not shown. */
@@ -4658,18 +4659,18 @@ describe("the planning filter (planning-index.md §6.11)", () => {
 
     it("names an unmatched term, keeps nothing, and says nothing matches", async () => {
       await renderPage("/.vantage/planning?filter=path:plans/desing");
+      // Said once, as the reason it keeps nothing; Clear the filter is the
+      // button under it.
       expect(noticeLines()).toEqual([
         "Filtered by path:plans/desing: 0 of 10 entries, in 0 of 9 paths, none of them open questions.",
-        "path:plans/desing matches no path the index lists.",
-        "Clear the filter to see the other 10.",
       ]);
       expect(nothingMatchesLines()).toEqual([
         "Nothing matches path:plans/desing.",
-        "It keeps no document the index lists.",
+        "path:plans/desing matches no path the index lists.",
       ]);
       expect(screen.queryByTestId("nothing-needs-you")).toBeNull();
       expect(screen.queryAllByRole("article")).toEqual([]);
-      expect(bar()).toHaveTextContent(/^$/);
+      expect(queryBar()).toBeNull();
     });
 
     it("names a kept document's blocker the filter leaves out, with every blocker still on its row", async () => {
@@ -4689,11 +4690,14 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       seed(TWO);
       await renderPage("/.vantage/planning?filter=path:plans/unrouted.md");
       expect(screen.queryAllByRole("article")).toEqual([]);
+      // It keeps nothing here, so Nothing on this roadmap matches names the
+      // roadmap, and the notice does not say it again.
       expect(noticeLines()).toEqual([
         "Filtered by path:plans/unrouted.md: 0 of 9 entries, in 1 of 10 paths, none of them open questions.",
-        `1 more question it keeps is on another roadmap: ${NESTED} (1). Choose that roadmap to see it; the filter stays.`,
-        "Clear the filter to see the other 9.",
       ]);
+      expect(nothingMatchesLines()?.[1]).toBe(
+        `1 question it keeps is on another roadmap: ${NESTED} (1). The filter stays when you choose that roadmap.`,
+      );
       // The picker's counts and the line after it are the filter's too.
       expect(
         Array.from(
@@ -4772,12 +4776,13 @@ describe("the planning filter (planning-index.md §6.11)", () => {
     });
   });
 
-  describe("Nothing matches, in place of the sections (ruled 2026-10-06)", () => {
+  describe("Nothing matches, in place of the sections (§6.18)", () => {
     it("says what words are matched against when a word matches nothing, and nothing of what needs you", async () => {
       await renderPage("/.vantage/planning?filter=zz");
+      // Clear the filter is the button under Nothing matches, so the notice
+      // does not say it too.
       expect(noticeLines()).toEqual([
         "Filtered by zz: 0 of 10 entries, none of them open questions.",
-        "Clear the filter to see the other 10.",
       ]);
       expect(nothingMatchesLines()).toEqual(["Nothing matches zz.", WORDS]);
       const shown = nothingMatches()!;
@@ -4794,7 +4799,14 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       );
       expect(screen.queryAllByRole("article")).toEqual([]);
       expect(querySection("Needs you")).toBeNull();
-      expect(bar()).toHaveTextContent(/^$/);
+      // No section bar, nor the row it and the page's controls stand in,
+      // whose room under the box read as something that failed to load.
+      expect(queryBar()).toBeNull();
+      expect(
+        document.querySelector("[data-planning-sections]")!
+          .previousElementSibling,
+      ).toBe(notice());
+      expect(document.querySelector(".min-h-7")).toBeNull();
       expect(screen.queryByTestId("nothing-needs-you")).toBeNull();
       // It prints, but for its button.
       expect(shown).not.toHaveClass("print:hidden");
@@ -4813,13 +4825,42 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       expect(screen.queryByTestId("nothing-needs-you")).toBeNull();
     });
 
-    it("says the questions it keeps are on another roadmap, which the Roadmap menu shows", async () => {
+    it("says nothing on this roadmap matches where the questions it keeps are on another, and offers that roadmap first", async () => {
       seed(TWO);
       await renderPage("/.vantage/planning?filter=path:plans/unrouted.md");
+      // It does match a question, so the headline does not say nothing
+      // matches; the roadmap is named once, here.
       expect(nothingMatchesLines()).toEqual([
-        "Nothing matches path:plans/unrouted.md.",
-        "1 question it keeps is on another roadmap. Choose that roadmap in the Roadmap menu to see it; the filter stays.",
+        "Nothing on this roadmap matches path:plans/unrouted.md.",
+        `1 question it keeps is on another roadmap: ${NESTED} (1). The filter stays when you choose that roadmap.`,
       ]);
+      expect(noticeLines()).toEqual([
+        "Filtered by path:plans/unrouted.md: 0 of 9 entries, in 1 of 10 paths, none of them open questions.",
+      ]);
+      const buttons = within(nothingMatches()!).getAllByRole("button");
+      expect(buttons.map((b) => b.textContent)).toEqual([
+        `Choose ${NESTED}`,
+        "Clear the filter",
+      ]);
+      expect(buttons[0]).toHaveClass("print:hidden");
+      // Pressed with the pointer, it takes no focus on the way.
+      expect(fireEvent.mouseDown(buttons[0]!)).toBe(false);
+      await act(async () => {
+        fireEvent.click(buttons[0]!);
+      });
+      await settle();
+      expect(router.types.at(-1)).toBe("REPLACE");
+      const query = new URLSearchParams(router.location.split("?")[1]);
+      expect(query.get("roadmap")).toBe(NESTED);
+      expect(query.get("filter")).toBe("path:plans/unrouted.md");
+      expect(nothingMatches()).toBeNull();
+      expect(cardsIn("Needs you")).toEqual(["OQ-U1: Question OQ-U1?"]);
+      expect(box().value).toBe("path:plans/unrouted.md");
+      expect(document.activeElement).toBe(box());
+      // So does the Roadmap menu, as it always has.
+      cleanup();
+      seed(TWO);
+      await renderPage("/.vantage/planning?filter=path:plans/unrouted.md");
       await act(async () => {
         fireEvent.change(screen.getByRole("combobox", { name: "Roadmap" }), {
           target: { value: NESTED },
@@ -4828,6 +4869,26 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       await settle();
       expect(nothingMatches()).toBeNull();
       expect(cardsIn("Needs you")).toEqual(["OQ-U1: Question OQ-U1?"]);
+    });
+
+    it("says what a - word leaves out when every entry matches it", async () => {
+      // Every path ends in .md.
+      await renderPage("/.vantage/planning?filter=-md");
+      expect(nothingMatchesLines()).toEqual([
+        "Nothing matches -md.",
+        "Without -md it would keep 10 entries, and every one of them matches md.",
+      ]);
+      expect(
+        Array.from(
+          nothingMatches()!.querySelectorAll("code"),
+          (c) => c.textContent,
+        ),
+      ).toEqual(["-md", "-md", "md"]);
+      expect(
+        within(nothingMatches()!)
+          .getAllByRole("button")
+          .map((b) => b.textContent),
+      ).toEqual(["Clear the filter"]);
     });
 
     it("says what is:open leaves out of what the rest keeps", async () => {
@@ -5317,12 +5378,15 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       const headline = within(nothingMatches()!).getByRole("heading", {
         name: "Nothing matches path:plans/answered.md is:open.",
       });
+      const reason = within(nothingMatches()!).getByTestId(
+        "nothing-matches-reason",
+      );
       expect(status()).toHaveTextContent(
-        "Filtered by path:plans/answered.md is:open: 0 of 10 entries, in 1 of 9 paths, none of them open questions. Clear the filter to see the other 10. Nothing matches path:plans/answered.md is:open.",
+        "Filtered by path:plans/answered.md is:open: 0 of 10 entries, in 1 of 9 paths, none of them open questions. Nothing matches path:plans/answered.md is:open. Without is:open it would keep 1 entry, and it is not an open question.",
       );
       expect(box()).toHaveAttribute(
         "aria-describedby",
-        `${notice()!.id} ${headline.id}`,
+        `${notice()!.id} ${headline.id} ${reason.id}`,
       );
       // A filter that keeps something that needs you says nothing of it.
       await enter("path:plans/design.md");
@@ -6368,7 +6432,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       expect(status()).toHaveTextContent(/^$/);
       await idle(700);
       expect(status().textContent).toBe(
-        "Filtered by zz: 0 of 10 entries, none of them open questions. Clear the filter to see the other 10. Nothing matches zz.",
+        `Filtered by zz: 0 of 10 entries, none of them open questions. Nothing matches zz. ${WORDS}`,
       );
       expect(document.activeElement).toBe(box());
       // A key more, which also keeps nothing and is held, then the button:

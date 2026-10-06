@@ -861,6 +861,19 @@ export interface PlanningFilterSummary {
 }
 
 /**
+ * What a filter that keeps no entry would keep with some of its terms left
+ * out: the `entries` the sections would list, and the questions that need
+ * you that only other roadmaps route, which are counted and not listed:
+ * `onOtherRoadmaps` of them, each once, on `otherRoadmaps` roadmaps other
+ * than the chosen one.
+ */
+export interface PlanningKeptCount {
+  entries: number;
+  onOtherRoadmaps: number;
+  otherRoadmaps: number;
+}
+
+/**
  * Why an applied filter keeps no entry in any section: the first of these
  * that holds, in this order, each a reason line of its own
  * (`PLANNING_NOTICES.nothingMatches`).
@@ -868,27 +881,47 @@ export interface PlanningFilterSummary {
 export type PlanningNothingMatches =
   /**
    * Questions it keeps need you, and only other roadmaps route them, so they
-   * are counted and not listed: `questions` of them, each once, on `roadmaps`
-   * roadmaps other than the chosen one.
+   * are counted and not listed: the summary's `onOtherRoadmaps` and
+   * `otherRoadmaps`. The only kind under which it keeps something, so the
+   * only one whose headline is *Nothing on this roadmap matches*.
    */
-  | { kind: "other-roadmaps"; questions: number; roadmaps: number }
+  | {
+      kind: "other-roadmaps";
+      onOtherRoadmaps: number;
+      otherRoadmaps: { path: string; count: number }[];
+    }
   /** The sections list no entry even without it. */
   | { kind: "no-entries" }
   /**
    * Its `path:` and `-path:` terms alone keep no entry: the `documents` they
    * keep, which may be none, list nothing on the page, as a document whose
    * stage has the `done` role does, or one with no question and no stage row.
+   * With none, the summary's `unmatched` terms are the reason given, when it
+   * has any.
    */
   | { kind: "documents"; documents: number }
   /**
    * Its `is:` terms leave out every entry the rest of it keeps: `terms`, their
-   * canonical texts in the order written, and the `entries` it would keep
-   * without them.
+   * canonical texts in the order written, and what it would keep without
+   * them.
    */
-  | { kind: "state"; terms: string[]; entries: number }
+  | ({ kind: "state"; terms: string[] } & PlanningKeptCount)
+  /**
+   * Its `-` words and quoted phrases leave out every entry the rest of it
+   * keeps: `terms`, their canonical texts in the order written, and what it
+   * would keep without them. `withState` when its `is:` terms are among
+   * `terms`, which is when neither they nor the `-` terms alone leave out
+   * every entry, and both together do.
+   */
+  | ({
+      kind: "excluded";
+      terms: string[];
+      withState: boolean;
+    } & PlanningKeptCount)
   /**
    * Its words and quoted phrases keep none of what the rest of it keeps. No
-   * other kind is left by then, so the filter has at least one of them.
+   * other kind is left by then, so the filter has at least one word or
+   * phrase without a `-`.
    */
   | { kind: "words" };
 
@@ -994,14 +1027,15 @@ function entryTests(index: PlanningIndex, c: Compiled): EntryTests {
 }
 
 /**
- * How many entries of `sections` `c` keeps: `entryCount` of the sections
- * `applyPlanningFilter` would leave, counted without building them.
+ * What `c` keeps of `sections`: `entryCount` of the sections
+ * `applyPlanningFilter` would leave, and the questions only other roadmaps
+ * route, counted without building them.
  */
 function keptCount(
   index: PlanningIndex,
   sections: PlanningSections,
   c: Compiled,
-): number {
+): PlanningKeptCount {
   const tests = entryTests(index, c);
   const kept = <T>(
     entries: readonly T[] | null,
@@ -1010,28 +1044,37 @@ function keptCount(
     entries === null
       ? 0
       : entries.reduce((n, entry) => (keeps(entry) ? n + 1 : n), 0);
-  return (
-    kept(sections.needsYou, tests.keepsRef) +
-    kept(sections.unrouted, tests.keepsRef) +
-    kept(sections.waiting, tests.keepsWaiting) +
-    kept(sections.ready, tests.keepsDocumentRow) +
-    kept(sections.graduate, tests.keepsDocumentRow) +
-    kept(sections.disagrees, tests.keepsDocumentRow) +
-    kept(sections.skipped, tests.keepsEntry) +
-    kept(sections.unreadable, tests.keepsEntry)
-  );
+  const elsewhere = sections.onOtherRoadmaps.filter(tests.keepsRef);
+  return {
+    entries:
+      kept(sections.needsYou, tests.keepsRef) +
+      kept(sections.unrouted, tests.keepsRef) +
+      kept(sections.waiting, tests.keepsWaiting) +
+      kept(sections.ready, tests.keepsDocumentRow) +
+      kept(sections.graduate, tests.keepsDocumentRow) +
+      kept(sections.disagrees, tests.keepsDocumentRow) +
+      kept(sections.skipped, tests.keepsEntry) +
+      kept(sections.unreadable, tests.keepsEntry),
+    onOtherRoadmaps: elsewhere.length,
+    otherRoadmaps: new Set(elsewhere.map((ref) => ref.roadmap)).size,
+  };
 }
+
+/** Whether a count keeps anything, listed or on another roadmap. */
+const keepsAny = (count: PlanningKeptCount): boolean =>
+  count.entries + count.onOtherRoadmaps > 0;
 
 /**
  * Why `filter` keeps no entry of `sections`, the first reason that holds
- * (`PlanningNothingMatches`). `questions` and `roadmaps` are the summary's
- * `onOtherRoadmaps` and the length of its `otherRoadmaps`, `of` its
+ * (`PlanningNothingMatches`). `otherRoadmaps` is the summary's, `of` its
  * unfiltered entries and `documents` its kept documents.
  *
- * Each later reason is the filter run again with terms left out: without its
- * words and `is:` terms, what its `path:` terms keep; without its `is:`
- * terms, what the rest keeps. Only an empty result is asked why, so typing
- * pays for neither run.
+ * Each later reason is the filter run again with terms left out, counting
+ * what other roadmaps route as kept, since a question there is one the
+ * left-out terms would bring back: without its words, phrases and `is:`
+ * terms, what its `path:` terms keep; without its `is:` terms, what the rest
+ * keeps; then without its `-` words and phrases, and without both. Only an
+ * empty result is asked why, so typing pays for none of these runs.
  */
 function whyNothingMatches(
   index: PlanningIndex,
@@ -1039,17 +1082,17 @@ function whyNothingMatches(
   filter: UnderstoodPlanningFilter,
   c: Compiled,
   counts: {
-    questions: number;
-    roadmaps: number;
+    onOtherRoadmaps: number;
+    otherRoadmaps: { path: string; count: number }[];
     of: number;
     documents: number;
   },
 ): PlanningNothingMatches {
-  if (counts.questions > 0) {
+  if (counts.onOtherRoadmaps > 0) {
     return {
       kind: "other-roadmaps",
-      questions: counts.questions,
-      roadmaps: counts.roadmaps,
+      onOtherRoadmaps: counts.onOtherRoadmaps,
+      otherRoadmaps: counts.otherRoadmaps,
     };
   }
   if (counts.of === 0) return { kind: "no-entries" };
@@ -1059,15 +1102,45 @@ function whyNothingMatches(
     needles: [],
     excludedNeedles: [],
   };
-  if (c.paths.length > 0 && keptCount(index, sections, pathsAlone) === 0) {
+  if (c.paths.length > 0 && !keepsAny(keptCount(index, sections, pathsAlone))) {
     return { kind: "documents", documents: counts.documents };
   }
-  const terms = filter.terms
-    .filter((term) => term.key === "is")
-    .map((term) => term.text);
-  if (terms.length > 0) {
-    const entries = keptCount(index, sections, stateless);
-    if (entries > 0) return { kind: "state", terms, entries };
+  const states = filter.terms.filter((term) => term.key === "is");
+  if (states.length > 0) {
+    const kept = keptCount(index, sections, stateless);
+    if (keepsAny(kept)) {
+      return { kind: "state", terms: states.map((t) => t.text), ...kept };
+    }
+  }
+  const excluded = filter.terms.filter(
+    (term) => term.key === "text" && term.exclude,
+  );
+  if (excluded.length > 0) {
+    const kept = keptCount(index, sections, { ...c, excludedNeedles: [] });
+    if (keepsAny(kept)) {
+      return {
+        kind: "excluded",
+        terms: excluded.map((t) => t.text),
+        withState: false,
+        ...kept,
+      };
+    }
+    if (states.length > 0) {
+      const both = keptCount(index, sections, {
+        ...stateless,
+        excludedNeedles: [],
+      });
+      if (keepsAny(both)) {
+        return {
+          kind: "excluded",
+          terms: filter.terms
+            .filter((t) => t.key === "is" || excluded.includes(t))
+            .map((t) => t.text),
+          withState: true,
+          ...both,
+        };
+      }
+    }
   }
   return { kind: "words" };
 }
@@ -1240,8 +1313,8 @@ export function applyPlanningFilter(
         entries.shown > 0
           ? null
           : whyNothingMatches(index, sections, filter, c, {
-              questions: onOtherRoadmaps.length,
-              roadmaps: otherRoadmaps.length,
+              onOtherRoadmaps: onOtherRoadmaps.length,
+              otherRoadmaps,
               of: entries.of,
               documents: documents.kept,
             }),
