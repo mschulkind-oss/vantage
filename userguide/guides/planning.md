@@ -314,14 +314,28 @@ planning documents link to it:
 | *Referenced by 3 documents* | Other documents link here, and the roadmap has nothing to add |
 | *Referenced by 3 documents · on plans/roadmap.md under Building and 1 other roadmap* | With several roadmaps that route: the first, nearest the root, that routes this document or one of its questions, named by as much of its path as tells it from the other roadmaps that route, and how many more route it |
 | *Referenced by 3 documents · 2 open questions not on any roadmap* | With several roadmaps that route: two of its open questions are routed by none of them |
+| *Referenced by 3 documents · on the roadmap under Building · its questions on the planning page* | The document holds a question, in any state, and its stage has no `done` role. The last part is a link to the planning page [filtered](#filtering-the-page) to this document |
+| *its questions on the planning page* | The same, for a document nothing links to and nothing it holds is off the roadmap: the line is only the link |
 
 The line reads the same in every browser: it never depends on the roadmap the
 planning page shows. The count is of documents, not links, and a roadmap is one
 of them when it links here. A document's links to itself do not count. When
-nothing links to a document and every one of its open questions is on a
-roadmap, there is no line. When no roadmap routes, or for a document whose
-stage has the `done` role, the line gives the count alone. With one roadmap that routes, it is *the
+nothing links to a document and it holds no question, or its stage has the
+`done` role, there is no line. When no roadmap routes, the line names no
+roadmap and no question off one, and for a document whose stage has the `done`
+role it gives the count alone. With one roadmap that routes, it is *the
 roadmap*, however many others are retired by a `done` stage or cannot be read.
+
+**Its questions on the planning page** opens the planning page with its
+[Filter box](#filtering-the-page) holding this document's path, as
+`path:docs/design/search.md`, or `path:/notes.md` for a file at the root. That
+filter keeps everything the page lists for the document: its open questions,
+its 🔒 and ✅ ones, and its own rows, such as *Ready to build*. It is a link of
+its own after the part you click to see who links here, so Ctrl-click or a
+middle click opens it in a new tab, and it prints as text. Where the line is
+cut off at its end, the words before the link give way, never the link. On a
+narrow screen, when the line had no room kept for it, the link takes a line of
+its own. A static export has no planning page, so its documents have no link.
 
 Click the line, or press Enter or Space on it, to see who links here: one row
 per document, the roadmaps that route first, nearest the root first, then the
@@ -354,8 +368,9 @@ The planning page gathers, for one repository, every question that is waiting
 on someone and every document whose stage calls for a next step. Press **`g p`**
 while viewing a document or a folder to open it, or click the checklist icon
 beside **Vantage** at the top of the sidebar. It is built from the index every time and stores nothing of its
-own: no snooze, no assignment, no read state. It changes when the documents do,
-without a reload.
+own: no snooze, no assignment, no read state, no remembered filter. It changes
+when the documents do, without a reload. Its **Filter** box, at the top, narrows
+it to one piece of work ([below](#filtering-the-page)).
 
 It sits in the app as a document does: the sidebar is beside it, with its file
 tree, bookmarks and recent files (**`b`** puts it away and brings it back), and
@@ -366,7 +381,8 @@ the header carries the sidebar button, the
 document viewer's own: turned on for one, they are on for the other. The keys
 that act on the page work here too (`t`, `r`, `Shift+P`, `?`, `j`, `k`), and
 those that act on a document, such as `d` for its diff, do nothing, so the
-shortcuts help (`?`) leaves them out. Going between a document and this page
+shortcuts help (`?`) leaves them out. One key is the planning page's own: `/`
+puts the focus in the Filter box. Going between a document and this page
 leaves the sidebar exactly as it was, its tree scrolled where you left it. The
 page scrolls with PageDown, Space and the arrow keys as soon as it opens. The
 cards keep a reading width; **Use full width** widens them to the window.
@@ -376,7 +392,10 @@ Its address is `/.vantage/planning`, or `/.vantage/planning/<repo>` in
 or `/<repo>/<path>`, so a page at `/planning` would hide every document under a
 top-level `planning/` directory, and a whole repository named `planning`.
 Vantage never serves a `.vantage` path as a document, so this address hides
-nothing.
+nothing. In daemon mode, the address with no repository, or with one Vantage
+does not serve, lists each repository's planning page, with the rest of the
+address kept, so a [filtered](#filtering-the-page) link is one click from the
+page it was made for.
 
 > [!NOTE]
 > **The history and recent-files pages do hide something.** They are older, and
@@ -386,16 +405,16 @@ nothing.
 > commit history of a root-level `notes.md`. In daemon mode the same goes for a
 > whole repository named `history` or `recent`.
 
-**What appears when.** The page's header and its [section bar](#pages) appear
-as soon as you press `g p`. The cards of each section's shown page follow
-together, in one step, once their text, their documents' comments and their
-Mermaid diagrams are all in hand, so nothing on the page moves as they arrive.
-A spinner shows only if that takes longer than 150 ms. Opened while the index
-is still being read, the page says *Reading planning documents…* where the
-section bar will be, then *Scanning planning documents: 412 of 1,000*, and the
-section bar and the sections replace that line when the index is ready. A
-rescan of an index already shown keeps the page as it is, with a thin bar
-along its top.
+**What appears when.** The page's header, its Filter box and its
+[section bar](#pages) appear as soon as you press `g p`. The cards of each
+section's shown page follow together, in one step, once their text, their
+documents' comments and their Mermaid diagrams are all in hand, so nothing on
+the page moves as they arrive. A spinner shows only if that takes longer than
+150 ms. Opened while the index is still being read, the page says *Reading
+planning documents…* where the section bar will be, then *Scanning planning
+documents: 412 of 1,000*, and the section bar and the sections replace that
+line when the index is ready. A rescan of an index already shown keeps the page
+as it is, with a thin bar along its top.
 
 ### Its sections
 
@@ -479,8 +498,8 @@ their roadmap to see them.
   beside the menu, in room kept for it, shows when that takes a moment.
 - **This browser remembers your choice** for each repository, and the next
   visit opens on it. Only a choice made in the menu is remembered, never a link
-  that names one, and a choice made in another tab does not change a page
-  already open.
+  that names one, opened or [pasted](#filtering-the-page), and a choice made in
+  another tab does not change a page already open.
 - **Which roadmap is shown:** the address's, when it names one that routes;
   else the one this browser remembers, while it still routes; else the one
   nearest the root. A roadmap that stops routing, because it was deleted,
@@ -488,6 +507,9 @@ their roadmap to see them.
   the address is corrected in place.
 - **[Copy answers](#copy-answers)** covers the questions of every roadmap, so
   choosing another changes neither what it copies nor its count.
+- **Under a [filter](#filtering-the-page),** the menu's counts and the line
+  after it count only the questions the filter keeps, and choosing a roadmap
+  keeps the filter.
 
 With one roadmap that routes, or none, there is no menu, and the address
 carries no `roadmap`.
@@ -521,7 +543,8 @@ quickly for a thousand documents as for ten:
   position, and Back from the planning page leaves it rather than stepping
   back through its pages. A page past a section's end shows its last page, a
   value that is not a page number shows page 1, and either way the address is
-  corrected in place.
+  corrected in place. A flip keeps the [filter](#filtering-the-page), and a
+  filtered page's numbers count only what the filter keeps.
 
 Paging decides only what is drawn. Every question is still counted in the
 section bar and reachable through its section's pager, and
@@ -701,6 +724,15 @@ Only comments on questions the page lists are copied. A document's other
 comments, on its prose or on a question the page does not list, are left to
 that document's own Copy.
 
+**Under a [filter](#filtering-the-page),** Copy answers covers only the
+questions the filter keeps, and its count only their comments, so the agent
+working on one piece of work gets that work's answers and no one else's. Its
+tooltip, and the name a screen reader hears, say how many waiting answers the
+filter leaves out; clear the filter to copy those too. A comment is placed on
+its question as it is without a filter, so a comment on a question the filter
+hides, such as a ✅ question inside an open one under `is:open`, is never
+credited to the question around it.
+
 ### Agent requests
 
 Four sections are an agent's work: *Not on a roadmap*, *Ready to build*,
@@ -734,6 +766,209 @@ nothing moves. Neither button prints. `vantage-check index --request` prints the
 same text, so an agent can ask for it itself
 ([`vantage-check index`](vantage-check.md#vantage-check-index)).
 
+**Under a [filter](#filtering-the-page),** both buttons cover only the entries
+the filter keeps, and the request says so in a line after `Repository:`:
+
+```text
+Filter: `path:docs/design/search.md is:open`. Only the entries it keeps are listed.
+```
+
+The agent can run `vantage-check index --request --filter` with that text and
+get the same request. The line leaves out a term that matches no path, which
+keeps nothing anyway, so the checker accepts its text as it is. What an entry
+is *blocked on* is still read from the
+whole page, so a filter never hides that a document waits on another. A filter
+the page does not understand is not applied, so its request has no `Filter:`
+line.
+
+### Filtering the page
+
+The **Filter** box at the top of the planning page narrows it to one piece of
+work. Type a filter, such as `path:docs/design/search.md is:open`, and press
+Enter: the page then lists only the entries the filter keeps, in the order they
+had, and a notice above the sections says what it hides. The box is there in
+every state of the page, from its first paint, before the index is ready too.
+
+A **filter** is one line of text, and the same text works in three places: the
+box, the page's address, and `vantage-check index --filter`
+([Handing the human a filtered planning page](vantage-check.md#handing-the-human-a-filtered-planning-page)).
+So a link an agent hands you holds a filter you could have typed, and what you
+type is what the agent's command takes.
+
+#### Writing a filter
+
+A filter is **terms** separated by spaces, each a key, a `:` and a value.
+Vantage reads two keys:
+
+| Term | Keeps |
+| :--- | :--- |
+| `path:<pattern>` | Entries whose path the pattern matches: for a question, its document's path; for a row under *Blocked*, *Ready to build* or any other section that lists documents, the row's own path |
+| `is:open` | Questions still open: 💬, 💬 🤷 or no marker. Never a 🔒 or ✅ question, and never a document's row |
+
+- **Terms with the same key keep any of their matches, and terms with
+  different keys must all match.** So
+  `path:docs/design/search.md path:docs/design/search-plan.md is:open` keeps
+  the open questions of both documents.
+- **`is:open` keeps a question you have already answered** with a comment,
+  since Vantage reads no comments to decide what is open. It stays under its
+  section's *(N answered)* count.
+- **A filter never reorders anything.** *Needs you* keeps its roadmap's order,
+  and a section the filter empties is not shown.
+
+A `path:` pattern is written as in a `.gitignore` file, with fewer forms:
+
+| Pattern | Keeps |
+| :--- | :--- |
+| `path:docs/design/search.md` | That file. A `/` anywhere but at the end ties a pattern to the repository root |
+| `path:search.md`, `path:*search*` | That name in any folder: with no `/` inside, a pattern matches at any depth |
+| `path:/roadmap.md` | Only the root's file, since `path:roadmap.md` keeps `docs/roadmap.md` too |
+| `path:docs/design` or `path:docs/design/` | Everything under that folder |
+| `path:docs/design/search*` | The design and its `search-plan.md`: a `*` matches within one folder |
+| `path:docs/**/*.md` | Any depth below `docs`: a `**` that is a whole folder of its own crosses folders |
+| `path:"docs/my notes.md"` | A path holding a space, or any character but `A`–`Z`, `a`–`z`, `0`–`9`, `.`, `_`, `-` and `/`. Inside double quotes every character stands for itself, `*` included, and `"` and `\` are written `\"` and `\\` |
+
+A leading `./` means the root, as `/` does. Matching is exact: `Docs` is not
+`docs`, and a name is matched in the Unicode form it is written in.
+
+**What Vantage does not understand.** Anything else: another key, `Path:`
+included; a word with no `:`, such as `OR` or `search`; a term starting with
+`-` or `!`; an empty `path:`; an unclosed quote; a bare pattern holding any
+character the table above puts in quotes; a `**` that is not a whole folder
+with more of the path after it, as in `docs/**`, where `/docs/` keeps
+everything under the root's `docs` folder, or two `**` folders in a row; two
+`/` in a row, or a `.` or `..` folder past a leading `./`; and more than 64
+terms or 2,048 code points. Such a filter is **not understood**, and none of it
+is applied: the page shows every entry, the box gets an amber ring, and the
+notice names what it could not read, as in *Not filtered: this Vantage does not
+understand `OR`. It reads path: and is: terms, such as
+`path:docs/design/*.md is:open`. Every entry is shown.* Applying only the terms
+it reads could hide entries the filter asked for, and a later Vantage may give
+those forms a meaning.
+
+#### What the notice says
+
+Under a filter, the first of the page's notices says how much of the page it
+shows:
+
+*Filtered by `path:docs/design/search.md is:open`: 5 of 15 entries, in 1 of 20
+paths, 5 of them open questions.*
+
+That is the entries shown, of all the entries the page would list without it;
+the documents it keeps, of every path the index lists; and how many of the
+entries shown are open questions. A line follows for each of these that
+applies:
+
+- **A term that matches nothing:** *`path:docs/desing` matches no path the
+  index lists.* The rest of the filter still applies, and that term keeps
+  nothing.
+- **Questions on other roadmaps:** *2 more questions it keeps are on other
+  roadmaps: `docs/a/roadmap.md` (1), `docs/b/roadmap.md` (1). Choose one to
+  see them; the filter stays.* A question only another roadmap routes is in
+  no section, so it is counted here rather than shown.
+- **Blocked questions left out:** *3 of its questions are blocked and will
+  need you later.* `is:open` leaves out the 🔒 questions of the documents it
+  keeps, and this says whether another round of rulings will come.
+- **A document waiting outside the filter:** *docs/design/x.md waits on
+  docs/design/y.md, which this filter leaves out.* Add a `path:` term for that
+  document to see what it holds.
+
+The last line says how to see the rest, as *Clear the filter to see the other
+10.* When nothing the filter keeps needs a ruling, the page says *Nothing this
+filter keeps needs you* in place of *Nothing needs you*.
+
+#### Using the box
+
+- **`/`** puts the focus in the box and selects its text, so what you type or
+  paste replaces it. It works wherever the page's shortcuts do: with **Enable
+  shortcuts** on in Settings, and the focus outside a text field. If the
+  shortcuts help is open, `/` closes it first. Tab and a click reach the box
+  either way. On a document `/` does nothing, so Firefox's quick find keeps it.
+- **Typing** changes only the box. **Enter** applies it. Until then the box's
+  hint says *Enter to apply*, and leaving the box applies nothing.
+- **✕** clears the filter and applies that at once, and the focus stays in the
+  box.
+- **Esc** puts back the applied filter when the box holds something else, and
+  otherwise gives the focus back to the page. It never clears the filter.
+- **Pasting a planning link** applies its filter at once, as Enter does. The
+  link can be a whole URL or start at `/.vantage/planning`, on its own or
+  inside the lines `vantage-check index --filter` prints around it. Backticks,
+  quotes or brackets around it, and a period after it, are not read as part of
+  it. Only its filter, and its roadmap when it names one, are read, never its
+  scheme, host, port, repository or pages, so a link made for another address
+  or another machine applies to the repository on screen. The roadmap it names
+  is shown, not remembered. A link with no filter in it clears the filter.
+  Pasted text that holds no planning link is text, applied on Enter.
+- **The filtered page** replaces the shown one only once its cards are ready,
+  and then all at once. A spinner in the box's row shows when that takes more
+  than 150 ms. Applying the filter already shown does nothing.
+
+#### The address
+
+The page's address carries the filter, as
+`/.vantage/planning?filter=path:docs/design/search.md+is:open`. That is how
+the checker prints it too: `:` and `/` stay readable, a space is a `+`, and
+every other character but `A`–`Z`, `a`–`z`, `0`–`9`, `-`, `.`, `_` and `~` is
+percent-encoded, such as `*` as `%2A`.
+
+- **Enter, ✕ and a paste** replace the history entry rather than adding one,
+  as a flip does. They show every section from its first page, keep the
+  roadmap and the rest of the address, and drop a `#` anchor.
+- **Vantage writes an understood filter in one spelling,** its canonical text,
+  in the address and in the box, on open and on Enter: a repeated term is
+  dropped, quotes that are not needed are dropped, and a leading `./` or `/`
+  that changes nothing is dropped, so `path:./docs/x.md` reads
+  `path:docs/x.md`, while `path:./roadmap.md` reads `path:/roadmap.md`.
+- **A filter Vantage does not understand** stays in the address and the box
+  exactly as written, so you can fix it.
+- **A flip, a roadmap choice and the contents column's links keep the
+  filter.** After a flip the address may write `%3A` and `%2F` for `:` and
+  `/`, and both read alike.
+- **`g p` and the sidebar's planning entry open the page with no filter,**
+  whatever document you were on, and **Back** returns to the filtered page,
+  with the box holding its filter again.
+- **Nothing remembers a filter.** It lives in the address and in the box, and
+  a link that holds it is the way to keep it or share it.
+
+#### Everything else under a filter
+
+- The section bar, the pagers and the [contents column](#the-contents-column)
+  follow the filtered sections.
+- A *Blocked* row the filter keeps still names every document it waits on.
+- [Copy answers](#copy-answers) and the [agent requests](#agent-requests)
+  cover only what the filter keeps, as their sections say, and with
+  [several roadmaps](#several-roadmaps) the menu counts only the questions it
+  keeps.
+- In print, the box is left out. A line, *Filter:* and the filter, prints in
+  its place, and the notice prints too, so a printout always says it is
+  filtered and by how much.
+- A screen reader hears the notice after you apply a filter, and that every
+  entry is shown after you clear one, never as the page opens. The box is
+  described by the notice.
+
+#### Filtered links
+
+A filtered page is usually reached by a link:
+
+- **From a document:** its [Referenced by](#referenced-by) line ends with *its
+  questions on the planning page*, which opens the page filtered to that
+  document.
+- **From an agent:** `vantage-check index --filter` prints a `Planning page:`
+  line
+  ([Handing the human a filtered planning page](vantage-check.md#handing-the-human-a-filtered-planning-page)).
+  It starts at `/.vantage/planning`, because the checker cannot know the
+  address you open Vantage at. Press `/` on your planning page and paste the
+  line, or put that address in front of the link, such as
+  `http://localhost:8000`, and open it.
+- **In [daemon mode](daemon-mode.md),** such a link has no repository in it,
+  so opened with an address in front it lists each repository's planning page,
+  every one with the same filter. Pasted into a repository's Filter box, it
+  needs no click.
+
+A Vantage from before the filter, 0.8.1 or earlier, has no Filter box and opens
+a filtered link as the whole planning page, without saying so. A page with no
+*Filtered by* notice is not filtered, and its Copy agent request has no
+`Filter:` line. A static export has no planning page.
+
 ---
 
 ## Reading it from the command line
@@ -749,7 +984,9 @@ the [agent requests](#agent-requests) the page copies.
 After the sections comes the roadmap *Needs you* follows, with each link's badge
 written inline in brackets. With several roadmaps it lists them all, chooses the
 one nearest the root as the page does, and takes `--roadmap <path>` to choose
-another. The options, the JSON form and the exit codes are in the
+another. `--filter` takes the text of the [Filter box](#filtering-the-page),
+prints the filtered sections, and prints a link to the filtered page for an
+agent to hand you. The options, the JSON form and the exit codes are in the
 vantage-check guide's [`index` section](vantage-check.md#vantage-check-index),
 and the `planning/*` rules that `check` runs over the same scan are in
 [What it checks](vantage-check.md#what-it-checks).
@@ -830,7 +1067,9 @@ repository. It holds the roadmap's path and nothing else, and only a choice
 made in the menu writes it. Clearing the site data removes it too; without it,
 the page opens on the roadmap nearest the root. Whether cards open unfolded
 ([Expand all](#a-questions-card)) is kept the same way, under
-`vantage:planningCardsExpanded`; without it, they open folded.
+`vantage:planningCardsExpanded`; without it, they open folded. A
+[filter](#filtering-the-page) is not kept anywhere: it is in the page's address
+and nowhere else.
 
 A browser without IndexedDB, or whose IndexedDB is full, disabled or failing,
 as in some private windows, keeps nothing. Vantage then fetches and scans
@@ -848,6 +1087,13 @@ every candidate on every page load, and everything else works the same.
 - **The planning scan stopped:** the background thread that scans the files
   ended in the middle of a build. The planning page says so, and Retry starts
   a new one.
+- **A filter Vantage does not understand:** the page applies none of it and
+  shows every entry, under *Not filtered* and the term it could not read
+  ([Filtering the page](#filtering-the-page)). `vantage-check index --filter`
+  exits `2` instead, and so it does for a term that matches no path, which the
+  page applies and names.
+- **A filtered link opened in Vantage 0.8.1 or earlier:** the whole planning
+  page, with no notice, since that release has no filter.
 - **The comments cannot be loaded:** the planning page's sections appear
   without them, under the line *Comments could not be loaded.*, and Copy
   answers stays disabled.
@@ -865,7 +1111,9 @@ every candidate on every page load, and everything else works the same.
 
 - [Configuration](../reference/configuration.md#planning-documents): every
   `[planning]` key
-- [vantage-check](vantage-check.md): `index`, and the `planning/*` rules
-- [Keyboard Shortcuts](../reference/keyboard-shortcuts.md): `g p`, and the rest
+- [vantage-check](vantage-check.md): `index`, its `--filter`, and the
+  `planning/*` rules
+- [Keyboard Shortcuts](../reference/keyboard-shortcuts.md): `g p`, `/`, and the
+  rest
 - [Style Guide for Agents](../reference/style-guide.md): the frontmatter keys,
   as agents are told to write them

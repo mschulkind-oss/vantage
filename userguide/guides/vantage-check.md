@@ -670,7 +670,7 @@ yourself.
 ## `vantage-check index`
 
 ```bash
-vantage-check index [--format text|json] [--request [<section>…]] [--roadmap <path>] [--config <path> | --no-config]
+vantage-check index [--format text|json] [--request [<section>…]] [--roadmap <path>] [--filter <text>] [--config <path> | --no-config]
 ```
 
 Prints the repository's [planning index](planning.md): the sections that say
@@ -679,8 +679,11 @@ blocked, and which documents are ready to build or to graduate, each with a line
 saying what it means and who acts on it, then the chosen roadmap with each
 link's badge written inline. With `--request`, it prints instead the
 [request to hand an agent](#agent-requests) for the sections an agent works
-on. It is how an agent sees what a person sees on the
-[planning page](planning.md#the-planning-page), with no server running. How it works:
+on. With `--filter`, it prints only what a
+[planning filter](planning.md#filtering-the-page) keeps, and a link to the
+planning page filtered the same way. It is how an agent sees what a person sees
+on the [planning page](planning.md#the-planning-page), with no server running.
+How it works:
 [`planning-index.md` §13](../../docs/reference/planning-index.md#13-vantage-check-index-and-the-planning-rules).
 
 | Option | Effect |
@@ -688,6 +691,7 @@ on. It is how an agent sees what a person sees on the
 | `--format text\|json` | Output format. Default `text`. |
 | `--request [<section>…]` | Print the [agent request](#agent-requests) for these sections instead: `unrouted` (*Not on a roadmap*), `ready` (*Ready to build*), `graduate` (*Ready to graduate*) or `disagrees` (*Stage conflict*), any of them, separated by spaces. Default: all four. Takes no `--format json`. |
 | `--roadmap <path>` | The roadmap *Needs you* follows, and whose source is printed. Relative to the project root, with one leading `./` dropped; given twice, the last wins. Default: the nearest the root of the roadmaps it can follow, which are those it can read whose stage has no `done` role. |
+| `--filter <text>` | Show only the entries a [planning filter](planning.md#filtering-the-page) keeps, the text the planning page's Filter box takes, such as `'path:/docs/design/search.md is:open'`, and print a link to the page filtered the same way ([Filtering](#filtering)). Also `--filter=<text>`. Given twice, the texts join with a space; an empty one is no filter. Works with `--format json`, `--request` and `--roadmap`. |
 | `--config <path>` | Read this `.vantage.toml`. It never changes which project is scanned. |
 | `--no-config` | Ignore `.vantage.toml` and use the built-in defaults. |
 
@@ -830,6 +834,108 @@ the ids, the JSON keys and the rule ids never change when a title does. That
 is why some differ from their titles, such as `waiting` for *Blocked*: they are
 the sections' names from before the titles were settled.
 
+### Filtering
+
+`--filter` takes a planning filter: the text the planning page's Filter box
+and its `filter=` address read, with the same code. It is `path:<pattern>` and
+`is:open` terms, separated by spaces. Terms with one key keep any of their
+matches, and terms with different keys must all match.
+[Writing a filter](planning.md#writing-a-filter) has every form, and
+`vantage-check help` lists them. Quote the text for your shell.
+
+The text output starts with the filter notice, in the page's words with code
+between backticks, then the `Planning page:` line and how to use it, then the
+usual output over the filtered sections:
+
+```console
+$ vantage-check index --filter 'path:/docs/design/search.md path:/docs/design/search-plan.md is:open'
+Filtered by `path:docs/design/search.md path:docs/design/search-plan.md is:open`: 3 of 7 entries, in 2 of 5 paths, 3 of them open questions.
+1 of its questions is blocked and will need you later.
+docs/design/search.md waits on docs/design/indexing.md, which this filter leaves out.
+Run without --filter to see the other 4.
+Planning page: /.vantage/planning?filter=path:docs/design/search.md+path:docs/design/search-plan.md+is:open
+  Press / on the planning page and paste this line, or put the scheme, host and port you open Vantage at in front of the link.
+
+Needs you (3) · for the human
+Open or answered questions on this roadmap, in its order. Rule each open one, then Copy answers.
+  docs/design/search.md:13  💬 OQ-S1: Is search case-sensitive?  (Roadmap)
+  docs/design/search.md:19  💬 OQ-S2: Does it search code blocks?  (Roadmap)
+  docs/design/search-plan.md:9  💬 OQ-SP1: One worker or two?  (Roadmap)
+```
+
+- **The filter is echoed in its canonical text,** the one spelling the page
+  writes too: `path:/docs/design/search.md` reads
+  `path:docs/design/search.md`, since a pattern with a `/` inside is tied to
+  the root already.
+- **The link is root-relative.** It starts at `/.vantage/planning`, with no
+  scheme, host or port, because the checker never asks a server, so it cannot
+  know the address the human opens Vantage at: a port that moved on from a busy
+  8000, a daemon's name for the repository, a tunnel, a container. The human
+  pastes the line into the Filter box, which reads only the link's query, or
+  puts their address in front. When two or more roadmaps route, the link
+  names the chosen one with `&roadmap=`, so the human's *Needs you* follows the
+  roadmap you checked.
+- **Two more lines can follow the hint.** In a linked worktree, one saying
+  that the page shows the checkout the human's Vantage serves, which may not
+  hold these documents as they are here. And when `.vantage.toml`'s `target`
+  names a release from before the filter, one saying that a viewer before the
+  release that added it ignores the filter and shows every entry.
+- **Everything after it is filtered.** *Nothing needs you* reads *Nothing this
+  filter keeps needs you*, the Roadmaps block counts the questions the filter
+  keeps, and the `Agent requests:` line carries the filter, as
+  `vantage-check index --request --filter '<the filter>'`.
+
+**JSON.** With `--filter`, the object gains one last key, `filter`, and every
+other key is byte for byte what it is without the flag: `index` is the whole
+index, `sections` the unfiltered sections and `roadmaps` the same list, since
+their counts are defined over the whole index. Shown here with the filtered
+sections emptied:
+
+```json
+{
+  "…": "…",
+  "filter": {
+    "text": "path:/docs/design/search.md is:open",
+    "canonical": "path:docs/design/search.md is:open",
+    "link": "/.vantage/planning?filter=path:docs/design/search.md+is:open",
+    "documents": { "kept": 1, "of": 5 },
+    "entries": { "shown": 2, "of": 7 },
+    "openQuestions": 2,
+    "blockedLeftOut": 1,
+    "otherRoadmaps": [],
+    "waitsOutside": [
+      { "path": "docs/design/search.md", "target": "docs/design/indexing.md" }
+    ],
+    "sections": {}
+  }
+}
+```
+
+- **`text`** is the filter as given, and **`canonical`** as the page writes it.
+  **`link`** is always root-relative.
+- **`documents`** is the documents the filter keeps, of every path the index
+  lists; **`entries`** the entries shown, of every entry the unfiltered
+  sections hold; **`openQuestions`** how many of those shown are open
+  questions.
+- **`blockedLeftOut`** counts the 🔒 questions of the kept documents that an
+  `is:` term leaves out.
+- **`otherRoadmaps`** names each roadmap other than the chosen one that routes
+  a kept question, with how many it routes; a question two of them route counts
+  under both.
+- **`waitsOutside`** lists each kept document that waits on something the
+  filter leaves out, with the `target` as its `depends-on` names it, `#OQ-…`
+  included.
+- **`sections`** is the filtered sections, in the shape of the top-level
+  `sections`.
+
+A refused project prints `"filter": null`. The format version stays 2, because
+the key is new and no existing one changed.
+
+**`--request --filter`** prints the [agent request](#agent-requests) for the
+entries the filter keeps, with the `Filter:` line the planning page's **Copy
+agent request** adds on a filtered page. With nothing the filter keeps to ask
+for, it prints nothing, says so on stderr, and exits `0`.
+
 ### Agent requests
 
 Four sections are work for an agent: *Not on a roadmap* (`unrouted`), *Ready to
@@ -872,11 +978,80 @@ it prints nothing, says so on stderr, and exits `0`.
 | Code | Meaning |
 | :--- | :--- |
 | `0` | It ran. |
-| `2` | Bad arguments, a `--roadmap` that names no roadmap it can follow, or a config file that cannot be trusted. |
-| `3` | It could not run, which includes a project with more candidates than `max-candidates`, whatever `--roadmap` says. It prints how many there are, and nothing is scanned. |
+| `2` | Bad arguments, a `--roadmap` that names no roadmap it can follow, a config file that cannot be trusted, a `--filter` it does not understand, or a `--filter` term that matches no path. |
+| `3` | It could not run, which includes a project with more candidates than `max-candidates`, whatever `--roadmap` or `--filter` says. It prints how many there are, and nothing is scanned. |
 
 It never exits `1`: `index` reports and does not judge. Failing a build on what
 the index finds is `check`'s job, through the planning rules above.
+
+A `--filter` it does not understand is refused before anything is scanned,
+naming the first term it cannot read:
+
+```text
+vantage-check: --filter: this checker does not understand `OR`; it reads path: and is: terms
+```
+
+A term that matches no path the index lists is refused after the scan, one
+line for each such term, with nothing on stdout:
+
+```text
+vantage-check: --filter: `path:docs/desing` matches no path the index lists
+```
+
+The planning page applies such a term, keeps nothing for it and names it. The
+checker stops instead, because a mistyped path is an agent's likeliest mistake,
+and the human should never be handed an empty page for it. A checker from
+before the filter exits `2` with `unknown option for index: --filter`.
+
+### Handing the human a filtered planning page
+
+When the human asks for the questions one piece of work needs answered, hand
+them the planning page filtered to that work. The loop:
+
+1. **List the work's planning documents,** each by its path from the
+   repository root, with a leading `/`: the design, its `-plan.md` if one
+   exists, and every document a kept one names in `depends-on`. The `/`
+   matters, because `path:search.md` keeps a `search.md` in every folder. A
+   `depends-on` entry naming one question by its `#` fragment brings in that
+   question's whole document, since no term selects a single question.
+2. **In the checkout the human's Vantage serves,** run
+   `vantage-check index --filter 'path:/docs/design/search.md path:/docs/design/search-plan.md is:open'`.
+   A link made in another checkout, such as a worktree, opens the documents of
+   the checkout Vantage serves, which may not hold the questions as they are
+   where you ran it.
+   - Exit `2` names the term to fix.
+   - `unknown option for index: --filter` means the checker predates the
+     filter: run `uvx vantage-check@latest`.
+   - If the notice names other roadmaps, rerun with `--roadmap` naming each,
+     and hand over each link.
+   - If the notice says a kept document waits on one the filter leaves out,
+     add a `path:` term for that document and rerun.
+3. **Hand over the `Planning page:` line, the filter text in a code span, and
+   the counts the notice gives,** and tell the human to press `/` on their
+   planning page and paste the line. Put an address in front of the link only
+   when the human has told you theirs.
+4. **The human answers on the page** and presses **Copy answers**, which under
+   the filter copies only the answers to the questions it keeps.
+5. **Apply the answers, and rerun the same command** until it says *Nothing
+   this filter keeps needs you*. The line counting blocked questions says
+   whether another round will follow.
+
+What you hand over can be as short as this:
+
+```text
+Four questions about search need your rulings. On your planning page, press /
+and paste this line:
+
+Planning page: /.vantage/planning?filter=path:docs/design/search.md+path:docs/design/search-plan.md+path:docs/design/indexing.md+is:open
+
+It filters to `path:docs/design/search.md path:docs/design/search-plan.md path:docs/design/indexing.md is:open`:
+4 open questions in 3 documents. One more is blocked and will need you later.
+```
+
+The loop also runs the other way. A human who filtered the page by hand and
+pressed **Copy agent request** hands you its `Filter:` line, and `--filter`
+takes its text as it is. The [style guide](#vantage-check-style-guide) teaches
+this loop in one rule, so an agent that reads it before writing learns it too.
 
 ---
 

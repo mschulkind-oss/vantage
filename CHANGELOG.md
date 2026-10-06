@@ -6,6 +6,36 @@ are summarized one section per minor line; the commit log has the rest.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+**A planning page filtered to one piece of work.** Type a filter into the
+planning page's new **Filter** box, such as
+`path:docs/design/search.md is:open`, and press Enter: the page lists only that
+work's entries, in their usual order, and a notice says what the filter hides,
+such as questions on another roadmap or blocked ones that will need you later.
+**Copy answers** and **Copy agent request** then cover only what it keeps.
+Press `/` to reach the box. The filter is part of the page's address, and
+nothing remembers it. A document's Referenced by line now ends with *its
+questions on the planning page*, a link to the page filtered to that document.
+See [Filtering the page](userguide/guides/planning.md#filtering-the-page).
+
+**`vantage-check index --filter`** takes the same text, prints only what it
+keeps, and prints a `Planning page:` line for your agent to hand you. The
+checker cannot know the address you open Vantage at, so the link starts at
+`/.vantage/planning`: press `/` on your planning page and paste the line, or
+put your address in front. In daemon mode, opening it lists each project's
+planning page with the filter kept. A filter the checker does not understand,
+or a path that matches nothing, exits `2`. Vantage 0.8.1 and earlier open a
+filtered link as the whole page, without saying so. See
+[Handing the human a filtered planning page](userguide/guides/vantage-check.md#handing-the-human-a-filtered-planning-page).
+
+### Fixed
+
+- In daemon mode, `g p` and the sidebar's planning entry opened the wrong page
+  for a project whose name holds `#` or `?`.
+
 ## [0.8.1] - 2026-10-02
 
 If your `.vantage.toml` sets a `target` before 0.8, such as `target = "0.7"`,

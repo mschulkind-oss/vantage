@@ -1,9 +1,9 @@
 ---
 title: "Planning filter: implementation sketch"
 date: 2026-10-05
-status: draft
-stage: SKETCH
-next: "Build WP-1, the shared filter module, then WP-2, WP-3 and WP-4 in parallel against its API, and WP-5 last"
+status: accepted
+stage: BUILT
+next: "Graduate with the design into docs/reference/planning-index.md, moving the traps that proved real into its warnings, then delete this file"
 depends-on:
   - planning-filter.md
 tags: [planning, vantage-check, agents, url, sketch]
@@ -12,7 +12,7 @@ summary: "How to build the planning filter: five work packages, the exported API
 
 # Planning filter: implementation sketch
 
-**Status:** 2026-10-05. Written against `f8fda54` after reading the tree, with every question of the design ruled. It stays a sketch until WP-1 lands: the API below is the contract WP-2 to WP-4 build against, and WP-1's commit corrects this file if the tree forces a change.
+**Status:** 2026-10-05 (`d22eedc`). Built: WP-1 to WP-4 landed from `29b07c8` to `d22eedc`, and WP-5 in the commit after it. Written against `f8fda54` after reading the tree, with every question of the design ruled; [As built](#as-built) records where the tree departs from it, and the tree wins. MEASURED: a cold filtered link and an Enter shift nothing painted, leave `history.length` as it was, and make at most two review requests through a clear (`frontend/e2e/planning_filter.spec.ts`). UNMEASURED: criterion 8's long tasks ([risk 6](#risks-and-where-to-stop-and-ask)), reported by that spec and not asserted, and the rest the design's status line lists.
 
 **Design:** [`planning-filter.md`](planning-filter.md). It wins on behavior, the tree wins on fact, and this file is advice and the first thing to be wrong: never twist the code to match it. Every line here is a **must** (a fact of the repository) or a default with its reason. Where the design is silent, the implementer decides, and the default is named.
 
@@ -311,3 +311,17 @@ export interface ReferenceSummary {
 - Store anything: `preferences.test.ts` fails a new preference that has no follower, and the design stores nothing.
 - Change `index`, `sections` or `roadmaps` in the JSON under `--filter`, or bump `INDEX_FORMAT_VERSION` or `SCAN_CACHE_SCHEMA`.
 - Touch Go, `.vantage/inbox`, or `type="search"`.
+
+## As built
+
+The tree at `d22eedc`, read against this file. Each item is something graduation states from the code, not from the sections above.
+
+- **Module layout.** The limits live in `filterLimits.ts`, not `filter.ts`, so that the notices in `sections.ts` can name them without an import cycle; `filter.ts` re-exports them. Risks 1 and 2 kept their defaults: `is:"open"` and a lone surrogate are not understood.
+- **The summary.** `PlanningFilterSummary` gained `onOtherRoadmaps`, the notice's total, each question once. `otherRoadmaps` names every roadmap but the chosen one that routes a kept question, so a question two of them route counts under both. Neither `requestText`, `unmatched` nor `onOtherRoadmaps` is a JSON key.
+- **One wording for an unmatched term.** `PLANNING_NOTICES.filterUnmatched(term)` is both the checker's exit-2 message and the notice's line, less its period.
+- **Notice words the design delegated.** *none of them open questions* when there are none; *It hides no entry.* when nothing is hidden; one *Waits on* line per kept document, naming every target it waits on; *Choose that roadmap* when only one other roadmap holds what it keeps.
+- **The checker.** Its exit-2 messages set a term off as code, and the worktree caution sets the root off as code, as the design's [§9.2](planning-filter.md#92-the-link-it-prints) quotes it. The cautions are text only, with no JSON key. The help row says which characters need quotes. An empty `--request` under a filter ends *have no entries the filter keeps*. `FILTER_RELEASE` is `0.9.0` by [risk 4](#risks-and-where-to-stop-and-ask)'s default: confirm it before the tag. A submodule's `.git` is a file too, so the worktree caution still names a submodule a linked worktree (risk 5).
+- **The page.** A filter change replaces the section bar, the notices with the sections, and the outline, keyed by the shown filter, rather than moving them: without it a first run measured a 0.078 layout shift on Enter. A pending layout counts as a flip of the shown page only when both share one filter, so the old page's pagers stay as they were. The *Enter to apply* hint shows whenever the box differs from what is applied. A pasted roadmap is written as the page's rewrite would leave it, so a paste is one replace. `/` closes the shortcuts help before it focuses the box. A push or a pop clears the live region. Copy answers' accessible name says what the filter leaves out only when it leaves out something. The first review request is as before; only the second widens, to every row's document.
+- **The viewer.** `hasLiveQuestions` is read in `summaryLine`, and `MarkdownViewer.tsx` builds only the address. Below `sm`, with no line reserved, the link takes a line of its own and the separator is not drawn.
+- **Tests that differ from the lists above.** Criterion 12 runs through `plans/paged.md`, because `planning.spec.ts` rewrites `plans/design.md` while other specs run; `planning_filter.spec.ts` opens `?filter=path:plans/design.md` directly.
+- **WP-5 left `docs/reference/planning-index.md` as it was.** The sections the WP-5 table names change at graduation, with the link [`agent-cli.md` §3.3](../reference/agent-cli.md#33-index-version-and-help) now makes to the design.

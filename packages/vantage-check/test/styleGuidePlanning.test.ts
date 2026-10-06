@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { parse as parseToml } from "smol-toml";
+import { run } from "../src/cli.js";
+import { EXIT_OK } from "../src/exit.js";
+import { bufferIo } from "../src/io.js";
 import { STYLE_GUIDE } from "../../vantage-md/src/styleGuide.js";
 import { parseFrontmatter } from "../../vantage-md/src/frontmatter.js";
 import { parseMarkdown } from "../src/core/document.js";
@@ -11,10 +14,12 @@ import { ruleMeta } from "../src/rules/registry.js";
 import { QUESTION_SHAPE } from "../../vantage-md/src/planning/leaning.js";
 import {
   isStageRole,
+  parsePlanningFilter,
   scanPlanningDocument,
   type PlanningDocument,
   type PlanningQuestion,
 } from "../../vantage-md/src/planning/index.js";
+import { fullTree } from "./planningTree.js";
 
 /**
  * The style guide tells agents how to write what the planning index reads
@@ -260,5 +265,50 @@ describe("the style guide's advice on a question's length", () => {
         ).toBeLessThanOrEqual(QUESTION_WORDS_DEFAULT);
       }
     }
+  });
+});
+
+describe("the style guide's filtered planning page", () => {
+  /**
+   * The command the guide teaches for handing a human the rulings one piece
+   * of work needs (`docs/design/planning-filter.md` §9.5), with its two
+   * documents still placeholders.
+   */
+  function taught(): string {
+    const guide = STYLE_GUIDE.replace(/\s+/g, " ");
+    const command = /`vantage-check index --filter '([^']*)'`/.exec(guide);
+    expect(command).not.toBeNull();
+    return command?.[1] ?? "";
+  }
+
+  it("teaches a filter the checker understands once its documents are named", () => {
+    // A placeholder is no path, so the text as printed is not understood:
+    // the agent must name the documents, from the root, with a leading `/`.
+    expect(taught()).toBe("path:/<design> path:/<plan> is:open");
+    expect(parsePlanningFilter(taught()).kind).toBe("not-understood");
+    const named = taught()
+      .replace("<design>", "docs/design/search.md")
+      .replace("<plan>", "docs/design/search-plan.md");
+    expect(parsePlanningFilter(named)).toEqual(
+      expect.objectContaining({
+        kind: "understood",
+        canonical:
+          "path:docs/design/search.md path:docs/design/search-plan.md is:open",
+      }),
+    );
+  });
+
+  it("names the line the command prints for the human", async () => {
+    expect(STYLE_GUIDE).toContain("give the human the `Planning page:` line");
+    const root = fullTree();
+    const io = bufferIo(root);
+    const named = taught()
+      .replace("<design>", "docs/a.md")
+      .replace("<plan>", "docs/e.md");
+    const code = await run(["index", "--filter", named], io);
+    expect(code).toBe(EXIT_OK);
+    expect(io.stdout).toContain(
+      "\nPlanning page: /.vantage/planning?filter=path:docs/a.md+path:docs/e.md+is:open\n",
+    );
   });
 });
