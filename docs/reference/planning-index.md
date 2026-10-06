@@ -2607,6 +2607,7 @@ is the only place most of the numbers are stated.
 | One commit of the sections | at most 30 cards and 96 Ki characters | `commitCards`, `commitMarkdownChars` |
 | Spinner delay | 150 ms | `spinnerMs` |
 | The Filter box's idle pause, before the address takes the filter ([`planning-filter.md` §6.4](../design/planning-filter.md#64-typing-and-the-url)) | 300 ms | `filterIdleMs` |
+| The Filter box's stillness before the live region speaks what the idle pause wrote, from the same keystroke ([`planning-filter.md` §7](../design/planning-filter.md#7-the-filter-line)) | 1 s | `filterSpeechMs` |
 | Reviews deadline / Mermaid deadline | 1 s / 1 s | `reviewsDeadlineMs`, `mermaidDeadlineMs` |
 | Late Mermaid frame | 240 px tall | `mermaidFramePx` |
 | Page-input sets kept | 8 | `pageInputsKept` |
