@@ -183,6 +183,38 @@ test.describe("several roadmaps", () => {
     await expect.poll(() => roadmapParam(page)).toBe(NESTED);
   });
 
+  // Ruled 2026-10-06: a filter whose every question is on another roadmap
+  // does match something, so the page says nothing on this roadmap matches
+  // it, names that roadmap, and offers it before Clear the filter.
+  test("offers the roadmap that holds all a filter keeps, and choosing it keeps the filter", async ({
+    page,
+  }) => {
+    await page.goto("/.vantage/planning?filter=OQ-B1&roadmap=roadmap.md");
+    const empty = page.getByTestId("nothing-matches");
+    await expect(empty.getByRole("heading")).toHaveText(
+      "Nothing on this roadmap matches OQ-B1.",
+    );
+    await expect(empty).toContainText(
+      `1 question it keeps is on another roadmap: ${NESTED} (1). The filter stays when you choose that roadmap.`,
+    );
+    await expect(page.getByTestId("filter-notice")).not.toContainText(
+      "another roadmap",
+    );
+    await expect(empty.getByRole("button")).toHaveText([
+      `Choose ${NESTED}`,
+      "Clear the filter",
+    ]);
+    const entries = await page.evaluate(() => history.length);
+    await empty.getByRole("button", { name: `Choose ${NESTED}` }).click();
+    await expect.poll(() => roadmapParam(page)).toBe(NESTED);
+    await cardsIn(page, "Needs you").toEqual(["OQ-B1: Which way does beta go?"]);
+    expect(new URL(page.url()).searchParams.get("filter")).toBe("OQ-B1");
+    await expect(empty).toHaveCount(0);
+    await expect(picker(page)).toHaveValue(NESTED);
+    await expect(page.getByRole("textbox", { name: "Filter" })).toBeFocused();
+    expect(await page.evaluate(() => history.length)).toBe(entries);
+  });
+
   // Late data never moves painted content (planning-index.md §12):
   // the roadmap line arrives with the index, above the box that held the
   // progress line, so a section bar drawn in that box was pushed down on

@@ -30,11 +30,13 @@
  * hides. A typed text that keeps no entry at all waits for the URL to take
  * it, so a half-typed word does not empty the page between two keystrokes
  * that come within the idle pause of each other. An applied filter that
- * keeps no entry says *Nothing matches* in place of the sections, with the
- * one reason that applies and a Clear the filter that does what the box's ✕
- * does, rather than leave the page blank under its notice (§6.18). A filter
- * this release does not understand is applied not at all: typed, it leaves
- * the page as it was, and entered, the notice names its term (F3).
+ * keeps no entry says *Nothing matches* in place of the sections and their
+ * bar, with the one reason that applies and a Clear the filter that does
+ * what the box's ✕ does, rather than leave the page blank under its notice
+ * (§6.18); where all it keeps is on other roadmaps, *Nothing on this roadmap
+ * matches*, with a button choosing each first. A filter this release does
+ * not understand is applied not at all: typed, it leaves the page as it
+ * was, and entered, the notice names its term (F3).
  *
  * Several roadmaps (`planning-index.md` §6.8): when two or more route, the
  * roadmap line above the section bar offers a picker, and *Needs you* follows
@@ -969,20 +971,34 @@ const Notices: React.FC<{
 
 /**
  * What stands in place of the sections when an applied filter keeps no entry
- * in any of them (ruled 2026-10-06): the headline, *Nothing matches* and the
+ * in any of them (§6.18): the headline, *Nothing matches* and the
  * filter as code, in the page's own text size and not a warning's color; the
- * one reason line that applies; and Clear the filter, which does what the
- * box's ✕ does. Drawn in the sections' box, in the commit that would have
- * drawn them, so it moves nothing painted. It prints, but for its button. Its
- * headline's id describes the Filter box with the filter notice.
+ * one reason line that applies; and the way on. Where all it keeps is on
+ * other roadmaps, that is a button for each, which chooses it with the
+ * filter kept, before Clear the filter, which cannot show what it keeps;
+ * otherwise Clear the filter alone, which does what the box's ✕ does. Drawn
+ * in the sections' box, in the commit that would have drawn them, so it
+ * moves nothing painted. It prints, but for its buttons. Its headline's and
+ * its reason line's ids describe the Filter box with the filter notice.
  */
 const NothingMatches: React.FC<{
   id: string;
+  /** Its reason line's id. */
+  reasonId: string;
   /** `PLANNING_NOTICES.nothingMatches`' lines: the headline, then the reason. */
   lines: readonly PlanningNoticeLine[];
+  /** The other roadmaps that hold what it keeps, in roadmap order. */
+  roadmaps: readonly string[];
+  onChoose: (roadmap: string) => void;
   onClear: () => void;
-}> = ({ id, lines, onClear }) => {
+}> = ({ id, reasonId, lines, roadmaps, onChoose, onClear }) => {
   const [headline, ...reasons] = lines;
+  const button =
+    "inline-flex max-w-full items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors [overflow-wrap:anywhere] print:hidden";
+  // As the box's ✕ does: the focus is not taken from the box on the way, so
+  // pressing one is not leaving the box, which would write what it is about
+  // to replace. The press puts the focus in the box.
+  const keepFocus = (e: React.MouseEvent) => e.preventDefault();
   return (
     <section
       aria-labelledby={id}
@@ -998,23 +1014,40 @@ const NothingMatches: React.FC<{
       {reasons.map((line, i) => (
         <p
           key={i}
+          id={i === 0 ? reasonId : undefined}
           data-testid="nothing-matches-reason"
           className="mt-1 text-sm text-slate-600 dark:text-slate-300"
         >
           <NoticeLine line={line} />
         </p>
       ))}
-      <button
-        type="button"
-        // As the box's ✕ does: the focus is not taken from the box on the
-        // way, so pressing it is not leaving the box, which would write what
-        // it is about to clear. The press puts the focus in the box.
-        onMouseDown={(e) => e.preventDefault()}
-        onClick={onClear}
-        className="mt-3 inline-flex items-center gap-1.5 rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100 print:hidden dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700"
-      >
-        Clear the filter
-      </button>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        {roadmaps.map((roadmap) => (
+          <button
+            key={roadmap}
+            type="button"
+            onMouseDown={keepFocus}
+            onClick={() => onChoose(roadmap)}
+            className={cn(
+              button,
+              "bg-blue-600 text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600",
+            )}
+          >
+            Choose {roadmap}
+          </button>
+        ))}
+        <button
+          type="button"
+          onMouseDown={keepFocus}
+          onClick={onClear}
+          className={cn(
+            button,
+            "border border-slate-300 text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700",
+          )}
+        >
+          Clear the filter
+        </button>
+      </div>
     </section>
   );
 };
@@ -2526,6 +2559,16 @@ export const PlanningPage: React.FC = () => {
     if (filterClearRef.current !== null) filterClearRef.current();
     else applyFilter("", null);
   }, [applyFilter]);
+  // A roadmap's button under *Nothing on this roadmap matches*: what the
+  // Roadmap menu does, the filter kept, and the focus put in the box, as
+  // Clear the filter puts it, since the button is gone once it is chosen.
+  const chooseFrom = useCallback(
+    (roadmap: string) => {
+      pickRoadmap(roadmap);
+      filterInputRef.current?.focus();
+    },
+    [pickRoadmap],
+  );
   // The filter notice's lines, for the frame: what the page on screen shows.
   const filterNotice = useMemo(
     () => filterNoticeLines(frameSummary, frameNotUnderstood),
@@ -2544,6 +2587,16 @@ export const PlanningPage: React.FC = () => {
     [frameSummary],
   );
   const nothingMatchesId = React.useId();
+  const nothingReasonId = React.useId();
+  // The other roadmaps the empty state offers a button for: those that hold
+  // all it keeps.
+  const nothingRoadmaps = useMemo(
+    () =>
+      frameSummary?.nothingMatches?.kind === "other-roadmaps"
+        ? frameSummary.nothingMatches.otherRoadmaps.map((r) => r.path)
+        : [],
+    [frameSummary],
+  );
   // Any other applied filter whose sections hold nothing that needs the
   // human: the notice, then the filtered *Nothing needs you*, which the frame
   // draws after it as a notice of its own (§6.18). The box is described by
@@ -2556,7 +2609,7 @@ export const PlanningPage: React.FC = () => {
   const filterDescribedBy = !noticeShown
     ? undefined
     : nothingMatches !== null
-      ? `${filterNoticeId} ${nothingMatchesId}`
+      ? `${filterNoticeId} ${nothingMatchesId} ${nothingReasonId}`
       : nothingFiltered
         ? `${filterNoticeId} ${nothingId}`
         : filterNoticeId;
@@ -2568,9 +2621,9 @@ export const PlanningPage: React.FC = () => {
           ...(nothingFiltered
             ? [PLANNING_NOTICES.nothingFilteredNeedsYou]
             : []),
-          ...(nothingMatches?.[0] !== undefined
-            ? [spokenLine(nothingMatches[0])]
-            : []),
+          // Its headline and its reason line, which says what the notice
+          // leaves to it.
+          ...(nothingMatches ?? []).map(spokenLine),
         ].join(" ");
   // A push or a pop (`g p`, the sidebar's entry, Back, Forward) is no
   // reader's Enter: it forgets what the region said, so the same notice
@@ -2921,60 +2974,72 @@ export const PlanningPage: React.FC = () => {
                           agent requests, moved its controls, and the
                           notice the frame gains moved the sections
                           (§6.16). */}
-                  <div
-                    key={
-                      frameReady && frameLayout !== null
-                        ? `bar\n${frameFilterKey}`
-                        : "progress"
-                    }
-                    className="mb-6 flex min-h-7 flex-wrap items-center gap-x-3 gap-y-1"
-                  >
-                    {frameReady && frameLayout !== null ? (
-                      <>
-                        <SectionBar
-                          layout={frameLayout}
-                          answered={frameNeedYou?.sections}
-                        />
-                        {/* The page's controls over its sections, at the
+                  {/* Not drawn at all under *Nothing matches*, which has
+                      no section to jump to and no card to unfold: its room,
+                      held for links that arrive later, read as something
+                      that failed to load above it. It goes in the commit
+                      that draws *Nothing matches*, so it moves nothing
+                      painted. */}
+                  {!(
+                    frameReady &&
+                    frameLayout !== null &&
+                    nothingMatches !== null
+                  ) && (
+                    <div
+                      key={
+                        frameReady && frameLayout !== null
+                          ? `bar\n${frameFilterKey}`
+                          : "progress"
+                      }
+                      className="mb-6 flex min-h-7 flex-wrap items-center gap-x-3 gap-y-1"
+                    >
+                      {frameReady && frameLayout !== null ? (
+                        <>
+                          <SectionBar
+                            layout={frameLayout}
+                            answered={frameNeedYou?.sections}
+                          />
+                          {/* The page's controls over its sections, at the
                             end of the line, or of a line of their own when
                             the section bar leaves no room for them. */}
-                        <div className="ml-auto flex shrink-0 items-center gap-1 print:hidden">
-                          {frameLayout.sections.some((s) =>
-                            isPlanningAgentSectionId(s.id),
-                          ) && (
-                            <CopyRequestButton
-                              label="Copy all agent requests"
-                              name="Copy all agent requests"
-                              hint="Copy one instruction for an agent covering every entry of every section an agent works on, on every page"
-                              done="Copied every agent request."
-                              request={() => requestOf()}
-                            />
-                          )}
-                          {frameLayout.sections.some(
-                            (s) => s.kind === "cards",
-                          ) && (
-                            <CardsToggle
-                              expanded={cardsBrought}
-                              onToggle={toggleCards}
-                            />
-                          )}
-                        </div>
-                      </>
-                    ) : (
-                      <ProgressLine
-                        progress={
-                          load.status === "loading"
-                            ? load.progress
-                            : index !== null
-                              ? {
-                                  done: index.candidateCount,
-                                  total: index.candidateCount,
-                                }
-                              : null
-                        }
-                      />
-                    )}
-                  </div>
+                          <div className="ml-auto flex shrink-0 items-center gap-1 print:hidden">
+                            {frameLayout.sections.some((s) =>
+                              isPlanningAgentSectionId(s.id),
+                            ) && (
+                              <CopyRequestButton
+                                label="Copy all agent requests"
+                                name="Copy all agent requests"
+                                hint="Copy one instruction for an agent covering every entry of every section an agent works on, on every page"
+                                done="Copied every agent request."
+                                request={() => requestOf()}
+                              />
+                            )}
+                            {frameLayout.sections.some(
+                              (s) => s.kind === "cards",
+                            ) && (
+                              <CardsToggle
+                                expanded={cardsBrought}
+                                onToggle={toggleCards}
+                              />
+                            )}
+                          </div>
+                        </>
+                      ) : (
+                        <ProgressLine
+                          progress={
+                            load.status === "loading"
+                              ? load.progress
+                              : index !== null
+                                ? {
+                                    done: index.candidateCount,
+                                    total: index.candidateCount,
+                                  }
+                                : null
+                          }
+                        />
+                      )}
+                    </div>
+                  )}
                   {/* Keyed so too, the notices and the sections' box: the
                       spinner a cold open paints in that box sat under the
                       progress line, and the notice the frame lands with
@@ -3043,7 +3108,10 @@ export const PlanningPage: React.FC = () => {
                           {nothingMatches !== null ? (
                             <NothingMatches
                               id={nothingMatchesId}
+                              reasonId={nothingReasonId}
                               lines={nothingMatches}
+                              roadmaps={nothingRoadmaps}
+                              onChoose={chooseFrom}
                               onClear={clearFilter}
                             />
                           ) : (

@@ -22,6 +22,7 @@ import type {
   NotUnderstoodPlanningFilter,
   PlanningFilterReason,
   PlanningFilterSummary,
+  PlanningKeptCount,
   PlanningNothingMatches,
 } from "./filter.js";
 import { PLANNING_FILTER_LIMITS } from "./filterLimits.js";
@@ -221,8 +222,14 @@ function filteredNotice(
       `: ${count(entries.shown)} of ${plural(entries.of, "entry", "entries")},${paths} ${open}.`,
     ],
   ];
-  for (const term of summary.unmatched) {
-    lines.push([{ code: term }, `${MATCHES_NO_PATH}.`]);
+  // Where *Nothing matches* stands in place of the sections, what its reason
+  // line says is not said here too: the unmatched terms, when they are why it
+  // keeps no document, and the other roadmaps (§6.18).
+  const why = summary.nothingMatches;
+  if (!unmatchedIsWhy(summary)) {
+    for (const term of summary.unmatched) {
+      lines.push([{ code: term }, `${MATCHES_NO_PATH}.`]);
+    }
   }
   for (const { key, terms } of summary.unknownKeys) {
     const line: (string | { code: string })[] = [
@@ -244,31 +251,15 @@ function filteredNotice(
     lines.push(line);
   }
 
-  const others = summary.otherRoadmaps;
-  if (others.length > 0) {
-    // Each question once, though two of the roadmaps may route it.
-    const total = summary.onOtherRoadmaps;
-    const line: (string | { code: string })[] = [
-      total === 1
-        ? "1 more question it keeps is on "
-        : `${count(total)} more questions it keeps are on `,
-      others.length === 1 ? "another roadmap: " : "other roadmaps: ",
-    ];
-    others.forEach((roadmap, i) => {
-      if (i > 0) line.push(", ");
-      line.push({ code: roadmap.path }, ` (${count(roadmap.count)})`);
-    });
-    const one = others.length === 1;
-    line.push(
-      reader === "page"
-        ? one
-          ? `. Choose that roadmap to see ${total === 1 ? "it" : "them"}; the filter stays.`
-          : `. Choose one to see ${total === 1 ? "it" : "them"}; the filter stays.`
-        : one
-          ? ". Rerun with --roadmap naming it."
-          : ". Rerun with --roadmap naming one.",
+  if (summary.otherRoadmaps.length > 0 && why?.kind !== "other-roadmaps") {
+    lines.push(
+      otherRoadmapsLine(
+        summary.onOtherRoadmaps,
+        summary.otherRoadmaps,
+        reader,
+        "notice",
+      ),
     );
-    lines.push(line);
   }
 
   const blocked = summary.blockedLeftOut;
@@ -294,14 +285,82 @@ function filteredNotice(
   }
 
   const hidden = entries.of - entries.shown;
-  lines.push([
-    hidden === 0
-      ? "It hides no entry."
-      : reader === "page"
-        ? `Clear the filter to see the other ${count(hidden)}.`
-        : `Run without --filter to see the other ${count(hidden)}.`,
-  ]);
+  // On the page, Clear the filter is a button under *Nothing matches*.
+  if (hidden === 0 || reader === "checker" || why === null) {
+    lines.push([
+      hidden === 0
+        ? "It hides no entry."
+        : reader === "page"
+          ? `Clear the filter to see the other ${count(hidden)}.`
+          : `Run without --filter to see the other ${count(hidden)}.`,
+    ]);
+  }
   return lines;
+}
+
+/**
+ * Whether the reason after *Nothing matches* is the summary's unmatched
+ * terms: it keeps no document, and one of its `path:` terms matches no path.
+ */
+const unmatchedIsWhy = (summary: PlanningFilterSummary): boolean =>
+  summary.nothingMatches?.kind === "documents" &&
+  summary.nothingMatches.documents === 0 &&
+  summary.unmatched.length > 0;
+
+/** `a`, `a and b`, `a, b and c`, as code. */
+function codes(
+  texts: readonly string[],
+  last = " and ",
+): (string | { code: string })[] {
+  const parts: (string | { code: string })[] = [];
+  texts.forEach((text, i) => {
+    if (i > 0) parts.push(i === texts.length - 1 ? last : ", ");
+    parts.push({ code: text });
+  });
+  return parts;
+}
+
+/**
+ * The questions a filter keeps that only other roadmaps route, counted, with
+ * each roadmap and how many of them it routes: in the filter notice
+ * (`notice`, §6.18), after the entries it lists, and as the reason line after
+ * *Nothing on this roadmap matches* (`nothing-matches`), where they are all
+ * it keeps and the page draws a button for each roadmap under the line.
+ */
+function otherRoadmapsLine(
+  total: number,
+  others: PlanningFilterSummary["otherRoadmaps"],
+  reader: PlanningNoticeReader,
+  where: "notice" | "nothing-matches",
+): PlanningNoticeLine {
+  // Each question once, though two of the roadmaps may route it.
+  const more = where === "notice" ? "more " : "";
+  const line: (string | { code: string })[] = [
+    total === 1
+      ? `1 ${more}question it keeps is on `
+      : `${count(total)} ${more}questions it keeps are on `,
+    others.length === 1 ? "another roadmap: " : "other roadmaps: ",
+  ];
+  others.forEach((roadmap, i) => {
+    if (i > 0) line.push(", ");
+    line.push({ code: roadmap.path }, ` (${count(roadmap.count)})`);
+  });
+  const one = others.length === 1;
+  const them = total === 1 ? "it" : "them";
+  line.push(
+    reader === "checker"
+      ? one
+        ? ". Rerun with --roadmap naming it."
+        : ". Rerun with --roadmap naming one."
+      : where === "nothing-matches"
+        ? one
+          ? ". The filter stays when you choose that roadmap."
+          : ". The filter stays when you choose one of them."
+        : one
+          ? `. Choose that roadmap to see ${them}; the filter stays.`
+          : `. Choose one to see ${them}; the filter stays.`,
+  );
+  return line;
 }
 
 /**
@@ -312,34 +371,42 @@ function filteredNotice(
 const WORDS_MATCH =
   "Words and quoted phrases are matched only against a question's id, title and leaning, and a document's path, stage and next step.";
 
+/**
+ * What a filter with terms left out would keep, after *it would keep* in a
+ * reason line: the entries it lists, or, when it would list none, the
+ * questions only other roadmaps route.
+ */
+function wouldKeep(kept: PlanningKeptCount): { text: string; one: boolean } {
+  if (kept.entries > 0) {
+    return {
+      text: plural(kept.entries, "entry", "entries"),
+      one: kept.entries === 1,
+    };
+  }
+  const where =
+    kept.otherRoadmaps === 1
+      ? "another roadmap"
+      : `${count(kept.otherRoadmaps)} other roadmaps`;
+  return {
+    text: `${plural(kept.onOtherRoadmaps, "question", "questions")} on ${where}`,
+    one: kept.onOtherRoadmaps === 1,
+  };
+}
+
 /** The one reason line after *Nothing matches*, in `reader`'s words. */
 function nothingMatchesReason(
+  summary: PlanningFilterSummary,
   why: PlanningNothingMatches,
   reader: PlanningNoticeReader,
 ): PlanningNoticeLine {
   switch (why.kind) {
-    case "other-roadmaps": {
-      const { questions, roadmaps } = why;
-      const them = questions === 1 ? "it" : "them";
-      // As the notice's Other roadmaps line counts them, without "more".
-      const lead =
-        questions === 1
-          ? "1 question it keeps is on "
-          : `${count(questions)} questions it keeps are on `;
-      const where =
-        roadmaps === 1
-          ? "another roadmap."
-          : `${count(roadmaps)} other roadmaps.`;
-      const remedy =
-        reader === "page"
-          ? roadmaps === 1
-            ? ` Choose that roadmap in the Roadmap menu to see ${them}; the filter stays.`
-            : ` Choose one in the Roadmap menu to see ${them}; the filter stays.`
-          : roadmaps === 1
-            ? " Rerun with --roadmap naming it."
-            : " Rerun with --roadmap naming one.";
-      return [`${lead}${where}${remedy}`];
-    }
+    case "other-roadmaps":
+      return otherRoadmapsLine(
+        why.onOtherRoadmaps,
+        why.otherRoadmaps,
+        reader,
+        "nothing-matches",
+      );
     case "no-entries":
       return [
         reader === "page"
@@ -347,6 +414,14 @@ function nothingMatchesReason(
           : "The index lists no entry without --filter either.",
       ];
     case "documents":
+      if (unmatchedIsWhy(summary)) {
+        return [
+          ...codes(summary.unmatched),
+          summary.unmatched.length === 1
+            ? `${MATCHES_NO_PATH}.`
+            : " match no path the index lists.",
+        ];
+      }
       return [
         why.documents === 0
           ? "It keeps no document the index lists."
@@ -357,7 +432,7 @@ function nothingMatchesReason(
     case "state": {
       const keeps = why.terms.includes("is:open");
       const drops = why.terms.includes("-is:open");
-      const one = why.entries === 1;
+      const { text, one } = wouldKeep(why);
       const which =
         keeps && !drops
           ? one
@@ -371,7 +446,26 @@ function nothingMatchesReason(
       return [
         "Without ",
         { code: why.terms.join(" ") },
-        ` it would keep ${plural(why.entries, "entry", "entries")}${which}`,
+        ` it would keep ${text}${which}`,
+      ];
+    }
+    case "excluded": {
+      const { text, one } = wouldKeep(why);
+      const lead = [
+        "Without ",
+        { code: why.terms.join(" ") },
+        ` it would keep ${text}`,
+      ];
+      if (why.withState) return [...lead, "."];
+      // What each `-` term leaves out is what matches its text.
+      return [
+        ...lead,
+        one ? ", and it matches " : ", and every one of them matches ",
+        ...codes(
+          why.terms.map((term) => term.slice(1)),
+          " or ",
+        ),
+        ".",
       ];
     }
     case "words":
@@ -381,7 +475,9 @@ function nothingMatchesReason(
 
 /**
  * What stands in place of the sections when an applied filter keeps no entry:
- * *Nothing matches* and the filter as code, then the reason line.
+ * the headline, *Nothing matches* and the filter as code, or *Nothing on this
+ * roadmap matches* where the questions it keeps are on other roadmaps, then
+ * the reason line.
  */
 function nothingMatchesNotice(
   summary: PlanningFilterSummary,
@@ -390,8 +486,14 @@ function nothingMatchesNotice(
   const why = summary.nothingMatches;
   if (why === null) return null;
   return [
-    ["Nothing matches ", { code: summary.canonical }, "."],
-    nothingMatchesReason(why, reader),
+    [
+      why.kind === "other-roadmaps"
+        ? "Nothing on this roadmap matches "
+        : "Nothing matches ",
+      { code: summary.canonical },
+      ".",
+    ],
+    nothingMatchesReason(summary, why, reader),
   ];
 }
 
@@ -408,7 +510,10 @@ export const PLANNING_NOTICES: {
    * counts, one line per unmatched term, one per unknown key, the clauses
    * that apply (other roadmaps, blocked questions left out, waits on a
    * document left out), and a last line saying how to see the rest, in
-   * `reader`'s words.
+   * `reader`'s words. Where `nothingMatches` is said, what its reason line
+   * says is left out: the other roadmaps, and the unmatched terms when they
+   * are the reason; and on the page, where Clear the filter is a button
+   * under it, the last line, unless it says the filter hides no entry.
    */
   filtered(
     summary: PlanningFilterSummary,
@@ -418,9 +523,10 @@ export const PLANNING_NOTICES: {
    * What stands in place of the sections when an applied filter keeps no
    * entry in any of them: the headline, *Nothing matches* and the filter as
    * code, then the one reason line that applies (`PlanningNothingMatches`),
-   * in `reader`'s words. `null` when it keeps an entry. *Nothing this filter
-   * keeps needs you* is not said beside it, since it reads as though
-   * something were kept.
+   * in `reader`'s words. Where all it keeps is on other roadmaps the headline
+   * is *Nothing on this roadmap matches*, since it does match something.
+   * `null` when it keeps an entry. *Nothing this filter keeps needs you* is
+   * not said beside it, since it reads as though something were kept.
    */
   nothingMatches(
     summary: PlanningFilterSummary,
