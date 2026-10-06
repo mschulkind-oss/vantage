@@ -58,6 +58,50 @@ export interface Shift {
   input: boolean;
 }
 
+/** A keydown, wherever it went: its key and its `timeStamp`. */
+export interface KeyDown {
+  key: string;
+  at: number;
+}
+
+/**
+ * One Event Timing entry (T1): an event the page handled, from its
+ * `timeStamp` to the next paint after its handlers, rounded to 8 ms. The
+ * browser reports none under 16 ms, the lowest threshold it takes.
+ */
+export interface EventTiming {
+  name: string;
+  start: number;
+  duration: number;
+  processingStart: number;
+  processingEnd: number;
+  /** Shared by the events of one key press; 0 for an event of none. */
+  interactionId: number;
+}
+
+/** A change to the Filter box's text: when, the text, and its paint. */
+export interface BoxInput {
+  /** The `input` event's `timeStamp`. */
+  at: number;
+  /** When the page's main thread got to the event. */
+  handled: number;
+  text: string;
+  /** When the frame after it, which draws the text, painted. */
+  painted: number | null;
+}
+
+/**
+ * The filter the sections' box is laid out under (`data-planning-filter`,
+ * the shown layout's canonical text) changed: when the change was committed
+ * to the DOM, and when a frame painted it. `painted` stays `null` when a later
+ * change came before any frame did, so this one was never drawn.
+ */
+export interface ShownFilter {
+  filter: string;
+  committed: number;
+  painted: number | null;
+}
+
 export interface ProbeState {
   /** The last `p` keydown's `timeStamp`: the moment `g p` is measured from. */
   key: number | null;
@@ -73,6 +117,14 @@ export interface ProbeState {
   longTasks: LongTask[];
   frames: LongFrame[];
   shifts: Shift[];
+  /** Every keydown of the page session. */
+  keys: KeyDown[];
+  /** Every change to the Filter box's text. */
+  inputs: BoxInput[];
+  /** Every Event Timing entry of 16 ms or more. */
+  events: EventTiming[];
+  /** Every change of the filter the sections are laid out under. */
+  shown: ShownFilter[];
 }
 
 declare global {
@@ -99,6 +151,11 @@ export function installProbe(): void {
     value: number;
     hadRecentInput: boolean;
   }
+  interface EventEntry extends PerformanceEntry {
+    processingStart: number;
+    processingEnd: number;
+    interactionId: number;
+  }
 
   const state: ProbeState = {
     key: null,
@@ -110,6 +167,10 @@ export function installProbe(): void {
     longTasks: [],
     frames: [],
     shifts: [],
+    keys: [],
+    inputs: [],
+    events: [],
+    shown: [],
   };
   window.__planningPerf = state;
   // The hold reads every request a load makes; the default buffer is 250.
@@ -174,6 +235,7 @@ export function installProbe(): void {
   window.addEventListener(
     "keydown",
     (event) => {
+      state.keys.push({ key: event.key, at: event.timeStamp });
       if (event.key !== "p") return;
       state.key = event.timeStamp;
       state.frame = null;
@@ -203,14 +265,73 @@ export function installProbe(): void {
   };
   watchDocument();
 
+  // The Filter box's echo (T1): the frame after a change to its text draws
+  // the text, since the box is the page's own render of each keystroke.
+  const FILTER_BOX = '[data-testid="planning-filter"] input';
+  window.addEventListener(
+    "input",
+    (event) => {
+      const box = event.target;
+      if (!(box instanceof HTMLInputElement) || !box.matches(FILTER_BOX)) {
+        return;
+      }
+      const input: BoxInput = {
+        at: event.timeStamp,
+        handled: performance.now(),
+        text: box.value,
+        painted: null,
+      };
+      state.inputs.push(input);
+      requestAnimationFrame(() => {
+        setTimeout(() => {
+          input.painted = performance.now();
+        }, 0);
+      });
+    },
+    { capture: true },
+  );
+
+  // The results (T2): the sections' box carries the filter its layout was
+  // made under, set in the commit that swaps the sections in. A change is
+  // seen when it is committed, and painted in the next frame unless a later
+  // change came first.
+  const SECTIONS = "[data-planning-sections]";
+  const shownNow = () =>
+    document.querySelector(SECTIONS)?.getAttribute("data-planning-filter") ??
+    null;
+  let latest: ShownFilter | null = null;
+  new MutationObserver(() => {
+    const filter = shownNow();
+    if (filter === null || filter === latest?.filter) return;
+    const shown: ShownFilter = {
+      filter,
+      committed: performance.now(),
+      painted: null,
+    };
+    latest = shown;
+    state.shown.push(shown);
+    requestAnimationFrame(() => {
+      if (latest !== shown) return;
+      setTimeout(() => {
+        shown.painted = performance.now();
+      }, 0);
+    });
+  }).observe(document, {
+    subtree: true,
+    attributes: true,
+    attributeFilter: ["data-planning-filter"],
+  });
+
   const observe = (
     type: string,
     take: (entries: PerformanceEntryList) => void,
+    options: { durationThreshold?: number } = {},
   ) => {
     try {
       new PerformanceObserver((list) => take(list.getEntries())).observe({
         type,
         buffered: true,
+        ...options,
       });
     } catch {
       // An entry type this browser does not report: nothing is recorded.
@@ -242,6 +363,22 @@ export function installProbe(): void {
       });
     }
   });
+  observe(
+    "event",
+    (entries) => {
+      for (const entry of entries as EventEntry[]) {
+        state.events.push({
+          name: entry.name,
+          start: entry.startTime,
+          duration: entry.duration,
+          processingStart: entry.processingStart,
+          processingEnd: entry.processingEnd,
+          interactionId: entry.interactionId,
+        });
+      }
+    },
+    { durationThreshold: 16 },
+  );
   observe("layout-shift", (entries) => {
     for (const entry of entries as ShiftEntry[]) {
       state.shifts.push({

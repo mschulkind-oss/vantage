@@ -11,7 +11,9 @@
  * comes after, one subject at a time.
  *
  * It prints each cell's runs and median and writes every raw run as JSON.
- * It judges nothing: §18 holds the targets, and a person compares.
+ * It judges nothing: §18 holds the targets, and a person compares. The typing
+ * targets, T1 to T4, are `docs/design/planning-filter.md` §16's, read as
+ * percentiles over every run's keystrokes pooled.
  */
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { cpus, loadavg, tmpdir } from "node:os";
@@ -21,6 +23,7 @@ import {
   FIXTURE_SIZES,
   REPO_ROOT,
   describeFixture,
+  filterKeeps,
   writeFixture,
   type FixtureReport,
 } from "./fixture.ts";
@@ -28,6 +31,7 @@ import {
   buildingRun,
   firstBuildRun,
   mainRun,
+  typingRun,
   warmUp,
   type BuildingRun,
   type FlowOptions,
@@ -35,6 +39,8 @@ import {
   type IndexLoad,
   type MainRun,
   type Served,
+  type TypingPass,
+  type TypingRun,
 } from "./scenarios.ts";
 import {
   buildBinary,
@@ -57,8 +63,15 @@ const TARGETS = [
   "D10",
   "hold",
   "first-build",
+  "T1",
+  "T2",
+  "T3",
+  "T4",
 ] as const;
 type Target = (typeof TARGETS)[number];
+
+/** The typing targets, which `--targets typing` names together. */
+const TYPING: readonly Target[] = ["T1", "T2", "T3", "T4"];
 
 /** The targets the main flow is read for. */
 const MAIN: readonly Target[] = ["D1", "D2", "D3", "D6", "D7", "hold"];
@@ -76,25 +89,34 @@ Measures the planning index's scale targets (docs/reference/planning-index.md
 §18) on the production bundle in headless Chromium at 1440x900.
 
   --size <n>[,<n>…]     scale fixture sizes: 15, 30, 45, 60 (default: all four)
-  --repo <path>         measure this repository instead of the fixture
+  --repo <path>         measure this repository instead of the fixture, or
+                        beside it when --size is given too
   --start <file>        the document every flow starts from (default: roadmap.md)
-  --targets <t>[,<t>…]  D1 D2 D3 D4 D5 D6 D7 D9 D10 hold first-build (default: all)
+  --targets <t>[,<t>…]  D1 D2 D3 D4 D5 D6 D7 D9 D10 hold first-build T1 T2 T3 T4,
+                        or typing for T1 to T4 (default: all)
   --runs <n>            runs per cell (default: 3)
   --out <file>          where the raw JSON goes (default: the OS temp directory)
   --gap <ms>            between the g and the p of g p (default: 200)
   --settle <ms>         to let a page settle before and after g p (default: 1000)
   --cpu-slowdown <n>    Chromium's CPU throttling rate (default: 1, none)
+  --query <text>        what the typing flow types (default: generator is:open)
+  --type-gap <ms>       between its keys (default: 150)
+  --burst-gap <ms>      between its keys in a burst, typed again in a visit of
+                        its own; 0 types none (default: 30)
   --no-build            reuse web/dist rather than rebuilding it (just web-sync)
   --keep                keep the fixture and the servers' scratch directory
   --help                print this
 
 first-build is this repository's first build (or --repo's), whatever --size
-says. D3 is the slope of D2 between the two largest sizes run; §18 defines it
+says. T1 to T4 are docs/design/planning-filter.md §16's typing targets, and
+their percentiles pool every run's keystrokes; §16 asks for ten runs or more. D3 is the slope of D2 between the two largest sizes run; §18 defines it
 from 45 to 60, and three runs cannot resolve it (the README says how many
 can). Nothing here judges a result: compare with §18's table.`;
 
 interface Args {
   sizes: number[];
+  /** `--size` was given, so its sizes are measured beside `--repo`. */
+  sized: boolean;
   repo: string | null;
   start: string;
   targets: Set<Target>;
@@ -103,11 +125,14 @@ interface Args {
   build: boolean;
   keep: boolean;
   flow: FlowOptions;
+  typing: TypingPass;
+  burst: TypingPass | null;
 }
 
 function parseArgs(argv: string[]): Args {
   const args: Args = {
     sizes: [...FIXTURE_SIZES],
+    sized: false,
     repo: null,
     start: "roadmap.md",
     targets: new Set(TARGETS),
@@ -116,7 +141,10 @@ function parseArgs(argv: string[]): Args {
     build: true,
     keep: false,
     flow: { gapMs: 200, settleMs: 1000, cpuSlowdown: 1, timeoutMs: 60_000 },
+    typing: { query: "generator is:open", gapMs: 150 },
+    burst: { query: "generator is:open", gapMs: 30 },
   };
+  let burstGap = 30;
   const list = (value: string) => value.split(",").filter((v) => v !== "");
   const number = (flag: string, value: string) => {
     const n = Number(value);
@@ -149,12 +177,13 @@ function parseArgs(argv: string[]): Args {
       case "--targets":
         targets = [
           ...(targets ?? []),
-          ...list(value()).map((t) => {
+          ...list(value()).flatMap((t) => {
+            if (t.toLowerCase() === "typing") return TYPING;
             const found = TARGETS.find(
               (k) => k.toLowerCase() === t.toLowerCase(),
             );
             if (found === undefined) throw new Error(`unknown target ${t}`);
-            return found;
+            return [found];
           }),
         ];
         break;
@@ -172,6 +201,15 @@ function parseArgs(argv: string[]): Args {
         break;
       case "--cpu-slowdown":
         args.flow.cpuSlowdown = Math.max(1, number(flag, value()));
+        break;
+      case "--query":
+        args.typing.query = value();
+        break;
+      case "--type-gap":
+        args.typing.gapMs = number(flag, value());
+        break;
+      case "--burst-gap":
+        burstGap = number(flag, value());
         break;
       case "--no-build":
         args.build = false;
@@ -197,8 +235,11 @@ function parseArgs(argv: string[]): Args {
       }
     }
     args.sizes = [...new Set(sizes)].sort((a, b) => a - b);
+    args.sized = true;
   }
   if (targets !== null) args.targets = new Set(targets);
+  args.burst =
+    burstGap > 0 ? { query: args.typing.query, gapMs: burstGap } : null;
   return args;
 }
 
@@ -214,6 +255,11 @@ interface SubjectResult {
   building: BuildingRun[];
   dev: MainRun[];
   firstBuild: IndexLoad[];
+  /** The typing flow's runs at the typing pace, then in a burst. */
+  typing: TypingRun[];
+  burst: TypingRun[];
+  /** The entries the typed query keeps, of all the page lists. */
+  narrows: { shown: number; of: number } | null;
   summary: Record<string, unknown>;
 }
 
@@ -327,6 +373,8 @@ function summarize(result: SubjectResult, targets: Set<Target>) {
       cards: byScenario(dev, (gp) => gp.cardsMs),
     };
   }
+  if (result.typing.length > 0) out.typing = typingSummary(result.typing);
+  if (result.burst.length > 0) out.burst = burstSummary(result.burst);
   if (result.firstBuild.length > 0) {
     out.firstBuild = {
       ...cell(result.firstBuild.map((load) => load.readyMs)),
@@ -337,6 +385,124 @@ function summarize(result: SubjectResult, targets: Set<Target>) {
     };
   }
   return out;
+}
+
+/**
+ * The nearest-rank percentile `p` of `values`, so a p95 is a value some
+ * keystroke took; `Infinity` stands for one whose results never painted.
+ */
+function percentile(values: number[], p: number): number | null {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  return sorted[Math.max(0, Math.ceil((p / 100) * sorted.length) - 1)];
+}
+
+/**
+ * p50, p95 and the largest of a pooled measure. Event Timing reports nothing
+ * under its 16 ms threshold, so such a keystroke stands as 0 and a
+ * percentile below 16 prints as "<16".
+ */
+function spread(values: number[], floor = 0) {
+  const show = (v: number | null) =>
+    v === null
+      ? null
+      : v === Number.POSITIVE_INFINITY
+        ? "never painted"
+        : v < floor
+          ? `<${floor}`
+          : Math.round(v * 10) / 10;
+  return {
+    n: values.length,
+    p50: show(percentile(values, 50)),
+    p95: show(percentile(values, 95)),
+    max: show(values.length === 0 ? null : Math.max(...values)),
+  };
+}
+
+/** T1 and the box's echo over every keystroke of `runs`, pooled. */
+function echoSummary(runs: TypingRun[]) {
+  const keys = runs.flatMap((run) => run.keys);
+  const t1 = keys.map((k) => k.interactionMs ?? 0);
+  return {
+    T1: {
+      ...spread(t1, 16),
+      over50: t1.filter((v) => v > 50).length,
+      under16: keys.filter((k) => k.interactionMs === null).length,
+    },
+    echo: spread(keys.flatMap((k) => (k.echoMs === null ? [] : [k.echoMs]))),
+  };
+}
+
+/** T3 and T4 over `runs`. */
+function quietSummary(runs: TypingRun[]) {
+  const tasks = runs.flatMap((run) => run.longTasks);
+  const typing = tasks.filter((t) => t.window === "typing");
+  const after = tasks.filter((t) => t.window === "after");
+  const frames = runs.flatMap((run) => run.longFrames);
+  const longest = (values: number[]) =>
+    values.length === 0 ? null : Math.max(...values);
+  return {
+    T3: {
+      longTasks: typing.length,
+      longestMs: longest(typing.map((t) => t.duration)),
+      longFrames: frames.length,
+      longestFrameMs: longest(frames.map((f) => f.duration)),
+      afterTyping: after.length,
+      afterLongestMs: longest(after.map((t) => t.duration)),
+    },
+    T4: {
+      cls: longest(runs.map((run) => run.cls)),
+      clsAll: longest(runs.map((run) => run.clsAll)),
+      runsShifted: runs.filter((run) => run.clsAll > 0).length,
+    },
+  };
+}
+
+/** The typing flow at its pace: T1 to T4, and what the design also holds. */
+function typingSummary(runs: TypingRun[]) {
+  const counted = runs.flatMap((run) =>
+    run.keys.filter((k) => k.applies !== null),
+  );
+  const final = runs[0].query;
+  return {
+    query: final,
+    gapMs: runs[0].gapMs,
+    ...echoSummary(runs),
+    T2: {
+      ...spread(
+        counted.map((k) => (k.superseded ? Infinity : (k.resultsMs ?? 0))),
+      ),
+      over100: counted.filter((k) => k.superseded || (k.resultsMs ?? 0) > 100)
+        .length,
+      superseded: counted.filter((k) => k.superseded).length,
+      committed: spread(
+        counted.flatMap((k) => (k.committedMs === null ? [] : [k.committedMs])),
+      ),
+    },
+    ...quietSummary(runs),
+    historyAdded: Math.max(...runs.map((run) => run.historyAdded)),
+    urlTook: `${runs.filter((run) => run.urlFilter !== null).length} of ${runs.length}`,
+    reviewsMax: Math.max(...runs.map((run) => run.reviews)),
+  };
+}
+
+/** The burst: the newest text wins, with no backlog; and T1 under it. */
+function burstSummary(runs: TypingRun[]) {
+  return {
+    gapMs: runs[0].gapMs,
+    settledMs: cell(runs.map((run) => run.settledMs)),
+    settledP95: spread(
+      runs.map((run) => run.settledMs ?? Number.POSITIVE_INFINITY),
+    ).p95,
+    finalShown: `${runs.filter((run) => run.settledMs !== null).length} of ${runs.length}`,
+    inOrder: `${runs.filter((run) => run.inOrder).length} of ${runs.length}`,
+    staleAfterLast: runs.reduce((sum, run) => sum + run.staleAfterLast, 0),
+    texts: cell(
+      runs.map((run) => run.shown.filter((s) => s.painted !== null).length),
+    ),
+    ...echoSummary(runs),
+    ...quietSummary(runs),
+  };
 }
 
 /** D3: D2's slope between the two largest fixture sizes run, per scenario. */
@@ -377,6 +543,7 @@ interface Flows {
   building: boolean;
   dev: boolean;
   firstBuild: boolean;
+  typing: boolean;
 }
 
 /** A subject whose server is up: what it runs, and its results so far. */
@@ -400,6 +567,14 @@ function print(result: SubjectResult): void {
       : `repository ${result.subject.path}`;
   console.log(`\n${name}\n  start: ${result.start}`);
   for (const [target, value] of Object.entries(result.summary)) {
+    if (target === "typing" || target === "burst") {
+      // One line a measure: the typing summaries are too wide for one.
+      console.log(`  ${target}`);
+      for (const [measure, v] of Object.entries(value as object)) {
+        console.log(`    ${measure.padEnd(14)} ${JSON.stringify(v)}`);
+      }
+      continue;
+    }
     console.log(`  ${target.padEnd(10)} ${JSON.stringify(value)}`);
   }
 }
@@ -417,14 +592,19 @@ async function main(): Promise<void> {
 
   const wantsMain = MAIN.some((t) => targets.has(t));
   const wantsHeap = HEAP.some((t) => targets.has(t));
+  const wantsTyping = TYPING.some((t) => targets.has(t));
   const fixtureTargets =
-    wantsMain || wantsHeap || targets.has("D4") || targets.has("D5");
-  const subjects: { kind: "fixture"; size: number }[] | { kind: "repo" }[] =
-    args.repo === null
-      ? fixtureTargets
-        ? args.sizes.map((size) => ({ kind: "fixture" as const, size }))
-        : []
-      : [{ kind: "repo" as const }];
+    wantsMain ||
+    wantsHeap ||
+    wantsTyping ||
+    targets.has("D4") ||
+    targets.has("D5");
+  const subjects: ({ kind: "fixture"; size: number } | { kind: "repo" })[] = [
+    ...(fixtureTargets && (args.repo === null || args.sized)
+      ? args.sizes.map((size) => ({ kind: "fixture" as const, size }))
+      : []),
+    ...(args.repo === null ? [] : [{ kind: "repo" as const }]),
+  ];
   const firstBuildRepo = targets.has("first-build")
     ? (args.repo ?? REPO_ROOT)
     : null;
@@ -457,6 +637,9 @@ async function main(): Promise<void> {
           building: [],
           dev: [],
           firstBuild: [],
+          typing: [],
+          burst: [],
+          narrows: null,
           summary: {},
         },
         server,
@@ -467,6 +650,16 @@ async function main(): Promise<void> {
             : [],
         flows,
       });
+      if (flows.typing) {
+        // The query narrows the page, or its keystrokes measure nothing.
+        const keeps = filterKeeps(target, args.typing.query);
+        prepared[prepared.length - 1].result.narrows = keeps;
+        if (keeps.shown === 0 || keeps.shown >= keeps.of) {
+          throw new Error(
+            `the typing query ${JSON.stringify(args.typing.query)} keeps ${keeps.shown} of ${keeps.of} entries in ${target}: it must narrow the page`,
+          );
+        }
+      }
       await warmUp(chrome, served, flow);
     };
 
@@ -484,6 +677,7 @@ async function main(): Promise<void> {
             building: targets.has("D5"),
             dev: targets.has("D4"),
             firstBuild: false,
+            typing: wantsTyping,
           },
         );
       } else {
@@ -495,6 +689,7 @@ async function main(): Promise<void> {
           building: targets.has("D5"),
           dev: targets.has("D4"),
           firstBuild: firstBuildRepo === repo,
+          typing: wantsTyping,
         });
       }
     }
@@ -506,6 +701,7 @@ async function main(): Promise<void> {
         building: false,
         dev: false,
         firstBuild: true,
+        typing: false,
       });
     }
 
@@ -542,6 +738,18 @@ async function main(): Promise<void> {
         if (flows.firstBuild) {
           process.stdout.write(" first-build");
           result.firstBuild.push(await firstBuildRun(chrome, served, flow));
+        }
+        if (flows.typing) {
+          process.stdout.write(" typing");
+          result.typing.push(
+            await typingRun(chrome, served, flow, args.typing),
+          );
+          if (args.burst !== null) {
+            process.stdout.write(" burst");
+            result.burst.push(
+              await typingRun(chrome, served, flow, args.burst),
+            );
+          }
         }
         process.stdout.write("\n");
       }
@@ -620,6 +828,7 @@ async function main(): Promise<void> {
       runs: args.runs,
       viewport: "1440x900",
       ...flow,
+      typing: wantsTyping ? { pace: args.typing, burst: args.burst } : null,
       targets: [...targets],
     },
     subjects: results,
