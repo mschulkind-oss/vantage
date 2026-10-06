@@ -6,7 +6,7 @@ import { openWithIndex } from "./planningIndex";
 // heavily cited document: the roadmap links it once, hub-citations.md from
 // eight headings and hub-neighbors.md from three. It holds no question, so its
 // line has no link to the planning page; paged.md's and unrouted.md's do
-// (docs/design/planning-filter.md §7).
+// (docs/reference/planning-index.md §7.1).
 
 /**
  * How many rows the list had before it collapsed to one line: one per linking
@@ -197,7 +197,7 @@ test("a document nothing links to still counts its unrouted questions", async ({
   await expect(surface(page).getByRole("button")).toHaveCount(0);
 });
 
-// planning-filter.md §7: a live document holding a question links to the
+// planning-index.md §7.1: a live document holding a question links to the
 // planning page filtered to it, `path:/plans/paged.md`, pinned to the root.
 test("a live document's line links to the planning page filtered to it", async ({
   page,
@@ -232,7 +232,7 @@ test("a live document's line links to the planning page filtered to it", async (
 
   // A click follows it in the app, opening the planning page filtered to the
   // document: the box holds its filter and only its entries are shown
-  // (planning-filter.md §15, criterion 12).
+  // (planning-index.md §18, criterion 12).
   await link.click();
   await expect(page).toHaveURL(`${new URL(page.url()).origin}${filtered}`);
   const needsYou = page.getByRole("region", { name: /^Needs you/ });

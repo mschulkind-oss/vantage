@@ -402,7 +402,7 @@ test.describe("Referenced by fills the line reserved for it", () => {
     ],
     // No frontmatter: its `oq` directives alone say what it is. It holds
     // questions, so the line ends with its link to the planning page
-    // (docs/design/planning-filter.md §7), which arrives with the rest.
+    // (docs/reference/planning-index.md §7.1), which arrives with the rest.
     [
       "tree-badges/questions-only.md",
       "Questions only",

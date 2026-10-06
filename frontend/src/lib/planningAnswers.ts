@@ -17,11 +17,11 @@
  * `vantage-check index` counts from the index alone; the page holds the
  * reviews, so the page subtracts.
  *
- * Under a planning filter (`docs/design/planning-filter.md` §6.6) they
- * follow it: Copy answers covers the questions it keeps, and the need-you
- * numbers count them. Comments are still placed over every listed question,
- * and only then narrowed to the kept ones, so a comment on a question the
- * filter hides is never credited to a kept one around it.
+ * Under a planning filter (§6.7, §6.15) they follow it: Copy answers covers
+ * the questions it keeps, and the need-you numbers count them. Comments are
+ * still placed over every listed question, and only then narrowed to the
+ * kept ones, so a comment on a question the filter hides is never credited
+ * to a kept one around it.
  *
  * Pure functions of the index, the sections and the reviews, so the page and
  * its tests read them alike.
@@ -87,9 +87,9 @@ export type KeepsQuestion = (question: PlanningQuestion) => boolean;
  * innermost unit winning).
  *
  * `keeps` narrows the result to the questions a planning filter keeps, once
- * every comment is placed over all of `questions` (`planning-filter.md`
- * §6.6): a comment on a hidden ✅ question nested in a kept open one is that
- * hidden question's, and is left out, never the kept one's.
+ * every comment is placed over all of `questions` (§6.7): a comment on a
+ * hidden ✅ question nested in a kept open one is that hidden question's, and
+ * is left out, never the kept one's.
  */
 export function pendingAnswers(
   questions: readonly PlanningQuestion[],
@@ -187,7 +187,7 @@ const needs = (question: PlanningQuestion | undefined): boolean =>
  * Under a planning filter, `sections` are the filtered ones, whose counts
  * are already over kept questions alone, and `keeps` is the filter's: the
  * recount routes each roadmap again from the index, so it applies the same
- * predicate (`planning-filter.md` §6.2).
+ * predicate (§6.15).
  */
 export function needYou(
   index: PlanningIndex,

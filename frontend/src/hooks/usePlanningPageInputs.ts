@@ -28,10 +28,10 @@
  * component: a history entry returned to whose set is cached renders the
  * frame and the sections in one commit, and `prefetchPlanningPage` fills the
  * cache ahead of a visit, on the `g` of `g p` and from the viewer's planning
- * entry, for the roadmap the page would choose and no filter (§6.5;
- * `docs/design/planning-filter.md` §6.5).
+ * entry, for the roadmap the page would choose and no filter (§6.5,
+ * §6.16).
  *
- * **Typing takes none of those places** (`planning-filter.md` §6.5). A set
+ * **Typing takes none of those places** (§6.16). A set
  * laid out for a filter the reader is typing, which the URL has not taken,
  * is held apart, in the typing slot, and the slot keeps two: the set on
  * screen and the newest. A set typed past before it was shown is dropped
@@ -161,7 +161,7 @@ const inputsKey = (
 ): string =>
   // A roadmap's path is never empty, so `""` stands for none; nor is an
   // applied filter's canonical text, which holds no control character, so it
-  // sits on a line of its own (planning-filter.md §5.6).
+  // sits on a line of its own (§6.14).
   `${repo}\n${version}\n${layout.roadmap ?? ""}\n${layout.filter}\n${layout.pages}`;
 
 /** `promise`, or nothing once `ms` have passed. */
@@ -407,7 +407,7 @@ function keep(key: string, entry: Entry): void {
 export interface LoadOptions {
   /**
    * Laid out for a filter the reader is typing, which the URL has not taken:
-   * held in the typing slot, never the cache (§6.5).
+   * held in the typing slot, never the cache (§6.16).
    */
   typed?: boolean;
   /** The set on screen, which the typing slot keeps beside the newest. */
@@ -496,7 +496,7 @@ function dropTyped(newest: string, shown: string | null): void {
  * browser remembers for `repo`, else the default (§6.5). `filter` is the
  * filter the page applies, for a pager, as `PlanningLayout.filter` names it;
  * `g p` and the sidebar entry open the bare page, with none
- * (`planning-filter.md` §6.4).
+ * (§6.16).
  */
 export function prefetchPlanningPage(
   repo: string,
@@ -542,7 +542,7 @@ function shownOf(inputs: PageInputs): ShownInputs {
  *
  * `follow` is told, as the reader makes it, the filter their newest change to
  * the Filter box asks for, as `PlanningLayout.filter` names it, and `null`
- * once a push or a pop has committed (`planning-filter.md` §6.4). A set that
+ * once a push or a pop has committed (§6.16). A set that
  * comes in for another filter than that one is not shown: the reader has
  * typed past it, though the layout of their newer text has not committed yet.
  * It is turned down, and offered again should they type its text again before
@@ -573,12 +573,12 @@ export function usePlanningPageInputs(
   // The set on screen. A set is offered once its inputs are in, and taken
   // or turned down as the render that would show it runs, never when it is
   // offered: a keystroke can land between the two, and the text it typed
-  // past is then never shown (§6.4). It is taken only while it is the set
+  // past is then never shown (§6.16). It is taken only while it is the set
   // that render asks for, and the reader has typed nothing past it. So a
   // reducer, which React runs only in the render, with that render's
   // `wanted`, where `useState` may run an update as it is dispatched. The
   // newest text is read from a ref, since the keystroke that sets it renders
-  // the box alone (planning-filter.md F7): no state of the page's holds it
+  // the box alone (F7): no state of the page's holds it
   // until its layout's transition commits, which is the moment that counts.
   const [shown, offer] = useReducer(
     // eslint-disable-next-line react-hooks/refs -- reads the newest keystroke's filter in the render it must judge, as above

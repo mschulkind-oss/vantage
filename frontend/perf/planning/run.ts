@@ -12,8 +12,8 @@
  *
  * It prints each cell's runs and median and writes every raw run as JSON.
  * It judges nothing: §18 holds the targets, and a person compares. The typing
- * targets, T1 to T4, are `docs/design/planning-filter.md` §16's, read as
- * percentiles over every run's keystrokes pooled.
+ * targets, T1 to T4, are §18's too, read as percentiles over every run's
+ * keystrokes pooled.
  */
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { cpus, loadavg, tmpdir } from "node:os";
@@ -264,7 +264,7 @@ interface SubjectResult {
   narrows: { shown: number; of: number } | null;
   /**
    * The texts the typed query makes that keep no entry here, which the page
-   * holds back while the reader types (planning-filter.md §6.4): T2 does not
+   * holds back while the reader types (§6.16): T2 does not
    * count the keys that make them.
    */
   held: string[];
@@ -466,7 +466,7 @@ function quietSummary(runs: TypingRun[]) {
   };
 }
 
-/** The typing flow at its pace: T1 to T4, and what the design also holds. */
+/** The typing flow at its pace: T1 to T4, and what §6.16 also holds. */
 function typingSummary(runs: TypingRun[]) {
   const counted = runs.flatMap((run) =>
     run.keys.filter((k) => k.applies !== null),
@@ -484,7 +484,7 @@ function typingSummary(runs: TypingRun[]) {
         .length,
       superseded: counted.filter((k) => k.superseded).length,
       // Keys whose text kept no entry, held back until the idle pause and
-      // not counted (planning-filter.md §6.4).
+      // not counted (§6.16).
       held: runs.flatMap((run) => run.keys).filter((k) => k.held).length,
       committed: spread(
         counted.flatMap((k) => (k.committedMs === null ? [] : [k.committedMs])),

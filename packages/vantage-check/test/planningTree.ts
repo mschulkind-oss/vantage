@@ -138,8 +138,8 @@ export function fullTree(): string {
 }
 
 /**
- * The planning filter's fixture of forms (`docs/design/planning-filter.md`
- * §10.4), which the page's tests load too (`frontend/src/test/planning.ts`):
+ * The planning filter's fixture of forms (`docs/reference/planning-index.md`
+ * §6.19), which the page's tests load too (`frontend/src/test/planning.ts`):
  * a small index, every text this release reads with the documents and
  * entries it keeps there, and texts it does not understand with the term each
  * names, or the reason where there is none.

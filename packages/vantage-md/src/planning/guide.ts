@@ -237,11 +237,11 @@ export interface PlanningAgentRequestOptions {
    */
   viewer?: string;
   /**
-   * An applied planning filter (`docs/design/planning-filter.md` §6.6), with
+   * An applied planning filter (§6.2), with
    * `sections` the filtered sections. `text` is the filter's canonical text
    * less its unmatched terms, which a `Filter:` line after `Repository:`
    * carries as a code span; `unfiltered` are the sections it was applied to,
-   * which every blocked-on fact is read from (§6.3), since a filter can keep a
+   * which every blocked-on fact is read from (§6.15), since a filter can keep a
    * Ready row and leave out what Blocked holds it for. Absent, or with an
    * empty `text`, which a filter of unmatched `-path:` terms alone leaves and
    * which keeps every entry, the request is byte for byte what it was before
@@ -337,7 +337,7 @@ const SKIP_BLOCKED =
 /**
  * One section's block: its heading line, then one line per entry. The entries
  * are `sections`'; what each is blocked on is read from `blockedFrom`, the
- * sections before any filter (§6.3 of `docs/design/planning-filter.md`).
+ * sections before any filter (§6.15).
  */
 function requestBlock(
   index: PlanningIndex,

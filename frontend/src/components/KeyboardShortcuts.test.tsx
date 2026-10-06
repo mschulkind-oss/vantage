@@ -76,7 +76,7 @@ describe("KeyboardShortcutsModal", () => {
     ).toContain("gthenp");
   });
 
-  // docs/design/planning-filter.md §7: `/` is the planning page's alone.
+  // docs/reference/planning-index.md §6.17: `/` is the planning page's alone.
   it("lists / in a row of its own where the page has a filter box, and nowhere else", () => {
     const { unmount } = render(
       <KeyboardShortcutsModal

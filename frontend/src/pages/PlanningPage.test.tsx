@@ -3157,7 +3157,7 @@ describe("each section's explanation, and Copy agent request", () => {
     ).toHaveTextContent("blocked on design.md#OQ-D1");
   });
 
-  // planning-filter.md §6.6: a filtered page's request says so after
+  // planning-index.md §6.2: a filtered page's request says so after
   // `Repository:`, in a line whose text leaves out the unmatched terms, lists
   // the kept entries alone, and reads every blocked-on fact from the
   // unfiltered sections.
@@ -4397,7 +4397,7 @@ describe("a comment on a question is its answer (§6.7)", () => {
 });
 
 /* ------------------------------------------------------------------ *
- * The planning filter (docs/design/planning-filter.md)
+ * The planning filter (docs/reference/planning-index.md §6.11)
  * ------------------------------------------------------------------ */
 
 describe("the planning filter (planning-filter.md)", () => {
@@ -4491,7 +4491,7 @@ describe("the planning filter (planning-filter.md)", () => {
       // Opened cold, the spinner paints in the sections' box under the
       // progress line. The frame lands with the notice above that box, so
       // the box is replaced, a removal and an insertion, rather than moved
-      // down (planning-filter.md §15 criterion 8).
+      // down (planning-index.md §18, criterion 8).
       setPlanningLimitsForTests({ spinnerMs: 0 });
       setLoad({ status: "loading", warm: false, progress: null });
       let release: () => void = () => {};
@@ -4819,7 +4819,7 @@ describe("the planning filter (planning-filter.md)", () => {
     it("draws its spinner in the commit of the reader's Enter, for the browser to show past spinnerMs", async () => {
       // Rendering the new page is a transition, and in a browser no later
       // commit lands until it does: a spinner a timer asks for would show
-      // only once it is no longer needed (planning-filter.md §6.4).
+      // only once it is no longer needed (planning-index.md §6.16).
       setPlanningLimitsForTests({ pageEntries: 2, spinnerMs: 150 });
       serveTree(TREE, "/api", (inline) => ({
         cards: (repo, want, options) =>
@@ -4893,7 +4893,7 @@ describe("the planning filter (planning-filter.md)", () => {
     });
 
     it("leaves the old page's pagers as they were while the filter's page is on its way, with no spinner of theirs", async () => {
-      // A filter applied is no flip (planning-filter.md §6.4, §7): the old
+      // A filter applied is no flip (planning-index.md §6.16, §6.17): the old
       // page stays up whole, its pagers included, and only the filter
       // line's slot says it is on its way. Needs you is on page 2 of 3, and
       // `path:plans/answered.md` keeps one entry, OQ-A1, whose block is not
@@ -4945,7 +4945,7 @@ describe("the planning filter (planning-filter.md)", () => {
     it("flips nothing from the old page while another filter's page is on its way", async () => {
       // The old page's pagers are another filter's: a click on one would
       // send the reader to that page number of the filter just applied,
-      // which Enter put back on its first page (planning-filter.md §6.4).
+      // which Enter put back on its first page (planning-index.md §6.16).
       // Needs you is on page 3 of 3, OQ-A1, and `path:plans/design.md`
       // keeps two pages of it, OQ-D1 and OQ-D3, neither in hand.
       setPlanningLimitsForTests({ pageEntries: 1, spinnerMs: 0 });
@@ -5095,7 +5095,7 @@ describe("the planning filter (planning-filter.md)", () => {
       expect(box()).toHaveAttribute("aria-describedby", notice()!.id);
       await enter("path:plans/deps.md");
       // It keeps a Blocked row alone, so nothing it keeps needs you, which
-      // is said and describes the box too (planning-filter.md §6.7).
+      // is said and describes the box too (planning-index.md §6.18).
       expect(status().textContent).toBe(
         "Filtered by path:plans/deps.md: 1 of 10 entries, in 1 of 9 paths, none of them open questions. plans/deps.md waits on plans/design.md#OQ-D1, which this filter leaves out. Clear the filter to see the other 9. Nothing this filter keeps needs you.",
       );
@@ -5137,8 +5137,8 @@ describe("the planning filter (planning-filter.md)", () => {
     });
 
     it("says that nothing it keeps needs you, after the notice, and describes the box with it", async () => {
-      // The Applied, nothing kept form (planning-filter.md §6.7): the notice,
-      // then the filtered Nothing needs you, which is what §9.5's loop waits
+      // The Applied, nothing kept form (planning-index.md §6.18): the notice,
+      // then the filtered Nothing needs you, which is what §13.5's loop waits
       // for.
       await renderPage();
       await enter("path:plans/answered.md is:open");
@@ -5321,7 +5321,7 @@ describe("the planning filter (planning-filter.md)", () => {
 
     // A typed text that keeps no entry at all waits for the idle pause, the
     // one that writes the URL, and the last results stay on screen until
-    // then; every other text applies at once (§6.4).
+    // then; every other text applies at once (§6.16).
     it("holds the last results while a typed text keeps no entry, and applies it once the idle pause passes", async () => {
       await renderPage();
       box().focus();
@@ -6299,7 +6299,7 @@ describe("the planning filter (planning-filter.md)", () => {
       ]);
       box().focus();
       // `oq-u` keeps no entry, OQ-U1 being on the other roadmap only, so it
-      // waits for the idle pause (§6.4).
+      // waits for the idle pause (§6.16).
       await typeKeys("oq-u");
       await idle();
       // Both counts are the filter's, and the room for them the index's.
@@ -6438,7 +6438,7 @@ describe("the planning filter (planning-filter.md)", () => {
     it("reads back whole the address a flip, a roadmap pick and an outline link write", async () => {
       // Each writes the filter as Enter does, `*` as %2A, so a copy of the
       // address bar pasted into the box applies the same filter, a later
-      // term and all (planning-filter.md §7, §9.2).
+      // term and all (planning-index.md §6.17, §13.5).
       seed(TWO);
       localStorage.setItem("vantage:tocOpen", "true");
       setPlanningLimitsForTests({ pageEntries: 1 });
@@ -6518,8 +6518,8 @@ describe("the planning filter (planning-filter.md)", () => {
       expect(localStorage.length).toBe(0);
     });
 
-    // A paste applies its link's filter as Enter does (planning-filter.md
-    // §7): in one replace navigation, with its roadmap written as the page's
+    // A paste applies its link's filter as Enter does (planning-index.md
+    // §6.17): in one replace navigation, with its roadmap written as the page's
     // own rewrite would leave it, and its notice said once the page is in.
     const navigations = async (paste: () => Promise<void>) => {
       const before = router.keys.length;
@@ -6606,7 +6606,7 @@ describe("the planning filter (planning-filter.md)", () => {
 
     it("never says a text is not applied through a paste, a ✕ or an Enter, which apply what the box holds", async () => {
       // The router commits a location in a transition, after the box shows
-      // what it applied: in between, nothing in the box is unapplied (§7).
+      // what it applied: in between, nothing in the box is unapplied (§6.17).
       await renderPage();
       const shown: string[] = [];
       const observer = new MutationObserver((records) => {
@@ -6864,7 +6864,7 @@ describe("the planning filter (planning-filter.md)", () => {
       async (second) => {
         // The second request holds the rows' documents too, which hold no
         // question and so no answer: neither its wait nor its failure
-        // leaves the count unknown (planning-filter.md §6.6).
+        // leaves the count unknown (planning-index.md §6.7).
         const ROWS: Record<string, string> = { ...TREE };
         for (let i = 0; i < 6; i++) {
           ROWS[`plans/r${i}.md`] = doc(

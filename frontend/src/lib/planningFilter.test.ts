@@ -1,17 +1,17 @@
 /**
- * The planning filter (`docs/design/planning-filter.md`): its grammar, its
- * canonical text, what it keeps, what it does to the sections, its notices,
- * the request's `Filter:` line, and the link the checker prints and the page
- * reads back.
+ * The planning filter (`docs/reference/planning-index.md` §6.11): its
+ * grammar, its canonical text, what it keeps, what it does to the sections,
+ * its notices, the request's `Filter:` line, and the link the checker prints
+ * and the page reads back.
  *
  * Most of it is held to the fixture of forms,
  * `packages/vantage-md/src/planning/filterForms.json`, which the checker's
  * suite reads too. Its `documents` did not come from this code: a matcher
- * written apart from it, from §5.4's one sentence and sharing nothing with
+ * written apart from it, from §6.13's one sentence and sharing nothing with
  * the filter module, gave each `path:` term's answer over the fixture's
  * paths, and the module was then held to those answers. The fixture is one
  * release's: nothing compares it with an earlier release's, since a later
- * release may read a text differently (§10.3).
+ * release may read a text differently (§6.19).
  */
 import { describe, expect, it } from "vitest";
 import {
@@ -100,9 +100,9 @@ describe("the fixture of forms (§10.4)", () => {
       expect.arrayContaining(["roadmap.md", "x/roadmap.md"]),
     );
     expect(paths).toContain("docs/my notes.md");
-    // A trailing `/` (§5.4) is told from none only by a folder named like a
+    // A trailing `/` (§6.13) is told from none only by a folder named like a
     // file elsewhere, and a quoted leading `/` only by a root path that needs
-    // quoting, as `documentFilter` writes it for Referenced by (§7). A path
+    // quoting, as `documentFilter` writes it for Referenced by (§7.1). A path
     // that holds another's whole text tells a value found anywhere from one
     // pinned to the start: `x/docs/design/a.md` and `docs/design/a.md`.
     expect(paths).toEqual(
@@ -136,7 +136,7 @@ describe("the fixture of forms (§10.4)", () => {
     expect(inner.state).toBe("answered");
     expect(inner.unitLine).toBeGreaterThan(outer.unitLine);
     expect(inner.unitEndLine).toBeLessThanOrEqual(outer.unitEndLine);
-    // Every open marker is:open reads (§5.3): 💬 🤷 on a routed path, and
+    // Every open marker is:open reads (§6.12): 💬 🤷 on a routed path, and
     // no marker on an unrouted one, so both Needs you and Not on a roadmap
     // hold one.
     expect(questions.find((q) => q.id === "OQ-A5")).toMatchObject({
@@ -169,7 +169,7 @@ describe("the fixture of forms (§10.4)", () => {
     );
   });
 
-  // §10.4's text cases, each pinned to the field or rule it shows.
+  // §6.19's text cases, each pinned to the field or rule it shows.
   it("holds the text cases the design lists", () => {
     const read = (text: string) => {
       const entry = FORMS.read.find((e) => e.text === text);
@@ -273,15 +273,15 @@ describe("the fixture of forms (§10.4)", () => {
       });
       // Nothing a chat client or Markdown reads as markup, or that cuts the
       // value short, and `:` and `/` as they are, to be read, but for a last
-      // character a pasted link's end drops (§9.2).
+      // character a pasted link's end drops (§13.5).
       expect(link).not.toMatch(/[*#&"` ]/);
       expect(link.replace(/%(2E|5F|7E|3A)$/, "")).not.toMatch(/%3A|%2F/i);
     });
   });
 
-  // The keeps are only as right as the rule they were drawn with (§5.3), so
+  // The keeps are only as right as the rule they were drawn with (§6.12), so
   // it is written here a second time, plainly: an entry is kept when its path
-  // is a kept document (§5.4's answer, in `documents`), it passes the is: and
+  // is a kept document (§6.13's answer, in `documents`), it passes the is: and
   // -is: terms, every text term is a substring of one of its searched fields
   // whatever the case, and no -text term is.
   it("keeps exactly the questions and entries the four tests of §5.3 keep", () => {
@@ -395,7 +395,7 @@ describe("the grammar (§5.2, §5.5)", () => {
     ).toMatchObject({ term: "is:Open" });
   });
 
-  // The colon rule (§5.2): a qualifier exactly when the part before the
+  // The colon rule (§6.12): a qualifier exactly when the part before the
   // first `:` is a key, which must then read as one; any other term is text.
   it("reads a term as a qualifier only when the part before its first colon is a key", () => {
     const keys = (text: string) => understood(text).terms.map((t) => t.key);
@@ -510,7 +510,7 @@ describe("the grammar (§5.2, §5.5)", () => {
     }
   });
 
-  // §5.3: the hint's rule is exact.
+  // §6.12: the hint's rule is exact.
   it("notes an unknown key: lowercase letters before the colon, no key, and no / after it", () => {
     expect(understood("stage:ready").unknownKeys).toEqual(["stage"]);
     expect(understood("-title:x").unknownKeys).toEqual(["title"]);
@@ -555,7 +555,7 @@ describe("the grammar (§5.2, §5.5)", () => {
     expect(understood("is:open").terms).toEqual([
       { key: "is", text: "is:open", value: "open", exclude: false },
     ]);
-    // `is:"open"` is not understood (the sketch's risk 1): a quote may wrap
+    // `is:"open"` is not understood (§6.14): a quote may wrap
     // a `path:` value, and `open` is the one value `is:` reads.
     for (const text of [
       'is:"open"',
@@ -611,7 +611,7 @@ describe("the grammar (§5.2, §5.5)", () => {
     expect(PLANNING_FILTER_LIMITS).toEqual({ terms: 64, codePoints: 2048 });
   });
 
-  // §10.2 and §6.7: the notice names the first term it cannot read, and the
+  // §6.14 and §6.18: the notice names the first term it cannot read, and the
   // reason stands in only where there is no term to name.
   it("names the first term it cannot read in a filter past a limit", () => {
     const terms = { terms: 2, codePoints: 2048 };
@@ -937,7 +937,7 @@ describe("matching (§5.3, §5.4)", () => {
     expect(keepsQuestion("--x", question({ title: "x" }))).toBe(true);
   });
 
-  // §5.4's one sentence, a clause at a time.
+  // §6.13's one sentence, a clause at a time.
   it("finds a path: value anywhere in the path", () => {
     expect(keeps("path:docs/des", "docs/design/a.md")).toBe(true);
     expect(keeps("path:docs/des", "x/docs/design/a.md")).toBe(true);
@@ -1186,7 +1186,7 @@ describe("matching (§5.3, §5.4)", () => {
     );
   });
 
-  // §5.6 rule 3: wherever a quoted value is written bare, the bare form must
+  // §6.14 rule 3: wherever a quoted value is written bare, the bare form must
   // keep what the quoted one does, or the canonical text would mean
   // something other than what was typed.
   it("gives a quoted value written bare the answers the quoted form gives", () => {
@@ -1223,7 +1223,7 @@ describe("matching (§5.3, §5.4)", () => {
     expect(compared).toBeGreaterThanOrEqual(4);
   });
 
-  // §5.4: a trailing `/` is a character of the value like any other, so it
+  // §6.13: a trailing `/` is a character of the value like any other, so it
   // keeps only paths under a folder of that name, bare and quoted.
   it("keeps only what is under a folder with a value's trailing /", () => {
     const documents = (text: string) =>
@@ -1393,7 +1393,7 @@ describe("applying a filter to the sections (§6.1, §6.2)", () => {
     ]);
   });
 
-  // §6.2 and §5.3: the notice names each roadmap that holds a kept question,
+  // §6.15 and §6.12: the notice names each roadmap that holds a kept question,
   // as each roadmap's needsYouCount counts it, though `onOtherRoadmaps` keeps
   // the question once, under the first.
   it("names every other roadmap that routes a kept question, counting the question once", () => {
@@ -1691,7 +1691,7 @@ describe("the agent request under a filter (§6.3, §6.6)", () => {
 
   // `decided` keeps notes/b.md's Ready row by its stage, and drops its 🔒
   // OQ-B1, whose fields do not hold the word, and the Blocked row's own
-  // waiting entry with it: the case §6.3 reads the unfiltered sections for.
+  // waiting entry with it: the case §6.15 reads the unfiltered sections for.
   it("reads what a row is blocked on from the unfiltered sections", () => {
     const { sections, summary } = apply("decided");
     expect(sectionEntryKeys(sections)).toContain("ready notes/b.md");
@@ -2201,8 +2201,8 @@ describe("the filter notice (§6.7)", () => {
     ]);
   });
 
-  // §8.2: the checker exits 2 on an unmatched term, in the notice's words
-  // for it, so the page and the checker cannot word it two ways (§6.7).
+  // §13.4: the checker exits 2 on an unmatched term, in the notice's words
+  // for it, so the page and the checker cannot word it two ways (§6.18).
   it("words exit 2 for an unmatched term as the notice's line for it", () => {
     expect(PLANNING_NOTICES.filterUnmatched("path:docs/desing")).toBe(
       "`path:docs/desing` matches no path the index lists",

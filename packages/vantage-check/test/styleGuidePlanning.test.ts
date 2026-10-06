@@ -271,7 +271,7 @@ describe("the style guide's advice on a question's length", () => {
 describe("the style guide's filtered planning page", () => {
   /**
    * The command the guide teaches for handing a human the rulings one piece
-   * of work needs (`docs/design/planning-filter.md` §9.5), with its two
+   * of work needs (`docs/reference/planning-index.md` §13.5), with its two
    * documents still placeholders.
    */
   function taught(): string {

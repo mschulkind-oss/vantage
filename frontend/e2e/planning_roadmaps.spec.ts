@@ -488,7 +488,7 @@ test.describe("several roadmaps", () => {
       "Referenced by 2 documents · on roadmap.md under Now and 1 other roadmap",
     );
     // Nothing links here, so the line is text with nothing to open, and
-    // its link to the planning page filtered to it (planning-filter.md §7),
+    // its link to the planning page filtered to it (planning-index.md §7.1),
     // which names no roadmap: the page shows the one it would anyway.
     await openWithIndex(page, "/designs/gamma.md");
     await expect(surface).toHaveText(

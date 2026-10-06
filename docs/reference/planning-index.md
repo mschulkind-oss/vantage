@@ -2,8 +2,8 @@
 title: "The planning index — planning facts written once, and shown wherever they are linked"
 status: accepted
 stage: CURRENT
-verified: 2026-09-30
-verified_commit: 0a872d9
+verified: 2026-10-06
+verified_commit: b759024
 covers:
   - packages/vantage-md/src/planning/
   - internal/planning/
@@ -19,13 +19,18 @@ covers:
   - frontend/src/components/MarkdownViewer.tsx
   - frontend/src/components/Planning*
   - frontend/src/components/ReferencedBy.tsx
+  - frontend/src/components/KeyboardShortcuts.tsx
   - frontend/src/hooks/usePlanning*
   - frontend/src/hooks/useFirstPaintHold.ts
   - frontend/src/hooks/useKeyboardShortcuts.ts
+  - frontend/src/hooks/useShellPage.ts
   - frontend/src/lib/planning*
   - frontend/src/lib/headerFit.ts
   - frontend/src/lib/preferences.ts
   - frontend/src/lib/warmMarkdown.ts
+  - frontend/perf/planning/
+  - packages/vantage-check/src/cli.ts
+  - packages/vantage-check/src/help.ts
   - packages/vantage-check/src/commands/index.ts
   - packages/vantage-check/src/rules/planning.ts
   - packages/vantage-check/src/rules/questionLength.ts
@@ -33,34 +38,40 @@ covers:
   - packages/vantage-check/src/core/candidates.ts
   - packages/vantage-check/src/core/config.ts
   - packages/vantage-check/src/core/projectRoot.ts
-tags: [planning, roadmap, viewer, worker, vantage-check, vantage-md, config]
-summary: "Vantage reads a repository's planning documents as a set — frontmatter, open questions, and the links between them — and shows each fact beside every link to it, on a planning page, in Referenced by and the file tree, and to agents through vantage-check. The index is built in a Web Worker from a stream that sends only the files whose content changed, and nothing on the way to a paint grows with the repository. It never writes a document."
+  - packages/vantage-check/src/core/target.ts
+tags: [planning, roadmap, viewer, worker, vantage-check, vantage-md, config, filter, search]
+summary: "Vantage reads a repository's planning documents as a set — frontmatter, open questions, and the links between them — and shows each fact beside every link to it, on a planning page, in Referenced by and the file tree, and to agents through vantage-check. The index is built in a Web Worker from a stream that sends only the files whose content changed, and nothing on the way to a paint grows with the repository. A planning filter, one line of text that the page's Filter box, its filter= parameter and vantage-check index --filter read with one parser, narrows the page as the reader types and hands a human the page an agent filtered. It never writes a document."
 ---
 
 # The planning index — planning facts written once, and shown wherever they are linked
 
-**Status:** Verified 2026-09-30 against `0a872d9`, the commit that added this
-document. Inside the `covers:` perimeter it changed only comments and the tests that
-read these documents, repointing them here, so the code it describes is `9507cac`'s,
-unchanged. The Post-pass row in [§2](#2-terms) and the post-pass paragraph in
-[§13.3](#133-the-planning-rules), which said the post-pass runs after every file,
-were corrected on 2026-10-01 and re-verified against `7fa8cbf`.
+**Status:** Verified 2026-10-06 against `b759024`, the tree the planning filter's
+design graduated from into this document. The filter's principles, terms and
+sections ([§1.4](#14-principles-of-the-planning-filter),
+[§6.11](#611-the-planning-filter) to [§6.19](#619-across-releases),
+[§13.4](#134-vantage-check-index---filter) and
+[§13.5](#135-handing-the-human-a-filtered-page)), and every passage the filter
+changed elsewhere, were written from that commit's code. The rest was verified on
+2026-09-30 against `0a872d9`, the commit that added this document, and amended
+since by each commit that changed what it describes, in that commit. Of the
+perimeter's other commits since, `06e8797`, `ffb1676`, `6b62ed1`, `db5c01f` and
+`519cd66` were read against it at graduation and change none of its claims; the
+amendments were not read again.
 **MEASURED at scale on 2026-10-01**, against `46c4091`'s code: every scale target
 in [§18](#18-scale-targets-and-what-has-been-measured) has been run against the
 build, or is held by a test. The scale fixture meets every target but D6 as the
 harness counts it and D3's cold slope, which the runs cannot resolve, and this
 repository misses D2, D4's cards and D9. Each of those waits on a ruling or a run
 in [its own piece of work](../design/planning-index-measurement.md).
-The note in [§12.3](#123-the-hold) and the record of what has been run were
-rewritten from those runs. Amended 2026-10-01, in the commit after `936e24b`, and
-read from that commit's code: the Unit row and the coined terms *answered by a
-comment* and *counted* in [§2](#2-terms) and
-[§6.7](#67-answering-and-copy-answers), [§3.3](#33-questions),
-[§6.2](#62-sections-top-to-bottom), [§6.6](#66-question-cards),
-[§6.7](#67-answering-and-copy-answers),
-[§6.8](#68-several-roadmaps-on-the-page), the need-you row of
-[§12.2](#122-every-late-datum-and-where-its-space-comes-from), and the question
-rows of [Current values](#current-values). Nothing else was re-verified.
+**MEASURED for the planning filter's typing targets on 2026-10-06**, against
+`5013844`'s code: T1 to T4 met on both trees in the one batch that began below a
+load average of 4, which rose to about 18 midway, so the verdict is a weak one
+([§18](#18-scale-targets-and-what-has-been-measured)). UNMEASURED: T1 to T4 since
+the two rulings of 2026-10-06 and on a machine that stays quiet through a batch,
+at 20,000 questions, and while the index builds; D6's long tasks on a cold
+filtered load; what a 0.8.x viewer does with a planning link, which is read from
+its code and not run; and the filter line with assistive technology and with an
+input method composing.
 
 The **planning index** is Vantage's model of a repository's planning documents:
 their frontmatter, their open questions and the links between them. It is
@@ -70,6 +81,14 @@ question, a planning page that lists what needs a ruling, a *Referenced by* line
 on each planning document, a badge in the file tree, and `vantage-check index`
 for agents. A roadmap holds only the order and the reason for it; everything else
 it would have copied is shown beside its links.
+
+A **planning filter** narrows the planning page to the entries it keeps: one line
+of text, such as `generator path:docs/design is:open`, that the page's Filter box,
+its `filter=` URL parameter and `vantage-check index --filter` read with one
+parser ([§6.11](#611-the-planning-filter)). The page applies it as the reader
+types, and the checker prints a link to the filtered page, which the human pastes
+into the Filter box. So an agent hands a human exactly the questions one piece of
+work needs answered, and the filter is never anything but its text.
 
 The index is assembled on the main thread from facts only. The Markdown is
 parsed in a dedicated Web Worker, fed by a stream from the Go server that sends a
@@ -87,17 +106,25 @@ Vantage never writes into a document.
 | The index as the viewer holds it | `frontend/src/stores/usePlanningStore.ts` (`usePlanningStore`, `PlanningLoad`) |
 | The planning page | `frontend/src/pages/PlanningPage.tsx`, `frontend/src/lib/planningPages.ts`, `frontend/src/hooks/usePlanningPageInputs.ts` |
 | Link badges, Referenced by, the tree badge | `frontend/src/hooks/usePlanningLinkBadges.ts`, `frontend/src/components/ReferencedBy.tsx`, `frontend/src/components/PlanningTreeBadge.tsx` |
-| The CLI and the planning rules | `packages/vantage-check/src/commands/index.ts`, `packages/vantage-check/src/rules/planning.ts` |
+| The planning filter: its grammar, matching, canonical text, the filtered sections, the link and the paste reader; its limits; the notice's words | `packages/vantage-md/src/planning/filter.ts` (`parsePlanningFilter`, `filterKeepsQuestion`, `filterKeepsDocument`, `applyPlanningFilter`, `planningLink`, `documentFilter`, `readPastedPlanningLink`), `filterLimits.ts`, and `PLANNING_NOTICES` in `sections.ts` |
+| The filter on the page: the filter line, the applied filter and its writes, the filter caches | `frontend/src/components/PlanningFilterLine.tsx`, `frontend/src/pages/PlanningPage.tsx`, `frontend/src/lib/planningPages.ts` (`filteredSectionsOf`, `withFilter`, `planningQuery`) |
+| The CLI and the planning rules | `packages/vantage-check/src/commands/index.ts`, `packages/vantage-check/src/rules/planning.ts`; `--filter`'s parsing and help in `cli.ts` and `help.ts` |
 
 **Reads with:** [`repo-config.md`](repo-config.md) (the `.vantage.toml`
 file both readers share), [`inline-markup.md`](inline-markup.md) (the `question`
 directive this index counts, with `oq`, the deprecated name it replaces, and the
 one-click answer it reuses),
 [`technical_spec.md`](../design/technical_spec.md) (where the planning routes and
-the scan worker sit in the whole system), and
+the scan worker sit in the whole system),
+[`checker-version-skew.md`](../design/checker-version-skew.md) (P0, which governs
+what the planning filter reads from files and what the checker's JSON promises
+scripts), [`agent-cli.md`](agent-cli.md#11-principles) (its P1, which is why the
+checker's link to a filtered page is root-relative), and
 [the brainstorm](../brainstorm/planning-index.md) (the ideas this was chosen from,
 and the ones still parked). For readers rather than maintainers:
-[Planning Documents](../../userguide/guides/planning.md).
+[Planning Documents](../../userguide/guides/planning.md), whose
+[Filtering the page](../../userguide/guides/planning.md#filtering-the-page) teaches
+the filter.
 
 ---
 
@@ -207,15 +234,77 @@ the code, and each is the first thing to check when changing the area it names.
   thing remembered is the roadmap a reader picked ([§6.8](#68-several-roadmaps-on-the-page)).
 - **The page and `vantage-check` derive from the same functions** (P7), so the
   page, `index` and the planning rules cannot disagree.
+- **Two layouts of one index with the same roadmap, filter and pages show the same
+  entries.** The applied filter's canonical text is part of every identity a page
+  has: the cache of derived sections, the layout, the page-inputs key, the
+  prefetches and the frame's own sections ([§6.16](#616-typing-and-the-url)). Miss
+  one and two filters share a set.
+- **A filter never reaches the index** (F2): it narrows sections derived from the
+  whole index, and nothing in the scan worker, the scan cache or the index knows
+  it exists ([§6.11](#611-the-planning-filter)).
+- **The page and the checker read a filter alike within one release.** Both suites
+  load one fixture of forms, `packages/vantage-md/src/planning/filterForms.json`,
+  and the page's parity test holds what a filtered page's Copy agent request copies
+  byte-equal to `vantage-check index --request --filter` for every understood text
+  in it ([§6.19](#619-across-releases)).
+
+### 1.4 Principles of the planning filter
+
+The rules the [planning filter](#611-the-planning-filter) keeps, numbered F1 to F7
+because code comments and tests cite them. They apply P1 to P7, and the
+version-skew design's [P0](../design/checker-version-skew.md#1-verdict-and-the-principles),
+to a filter. The planning-filter design coined them on 2026-10-05; its text is in
+git.
+
+- **F1. One text, three readers.** The planning page's Filter box, its `filter`
+  URL parameter and `vantage-check index --filter` read one string through one
+  parser in `packages/vantage-md/src/planning/` (P4, P7). The page reads and writes
+  the parameter only in `frontend/src/lib/planningPages.ts`, beside `roadmap=`, and
+  the parameter's name and the link the checker prints come from the planning
+  module. So a link an agent prints is a filter the human could have typed, and the
+  filter has no state anywhere but its text.
+- **F2. Filter after derivation, and only remove.** A filter applies to the
+  sections derived from the **whole** index and keeps their order. It never reaches
+  into the index, the scan worker or the scan cache, so *Blocked* and routing still
+  see what it hides. An exclusion removes entries too; nothing in the language adds
+  one.
+- **F3. Malformed text applies nothing.** A text holding a term the language cannot
+  read ([§6.14](#614-what-is-not-understood-and-canonical-text)) is not applied at
+  all. Opened from a URL, or entered with Enter, the page shows every entry and
+  names the term, and the checker exits `2`. While the reader types, the page keeps
+  what it shows ([§6.16](#616-typing-and-the-url)). Dropping the unreadable term
+  instead would hide entries the reader asked for, because terms of one key are
+  OR'd: dropping `path:"b` from `path:a path:"b` leaves `path:a`.
+- **F4. The filter's only state is its text.** Nothing is stored. Every control
+  that changes the filter writes text into the box, the URL follows the box within
+  the idle pause, and the URL outranks anything remembered. The roadmap the page
+  shows is its own choice ([§6.8](#68-several-roadmaps-on-the-page)), and no part of
+  the filter.
+- **F5. The page and the checker agree on what a text means, and the checker is
+  stricter.** They agree within one release, because they share the module and its
+  fixture ([§6.19](#619-across-releases)). Where the page falls back and says why,
+  the checker exits `2`, as `--roadmap` does: a not-understood filter shows every
+  entry, and an unmatched term keeps nothing
+  ([§13.4](#134-vantage-check-index---filter)).
+- **F6. No address is guessed or kept.** The checker never contacts a server, and
+  nothing stores the address the human opens Vantage at. Its link is always
+  root-relative, and the page's Filter box applies it when it is pasted in
+  ([§13.5](#135-handing-the-human-a-filtered-page)).
+- **F7. Typing never waits on the results.** The box shows a keystroke at once. The
+  results follow, swapped in whole, within the typing targets of
+  [§18](#18-scale-targets-and-what-has-been-measured), and the newest text always
+  wins. A text that keeps no entry at all waits for the idle pause instead, so the
+  page never empties under a half-typed word ([§6.16](#616-typing-and-the-url)).
 
 ---
 
 ## 2. Terms
 
 Every term below is Vantage's own unless it links elsewhere. Most were coined by
-the two designs this document replaced: the planning-index design (2026-09-28
-to 2026-09-30) and its amendment for large repositories (2026-09-29). Their text
-is in git; this is now where the terms are defined.
+the three designs this document replaced: the planning-index design (2026-09-28
+to 2026-09-30), its amendment for large repositories (2026-09-29), and the
+planning-filter design (2026-10-05 to 2026-10-06), whose terms close the table.
+Their text is in git; this is now where the terms are defined.
 
 | Term | Means | Is not | Origin |
 | :--- | :--- | :--- | :--- |
@@ -269,6 +358,29 @@ is in git; this is now where the terms are defined.
 | **The hold** | A document's first paint waiting briefly for data already on its way ([§12.3](#123-the-hold)) | a wait for a cold build | the at-scale amendment |
 | **Limits module** | `frontend/src/planningScan/limits.ts`: every number the worker, the page and the hold enforce, in one object tests configure down | `[planning]`, which a repository sets | the at-scale implementation plan |
 | **Scale fixture** | The repository the scale targets are measured on: 15, 30, 45 or 60 planning documents, each a renamed copy of one of four real documents ([§18](#18-scale-targets-and-what-has-been-measured)) | a fixture in the tree, or a large input: it never holds more than 60 documents | the at-scale amendment |
+| **Entry** | One item a section lists: a question's card or a document's row | a question only another roadmap routes, which is counted and never an entry | the planning-filter design, defining a word this document already used |
+| **Planning filter** | One line of text deciding which entries of the planning page's sections are shown: the same text in the Filter box, the `filter` URL parameter and `index --filter` ([§6.11](#611-the-planning-filter)) | a ranked search, which never ranks or reorders (P5); a saved view; the roadmap choice; review mode's take filter ([§6.6](#66-question-cards)) or the file picker's fuzzy filter | the planning-filter design, 2026-10-05 |
+| **Filter term** (a *term*) | One piece of a planning filter, split at white space outside double quotes: a text term or a qualifier, either one with a leading `-` that makes it an exclusion ([§6.12](#612-the-filter-language)) | a section id, or a line of a gitignore file | the planning-filter design |
+| **Text term** | A word or a `"quoted phrase"` that is not a qualifier. It matches an entry when it is a substring of one of the entry's searched fields, whatever the case | fuzzy: no typo tolerance, no word prefixes, no ranking | the planning-filter design, from the user's ruling of 2026-10-05 |
+| **Searched fields** | What a text term is compared with: a question's id, title, leaning and document path; a document row's path, `stage` and `next`; a *Too large* or *Unreadable* entry's path | a question's body or comments, or any other frontmatter: the index does not hold them | the planning-filter design |
+| **Qualifier** | A `key:value` term whose key is `path` or `is` | a text term that holds a `:`, such as `Note:` or `stage:ready` | the planning-filter design |
+| **Key** | The word before a qualifier's first `:`: `path` or `is`, in lowercase | a frontmatter key, a `.vantage.toml` key, or a key on the keyboard | the planning-filter design |
+| **Unknown key** | A lowercase word before a text term's first `:` that is not a key and has no `/` after the `:`, such as `stage` in `stage:ready`. The term is searched as text, and the notice says the word is not a filter key | a key; and not the `Path` of `Path:x` nor the `http` of `http://x`, which draw no hint | the planning-filter design |
+| **Exclusion** | A term with a leading `-`. It drops every entry the same term without the `-` would match | a way to keep more: an exclusion only removes | the planning-filter design |
+| **Keep**, **kept entry** | A filter *keeps* an entry when it passes all four tests of [§6.12](#612-the-filter-language): path, state, text and exclusions. A kept entry is one a section then lists | routing: a kept entry has nothing to do with which roadmap links it | the planning-filter design |
+| **Kept document** | A path the filter's `path:` terms keep: one of them matches it, or there are none, and no `-path:` term matches it. Text and `is:` terms choose among a kept document's entries and never change which documents are kept, so a kept document can have no kept entries | a kept entry | the planning-filter design |
+| **`is:` value** | A question's state as the index reads it from the marker. `open`, the only value the language reads, keeps a marker holding neither 🔒 nor ✅: 💬, 💬 🤷 or none | *answered by a comment*: the index reads no comments, so `is:open` keeps a question answered on the page | the planning-filter design |
+| **Not understood** (filter) | A filter holding at least one term the language cannot read ([§6.14](#614-what-is-not-understood-and-canonical-text)). It is not applied at all | an empty filter; a filter with an unmatched term, or one whose text terms match nothing, both of which are applied; the refusal past `max-candidates` | the planning-filter design |
+| **Unmatched term** | A `path:` term, with or without its `-`, that matches no path the index lists | a text term that matches nothing, which is an answer and not reported; a term that keeps a document with no entries | the planning-filter design |
+| **Canonical text** | The one spelling of a filter that the URL holds, Enter writes into the box and the checker echoes ([§6.14](#614-what-is-not-understood-and-canonical-text)) | the text as typed, which the box keeps while the reader types | the planning-filter design |
+| **Applied filter** | The filter whose results the page shows, or is bringing in. While the reader types, the box's newest understood text, unless that text keeps no entry, which waits for the idle pause; otherwise the URL's ([§6.16](#616-typing-and-the-url)) | the box's text, which may not be understood; and not the URL's either, which lags the box by up to the idle pause | the planning-filter design, 2026-10-05; amended 2026-10-06 |
+| **Idle pause** | The short stillness of the box's text after which the URL takes the box's newest understood text ([§6.16](#616-typing-and-the-url)) | a wait before the page applies a text, except one that keeps no entry: no other text's results wait for it | the planning-filter design |
+| **Filter line** | The fixed-height row at the top of the planning page that holds the Filter box ([§6.17](#617-the-filter-line)) | the frame, or the header | the planning-filter design |
+| **Filter notice** | The sentences, shared by the page and the checker, saying a page is filtered and what that hides ([§6.18](#618-the-filter-notice)) | the box | the planning-filter design |
+| **Planning link** | A URL to the planning page that carries a planning filter, as `--filter` prints it ([§13.5](#135-handing-the-human-a-filtered-page)) | the address bar after a flip, which may also hold page parameters | the planning-filter design |
+| **Root-relative link** | A planning link that starts at `/.vantage/planning`, with no scheme, host or port, because the checker does not know them: what [RFC 3986 §4.2](https://www.rfc-editor.org/rfc/rfc3986#section-4.2) calls an absolute-path reference | a relative Markdown link; it is never resolved against the page it is opened from | the planning-filter design |
+| **Pasted link** | A planning link, whole or root-relative, pasted into the Filter box on its own or inside the lines the checker prints around it. The box applies its filter at once ([§6.17](#617-the-filter-line)) | filter text: `filter=` and `--filter` never read a link | the planning-filter design |
+| **T1** to **T4** | The planning filter's typing targets ([§18](#18-scale-targets-and-what-has-been-measured)) | measurements: they are requirements | the planning-filter design, 2026-10-05 |
 
 A **long task** is a main-thread task over 50 ms
 ([Long Tasks API](https://w3c.github.io/longtasks/)). **CLS** is the browser's
@@ -667,7 +779,13 @@ are `/<path>` and `/<repo>/<path>`, so a bare `/planning` would hide every
 document under a top-level `planning/` directory, and a whole repository named
 `planning`. The server never serves a `.vantage` path as a document, so this URL
 hides nothing. The history and recents pages keep `/history` and `/recent`, and
-the user guide says each hides a top-level directory of that name.
+the user guide says each hides a top-level directory of that name. In daemon mode
+the repository segment is percent-encoded as one path segment (`planningPath`),
+since a repository's name is a directory name and may hold a space, `#`, `?` or
+`%`; the server's startup tip encodes it with Go's `url.PathEscape`, which writes a
+few characters differently, and the route reads both as the same name. Under a
+[planning filter](#611-the-planning-filter) the URL carries `filter=` too, written
+first ([§6.16](#616-typing-and-the-url)).
 
 **It is drawn in the app shell**, one layout route around the viewer and the
 planning page (`frontend/src/components/AppShell.tsx`), so going from a document
@@ -679,7 +797,15 @@ full-width toggles, the breadcrumb with the page's name, and **Copy answers**.
 
 - A document's controls (Raw, Path, history, review) have no meaning here and are
   not drawn, and the keys that act on a document do nothing, so the shortcuts
-  help (`?`) leaves them out.
+  help (`?`) leaves them out. The page has one key a document does not: `/`
+  focuses its Filter box, and the help lists it in a row of its own here
+  ([§6.17](#617-the-filter-line)).
+- **The [filter line](#617-the-filter-line) is the main column's first row**, above
+  every state of the route, and the page's other content starts below it.
+- In daemon mode, the route with no repository segment shows *Choose a project*,
+  and one with a wrong segment *Repository not found*. Both list each served
+  project's planning page with the URL's query kept, so a filtered link with no
+  segment costs one click ([§13.5](#135-handing-the-human-a-filtered-page)).
 - The two toggles are the viewer's own preferences, so the page stores nothing
   new for them. Cards keep a reading width, and full width widens them to the
   pane. The page's one preference of its own, **Expand all** / **Collapse all**
@@ -767,7 +893,33 @@ section's title, the line that explains it, and its actor.
   ([§13.2](#132-vantage-check-index)), so the two agree wherever the server
   serves a repository's root.
 
-- An empty section is not shown.
+  **Under a [planning filter](#611-the-planning-filter), both buttons follow it.**
+  The request covers the kept entries and gains one line after `Repository:`:
+
+  ```text
+  Filter: `path:/docs/design/x.md is:open`. Only the entries it keeps are listed.
+  ```
+
+  - **The line carries the canonical text with its unmatched terms left out.** An
+    unmatched `path:` term keeps nothing, terms of one key are OR'd, and an
+    unmatched `-path:` term excludes nothing, so leaving them out keeps the same
+    entries, and the line stays a text `--filter` accepts. When every `path:` term
+    without a `-` is unmatched, nothing is kept and there is no request; when only
+    unmatched `-path:` terms are left, the text is empty and the request has no
+    `Filter:` line.
+  - **The text is a code span** (`codeSpan`), fenced with one more backtick than
+    the longest run inside it and padded with a space where it starts or ends with
+    a backtick, so the period after it is never read as part of a path.
+  - **Every blocked-on fact comes from the unfiltered sections**
+    ([§6.15](#615-what-a-filter-does-to-the-sections)).
+  - **A not-understood filter is not applied,** so its request has no `Filter:`
+    line and equals plain `--request`, and an unfiltered request gains nothing.
+  - **The request is byte-equal to `vantage-check index --request --filter '<the
+    line's text>'`** for the same tree; the parity test runs over every understood
+    text in the fixture of forms whose request is not empty
+    ([§6.19](#619-across-releases)).
+
+- An empty section is not shown, and neither is one a filter empties.
 - A document whose stage has the `done` role appears in no section.
 - If no document outside the `done` role has an open question, the page says
   **Nothing needs you**. That line can sit above a *Needs you* holding only ✅
@@ -776,7 +928,9 @@ section's title, the line that explains it, and its actor.
   ([§6.7](#67-answering-and-copy-answers)), adding that every open question has
   the human's answer, waiting on the agent; that line stands at the head of the
   sections rather than among the notices, since it is drawn from the reviews the
-  sections are painted with.
+  sections are painted with. Under a filter both count kept questions only, and
+  the first reads *Nothing this filter keeps needs you*
+  ([§6.15](#615-what-a-filter-does-to-the-sections)).
 - **A question only another roadmap routes** is in neither *Needs you* nor
   *Not on a roadmap*: it is routed, just not by the chosen roadmap. The page counts those
   questions beside its roadmap picker rather than listing them in a section of
@@ -803,8 +957,11 @@ and it commits inside the transition at once.
 - **The frame** is the header ([§6.1](#61-the-url-the-route-and-the-app-shell)),
   then, while the contents column is drawn, the planning outline with the roadmap
   picker at its head, and otherwise the roadmap line when two or more roadmaps
-  route; then the section bar and the notices (*Nothing needs you*, no roadmap, a
-  listed roadmap not read, no stages, refused).
+  route; then the section bar and the notices (the
+  [filter notice](#618-the-filter-notice), first, then *Nothing needs you*, no
+  roadmap, a listed roadmap not read, no stages, refused). The
+  [filter line](#617-the-filter-line) stands above all of it, outside the frame,
+  since the frame is not drawn in the error and refused states.
 - **The section bar** names each non-empty section and its count, for example
   `Needs you 143 · Not on a roadmap 12 · Blocked 7 · Ready to build 3 · Too large 1`. Each entry
   jumps to its section without adding a history entry and moves the keyboard's
@@ -852,7 +1009,10 @@ The exact sizes are in [Current values](#current-values).
   so a second Next during that wait asks for the page after the one asked for.
 - **The URL carries the pages**, `/.vantage/planning?needs-you=3&waiting=2`,
   1-based, with page 1 left out, and the chosen roadmap as `roadmap=` when there
-  is a choice. A flip replaces the history entry, so Back from a document the
+  is a choice. Under a filter, `filter=` comes first, and the pages are read against
+  the filtered sections; a change of the filter puts every section back on its
+  first page ([§6.16](#616-typing-and-the-url)). Every other parameter is kept and
+  ignored. A flip replaces the history entry, so Back from a document the
   page opened in this tab returns to the same pages and scroll position, and
   Back from the planning page leaves it rather than stepping back through pages.
   A replace navigation gets a new `location.key`, so a flip carries the saved
@@ -896,9 +1056,12 @@ The exact sizes are in [Current values](#current-values).
   screen stays until the new set's inputs are ready, then changes in one commit,
   the section bar's counts and the notices with it. That is a change of data
   ([§12.1](#121-the-rules)), so the page may re-lay out.
-- **Each set of inputs is cached** by repository, index version, chosen roadmap
-  and page parameters, a few kept. A prefetch asks for the roadmap the page would
-  choose: the remembered one, else the default. Returning to a history entry whose
+- **Each set of inputs is cached** by repository, index version, chosen roadmap,
+  applied filter and page parameters, a few kept. A set laid out for a filter the
+  reader is typing is held apart, so typing never evicts a set another history
+  entry was shown with ([§6.16](#616-typing-and-the-url)). A prefetch asks for the
+  roadmap the page would choose: the remembered one, else the default, with the
+  filter the page applies for a pager and none for `g p`. Returning to a history entry whose
   inputs are cached renders the frame and the sections in one commit and then
   restores the scroll, so the page never flashes at the top first.
 
@@ -1053,7 +1216,9 @@ in tabular numerals that shows `–` until the count is known. It copies every
 comment still pending for the agent on a question listed on the page — on every
 page, not only the shown ones, and under every roadmap: *Needs you* under each
 roadmap that routes, *Not on a roadmap* and *Blocked* — grouped by document. Choosing
-another roadmap therefore never changes what it copies or its count. Each group
+another roadmap therefore never changes what it copies or its count. Under a
+[planning filter](#611-the-planning-filter) it copies and counts the pending
+comments on kept questions only (below). Each group
 is the block that document's own Copy produces, and one set of responding
 instructions closes the payload; a one-document payload is byte-identical to that
 document's own Copy. The button is disabled when nothing is pending. Other
@@ -1076,9 +1241,31 @@ one card:
 The page inputs' reviews request holds the shown pages' documents and every
 listed document holding a question that needs the human — open, or ✅ awaiting
 compaction — on any page and under any roadmap (`needYouDocuments`), since a
-comment in one of those can take a question off the numbers below; the reviews
-of every other listed document are fetched after the sections paint, in a
-second reviews request.
+comment in one of those can take a question off the numbers below. The reviews
+of every other document any unfiltered section lists, the question documents and
+every row's document too (`listedDocuments`), are fetched in a second reviews
+request, once the sections paint or the reader changes the filter, whichever
+comes first. So it covers every filter: opening a filtered link and then clearing
+it, or typing any filter at all, makes no third request (D11), and a typed text's
+page inputs wait for that request's answer rather than ask for their own.
+
+**Copy answers follows the filter** ([OQ-PF2](#why-its-this-way)). With one agent
+per piece of work, the agent for one piece gets that piece's answers and no one
+else's.
+
+- **Comments are placed over the unfiltered listed questions,** and only the
+  groups and the set of answered questions are then narrowed to kept ones
+  (`pendingAnswers`). Placement picks the innermost listed question whose unit holds
+  a comment's line, so placing over kept questions alone would credit a comment on
+  a hidden nested question, such as a ✅ one under `is:open`, to the kept question
+  around it.
+- **The payload and its count cover pending comments on kept questions only.** The
+  button's tooltip and accessible name say how many pending answers the filter
+  leaves out, and only when it leaves out some. Neither is visible text, so nothing
+  in the header moves as reviews arrive, and the name still starts *Copy answers*.
+- **The count is known once the listed questions' documents are read,** and is
+  unknown only while one of them is: a row's document holds no listed question, so
+  neither the second request's wait nor its failure holds the count back.
 
 **A comment on a question is its answer** (the user's ruling of 2026-10-01). A
 question is *answered by a comment* *(coined here)* while a comment pending for
@@ -1168,7 +1355,18 @@ there is only ever one picker.
   keyed by the repository. Only a pick is remembered, never a visit to a URL that
   names one. The remembered choice is read once per visit, so another tab's pick
   never swaps *Needs you* under a reader part-way through answering it, and
-  storage that fails remembers nothing and says nothing.
+  storage that fails remembers nothing and says nothing. A pick keeps the filter:
+  it writes the applied filter into the query it writes, so one the idle pause
+  still owes is written in the same replace ([§6.16](#616-typing-and-the-url)). A
+  pasted planning link that names a roadmap chooses it in the same replace as its
+  filter, and, like a URL that names one, is not remembered
+  ([§6.17](#617-the-filter-line)).
+- **Under a filter, the counts are of kept questions.** Each roadmap's count in the
+  picker, the page's recount of it less the answered, and the other-roadmaps line
+  count only the questions the filter keeps, and the filter never changes which
+  roadmap is chosen. Their room is the frame's unfiltered sections' counts
+  (`frameRooms`), which no filter can raise, so a filter applied as the reader types
+  moves nothing on the line, as answers lowering a count do not.
 - **The swap is a flip.** The picker shows the roadmap asked for at once; *Needs
   you*, the section bar's counts and the line's own count change together in one
   commit once the new page's inputs are in hand, with the spinner beside the
@@ -1216,6 +1414,10 @@ paints with the section bar and changes when it does
   section, `--`, and its path encoded. A page opened on such a link scrolls to that
   entry once its sections are in, where the click would have, and so does one
   whose query the page rewrites as it opens: the rewrite keeps the fragment.
+  Under a filter the outline is drawn from the filtered sections, and every link
+  carries the whole query, `filter=` first in the link encoding
+  ([§13.5](#135-handing-the-human-a-filtered-page)), so its address reads back
+  whole when pasted into the box.
 - **The roadmap picker** stands at its head when two or more roadmaps route, its
   path and count whole, wrapping in the column's width. On a narrow screen, where
   the column is not drawn, it stays on its line. Nothing of the column is drawn
@@ -1244,6 +1446,704 @@ paints with the section bar and changes when it does
 - **A rescan** keeps a thin absolutely-positioned progress bar, which moves nothing.
 - **Refused and failed** builds show their messages ([§15](#15-failure-modes)).
 
+### 6.11 The planning filter
+
+A **planning filter** is one line of text, such as `generator path:docs/design
+is:open`, deciding which entries of the page's sections are shown. Words and quoted
+phrases search what the index holds about each entry, as case-insensitive
+substrings; `path:` narrows to the paths that hold its text and `is:open` to open
+questions; a leading `-` excludes ([§6.12](#612-the-filter-language)). Three readers
+read it with one parser (F1): the [filter line](#617-the-filter-line)'s Filter box,
+the page's `filter` URL parameter, and `vantage-check index --filter`
+([§13.4](#134-vantage-check-index---filter)).
+
+- **One parameter, one flag, one box.** The URL parameter is `filter` and the flag
+  is `--filter`, one word a person reads three times; neither collides with a
+  section id or with `roadmap`. Given more than once, the values join with one
+  space, in order, which is what typing both into the box gives. An empty or
+  all-white-space value is no filter, and the page then removes the parameter, so
+  an unfiltered URL never carries one.
+- **Applied after derivation** (F2). The page derives the sections over the whole
+  index, under the chosen roadmap, as it does unfiltered, and `applyPlanningFilter`
+  then returns sections of the same shape with entries removed and none reordered.
+  Every consumer that reads sections picks the filter up unchanged: the layout, the
+  pagers, the outline, the section bar and the agent request. *Blocked* still names
+  the blockers a filter hides, and routing still uses the roadmaps it hides,
+  because neither is recomputed ([§6.15](#615-what-a-filter-does-to-the-sections)).
+- **Plain data across the module's boundary.** A parsed filter (`PlanningFilter`)
+  is one of three kinds: none; understood, with its canonical text, its terms and
+  its unknown keys; or not understood, with the first term it cannot read or,
+  where there is no term to name, the reason. It holds no compiled matcher: the
+  matchers are compiled once per filter object, and the searched fields are
+  lowercased once per question, document and entry object of the index, each kept
+  beside its object in a `WeakMap`. So typing lowercases nothing twice, and an index
+  update that keeps an object keeps its fields.
+- **The predicate is cheap and the cards are not.** Matching takes about a
+  millisecond even at 20,000 questions, so no keystroke waits on it; what a
+  keystroke costs is laying the page out and rendering the cards it brings in
+  ([§18](#18-scale-targets-and-what-has-been-measured)).
+
+> [!WARNING]
+> **Do not filter the index before deriving.** A `depends-on` target missing from
+> the index never waits, and routing needs every roadmap and its link targets, so a
+> trimmed index moves blocked documents out of *Blocked*; with the roadmap filtered
+> out too, as `path:/docs/design/x.md` does, *Needs you* loses its order and its ✅
+> questions, and the page shows a false *No roadmap* notice.
+> [§8.4](#84-the-index-on-the-main-thread) forbids trimming the index for a reason
+> of its own.
+
+> [!WARNING]
+> **Keep `filter.ts` out of a runtime import cycle.** It imports `sections.ts`,
+> `guide.ts` and `model.ts`, and nothing but the module's `index.ts` imports it back
+> at run time: `sections.ts` takes the filter's types with `import type` and its
+> limits from `filterLimits.ts`, and `codeSpan` lives in `guide.ts`. A cycle builds
+> `PLANNING_NOTICES` before its imports exist.
+
+### 6.12 The filter language
+
+```text
+filter    = [sp] [ term *( sp term ) ] [sp]
+sp        = 1*( SP / HTAB / CR / LF )
+term      = [ "-" ] ( qualifier / text )   ; a leading "-" is always an exclusion's
+qualifier = key ":" value                  ; when the part before the first ":" is a key
+key       = "path" / "is"                  ; lowercase only
+value     = pattern / quoted               ; after "is:", only a bare "open"
+text      = word / quoted
+word      = 1*wchar
+wchar     = any code point except SP, HTAB, CR, LF, DQUOTE and the excluded code points
+pattern   = 1*wchar                        ; a "*" in it is a wildcard
+quoted    = DQUOTE 1*( qchar / "\" DQUOTE / "\" "\" ) DQUOTE
+qchar     = any code point except DQUOTE, "\" and the excluded code points
+```
+
+- **The colon rule.** A term is a qualifier exactly when the part before its first
+  `:` is `path` or `is`, and it must then read as one, or it is not understood.
+  Every other term is a text term, colon or not: `stage:ready`, `Note:`, `http://x`
+  and `Path:docs` are all searched as text.
+- **A `"` opens a quote anywhere in a term,** and white space inside quotes does not
+  split. So `a"b c"` is one term, which is not understood, because a quote may only
+  wrap a whole value.
+- **One leading `-` is the exclusion's.** What follows it is read as a term on its
+  own, so `--x` excludes the text `-x`, and a lone `-` is not understood.
+
+Text the grammar does not produce is not understood, and so is text it produces
+that [§6.14](#614-what-is-not-understood-and-canonical-text) lists. To name a term,
+in the notice or in an exit-2 message, the text is split at white space outside
+double quotes, and an unclosed quote runs to the end of the text.
+
+| Term | Matches | Entries it can keep |
+| :--- | :--- | :--- |
+| A text term: `generator`, `"command surface"` | An entry one of whose searched fields holds it as a substring, compared after `toLowerCase` on both sides | Every kind |
+| `path:<pattern>` or `path:"<literal>"` | The entry's path ([§6.13](#613-path-patterns)): for a question, its document's; for a row, a *Too large* or an *Unreadable* entry, its own | Every kind |
+| `is:open` | A question the index reads as open: its marker holds neither 🔒 nor ✅, so 💬, 💬 🤷 or no marker | Questions only |
+
+**An entry is kept when it passes all four tests** (`filterKeepsQuestion` for a
+question; the row tests inside `applyPlanningFilter` for the rest):
+
+1. **Path.** The filter has no `path:` term, or one of them matches the entry's
+   path. Terms of one key are OR'd, because a document has one path.
+2. **State.** The filter has no `is:` term, or the entry is a question whose state
+   one of them matches. A row has no state, so any `is:` term drops it.
+3. **Text.** Every text term matches the entry, in any order, each in a field of
+   its own choosing. Text terms are AND'd, as words in a search box are.
+4. **Exclusions.** No exclusion matches the entry: a `-path:` term its path,
+   `-is:open` an open question, and a `-` text term one of its searched fields.
+   `-is:open` never drops a row, which has no state.
+
+**How a text term is compared:**
+
+- **Substring, case-insensitive, literal.** The term and each field are lowercased
+  with JavaScript's `String.prototype.toLowerCase`, and the term must occur in the
+  field. Nothing is a wildcard: `*` and `?` are themselves. Nothing is normalized,
+  so an NFD `é` does not match an NFC one, and `ß` is not `ss`.
+- **A quoted phrase is one substring,** spaces included: `"command surface"` matches
+  a title holding those two words together, and not one holding them apart.
+- **One field at a time.** A term never spans two fields, so the phrase `"x.md
+  design"` cannot match a row by the end of its path and its stage together.
+- **The index's own strings.** A question's title is its bold title as the scanner
+  flattens it, and its leaning the directive's `leaning=` as the index holds it; a
+  document's `stage` and `next` are its frontmatter values as the index holds them.
+  A field the index holds as `null` matches nothing. A question the index cannot
+  resolve is matched by its reference's id and path alone, and any `is:` term drops
+  it.
+- **No match is an answer, not an error.** A text term that matches nothing leaves
+  an empty result, which the notice counts; it is never an unmatched term.
+
+**The rest of the rules:**
+
+- **An unknown key draws a hint.** A text term whose part before its first `:` is
+  one or more lowercase ASCII letters, is not a key, and is not followed by a `/`
+  gets a line in the notice saying that word is not a filter key
+  ([§6.18](#618-the-filter-notice)). So `stage:ready` and `-title:x` draw one;
+  `http://x`, `Note:` and `Path:x` do not, and neither does a quoted phrase.
+- **`is:open` keeps a question answered by a comment.** The index reads no
+  comments, so the card stays, under its section's *(N answered)* count
+  ([§6.7](#67-answering-and-copy-answers)). That collision is also why a value for ✅
+  questions would never be `answered`: the page already calls a question with a
+  pending comment *answered*.
+- **`path:<doc> is:open` is every question the human needs to answer** for
+  `<doc>`. It keeps the 💬 and 🤷 questions under *Needs you* and under *Not on a
+  roadmap*, counts those on other roadmaps, whose roadmaps the notice names, and
+  leaves out ✅ questions, which are the agent's to compact, and 🔒 ones, which cannot
+  be answered yet and which the notice counts. Under `path:` alone the same link
+  also lists the document's rows and its ✅ questions.
+- **`path:` searches the path alone.** A word holding a path's text matches that
+  path too, and a question's id, title or leaning and a row's `stage` or `next`
+  besides. What `path:` adds is pinning to the path's start, wildcards, and being a
+  [kept document](#2-terms)'s test, which the unmatched rule and the notice's paths
+  clause count.
+
+> [!WARNING]
+> **Lowercase each field on its own, and never join the fields into one string:** a
+> term would then match across two of them. **Split at space, tab, CR and LF
+> only:** JavaScript's `\s` also matches U+00A0 and U+2000 to U+200A, which are
+> characters a term holds, in a word and a bare `path:` value alike.
+
+### 6.13 Path patterns
+
+**A `path:` value is found anywhere in the path, case-insensitively; `*` stands for
+any characters within one folder or file name and `**` for any characters across
+folders; a leading `/` (or `./`) pins it to the start of the path.** A quoted value
+is the same with every character literal, `*` included, and spaces allowed. That is
+the `path:` qualifier of
+[GitHub's code search](https://docs.github.com/en/search-github/github-code-search/understanding-github-code-search-syntax#path-qualifier),
+without its `?` and its regular expressions ([OQ-PF1](#why-its-this-way)).
+
+| Form | Keeps |
+| :--- | :--- |
+| `path:docs/des` | `docs/design/a.md`, `x/docs/design/a.md` and `docs/designx/d.md`: every path holding that text. So each keystroke of a path keeps what the finished path does, and more |
+| `path:filter` | Every path holding `filter`, in a folder's name or a file's |
+| `path:/roadmap.md` | The root's `roadmap.md`, and any path that starts with that text, such as `roadmap.md.bak`; not `docs/roadmap.md`, which `path:roadmap.md` keeps too |
+| `path:/docs/design/x.md` | That file: what Vantage and the checker write for one document ([§6.14](#614-what-is-not-understood-and-canonical-text)) |
+| `path:*.md` | Every Markdown file |
+| `path:/docs/*.md` | The `.md` files directly in the root's `docs`: a `*` stays within one name |
+| `path:/docs/**.md` | Every `.md` under the root's `docs`, at any depth: `**` crosses folders |
+| `path:DOCS/Design` | What `path:docs/design` keeps: case is folded on both sides |
+| `path:"docs/my notes.md"` | That text, the space included. Quoted, a `*` is a `*` |
+
+- **How it is compared** (`pathMatcher`). The value and the path are both lowercased
+  with `toLowerCase`, as a text term and its fields are. Quoted, or with no `*`, the
+  value must occur in the path, or start it when it has a leading `/`. Bare, each
+  lone `*` matches any run of characters holding no `/`, each run of two or more `*`
+  any run at all, and the rest is literal, compiled into one regular expression with
+  every other character escaped.
+- **Nothing else is special.** `?`, `[`, `#`, `!`, `\` and `+` are themselves, and
+  so are `//`, `.` and `..`. A `/` that does not lead is a character of the text:
+  `path:docs/` keeps every path holding `docs/`, at any depth.
+- **`**/` needs a folder.** `**` is any characters, so `path:docs/**/x.md` keeps
+  `docs/a/x.md` and not `docs/x.md`, which `path:docs/**x.md` keeps too.
+- **A leading `/` pins, and one leading `./` reads as `/`,** as `roadmap=` reads it.
+  A value pinned to the start still keeps a longer path: `path:/docs/x.md` keeps
+  `docs/x.mdx` too.
+- **Only case is folded.** An NFD spelling does not keep an NFC path, and `ß` is not
+  `ss`. Where a repository holds `Docs/x.md` beside `docs/x.md`, a value keeps both;
+  the notice counts the kept paths, and a planning tree that tells two paths apart
+  by case alone is rare.
+- **An exclusion matches the same way.** `-path:<value>` drops exactly what
+  `path:<value>` keeps.
+- **Matched in the filter module alone.** `[planning] include` and `exclude` stay
+  gitignore patterns, read through the port of the server's matcher
+  ([§3.1](#31-candidates-and-planning-documents)), which `path:` does not use:
+  `include` decides what is indexed, and `path:` what is shown of it. A filter keeps
+  each path's verdict beside its compiled terms, since a page tests one path once per
+  entry it holds.
+
+> [!WARNING]
+> **Do not route `path:` through `compileIgnorePatterns`, nor read a last `path:`
+> value as a prefix while it is typed.** The first build matched whole folder and
+> file names, gitignore-style, and kept nothing while a path was typed: `path:d` …
+> `path:docs/desig` each kept no entry ([OQ-PF1](#why-its-this-way)). A prefix
+> reading of the last term would make the page read a text one way and the URL and
+> the checker another (F5).
+
+### 6.14 What is not understood, and canonical text
+
+Each of these makes the whole filter **not understood**, and so applied not at all
+(F3). They are texts whose meaning the reader cannot have spelled clearly; none is
+held back for a later release ([OQ-PF7](#why-its-this-way)).
+
+- **Quotes and escapes:** an unclosed quote; a quote that does not wrap a whole
+  value, as `a"b"`, `"a"b` or `path:docs/"a".md`; inside quotes, a `\` followed by
+  anything but `"` or `\`; and an empty quoted value, `""` or `path:""`.
+- **A lone `-`**, an exclusion of nothing.
+- **A qualifier whose value the language cannot read:** an empty value, `path:` or
+  `is:`; and an `is:` value other than a bare `open`, such as `is:closed`, `is:Open`
+  or `is:"open"`. Any other `path:` value is understood, whatever it holds.
+- **An excluded code point in any term:** a control or an invisible format
+  character, or a lone surrogate. Tab, CR and LF outside quotes are white space,
+  which separates terms, so only inside quotes do they count. They are a fixed table
+  in the filter module ([Current values](#current-values)), never the engine's
+  Unicode data, so a browser and the checker agree on every one. A word holding a
+  zero-width space would otherwise match nothing, and say nothing about why.
+- **Too long:** more terms, or more code points, than the filter module's limits
+  ([Current values](#current-values)). Tests configure the limits down rather than
+  build long inputs, and only the code points within the limit are ever split.
+
+A not-understood filter names the first term it cannot read, and gives a reason only
+where there is no term to name: past the code-point limit, then past the term limit
+(repeats counted), then an unclosed quote. It is never rewritten, never partly
+applied and never read as text. Once applied, by an Enter or from a URL, the page
+keeps it in the URL and the box exactly as written, so it can be fixed.
+
+**Canonical text.** The URL holds an understood filter in its canonical text, and
+the checker echoes the same text. The box shows it after an Enter, and never
+rewrites what the reader is typing ([§6.16](#616-typing-and-the-url)).
+
+1. Each term is written by the rules below. The terms are then joined by one
+   space, in the order written, and a repeat of an earlier term is dropped.
+2. In a bare or quoted `path:` value, one leading `./` becomes `/`, which means the
+   same. A leading `/` stays, since it pins the value to the path's start; its case
+   stays too.
+3. A quoted `path:` value is written bare when bare it reads the same: it holds no
+   white space, no `"`, and no `*`, which bare is a wildcard.
+4. A bare word is written as typed, in its own case, so `Generator` and `generator`
+   are two terms. A quoted phrase is written bare when, bare, it reads as the same
+   text term and draws no hint: it holds no white space, no `"` and no `:`, and does
+   not start with `-`.
+5. An exclusion is a `-` followed by its term's canonical text.
+6. Inside quotes, only `"` and `\` are escaped.
+7. No terms means no parameter.
+
+A filter that Vantage or the checker generates names a document as `path:/<its
+path>` (`documentFilter`), quoted where the path holds a space, a `"` or a `*`. It
+keeps that document, and any path that starts with its text, and it is `null` for a
+path no filter can name, such as one holding a control character. The canonical
+text holds no control characters, so it can sit in any newline-joined cache key.
+
+### 6.15 What a filter does to the sections
+
+| Value | Under a filter, on the page and in the checker's `filter.sections` |
+| :--- | :--- |
+| Every section's entries: *Needs you*, *Not on a roadmap*, *Blocked* (both kinds), *Ready to build*, *Ready to graduate*, *Stage conflict*, *Too large*, *Unreadable* | The kept entries, in the same order. A section the filter empties is not shown |
+| Section bar, section headings, pagers, page bounds, outline | From the filtered sections. Page bounds still come from index facts alone, so they are exact at first paint |
+| `onOtherRoadmaps`, and the line counting questions on other roadmaps | Kept questions only. They stay counted questions, never entries, and the filter notice names each roadmap that holds them ([§6.18](#618-the-filter-notice)) |
+| Each roadmap's `needsYouCount`, the picker's count and the page's recount of it | Counted over kept questions; the recount (`frontend/src/lib/planningAnswers.ts`) applies the same predicate |
+| The roadmap list, each roadmap's state, `chosenRoadmap`, `stagesDeclared` | Unchanged. A filter never changes which roadmap is chosen |
+| `nothingNeedsYou` | True when no open question in a live document is kept, so a kept question on another roadmap counts. The frame's line then reads *Nothing this filter keeps needs you* |
+| The head-of-sections line saying every open question has the human's answer | Over kept questions |
+| A *Blocked* document row | Kept when the filter keeps it as a row, with every blocker still named and linked, because the row comes from the whole derivation. An `is:` term drops it. Either way, the notice names each blocker the filter leaves out |
+| The roadmap notice, the no-stages notice, the refusal past `max-candidates` | Unchanged: they are facts about the repository |
+| Copy agent request, Copy all agent requests | The kept entries, with a `Filter:` line ([§6.2](#62-sections-top-to-bottom)) |
+| Copy answers | Pending comments on kept questions only ([§6.7](#67-answering-and-copy-answers)) |
+
+The checker's JSON keeps `sections` unfiltered and carries these values as
+`filter.sections` ([§13.4](#134-vantage-check-index---filter)).
+
+**An agent request's blocked-on facts come from the unfiltered sections, always.**
+A request marks a *Ready to build* or *Ready to graduate* row with what it is
+blocked on, found among the sections' *Blocked* entries (`blockedOn`), and a Ready
+document can still hold 🔒 questions, since *Ready to build* excludes only open
+ones. A filter that kept the row and dropped its 🔒 entries would erase the mark,
+and the agent would be told to build something that still waits. A text term does
+exactly that: `decided` keeps a row whose stage is `DECIDED` and drops every 🔒
+question of that document whose fields do not hold the word. So the request is
+handed the unfiltered sections for those facts, beside the filtered ones it lists.
+
+### 6.16 Typing, and the URL
+
+- **On open.** The page reads `filter`. If it is understood and not canonical, the
+  in-place rewrite ([§6.4](#64-pages)) writes the canonical text as one parameter, in
+  the same replace that clamps pages, with the fragment kept. A not-understood
+  filter is left exactly as written. Page parameters in a filtered link are read
+  against the filtered sections.
+- **Typing applies** ([OQ-PF6](#why-its-this-way)). The page parses the box's text on
+  every change to it.
+  - **An understood text** whose canonical text is not the applied filter's becomes
+    the applied filter. The page lays out its sections, every section on its first
+    page and the roadmap kept, and asks for their page inputs. The old results stay
+    on screen until those inputs are in, and then everything changes in one commit.
+  - **An empty text** is no filter, and applies the same way.
+  - **A text that keeps no entry at all waits for the idle pause.** Until the URL
+    takes it, on the pause or at once on an Enter, ✕, paste or the focus leaving the
+    box, the page goes on showing the filter it applied last (`lastApplied`). So
+    `-m`, which every `.md` path holds, or a half word that matches nothing, never
+    empties the page between two keystrokes, and *nothing matches* still shows as
+    soon as typing stops. The page judges it in the render the keystroke's
+    transition runs, through the same cache its sections come from, never in the
+    keystroke's own task (F7). A text whose only matches are questions on other
+    roadmaps keeps no entry, since those are counted and not listed.
+  - **A text with the applied canonical text,** such as one with a space added,
+    changes nothing.
+  - **A not-understood text changes nothing on the page.** The results on screen
+    stay, and the hint slot says the text is not applied
+    ([§6.17](#617-the-filter-line)), so nothing snaps to every entry because a quote
+    was just opened.
+- **The URL follows the box.** One replace navigation writes the applied filter
+  after the idle pause, a short stillness of the box's text. It is written at once
+  instead on Enter, on ✕, on a paste, and when the focus leaves the box. Every write
+  does what Enter does:
+  - it sets `filter` to the applied filter's canonical text, or removes it for no
+    filter;
+  - it writes `filter` first, in the link encoding
+    ([§13.5](#135-handing-the-human-a-filtered-page)), so the address bar shows what
+    an agent's link shows, and every other parameter after it as the page writes it;
+  - it deletes every section's page parameter, as a roadmap pick deletes
+    `needs-you`;
+  - it keeps `roadmap` and every unknown parameter;
+  - it drops the fragment.
+
+  A write that would change nothing is not made. **Typing never adds a history
+  entry**, so Back from a filtered page goes where it went before the reader typed.
+- **A write never rewrites the box's text.** The box is left alone, caret and
+  selection included, even where the box holds `./docs/x.md` and the URL
+  `/docs/x.md`. What does rewrite it is an Enter, and a navigation the box did not
+  cause ([§6.17](#617-the-filter-line)).
+- **On Enter.** The box's text is applied at once and written at once, and the box
+  then shows its canonical text. A not-understood text is applied as written: the
+  URL takes it, and the page shows every entry under the *Not filtered* notice, as
+  it does when a URL holds one on open. Enter on the text already applied and
+  written rewrites the box to canonical text and does nothing else. **✕** is Enter
+  on an empty text.
+- **On a paste.** A pasted planning link applies its filter at once, and its roadmap
+  when it names one ([§6.17](#617-the-filter-line)). Other pasted text changes the
+  box as typing does, and is written at once rather than after the pause.
+- **The newest text wins.** The applied filter has one writer at a time: the box,
+  from the reader's first change until the URL has taken the text, and the URL
+  otherwise.
+  - A text superseded before its page inputs are in is never shown. Its inputs may
+    finish, but they are never shown unasked.
+  - A navigation the box did not cause, a push or a pop, wins over the box. It drops
+    a write the idle pause still owes, and the box and the applied filter both take
+    its URL's filter.
+- **While the results are on their way,** the old page's pagers and the outline flip
+  nothing, since their pages are the old filter's. Past the spinner delay a spinner
+  shows in the filter line's own slot. It is drawn in the commit of the reader's
+  change and shown by the browser once the delay has passed (the `planning-reveal`
+  class), because the router commits the URL, and the page its new inputs, in
+  transitions, and an update a timer makes meanwhile commits only with them. Typing
+  past an Enter, ✕ or paste whose page is still on its way hands the spinner to the
+  typed text's page.
+- **An index update while filtered** applies the same text to the new index, typed
+  or not. Counts change in the commit that changes the sections.
+- **A roadmap pick, a flip and the outline's links keep the filter.** Each carries
+  the applied filter, so one the idle pause still owes is written in the same
+  replace, and each writes `filter` in the link encoding, so the address bar never
+  shows the form encoding's bare `*`, and a copy of it pasted into the box reads back
+  whole. A press that lands before the render of the reader's last keystroke carries
+  that keystroke's text instead (`typedPast`), so the URL never takes an older
+  filter than the page goes on to show: a pick keeps its roadmap, and a flip or an
+  outline jump flips nothing, since its page is the old filter's.
+- **`g p` and the sidebar entry open the bare page** and drop the filter, as they
+  drop page parameters and `roadmap=`. A filter belongs to a link, never to the
+  document the reader came from; Back returns to the filtered URL, and the box
+  follows it.
+- **Before the index is ready,** there are no sections: the applied filter is
+  recorded and the URL written, and the first layout uses it. In the load error,
+  the refusal, *Choose a project* and *Repository not found*, the box still reads
+  and writes the URL, typing included; there are simply no sections to filter.
+- **Nothing is remembered** (F4).
+
+**Identities, and what typing must not churn.** The applied filter's canonical text
+joins every identity a page has: the cache of derived sections, keyed by index, then
+roadmap, then filter; the layout (`PlanningLayout.filter`); the page-inputs key; the
+pager and outline prefetches; and the frame's re-derivation of its sections from the
+shown layout. A not-understood filter shows the same entries as no filter, so its
+identity is no filter's. Typing lays out a page per keystroke, and none of that may
+cost what Back relies on:
+
+- **No set of page inputs another history entry was shown with is evicted by
+  typing.** Sets laid out for a typed text the URL has not taken live in a typing
+  slot of their own, which keeps two, the set on screen and the newest, outside the
+  page-inputs cache. When the URL takes the text, its set moves into the cache and
+  the same visit's earlier typed set leaves it, so a visit's typing costs one place,
+  as an Enter does. Typed sets still lend their blocks to the next keystroke.
+- **The other caches keyed by filter are bounded too.** Each derivation keeps the
+  filtered sections of the filters it used last, and the parsed filters are kept the
+  same way ([Current values](#current-values)), so neither grows with keystrokes.
+- **Typing adds no review request** ([§6.7](#67-answering-and-copy-answers)).
+
+> [!WARNING]
+> **The echo is urgent and the results are not.** The box's text is local state, so
+> a keystroke's own render is the box alone; the page sets its applied filter inside
+> `startTransition`. A plain `setState` of it in the change handler puts the whole
+> layout into the keystroke's task and fails T1, and jsdom cannot time that: only
+> the browser runs, `frontend/e2e/planning_filter.spec.ts` and the typing flow of
+> `just planning-perf`, catch it.
+
+> [!WARNING]
+> **Take the shown set only in the render that would show it.** `usePlanningPageInputs`
+> keeps the shown set in a `useReducer`, which React runs only in the render, where
+> `useState` may run an update as it is dispatched. The reducer takes a set only
+> while that render's wanted set is its own and no newer text is ahead of it. The
+> page tells the hook each change's filter as it is made (`follow`), and a held
+> render calls it again with the filter it goes on applying, so a set of it turned
+> down meanwhile is offered again. Taken as it arrived instead, a set offered while
+> its text was the newest was shown by a render that ran after later keys, and the
+> page painted an earlier text's results for one frame.
+
+> [!WARNING]
+> **Do not key the sections' box by the filter.** A filter change used to mount the
+> sections anew, which rendered every card it shows again, Markdown and all, on each
+> keystroke. A layout effect now removes the box and puts it back in the same place
+> before the browser paints: Chromium scores a re-inserted node as new rather than
+> moved, so the layout shift stays 0, while every card both filters show stays
+> mounted. The section bar, the notices and the outline are still drawn anew. And do
+> not lean on the layout-shift score's input exclusion, which forgives a shift only
+> within 500 ms of an input: results that land later count.
+
+> [!WARNING]
+> **`navigate({ search })` writes the string as given,** so every write goes through
+> `planningQuery`, which writes `filter` in the link encoding, first; the form
+> encoding of `setSearch` leaves a bare `*`, where the paste reader stops. And write
+> once per pause, never per keystroke: the scroll saver carries the scroll position
+> to each replaced history key, so a write per keystroke would grow its map per
+> keystroke.
+
+### 6.17 The filter line
+
+**The filter line** is a fixed-height row at the top of the page's main column,
+above every state of the planning route: *Choose a project*, *Repository not
+found*, loading, building, ready, the load error and the refusal past
+`max-candidates` (`PlanningFilterLine`, drawn first in `PlanningPage`). The shell
+draws no page until the repository list has loaded, so which state shows is known
+at the page's first paint. It is not drawn in a static export, which has no planning
+page ([OQ-PF5](#why-its-this-way)).
+
+- **Why there.** Not the header, whose yield steps a box would bring on sooner until
+  it narrowed the file name, and which is hidden in print. Not the frame, which is
+  not drawn in the error and refused states. Not the section bar's line, which wraps
+  with the bar, and not the outline's head, which exists only on wide screens.
+- **It never moves anything.** Its height is fixed and nothing is ever inserted above
+  it. Its text comes from the URL synchronously, so it is complete at first paint.
+  Its ✕, its hint and its spinner each have a slot that is always present.
+- **Contents.** A `<form role="search">` named *Filter the planning page*, holding a
+  visible label, *Filter*; a `type="text"` input, never `type="search"`, because
+  Chrome clears that kind on Esc; a placeholder that is a real filter, in ink dark
+  enough to read on a light panel; the ✕ slot, empty while there is no text; a hint
+  slot; and the spinner slot.
+- **At narrow widths** the hint's words give way first, to an icon in a slot of its
+  own whose title holds the words; then the visible label gives way, and stays the
+  accessible name. The input keeps a minimum width, the ✕ and spinner keep their
+  slots, and the row never wraps.
+
+**How the box behaves:**
+
+- **On open,** the box holds the URL's text exactly, and it never takes the focus. A
+  not-understood filter marks the input `aria-invalid` and gives it an amber ring
+  from first paint.
+- **Typing applies** ([§6.16](#616-typing-and-the-url)). The box shows each
+  keystroke at once, in the same frame, whatever the results are doing (F7).
+- **While an input method composes,** between its composition's start and end, the
+  box hands the page nothing; the composed text applies when the composition ends,
+  so a reader writing in Japanese or Chinese never sees the page chase the
+  unconverted letters. React fires `onChange` mid-composition, so the box tracks the
+  composition itself.
+- **A text that is not applied** is a not-understood text the reader has not
+  entered. While the box holds one, the hint slot reads *Not applied: Enter says
+  why*, and the input's description names the hint while it shows, so a screen
+  reader hears it at every width. While the page applies a text typed since, a
+  not-understood text is not applied even where the URL holds that same text. The
+  amber ring and `aria-invalid` come only with an applied not-understood filter,
+  from the URL or an Enter, so opening a quote does not flash the box.
+- **Enter applies at once,** and the box then shows the canonical text. Besides ✕
+  and a pasted link, which put their own text in the box, it is the one way the
+  reader's own action rewrites the box's text while it has the focus. The form's
+  submit is prevented, or Enter would reload the page.
+- **The box follows every navigation it did not cause.** The box is local state,
+  reset from the URL when the location's key changes, because `BrowserRouter`
+  commits a location in a transition and a box controlled from the URL would drop
+  keystrokes. A push (`g p`, the sidebar entry) or a pop (Back, Forward) resets it
+  even while it has the focus, dropping any text not yet written: the planning page
+  is not remounted by those navigations, so this has to be a rule. The page's own
+  replaces never reset it while it has the focus, and without the focus only while
+  it still holds the text the URL held before, so no write of the reader's own text
+  touches it, and a link written in a spelling of its own still shows its canonical
+  text once the page rewrites it.
+- **✕ clears and applies in one step,** and the focus stays in the box: ✕ is a
+  control a reader aims at, and the link the agent handed over still holds the
+  filter. It prevents its own `mousedown`, so pressing it does not take the focus
+  from the box and write what it is about to clear.
+- **Esc puts back the box's newest understood text** when the box holds a text that
+  is not applied: the one the idle pause is about to write, else the URL's.
+  Otherwise it returns the focus to the pane. **Esc never clears:** it is pressed by
+  reflex to leave a field, and a filter change replaces the history entry, so Back
+  would not bring a cleared filter back.
+- **Leaving the box** writes the URL at once when the idle pause still owes a write,
+  so an address copied right after typing holds the filter on screen. A text that is
+  not applied stays in the box, with its hint.
+- **The page's shortcuts** turn off while the box has the focus, so `/` typed there
+  is a path character. The box is reachable by Tab and by click whether shortcuts
+  are on or off.
+
+**`/` focuses the box** ([OQ-PF4](#why-its-this-way)) wherever the planning page's
+shortcuts work: with them on and the focus outside a text field. It closes the
+shortcuts help if it is open, and selects the box's text, so a paste replaces it.
+The shortcuts help lists it in a row of its own on the planning page. On a document
+`/` does nothing and is left to the browser, whose quick find in Firefox it opens,
+so the shell never prevents its default there.
+
+**A pasted link applies at once** ([OQ-PF3](#why-its-this-way)). When the text
+pasted into the box holds a planning link, the box applies that link's filter as
+Enter does, and shows it as its text (`readPastedPlanningLink`).
+
+- **What counts as one.** The first run of characters up to white space that holds
+  `/.vantage/planning`, with or without a scheme, host, port and repository segment
+  in front, and its query after. The link ends earlier, at the first character a
+  planning link never holds unencoded, so a backtick, quote, parenthesis or angle
+  bracket a chat wraps it in is not read as part of it. In its query that is any
+  character but those the link encoding and the page's form encoding write bare,
+  which keeps `*`; in its repository segment, any character but a URL path's, since
+  the page writes the segment with `encodeURIComponent`, which leaves `! ' ( ) *`
+  bare, and the server's startup tip with `url.PathEscape`, which leaves
+  `$ & + : = @` bare. Then the trailing `?`, `.`, `,`, `:`, `_` and `~` that
+  GitHub's [extended autolinks](https://github.github.com/gfm/#autolinks-extension-)
+  leave out are dropped, so a sentence's period after it is too, and so is a
+  trailing `*` for each `*` before the link in its run, which opened emphasis around
+  it. So the bare link, a whole URL, and the checker's `Planning page:` line with the
+  lines around it all count.
+- **What is read from it.** Its `filter` values, joined and decoded as the page
+  decodes its own URL, and its `roadmap` when it names one, which the same replace
+  navigation chooses. Like a URL that names a roadmap, that choice is not
+  remembered. A link with no `filter` clears the filter.
+- **What is ignored.** The scheme, host, port and repository segment, its page
+  parameters and its fragment: the filter applies to the repository on screen.
+- **Anything else** pasted is text, applied as typed text is and written at once. A
+  link whose filter is not understood is applied as written, so the notice names its
+  term.
+
+So *press `/`, paste* reaches the filtered page from any origin, in any mode and
+through any tunnel, and nothing stores an address.
+
+- **For screen readers.** The input's `aria-describedby` names the filter notice, and
+  the filtered *Nothing needs you* with it. A polite live region speaks the notice
+  when the URL takes the reader's text: at once on an Enter, a ✕ or a paste, and for
+  typing once the box has been still for longer than the idle pause, or when the
+  focus leaves it. The idle pause is shorter, so a slow typist's every key is
+  followed by a write, and speaking at each write would speak per keystroke. It
+  never speaks per keystroke, and never as the page opens; a push or a pop clears
+  it. A filter change that resets a section to page 1 is not announced as a flip.
+- **In print,** the input row is hidden, and with no filter the whole line, margin
+  and all. A print-only line reads `Filter: <canonical text>`, and the notice prints,
+  so a printout always says it is filtered and by how much.
+
+> [!NOTE]
+> **A known gap.** The *Comments could not be loaded* alert sits inside the sections'
+> box, which a filter change re-inserts ([§6.16](#616-typing-and-the-url)), so when
+> the reviews request has failed, a screen reader may announce it again on every
+> filter change.
+
+### 6.18 The filter notice
+
+The notice is the first of the frame's notices. It arrives with the section bar, it
+describes the results on screen rather than the box's text, and it prints. Its words
+are `PLANNING_NOTICES`' (`filtered`, `notFiltered`), so the page and the checker
+share them, and each reader ends it in its own words. The filter text in it is set
+off as code, on the page as code and in the checker between backticks, so the `:`
+after it cannot be read as part of it. It takes four forms:
+
+| Form | Says |
+| :--- | :--- |
+| Applied | A first line: the canonical text, then entries shown of the unfiltered total, kept documents of the paths the index lists when its path terms leave a path out, and how many kept entries are open questions, as ``Filtered by `path:/docs/design/x.md is:open`: 5 of 15 entries, in 1 of 20 paths, 5 of them open questions.`` Then one line per clause below that applies. Last, the page's *Clear the filter to see the other 10.* or the checker's *Run without --filter to see the other 10.*, or *It hides no entry.* when it hides none |
+| Applied, nothing kept | The same, with none shown, followed by *Nothing this filter keeps needs you* |
+| Unmatched term | One line per term, under the first: `` `path:docs/desing` matches no path the index lists. `` |
+| Not understood | ``Not filtered: this Vantage cannot read `<term>`.``, then what the language reads, with a real example, and *Every entry is shown.* Where there is no term to name, the reason stands in its place: an unclosed quote, or a filter past the term or code-point limit |
+
+The clauses of the applied form, after its unmatched lines:
+
+- **Not a key.** One line per unknown key, in the order written: ``
+  `stage:` is not a filter key, so `stage:ready` is searched as text. The keys are
+  `path:` and `is:`. ``
+- **Other roadmaps.** ``2 more questions it keeps are on other roadmaps:
+  `docs/a/roadmap.md` (1), `docs/b/roadmap.md` (1).``, which the page ends *Choose
+  one to see them; the filter stays.* and the checker *Rerun with --roadmap naming
+  one.*; with one such roadmap, *Choose that roadmap* and *naming it*. It names
+  every roadmap but the chosen one that routes a kept question, so a question two of
+  them route counts under both, while the total counts it once.
+- **Blocked.** *3 of its questions are blocked and will need you later.* It counts
+  the 🔒 questions that every term of the filter but its `is:` terms keeps, and an
+  `is:` term leaves out, so a human told "nothing needs you" knows whether a later
+  round will come.
+- **Waits on.** *docs/design/x.md waits on docs/design/y.md, which this filter leaves
+  out.* One line for each kept document whose *Blocked* row, in the unfiltered
+  sections, names a target that is not a kept document, naming every such target. A
+  `#OQ-…` target is named with its fragment, and adding `path:` for it brings in its
+  whole document, since no key selects one question.
+
+"Paths" counts every path the index lists: its planning documents and its *Too
+large* and *Unreadable* paths. A filter with no `path:` or `-path:` term keeps every
+path, so the *Waits on* clause never applies to it, and the first line leaves the
+paths out whenever the path terms keep every path: said of a word that keeps
+nothing, *in 20 of 20 paths* reads as a contradiction. The checker's JSON still gives
+both counts. The total of entries is the unfiltered section bar's sum, and a question
+on another roadmap is never an entry. "Not understood" is the words chosen so as to
+collide with none of the roadmap state `unreadable`, the *Unreadable* section and the
+refusal past `max-candidates`.
+
+### 6.19 Across releases
+
+**Older readers.** A planning link reaches readers that predate the filter:
+
+| Reader | Given | Does |
+| :--- | :--- | :--- |
+| A 0.7.x viewer | Any planning URL | It has no planning page |
+| A 0.8.0 or 0.8.1 viewer | A planning link the checker printed | Keeps `filter=`, ignores it, and shows every entry with no notice. The link carries no page parameters, so nothing is read against the wrong sections, and `roadmap=` keeps its meaning |
+| A 0.8.x viewer | An address-bar URL copied from a newer page, holding a filter and page parameters | Reads the page parameters against the unfiltered sections and clamps them: a true page of the whole list, not the one the sender saw |
+| A 0.8.x viewer | Copy agent request or Copy all agent requests, on a filtered link | Copies the whole request, with no `Filter:` line: what that page shows. An agent taught that a filtered page's request carries a `Filter:` line can tell |
+| A 0.8.x viewer | Copy answers, on a filtered link | Every pending answer |
+| A 0.8.x checker | `--filter` | Exits `2` with `unknown option for index: --filter` |
+| Agent text frozen in a released viewer | — | Nothing frozen runs `--filter`: the `Verify:` line is unchanged, and `Filter:` is data |
+
+That is the degradation P0 allows, not a misreading. P0 gives a new meaning a new
+key, "which older viewers already drop without harm"
+([`checker-version-skew.md` P0](../design/checker-version-skew.md#1-verdict-and-the-principles)),
+and `filter` is that key. A 0.8.x viewer drops it whole, as a release before 0.8
+drops a `question` directive whole; every entry it shows is true, none is hidden,
+and every control does what it does on 0.8.x's own page. What is lost is the
+narrowing: the human sees more than they were sent for, and the *Filtered by* notice
+the agent mentioned is missing. When `.vantage.toml`'s `target` names a release
+before the filter's, the checker cautions under its link
+([§13.5](#135-handing-the-human-a-filtered-page)).
+
+**Later releases.** Nothing freezes the filter language across releases
+([OQ-PF7](#why-its-this-way)). A later release may change what any filter text
+keeps, its canonical text, the notice's words, and which texts are not understood: a
+new key, a fuzzy term, a case fold, a wider `path:` dialect. A filtered link is for
+handing over now, and an agent reruns `--filter` rather than keeping a link. Some
+things stay, for reasons of their own:
+
+- **What P0 governs.** The directives, markers and frontmatter the index reads,
+  `.vantage.toml`, the section-id URL parameters and `roadmap=`, and the checker's
+  JSON keys, including `filter`'s subkeys and what each one means, follow P0 as they
+  always have. A filter only reads them.
+- **The names.** `filter=` and `--filter` keep their names, and a repeated one still
+  joins with a space: a new name would silently unfilter every link and script that
+  uses the old one, to buy nothing.
+- **Order never changes** (P5). No release ranks a filter's results.
+- **The page and the checker agree within one release** (P7, F5). Across releases
+  they may not, and the page's notice states its own counts.
+
+**How the language is checked, within one release.**
+
+- **A fixture of forms,** `packages/vantage-md/src/planning/filterForms.json`, holds a
+  small index (its stages, files and *Too large* entries), `read` entries, each with
+  its `text`, its `canonical` text, the `documents` it keeps, the index's `questions`
+  it keeps in whatever section or none, the entries the sections then list
+  (`keeps`), its `unmatched` terms and its `unknownKeys`, and `notUnderstood`
+  entries, each with the `term` it names or, where there is none, the `reason`. Its
+  index tells each clause of the path rule from a wrong reading of it, and holds a
+  🔒 question, a ✅ question nested inside an open one, a 💬 🤷 question on a routed
+  path and one with no marker on an unrouted path, two roadmaps, a path with a
+  space and a non-ASCII path in NFC. Its `path:` entries' `documents` were drawn by a
+  matcher written apart from the module, from the path rule's one sentence alone,
+  and the page suite holds every entry's `questions` and `keeps` to a plain second
+  reading of the four tests. The page's tests and the checker's both load it, which
+  is what holds P7. Any entry may be edited, moved or removed when the language
+  changes; nothing compares it with an earlier release's.
+- **A written model of 0.8.x's URL handling,** `frontend/src/compat/planningLink.test.ts`,
+  copies that release's page-parameter code and asserts that every link the checker
+  prints for a `read` text passes 0.8.x's rewrite with `filter` untouched and holds
+  no page parameter for it to misread, following the hand-written model of 0.7.1's
+  review mode in `frontend/src/compat/notation.ts`. No 0.8.x build is run.
+
+> [!WARNING]
+> **An edit to `filterForms.json` alone runs no unit tests at commit.**
+> `just check-fast` sees a `.json` under `packages/vantage-md/src/` as no module, so
+> run the planning-filter suites by hand, the page's
+> (`frontend/src/lib/planningFilter.test.ts`) and the checker's
+> (`packages/vantage-check/test/index.test.ts`). The file is hashed into the scanner
+> id too ([§11.2](#112-the-scanner-id-and-the-owner)), so each edit costs one cold
+> scan, in a release that pays one anyway.
+
 ---
 
 ## 7. Referenced by, and the file tree
@@ -1256,15 +2156,17 @@ One line below a planning document's frontmatter card, or first in the document
 when it has no card. It answers the two questions a reader asks of a document on
 its own page, *is this on the roadmap?* and *who depends on it?*, and the list of
 who links to it waits behind the line until someone asks for it. The line has up
-to three parts, joined by *·* in this order (`referenceSummary` in
+to four parts, joined by *·* in this order (`referenceSummary` in
 `packages/vantage-md/src/planning/sections.ts`, worded in
-`frontend/src/components/ReferencedBy.tsx`):
+`frontend/src/components/ReferencedBy.tsx`, with the last part's address built in
+`MarkdownViewer.tsx`):
 
 | Part | When | It reads |
 | :--- | :--- | :--- |
 | Count | A planning document links here | *Referenced by N documents* |
 | Roadmap | A roadmap routes the document or one of its questions | With one roadmap that routes: *on the roadmap under Building*, naming the roadmap heading of the first link that routes it, or *on the roadmap* when that link sits above every heading. With several: *on plans/roadmap.md under Building*, naming the first roadmap in roadmap order that routes it, then *and N other roadmaps* when more do |
 | Not on a roadmap | The document has open questions no roadmap routes | *K open questions not on the roadmap*, in the warning tone; with several roadmaps, *…not on any roadmap*. The page's section of that name lists the same questions |
+| Planning page | Its stage has no `done` role and it holds at least one question, in any state (`hasLiveQuestions`), outside a static export | *its questions on the planning page*: a link to the planning page filtered to the document, `path:/<its path>` in canonical text ([§6.14](#614-what-is-not-understood-and-canonical-text)), [OQ-PF4](#why-its-this-way) |
 
 - **The not-on-a-roadmap part says what the roadmap leaves out, not that the
   document is off it,** because both can be true at once: a roadmap may link the
@@ -1277,11 +2179,15 @@ to three parts, joined by *·* in this order (`referenceSummary` in
 - **N** counts the planning documents that link to this one or to one of its
   questions, once each however many links they hold; each roadmap counts as one.
   The document's links to itself are not counted. When nothing links to it and
-  every one of its open questions is routed, there is no line.
+  every one of its open questions is routed, there is no line, unless it has the
+  planning-page part: such a document, one whose questions are all settled, say,
+  or any live document holding a question in a repository no roadmap routes, gets
+  a line holding only the link.
 - **Routing is read exactly as the planning page reads it,** so the line and the
   page cannot disagree. A `done` document contributes nothing, so its line is the
-  count alone, and so is every line when no roadmap routes. A roadmap is never on
-  itself, though it may be on another roadmap that links it.
+  count alone, and so is every line when no roadmap routes, the planning-page part
+  aside. A roadmap is never on itself, though it may be on another roadmap that
+  links it.
 - **The line never reads the page's chosen roadmap,** so every reader, in every
   browser, sees the same line for a document. With several roadmaps, a roadmap is
   named by the fewest trailing directories that tell it from the other roadmaps
@@ -1302,6 +2208,19 @@ to three parts, joined by *·* in this order (`referenceSummary` in
   and a touch screen has no hover. When it fills the line reserved for it at first
   paint ([§12.2](#122-every-late-datum-and-where-its-space-comes-from)) it is one
   line at every width.
+- **The planning-page part is a link of its own,** after the disclosure button and
+  after a plain-text line, never inside either, since a link inside a `<button>` is
+  invalid nested interactive content. It never shrinks: where the line is one line
+  and cut off at its end, the words before it give way. Below `sm`, unless it fills
+  a reserved line, it takes a line of its own under the words, starting where they
+  start and without the separator. It is an `AppLink`, so a Ctrl-click or a middle
+  click opens a new tab, and it prints as text. Its address is the page's own
+  planning path, the repository segment encoded in daemon mode
+  ([§6.1](#61-the-url-the-route-and-the-app-shell)), with the query `planningLink`
+  writes. Following it is the reader choosing this document's filter, so `g p` still
+  opens the bare page whatever document it is pressed on. A document with a
+  question is a planning document by its directives, so the link arrives into the
+  line reserved at first paint and moves nothing.
 - **It sits inside the prose container** and is built from elements nothing there
   reads as the document: no heading, which the contents column would list; no
   question attribute (`[data-vantage-question]`, `[data-vantage-oq]`); no `p` or
@@ -1361,7 +2280,7 @@ status, or the words on focus, would be a new ruling.
 | Helpers | a few workers, during a cold build only | nothing |
 | Scanner client | main thread | the scan worker's lifetime; as the inline client, the scan cache in the worker's place |
 | Planning store | main thread | the index on screen, and every ordering decision |
-| Planning page | main thread | its page parameters (in the URL) and its page-inputs cache |
+| Planning page | main thread | its page parameters and its filter (in the URL), its page-inputs cache and its typing slot |
 | Scan cache | IndexedDB, per origin | written only by the scan worker, or by the inline client in its place; never by the planning store or the page |
 
 ```mermaid
@@ -1977,6 +2896,8 @@ by number.
 | The sections | planning page | the empty region below the frame, filled in one commit |
 | Section counts | planning page | ready at first paint, from the index |
 | The roadmap line | planning page | ready at first paint, from the index and the remembered choice, which is read synchronously; it takes the progress line's place with the section bar |
+| The filter line | planning page | drawn at first paint from the URL alone, one fixed-height row above every state of the route; its ✕, hint and spinner have slots of their own; its notice is the frame's ([§6.17](#617-the-filter-line)) |
+| A typed filter's results | planning page | the next render the reader causes: the old results stay until the new set's inputs are in, then change in one commit, the sections' box put back in place before the paint; the roadmap line's counts keep the unfiltered sections' room ([§6.16](#616-typing-and-the-url)) |
 | Comments filed before the visit | cards | ready at first paint, through the gate |
 | Comments past the reviews deadline | cards | a fixed-width *N comments* count in the card's control row, which is always there, expanding on click; nothing inline |
 | The planning outline's head: its label and the roadmap picker | planning page, contents column | drawn with the outline, in the commit that draws the section bar; the column's width is held by its empty frame meanwhile |
@@ -1990,6 +2911,7 @@ by number.
 | Link badges, index ready within the hold | documents | ready at first paint |
 | Link badges, index later | documents | drawn only inside blocks that have not yet been on screen; a block the reader has seen waits for the next render |
 | Referenced by | documents | one line reserved at first paint when the document is a planning document by its own frontmatter or directives. It fills when the index lands, cut to that one line at every width, or stays empty if it has nothing to say. With no reservation, it waits for the next render |
+| Referenced by's link to the filtered planning page | documents | the same reserved line, since a document holding a question is a planning document by its directives; the link never shrinks, and the words before it give way ([§7.1](#71-referenced-by)) |
 | Tree badges | file tree | the room the name leaves ([§7.2](#72-the-file-trees-badge)) |
 | `next` link ids | frontmatter card | the same text becoming a link, at the same size |
 | Header git data (status, history, the file's date, *N commits*, and the Path button's root) | viewer header | requested together with the content, not after it renders. Within the hold, it is in the first paint. Later, an item takes only the room the header has left, or the slot its label reserved at first paint (`frontend/src/lib/headerFit.ts`); where that is not room enough, the item is not drawn until the header next has room for it. It never collapses a painted folder, folds a painted action or narrows the file name (S6) |
@@ -2043,7 +2965,7 @@ when moving between documents in the app, or the app's shell on a first load.
 ### 13.1 The project root
 
 `vantage-check index [--format text|json] [--request [<section>…]] [--roadmap <path>]
-[--config <path> | --no-config]` scans the **project root**: the nearest ancestor of the current
+[--filter <text>] [--config <path> | --no-config]` scans the **project root**: the nearest ancestor of the current
 directory holding `.git` or `.vantage.toml`, or the current directory itself when
 there is none (`repositoryRoot` in `packages/vantage-check/src/core/projectRoot.ts`).
 `check` finds its roadmaps from the same kind of root, looking up from each file it
@@ -2093,7 +3015,8 @@ tool's: the tool's version is `toolVersion`. It exits `0` when it ran, `2` for b
 arguments or a bad config, and `3` when it could not run, which includes a project
 past `max-candidates`. It never exits `1`, because `index` reports and does not judge.
 `index` is a command word, so `vantage-check index` no longer checks a path named
-`./index`.
+`./index`. With `--filter` it prints only what a planning filter keeps, and a link to
+the planning page filtered the same way ([§13.4](#134-vantage-check-index---filter)).
 
 **Several roadmaps, for an agent.** Every roadmap is listed and one is chosen, as on
 the page, with no memory between runs:
@@ -2173,7 +3096,8 @@ the page, with no memory between runs:
   `actor` (`you`, `agent` or `nobody`). A refused project prints `null` for
   `sections`, `sectionGuide` and `roadmaps`. Version 1 had a single top-level
   `roadmap` and `index.config.roadmap`. A change to an existing key's shape or meaning
-  bumps the version; a new key does not, which is why `sectionGuide` came in version 2.
+  bumps the version; a new key does not, which is why `sectionGuide` came in version 2
+  and `filter` ([§13.4](#134-vantage-check-index---filter)) came in it too.
 
 **`--request` prints an agent request instead** ([§6.2](#62-sections-top-to-bottom)):
 for the agent sections named after it — `unrouted`, `ready`, `graduate`,
@@ -2235,6 +3159,212 @@ disagree (P7); the fifth measures the questions the same scan finds.
   rule.
 - **A bad value in `[planning]` fails every `check` with exit 2**, as a bad `[check]`
   value does. An unknown key is warned about and ignored ([§14](#14-configuration)).
+
+### 13.4 `vantage-check index --filter`
+
+`vantage-check index --filter <text>`, or `--filter=<text>`, shows only the entries
+a [planning filter](#611-the-planning-filter) keeps, and prints a link to the planning
+page filtered the same way. It works with `--format json`, `--request` and
+`--roadmap`, and it reads every term the page's box does, through the same parser
+(F1): `--filter 'generator is:open'` keeps the open questions whose fields hold
+*generator*.
+
+- **Given twice,** the values join with one space, in order, as the URL's do.
+- **`--filter ''`,** or white space alone, is no filter, and the output is byte for
+  byte a run without it, in text, in JSON and with `--request`.
+- **`--filter -path:x` is a value.** The flag takes the next argument whatever it
+  is, so an exclusion is never read as an unknown option. A trailing `--filter` with
+  no value is a usage error.
+- **It is a flag, not an environment variable, on purpose.** An older checker that
+  ignored a `VANTAGE_FILTER` would print the whole index to an agent that believes
+  it filtered. A flag makes that checker exit `2` with *unknown option*, which is the
+  right failure here.
+
+**Exit codes.** It never exits `1`.
+
+| Exit | When |
+| :--- | :--- |
+| `0` | It ran. That includes a filter keeping documents that have no entries, a text term that matches nothing, an unknown key, and an empty `--request` |
+| `2`, before the scan | The filter is not understood: *--filter: this checker cannot read* the term, or the reason where there is none, then what the language reads. The message is the whole answer, as `--roadmap`'s is. Also `--filter` with no value |
+| `2`, after the scan | An unmatched term: a `path:` term, with or without its `-`, that matches no path the index lists, each named on stderr in the notice's own words (`PLANNING_NOTICES.filterUnmatched`). Nothing is printed to stdout. `--roadmap` is held to the tree first |
+| `3` | Past `max-candidates`, whatever the filter says, since nothing was read to hold its terms to. A filter that is not understood still exits `2`, since its meaning depends on nothing in the tree |
+
+An unmatched term is an error here and only a notice on the page, because a mistyped
+path is an agent's likeliest mistake, and exit `2` stops it before the human is
+handed an empty page, or a fuller one than the agent meant (F5). A text term that
+matches nothing is not one: a search that finds nothing is an answer, and the page
+shows it the same way.
+
+**Text output.** The [filter notice](#618-the-filter-notice) comes first, its clauses
+included, in the checker's words. Then the `Planning page:` line and its hint lines
+([§13.5](#135-handing-the-human-a-filtered-page)). Then the output a run without the
+filter prints, over the filtered sections: the notices, with *Nothing needs you* in
+its filtered form, the Roadmaps block with the filtered counts, the filtered
+sections, and, when an agent section has entries, `Agent requests: vantage-check
+index --request --filter '<canonical text>'`, shell-quoted, each `'` written
+`'\''`, since a quoted path can hold one. The chosen roadmap's source follows
+unchanged.
+
+**JSON.** Without `--filter` it is byte-identical. With it, **every existing key keeps
+its meaning:** `index` is the whole index, `sections` the unfiltered derivation, and
+the top-level `roadmaps`, badges included, unchanged, all byte for byte what a run
+without the flag prints. A filter changes each roadmap's `needsYouCount` and
+`nothingNeedsYou`, which [§13.2](#132-vantage-check-index) defines over the whole
+index, so filtered values in `sections` would change existing keys' meaning. The
+filtered view is a new last key, present only with `--filter`:
+
+```json
+{
+  "filter": {
+    "text": "path:./docs/design/x.md is:open",
+    "canonical": "path:/docs/design/x.md is:open",
+    "link": "/.vantage/planning?filter=path:/docs/design/x.md+is:open",
+    "documents": { "kept": 1, "of": 20 },
+    "entries": { "shown": 5, "of": 15 },
+    "openQuestions": 5,
+    "blockedLeftOut": 0,
+    "otherRoadmaps": [{ "path": "docs/b/roadmap.md", "count": 1 }],
+    "waitsOutside": [{ "path": "docs/design/x.md", "target": "docs/design/y.md" }],
+    "unknownKeys": [],
+    "sections": { "needsYou": ["…"], "…": "…" }
+  }
+}
+```
+
+`text` is the text as given, every `--filter` value joined; `canonical` its
+canonical text; `link` the root-relative link, always. `documents` counts kept
+documents of every path the index lists, and `entries` kept entries of the
+unfiltered total. `blockedLeftOut`, `otherRoadmaps` and `waitsOutside` are the
+notice's *Blocked*, *Other roadmaps* and *Waits on* clauses, `waitsOutside[].target`
+written with its fragment. `unknownKeys` lists each unknown key's word once, in the
+order written, so a script sees the hint the text prints. `filter.sections` has the
+shape of `sections` and the values of
+[§6.15](#615-what-a-filter-does-to-the-sections). A refused project prints `null` for
+`filter`, as it does for `sections`. The format version stays 2, because a new key
+does not bump it, and the summary's other names (`requestText`, `unmatched`,
+`onOtherRoadmaps`) are no keys of it.
+
+**`--request --filter`** prints the filtered request with its `Filter:` line
+([§6.2](#62-sections-top-to-bottom)), byte-equal to what a filtered page's Copy agent
+request copies. With nothing to ask for, stdout stays empty, stderr says the
+sections asked for *have no entries the filter keeps*, and it exits `0`.
+
+`help` names the filter's terms in a row of its own (`help.ts`), and its exit-code
+lines name a `path:` or `-path:` term that matches no path.
+
+### 13.5 Handing the human a filtered page
+
+**The checker cannot know the address the human opens Vantage at.** It may not ask
+a server ([`agent-cli.md` P1](agent-cli.md#11-principles)); the default port falls
+forward when it is busy; a daemon's repository names carry `-2` suffixes and fold
+case on some systems ([`serve-clones-directory.md`](serve-clones-directory.md));
+tunnels exist; and an agent may run in a container, whose `localhost` is its own
+loopback and whose checkout may sit under another directory name than the host's.
+So the checker never builds an origin and never guesses a port or a repository
+name, and nothing stores an address (F6, [OQ-PF3](#why-its-this-way)): an address is
+a fact about a machine, with no home that is right, and one machine can open one
+repository at several addresses at once.
+
+**The link it prints:**
+
+```text
+Planning page: /.vantage/planning?filter=path:/docs/design/x.md+is:open
+  Press / on the planning page and paste this line, or put the scheme, host and port you open Vantage at in front of the link.
+```
+
+- **One line, two ways to use it.** Pasted into the Filter box
+  ([§6.17](#617-the-filter-line)), the line works on any origin, in any mode and
+  through any tunnel, because the box reads only the link's query. With an address
+  in front it is a link to click, and in daemon mode it then reaches *Choose a
+  project*, which keeps the filter (below). The filter's readable text is in the
+  notice above it, for typing.
+- **The query** carries `roadmap=<chosen>` whenever two or more roadmaps route, so
+  the human's *Needs you* follows the roadmap the agent checked, whatever they last
+  picked; pasting the link chooses that roadmap too. The link never carries a page
+  parameter or a fragment.
+- **A linked worktree.** When the project root's `.git` is a file, a second hint line
+  sets the root off as code and says it is a linked worktree, whose page shows the
+  checkout the human's Vantage serves, which may not hold these documents as they
+  are here. The checker cannot tell which checkout a server serves, but it can tell
+  when its own is not a repository's main one. A submodule's `.git` is a file too,
+  so the caution names a submodule a linked worktree as well; a root found by its
+  `.vantage.toml` alone gets none.
+- **An older viewer.** When `.vantage.toml`'s `target` names a release before the
+  filter's, a hint line says a viewer before that release ignores the filter and
+  shows every entry, using `target`'s meaning: the oldest release the repository's
+  readers use. The release is `FILTER_RELEASE`, assumed until the tag
+  ([Current values](#current-values)). Both cautions are text only, with no JSON key.
+
+**The encoding.** One function in the planning module, `encodePlanningQueryValue`,
+holds how a filter's value is written, and `planningLink` writes the parameter's
+name with it. It percent-encodes everything except `A–Z a–z 0–9 - . _ ~ : /` as
+UTF-8, and writes a space as `+`:
+
+- `*` is written `%2A`, so Markdown and chat clients cannot read it as emphasis;
+- `#`, `&`, `+` and `"` are encoded, so the value cannot be cut short;
+- `:` and `/` stay bare, so the human can read the filter in the link before
+  clicking it;
+- the link's last character is encoded too when it is `.`, `_`, `~` or `:`, which a
+  pasted link loses at its end as a sentence's punctuation, so `path:docs/x_` ends
+  the link as `path:docs/x%5F`.
+
+`URLSearchParams` on the page reads that query back to exactly the canonical text,
+so opening the link triggers no rewrite, and a round trip over every understood form
+in the fixture of forms pins it. Every write of the page's URL uses the same
+encoding, with `filter` first (`planningQuery`), and so do a flip, a roadmap pick and
+the outline's links, so a typed filter's address matches an agent's link. A roadmap
+in a folder is the exception: the page writes its `/` as `%2F`, and both spellings
+read alike.
+
+> [!WARNING]
+> **`encodeURIComponent` leaves `! ' ( ) *` bare**, so it is not the link encoding:
+> a bare `*` reads as emphasis in Markdown and ends a pasted link where the paste
+> reader stops. Write a filter into a URL with `encodePlanningQueryValue` alone, and
+> never by hand: a raw `+`, `#` or `&` cuts the filter short.
+
+**Daemon mode.** A root-relative link has no repository segment. In daemon mode,
+`/.vantage/planning` with no segment shows *Choose a project*, and a wrong segment
+shows *Repository not found*. Both list each served project as
+`/.vantage/planning/<encoded name>?<the same query>`, so a root-relative link with an
+address in front costs the human one click instead of losing its filter. Pasted into
+the Filter box of a project's page, it needs no click at all.
+
+**The loop an agent runs:**
+
+1. **The human asks** for the questions one piece of work needs answered.
+2. **The agent lists that work's planning documents,** each by its path from the root
+   with a leading `/`, since without it a value is found anywhere in a path and
+   `path:docs/x.md` keeps `y/docs/x.md` too: the design, its `-plan.md` if one
+   exists, and every document a kept one names in `depends-on`. A `depends-on` entry
+   naming one question by its `#` fragment brings in all of that question's
+   document, since no key selects one question.
+3. **In the checkout the human's Vantage serves, it runs `vantage-check index
+   --filter 'path:/<design> path:/<plan> is:open'`.** A link made in another
+   checkout, such as a worktree, opens the served checkout's documents. A word
+   narrows it further when the human asked about one part of the work. Exit `2`
+   names the bad term; `unknown option for index: --filter` means the checker
+   predates the filter, and a current one is the fix. If the notice names other
+   roadmaps, the agent reruns with `--roadmap` naming each and hands over each link;
+   if it names a blocker the filter leaves out, it adds that document and reruns.
+4. **It hands over the `Planning page:` line, the filter text in a code span, and
+   the counts,** and tells the human to press `/` on their planning page and paste
+   the line. It puts an address in front only when the human has told it theirs:
+   that is the agent's knowledge, not Vantage's, and the checker never reads it.
+5. **The human answers on the page** and presses Copy answers, which follows the
+   filter ([§6.7](#67-answering-and-copy-answers)).
+6. **The agent applies the answers** and reruns the same command until it reports
+   *Nothing this filter keeps needs you*. The *Blocked* clause says whether another
+   round will follow.
+
+The loop also runs the other way: a human who filtered the page by hand and presses
+Copy agent request hands the agent the `Filter:` line, whose text `--filter` takes as
+it is. Agents learn the loop from the `--filter` row of the checker's help, from the
+style guide's *Planning documents* bullet (`packages/vantage-md/src/styleGuide.ts`,
+held to a filter the parser understands by
+`packages/vantage-check/test/styleGuidePlanning.test.ts`), which ships inside the
+checker and so never teaches a flag the reader's checker lacks, from the
+[vantage-check guide](../../userguide/guides/vantage-check.md#handing-the-human-a-filtered-planning-page),
+and from [`agent-cli.md` §3.3](agent-cli.md#33-index-version-and-help).
 
 ---
 
@@ -2348,6 +3478,12 @@ declares its stage vocabulary; and runs `planning/unrouted` as a warning.
 | A tab from before several roadmaps reads a header with `roadmaps` | Its build fails with the stream's shape error and Retry; a reload fixes it. No released tab has ever read the stream |
 | More candidates than `max-candidates` | No scan at all. The planning page says how many files there are and to narrow `include`; `vantage-check index` prints the same and exits `3` |
 | Multi-repo mode | One index per repository; a link from one repository into another is never decorated |
+| A planning filter that is not understood | Applied not at all (F3). Opened from a URL or entered with Enter, the page shows every entry under the *Not filtered* notice, naming the first term it cannot read or the reason, and keeps the text in the box and the URL as written, with the box marked invalid; typed, it keeps the page as it was, and the hint says the text is not applied. `vantage-check index --filter` exits `2` before the scan ([§6.14](#614-what-is-not-understood-and-canonical-text)) |
+| A filter's `path:` or `-path:` term matches no path the index lists | The page applies it, keeping nothing or excluding nothing, and names the term in the notice; the checker exits `2` with stdout empty, naming each such term ([§13.4](#134-vantage-check-index---filter)) |
+| A filter past `max-candidates` | No sections, so nothing is applied: the page shows its refusal, with the filter line still reading and writing the URL, and `index --filter` exits `3`, never holding a term to the tree |
+| A 0.8.x viewer opens a planning link | It keeps `filter=`, ignores it and shows every entry, with no notice; its Copy agent request has no `Filter:` line ([§6.19](#619-across-releases)) |
+| A 0.8.x checker is given `--filter` | `unknown option for index: --filter`, exit `2` |
+| A static export | No filter line and no Referenced by link to a filtered page, since there is no planning page |
 
 ---
 
@@ -2364,6 +3500,11 @@ config and a marshaled slice would hold all of it.
 section page, and a per-card size past which a question is drawn as a preview card.
 There is no total-bytes cap: the stream makes one unnecessary, since nothing holds the
 corpus.
+
+**A planning filter is bounded too:** a few dozen terms and a couple of thousand code
+points, past which it is not understood (`PLANNING_FILTER_LIMITS`), and every cache
+keyed by a filter keeps a fixed number of them, so typing grows nothing
+([§6.16](#616-typing-and-the-url)).
 
 **Facts are what grows.** At the `max-candidates` ceiling, the facts the main thread
 holds are its largest planning cost: tens of megabytes for a link-heavy mix, by
@@ -2420,6 +3561,41 @@ What each place holds, independent of the repository's size where it can be:
 - **The other layout-shift sources** named under
   [§12.2](#122-every-late-datum-and-where-its-space-comes-from)'s table: the file
   tree filling a folder late, and review mode's bar.
+- **For the planning filter** ([§6.11](#611-the-planning-filter)):
+  - **Not a ranked search.** It never ranks, sorts or reorders, so roadmap order
+    survives every filter (P5).
+  - **No fuzzy matching:** no typo tolerance, word prefixes, stemming, diacritic
+    folding or Unicode normalization. A later release may add a fuzzy term as a key
+    of its own; every library that offers one decides membership by thresholds of
+    its own, and several changed what a query keeps between their own releases.
+  - **Not stored.** No remembered last filter, no named filters in `.vantage.toml`,
+    no preference: a filter lives in a link and in the box (F4).
+  - **Not a stable query language across releases**
+    ([OQ-PF7](#why-its-this-way)). A filtered link is for handing over now, not for
+    keeping.
+  - **Never filled in from the document the reader came from.** `g p` on a document
+    opens the bare page, as it chooses the roadmap without regard to that document.
+  - **Nothing beyond index facts.** It never searches question bodies, comments,
+    frontmatter `title` or `tags`, or a document that is not a planning document, so
+    counts and page bounds stay exact at first paint (S1, S2).
+  - **No link-graph keys and no `depends-on` closure:** over this repository's
+    planning documents, the transitive link closure of one design reached nearly
+    all of them. And **no selecting one question by id**: ids are unique only
+    within a document, and a text term finds an id in every document.
+  - **No merging of roadmaps.** A filtered page still lists only the chosen
+    roadmap's *Needs you*; questions other roadmaps route are counted and named,
+    never interleaved.
+  - **No evaluation on the server.** Go is unchanged by the filter, and still parses
+    no Markdown.
+  - **No pushing a filter to an open page** through `.vantage/inbox`: an older
+    server would consume the message and report it delivered.
+  - **No new route to stop older viewers,** which would give one page two addresses
+    forever against a bounded harm ([§6.19](#619-across-releases)), and no filter in
+    a static export, which has no planning page.
+  - **No change to unfiltered output.** `vantage-check index` without `--filter`
+    prints the same bytes, in text, in JSON and with `--request`.
+  - **Not task state.** There are no "done" or "seen" marks: what is left is what the
+    filter keeps.
 - **Later ideas, not built:** *Moved since Monday*
   ([brainstorm #5](../brainstorm/planning-index.md#5-this-week)), and staleness
   warnings for reference documents based on `covers:`
@@ -2467,6 +3643,10 @@ measurements, so the exact numbers are stated in the table.
 | D11 | Review requests per visit | at most 2 POSTs, no per-document GET | same |
 | D12 | CLS after first paint | 0 on the planning page in every scenario; 0 from planning decorations and the header on warm loads of the roadmap and of planning documents | 0 on the planning page |
 | D13 | Server memory per stream | no more than one file and one flush interval ever buffered | — |
+| T1 | A filter keystroke's own echo: the Event Timing duration of its interaction, from the keydown to the next paint, the measure [INP](https://web.dev/articles/inp) uses | p95 ≤ 32 ms, none over 50 | p95 ≤ 32 ms, none over 50, at 60 documents |
+| T2 | Keystroke to results painted: from the keydown's `timeStamp` to the first frame that paints the sections of the text it made, for each keystroke that changes the applied filter. One whose results never paint, because a later text superseded them, counts as over | p95 ≤ 100 ms | p95 ≤ 100 ms at 60 documents |
+| T3 | Main-thread long tasks from a keystroke until its results are painted | none over 50 ms | none over 50 ms at 60 documents |
+| T4 | Layout shift while typing, as D12 reads CLS | 0 | 0 at 60 documents |
 
 **What has been run against the build:**
 
@@ -2560,11 +3740,152 @@ D6, D3's cold slope, and D2, D4 and D9 on this repository wait on rulings or run
 in [the measurement work](../design/planning-index-measurement.md), which the
 roadmap places.
 
+**The planning filter's typing targets, T1 to T4,** were set by the planning-filter
+design on 2026-10-05 (F7) and are read by the harness's typing flow, `just
+planning-perf --targets typing`:
+
+- **The flow.** The planning page is open with its index ready, its first pages
+  painted and the visit's second review request answered, with no filter. The
+  harness presses `/`, then types `generator is:open` one key every 150 ms through
+  the browser's own input pipeline, so Event Timing sees real key events, waits a
+  second, and presses ✕. 150 ms a key is a fast typist's pace. A second visit types
+  the same query at 30 ms a key, the *burst*, to show that the newest text wins with
+  no backlog.
+- **Which keystrokes count.** All 17 count for T1. For T2, the keys whose text
+  changes the applied filter, as `vantage-md`'s own parser decides
+  (`frontend/perf/planning/filterText.ts`): 12 of the 17, since the space changes
+  nothing and `is:`, `is:o`, `is:op` and `is:ope` are not understood. A key whose
+  text keeps no entry on the tree is held back until the idle pause
+  ([§6.16](#616-typing-and-the-url)), so T2 does not count it; the harness finds such
+  texts before its runs, from the index `vantage-check index` builds, and `T2.held`
+  says how many keys they were, none for the default query on either tree. Before
+  any run, `vantage-check index --filter` checks that the query narrows each tree's
+  page.
+- **Painted** means what the rest of the harness means: an element present in an
+  animation-frame callback is drawn in that frame. The sections' box carries the
+  shown layout's canonical filter (`data-planning-filter`), and T2's moment is the
+  first frame in which it is the keystroke's.
+- **T3** is read with Long Animation Frames, every task from the first keydown to the
+  last results painted, attributed as D6's tasks are. **T4** is reported both as the
+  browser scores it and counting the shifts it forgives after an input.
+- **Runs.** At least ten runs a cell, the repository's (`--repo .`) interleaved with
+  the scale fixture's, and the p95s are over the pooled keystrokes: 170 or more for
+  T1, 120 or more for T2. Each batch records its one-minute load average when it
+  begins, and one that began above 4, the line the 2026-10-01 runs kept, is reported
+  and never judged. A comparison between two builds alternates their runs in one
+  batch.
+- **What it cannot see:** a typist's irregular rhythm, typing on a page whose index
+  is still building, and an input method composing.
+
+**What has been run, for typing, on 2026-10-06.** Three batches of 10 runs a cell,
+at 15 and 60 documents and on this repository: one at `64abc49`, which began at a
+load average of 14.0, and two at `5013844`. The second of those began at 3.83, rose
+to about 18 midway and ended at 10.8; it is the one batch that could be judged, so
+its verdict is a weak one. Times are in ms.
+
+| # | This repository | Scale fixture at 60 documents | Result |
+| :--- | :--- | :--- | :--- |
+| T1 | p95 under 16 | p95 under 16, the longest 24 | Met |
+| T2 | p95 30.8 | p95 98.8; 4 of 120 keystrokes over 100, the longest 163. Pooled over the three batches, p95 90.7, with 9 of 360 over 100 | Met, at 60 documents by 1.2 |
+| T3 | no long task over 50 | no long task over 50 | Met |
+| T4 | 0 | 0 | Met |
+
+- **In every batch** no run added a history entry, the address took the filter in
+  every run, and no visit made more than two review requests (D11).
+- **The burst's stale frame, since closed.** At 60 documents the burst painted an
+  earlier text's results for one frame, 12 to 17 ms, before the last text's, in all
+  30 runs, against F7's *the newest text always wins*: a set offered while its text
+  was the newest was shown by a render that ran after later keys. Since `8995acb`
+  the shown set is taken only in the render that would show it
+  ([§6.16](#616-typing-and-the-url)). In one batch of 10 runs after the fix, which
+  began at a load average of 10.8 and so is reported and not judged, no burst
+  painted an earlier text after its last key on either tree, and T2's p95 was 79.4
+  at 60 documents and 26.6 on this repository. In a burst, the page still paints no
+  results between the first key's and shortly after the last key.
+- **Where a slow keystroke goes.** Only a keystroke that brings in cards not on
+  screen before is slow. A profile at 60 documents, on an unminified build, puts
+  about half of one in the Markdown pipeline of the cards it mounts and a fifth in
+  style, layout and paint, which re-inserting the sections' box costs every
+  keystroke; most of the rest is the cards' clamp measurement and React's commit,
+  and the filter itself took 0.3 ms or less. The first keystroke that needs card
+  blocks from the worker also waits on IndexedDB, cold on first use. In a paired
+  run, a per-card cache of rendered Markdown, which is not built, took T2's p95 at
+  60 documents from 85.8 to 64.1 and the burst's stale frame from 8 runs of 8 to
+  none.
+- **Not read again since `63323e1`,** the two rulings of 2026-10-06: `path:` as a
+  substring, and a typed text that keeps no entry waiting for the idle pause. The
+  default query keeps entries at every keystroke on both trees, so no key of it is
+  held back.
+- **In the browser on the end-to-end fixture,** `frontend/e2e/planning_filter.spec.ts`
+  holds criteria 13 and 14 below, and that a cold filtered link and an Enter shift
+  nothing painted and leave `history.length` as it was. It reports criterion 8's long
+  tasks rather than assert them, since a CI runner's are noise; a cold dev-server
+  load showed 2 to 5 long tasks of up to about 180 ms that no run could pin on the
+  filter.
+
+**The planning filter's criteria.** The filter was built to sixteen criteria,
+numbered because test names cite them as *criterion N*, and each is held by the
+test that names it. The tree is a copy of the end-to-end fixture
+[`frontend/e2e/fixtures/test_repo/`](../../frontend/e2e/fixtures/test_repo/), checked
+and served as its own root, whose roadmap routes `plans/design.md`'s two open
+questions, [OQ-E1](../../frontend/e2e/fixtures/test_repo/plans/design.md#OQ-E1) and
+[OQ-E2](../../frontend/e2e/fixtures/test_repo/plans/design.md#OQ-E2).
+
+1. `vantage-check index --filter 'path:/plans/design.md is:open'` exits `0`. It
+   prints the notice, the line `Planning page:
+   /.vantage/planning?filter=path:/plans/design.md+is:open` and its hint line, with
+   exactly those two questions under *Needs you*.
+2. Opening that link shows those two cards and nothing else. The section bar counts
+   them, the box holds the text, and the notice says what is hidden.
+3. Typing the same text into the box on the unfiltered page gives the same page
+   without an Enter, and once the idle pause has passed, the same `filter` value and
+   the same address.
+4. Copy agent request on a filtered page is byte-equal to `--request --filter` with
+   its `Filter:` line's text, for every understood text in the fixture of forms whose
+   request is not empty.
+5. With no filter, the page, the text output, the JSON and `--request` are
+   byte-identical to a run without the flag. With one, the JSON's `index`, `sections`
+   and `roadmaps` are too.
+6. `path:plans/desing` exits `2` naming the term. On the page, it keeps nothing and
+   names the term.
+7. `path:plans/design.md is:closed`, entered with Enter, shows every entry under
+   *Not filtered* on the page, and exits `2` before scanning.
+8. A filtered link opened cold, and Enter on the box, shift nothing that is painted,
+   and `history.length` is unchanged. Opening a filtered link and then clearing the
+   filter makes at most two review requests in the visit, and no long task runs over
+   50 ms; that last clause is reported, not asserted.
+9. `g p` from a filtered page opens the bare page with an empty box, and Back
+   returns to the filtered one with the box holding its text.
+10. In daemon mode, a root-relative link reaches the filtered page in one click from
+    *Choose a project*, and *Repository not found* lists the projects with the
+    filter kept.
+11. On the unfiltered page, `/` and then pasting the checker's whole output for
+    criterion 1 shows the page of criterion 2, in single-repository and daemon mode
+    alike.
+12. A live document holding a question shows *its questions on the planning page*
+    in its Referenced by line with zero layout shift as the index lands, and
+    following it shows that document's entries, with the box holding
+    `path:/<its path>`. The end-to-end test runs it through `plans/paged.md`, since
+    another spec rewrites `plans/design.md` while it runs.
+13. Typing `oq-e` into the box on the unfiltered page, one key at a time, narrows the
+    page at each key until it shows exactly those two questions, with no Enter.
+    `history.length` is unchanged, nothing painted shifts, the address holds
+    `filter=oq-e` once the idle pause has passed, the visit makes at most two review
+    requests, and the caret stays where the reader typed.
+14. Typing `path:plans/design.md "is` keeps the page of `path:plans/design.md` on
+    screen while the quote is open, with the hint saying the text is not applied.
+    Enter then shows every entry under *Not filtered*, naming the unclosed quote.
+15. `vantage-check index --filter 'stage:ready'` exits `0` with the notice saying
+    `stage:` is not a filter key, `--filter 'nosuchword'` exits `0` keeping no entry,
+    and `--filter '-path:plans/desing'` exits `2` naming the term.
+16. T1 to T4 are met on both trees, or this document's Status says which are not, by
+    how much, and on what machine load.
+
 ---
 
 ## Current values
 
-Verified at `0a872d9`. The prose above explains what each of these is for; this table
+Verified at `b759024`. The prose above explains what each of these is for; this table
 is the only place most of the numbers are stated.
 
 | Value | Setting | Defined in |
@@ -2574,9 +3895,24 @@ is the only place most of the numbers are stated.
 | `include` / `exclude` defaults | `["**/*.md"]` / `[]` | same |
 | The file name a roadmap is found by | `roadmap.md`, ASCII case-insensitive | `ROADMAP_FILE_NAME`, `repoconfig.RoadmapFileName` |
 | Stage roles | `open`, `ready`, `built`, `done` | `STAGE_ROLES` |
-| Planning page URL | `/.vantage/planning`, `/.vantage/planning/<repo>` | `PLANNING_ROUTE` in `frontend/src/lib/planningRoute.ts` |
+| Planning page URL | `/.vantage/planning`, `/.vantage/planning/<repo>`, the repository segment percent-encoded | `PLANNING_PAGE_PATH` in `packages/vantage-md/src/planning/filter.ts`, which `PLANNING_ROUTE` in `frontend/src/lib/planningRoute.ts` re-exports; `planningPath` there |
 | Keyboard chord | `g p` | `useKeyboardShortcuts` |
-| Section ids, which are the URL parameters | `needs-you`, `unrouted`, `waiting`, `ready`, `graduate`, `disagrees`, `skipped`, `could-not-read`; and `roadmap` | `PLANNING_SECTION_IDS` in `packages/vantage-md/src/planning/guide.ts` |
+| The Filter box's key | `/`, on the planning page only | `onFocusFilter` in `useKeyboardShortcuts`, the row in `KeyboardShortcuts.tsx` |
+| Section ids, which are the URL parameters | `needs-you`, `unrouted`, `waiting`, `ready`, `graduate`, `disagrees`, `skipped`, `could-not-read`; and `roadmap` and `filter` | `PLANNING_SECTION_IDS` in `packages/vantage-md/src/planning/guide.ts`; `PLANNING_ROADMAP_PARAM`, `PLANNING_FILTER_PARAM` in `filter.ts` |
+| The planning filter's URL parameter and flag | `filter`, `--filter` | `PLANNING_FILTER_PARAM` in `filter.ts`; `parseIndex` in `packages/vantage-check/src/cli.ts` |
+| Filter keys, and the one `is:` value | `path`, `is`; `open` | `PLANNING_FILTER_KEYS` in `filter.ts` |
+| Filter limits | 64 terms, repeats counted; 2,048 code points, white space included | `PLANNING_FILTER_LIMITS` in `packages/vantage-md/src/planning/filterLimits.ts` |
+| Excluded code points | U+0000–U+001F, U+007F–U+009F, U+00AD, U+061C, U+180E, U+200B–U+200F, U+202A–U+202E, U+2060–U+206F, U+FEFF, and a lone surrogate | `EXCLUDED`, `isLoneSurrogate` in `filter.ts` |
+| Characters a planning link writes bare | `A–Z a–z 0–9 - . _ ~ : /`, and a space as `+`; a last `.`, `_`, `~` or `:` escaped | `BARE_IN_QUERY`, `DROPPED_AT_END` in `filter.ts` |
+| Trailing characters a pasted link drops | `? . , : _ ~`, and a `*` for each `*` before it in its run | `TRAILING` in `filter.ts` |
+| The Filter box's placeholder / the Not filtered notice's example | `path:docs/design/*.md is:open` / `generator path:docs/design/*.md is:open` | `FILTER_PLACEHOLDER` in `PlanningFilterLine.tsx` / `FILTER_EXAMPLE` in `sections.ts` |
+| The hint for a text not applied | *Not applied: Enter says why* | `FILTER_HINT` in `PlanningFilterLine.tsx` |
+| The `Filter:` line of an agent request | `` Filter: `<text>`. Only the entries it keeps are listed. `` | `planningAgentRequest` in `guide.ts` |
+| Parsed filters kept / filtered sections kept per derivation | 16 / 16, the last used last out | `FILTERS_KEPT`, `FILTERED_KEPT` in `frontend/src/lib/planningPages.ts` |
+| The typing slot | 2 sets: the one on screen and the newest | `dropTyped` in `frontend/src/hooks/usePlanningPageInputs.ts` |
+| The release a filtered link's caution names | 0.9.0, assumed until it is tagged: confirm before the tag | `FILTER_RELEASE` in `packages/vantage-check/src/core/target.ts` |
+| The fixture of forms | 173 `read` and 47 `notUnderstood` entries, over an index of 18 files and one *Too large* path | `packages/vantage-md/src/planning/filterForms.json` |
+| The typing flow | `generator is:open`, a key every 150 ms; the burst, a key every 30 ms | `--query`, `--burst-gap` defaults in `frontend/perf/planning/run.ts` |
 | Section titles | Needs you, Not on a roadmap, Blocked, Ready to build, Ready to graduate, Stage conflict, Too large, Unreadable | `PLANNING_SECTION_GUIDE`, same file |
 | Agent sections | `unrouted`, `ready`, `graduate`, `disagrees` | `PLANNING_AGENT_SECTION_IDS`, same file |
 | Remembered roadmap | `localStorage` key `vantage:planningRoadmap:<repo>` | `PLANNING_ROADMAP_FAMILY` in `frontend/src/lib/preferences.ts` |
@@ -2606,8 +3942,8 @@ is the only place most of the numbers are stated.
 | Page select offered from | 5 pages | `pageSelectFrom` |
 | One commit of the sections | at most 30 cards and 96 Ki characters | `commitCards`, `commitMarkdownChars` |
 | Spinner delay | 150 ms | `spinnerMs` |
-| The Filter box's idle pause, before the address takes the filter ([`planning-filter.md` §6.4](../design/planning-filter.md#64-typing-and-the-url)) | 300 ms | `filterIdleMs` |
-| The Filter box's stillness before the live region speaks what the idle pause wrote, from the same keystroke ([`planning-filter.md` §7](../design/planning-filter.md#7-the-filter-line)) | 1 s | `filterSpeechMs` |
+| The Filter box's idle pause, before the address takes the filter ([§6.16](#616-typing-and-the-url)) | 300 ms | `filterIdleMs` |
+| The Filter box's stillness before the live region speaks what the idle pause wrote, from the same keystroke ([§6.17](#617-the-filter-line)); a number the build coined | 1 s | `filterSpeechMs` |
 | Reviews deadline / Mermaid deadline | 1 s / 1 s | `reviewsDeadlineMs`, `mermaidDeadlineMs` |
 | Late Mermaid frame | 240 px tall | `mermaidFramePx` |
 | Page-input sets kept | 8 | `pageInputsKept` |
@@ -2625,10 +3961,10 @@ is the only place most of the numbers are stated.
 ## Why it's this way
 
 Rulings a maintainer reading only the text above might undo on purpose, each with the
-id that code comments and sibling documents cite. `OQ-PL` and `OQ-PS` rows ruled the
-two designs' open questions; *Plan Q* rows ruled the questions the first
-implementation plan raised. Ids not listed were absorbed into the text above or are in
-git.
+id that code comments and sibling documents cite. `OQ-PL`, `OQ-PS` and `OQ-PF` rows
+ruled the three designs' open questions, the last the planning filter's; *Plan Q* rows
+ruled the questions the first implementation plan raised. Ids not listed were absorbed
+into the text above or are in git.
 
 | ID | Ruling | Date |
 | :--- | :--- | :--- |
@@ -2640,6 +3976,13 @@ git.
 | OQ-PS2 | No byte sieve in Go: every candidate is streamed, and the scan stays the only judge of what a planning document is. Ruled an implementation matter, on the condition that the reader's experience does not degrade for it ([§9.1](#91-the-stream)) | 2026-09-29 |
 | OQ-VS4 | A 🔒 or ✅ question is declared with a `question` directive, never an `oq`, which every viewer before 0.8 offers to answer in one click. A release never gives existing notation a new meaning, so the closed states got a name older viewers drop ([`checker-version-skew.md`](../design/checker-version-skew.md#decision-ledger), [§3.3](#33-questions)) | 2026-09-30 |
 | OQ-VS6 | One `question` directive declares a question in any state, and its marker alone is its state, so a question that changes state changes its marker and nothing else. `oq` is deprecated, never removed: every Vantage reads it with its 0.7 meaning, and the index counts it as before. Two names split by state made every change of state a rename, and a rename forgotten as a question closed is the misreading `question` exists to stop ([`checker-version-skew.md`](../design/checker-version-skew.md#decision-ledger), [§3.3](#33-questions)) | 2026-10-01 |
+| OQ-PF1 | The filter is a search box's language, overturned in conversation from one that read only `path:` and `is:open`: a word without a colon is free text, searched over index facts alone, in planning documents alone, by a question's id, title, leaning and document path, a row's path, `stage` and `next`, and a *Too large* or *Unreadable* entry's path. Every word must match, in any case and any order; a quoted phrase is one substring; a leading `-` excludes; a term is a qualifier only when the word before its first `:` is `path` or `is`, and an unknown lowercase word there is searched as text with a hint. `is:open` stays the one `is:` value. Amended on 2026-10-06: a `path:` value is found anywhere in the path, case-insensitively, `*` within one name and `**` across folders, a leading `/` or `./` pinning it; quoted, every character is literal. The gitignore-style matching it replaced kept nothing while a path was typed ([§6.12](#612-the-filter-language), [§6.13](#613-path-patterns)) | 2026-10-05, 2026-10-06 |
+| OQ-PF2 | Copy answers follows the filter: its payload and count cover kept questions only, and its tooltip says how many pending answers the filter leaves out. With one agent per piece of work, that piece's agent gets that piece's answers ([§6.7](#67-answering-and-copy-answers)) | 2026-10-05 |
+| OQ-PF3 | No address is stored or printed, so there is no `VANTAGE_PLANNING_URL` and the server prints no ready-to-paste address: an address is a fact about a machine, with no right home, and one machine may open a repository at several. The checker prints a root-relative link, and pasting it into the Filter box, alone or with the lines around it, applies its filter ([§13.5](#135-handing-the-human-a-filtered-page), [§6.17](#617-the-filter-line)) | 2026-10-05 |
+| OQ-PF4 | Besides typing, `/` focuses the box, and a document's Referenced by line links to the page filtered to that document. No per-card *show only this document* toggle, which would add a control to every card and row ([§6.17](#617-the-filter-line), [§7.1](#71-referenced-by)) | 2026-10-05 |
+| OQ-PF5 | The filter line is always on the page: one fixed-height row in every state, from first paint. Behind a Filter button it would be a state of its own and a layout-shift case, and a filter a person operates has to be seen to be learned ([§6.17](#617-the-filter-line)) | 2026-10-05 |
+| OQ-PF6 | The page applies the filter as the reader types, basically instantly, ruled in conversation over applying it on Enter only. Typing never adds a history entry; the URL follows after the idle pause and at once on Enter, ✕ or a paste; the box is never rewritten while the reader types; a text not understood mid-typing keeps the results on screen; and "instant" is held to T1 to T4. Amended on 2026-10-06: a typed text that keeps no entry at all applies only once the idle pause ends, the last results staying until then, so `-m` or a half word never empties the page; Enter, ✕, a paste and leaving the box apply at once, empty or not. No debounce of the results otherwise: matching takes about a millisecond, so any wait would be the whole delay ([§6.16](#616-typing-and-the-url), [§18](#18-scale-targets-and-what-has-been-measured)) | 2026-10-05, 2026-10-06 |
+| OQ-PF7 | No freeze across releases, ruled in conversation: a filter text may match differently in a later release, so nothing compares the fixture of forms with an earlier release's, and "not understood" keeps no form free for later. P0 still governs what lives in files or feeds scripts, roadmap order never changes, and the page and the checker agree within one release ([§6.19](#619-across-releases)) | 2026-10-05 |
 | Plan Q1 | Patterns keep the server's matcher, its quirks and RE2 dialect included; the checker ports it, and one shared fixture pins both readers ([§3.1](#31-candidates-and-planning-documents)) | 2026-09-28 |
 | Plan Q2 | A listed roadmap is read whenever it exists, even when `include` or `exclude` rules it out — per entry, since several roadmaps ([§4.1](#41-which-files-are-roadmaps)) | 2026-09-28 |
 | Plan Q3 | A static export gets no badges and no planning index; its planning page says so ([§15](#15-failure-modes)) | 2026-09-28 |

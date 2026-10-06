@@ -1104,14 +1104,14 @@ describe("the project index scans", () => {
 });
 
 /* ------------------------------------------------------------------ *
- * --filter (docs/design/planning-filter.md §8)
+ * --filter (docs/reference/planning-index.md §13.4)
  * ------------------------------------------------------------------ */
 
 /**
  * `index --filter`: the planning page's filter, parsed, applied and linked by
  * vantage-md's planning module (F1), so what these tests prove is that the
  * command hands it the text and the sections of the whole tree, prints what
- * it returns where §8.3 says, and exits where §8.2 says. Without a filter,
+ * it returns where §13.4 says, and exits where §13.4 says. Without a filter,
  * every output is byte for byte what it was, and no assertion above changed.
  */
 
@@ -1122,14 +1122,14 @@ function understood(text: string): UnderstoodPlanningFilter {
   return filter;
 }
 
-/** Exit 2's message for a filter it cannot read (§8.2). */
+/** Exit 2's message for a filter it cannot read (§13.4). */
 const notUnderstood = (named: string) =>
   `vantage-check: --filter: this checker cannot read ${named}; it reads words, "quoted phrases", path: and is:open terms, and a - before any of them to leave out what it matches\n`;
 
 /**
  * Exit 2's message for a term that matches no path the index lists: the
- * notice's wording, from the planning module (§6.7, §8.2), whose own tests pin
- * its words.
+ * notice's wording, from the planning module (§6.18, §13.4), whose own tests
+ * pin its words.
  */
 const unmatched = (...terms: string[]) =>
   terms
@@ -1146,7 +1146,7 @@ const REASON_WORDS: Record<PlanningFilterReason, string> = {
   "too-long": "a filter past 2,048 code points",
 };
 
-/** The hint line under every `Planning page:` line (§9.2), indented. */
+/** The hint line under every `Planning page:` line (§13.5), indented. */
 const PASTE_HINT =
   "  Press / on the planning page and paste this line, or put the scheme, host and port you open Vantage at in front of the link.";
 
@@ -1178,7 +1178,7 @@ function formsSources(forms: PlanningFilterForms): PlanningSources {
 }
 
 describe("index --filter, given no filter", () => {
-  // §8.1: an empty value is no filter, and a value of white space alone, or
+  // §13.4: an empty value is no filter, and a value of white space alone, or
   // two empty ones joined, is empty too.
   it.each([
     [["--filter", ""]],
@@ -1201,7 +1201,7 @@ describe("index --filter, given no filter", () => {
 
 describe("index --filter, not understood", () => {
   // F3: none of it applies, and since its meaning depends on nothing in the
-  // tree, it is refused before the scan (§8.2).
+  // tree, it is refused before the scan (§13.4).
   it.each([
     ["path:docs/design/*.md is:closed", "`is:closed`"],
     ['word a"b"', '`a"b"`'],
@@ -1229,7 +1229,7 @@ describe("index --filter, not understood", () => {
     },
   );
 
-  // The page's tests read the same fixture (§10.4), so the page and the
+  // The page's tests read the same fixture (§6.19), so the page and the
   // checker cannot disagree about which texts are understood.
   it.each(filterForms().notUnderstood)(
     "exits 2 before the scan on the fixture's $text",
@@ -1252,7 +1252,7 @@ describe("index --filter, not understood", () => {
 });
 
 describe("index --filter, with words, phrases and exclusions", () => {
-  // §5.3 and §8.2: a text term searches what the index holds, and one that
+  // §6.12 and §13.4: a text term searches what the index holds, and one that
   // matches nothing is an answer, which exits 0.
   it("keeps what a word finds, through the planning module", async () => {
     const root = fullTree();
@@ -1366,7 +1366,7 @@ describe("index --filter, with words, phrases and exclusions", () => {
 
 describe("index --filter, with a term that matches nothing", () => {
   // F5: the page applies it, keeps nothing and names it; the checker stops,
-  // because a mistyped path is the agent's likeliest mistake (§8.2).
+  // because a mistyped path is the agent's likeliest mistake (§13.4).
   it("exits 2 naming each such term, with stdout empty, in all three outputs", async () => {
     const root = fullTree();
     for (const output of OUTPUTS) {
@@ -1412,7 +1412,7 @@ describe("index --filter, with a term that matches nothing", () => {
 });
 
 describe("index --filter, as text", () => {
-  // The golden of §8.3's order: the filter notice with its clauses, the
+  // The golden of §13.4's order: the filter notice with its clauses, the
   // Planning page line and its hint, then the page's layout over the
   // filtered sections, a --request line carrying the filter, and the roadmap
   // as it always is.
@@ -1492,7 +1492,7 @@ describe("index --filter, as text", () => {
     );
   });
 
-  // §6.2: Nothing needs you in its filtered form, among the notices.
+  // §6.15: Nothing needs you in its filtered form, among the notices.
   it("says nothing it keeps needs you, and lists no section it empties", async () => {
     const { code, stdout } = await index(
       fullTree(),
@@ -1518,7 +1518,7 @@ describe("index --filter, as text", () => {
     expect(stdout).not.toContain(PLANNING_NOTICES.nothingNeedsYou);
   });
 
-  // §15 criterion 1, over a copy of the end-to-end fixture checked as its own
+  // §18 criterion 1, over a copy of the end-to-end fixture checked as its own
   // root. Only what the criterion names is pinned: the page's other specs add
   // documents to that fixture, which change the totals and nothing here.
   it("prints criterion 1's page for the end-to-end fixture", async () => {
@@ -1586,9 +1586,9 @@ describe("index --filter, as text", () => {
     ).toBe(`path:it's.md`);
   });
 
-  // §9.2: the page shows the checkout the human's Vantage serves, so a link
+  // §13.5: the page shows the checkout the human's Vantage serves, so a link
   // made in a linked worktree may open other versions of these documents. The
-  // line sets the root off as code, as §9.2 quotes it, so a root holding a
+  // line sets the root off as code, as §13.5 quotes it, so a root holding a
   // space reads as one path.
   it("cautions under the link in a linked worktree, and only there", async () => {
     const files = { "a.md": doc("status: draft", questions("A", OPEN)) };
@@ -1617,7 +1617,7 @@ describe("index --filter, as text", () => {
     expect(await head(configOnly)).not.toContain("linked worktree");
   });
 
-  // §9.5: a viewer before the filter's release ignores `filter=` and shows
+  // §13.5: a viewer before the filter's release ignores `filter=` and shows
   // every entry, so a target before it says so under the link.
   it.each([
     ["0.8", true],
@@ -1643,7 +1643,7 @@ describe("index --filter, as text", () => {
 });
 
 describe("index --filter, with several roadmaps", () => {
-  // §9.2: the link names the chosen roadmap whenever two or more can be
+  // §13.5: the link names the chosen roadmap whenever two or more can be
   // chosen, so the human's Needs you follows the roadmap the agent checked.
   it("names the other roadmaps and recounts each, under the chosen one", async () => {
     const { code, stdout } = await index(
@@ -1786,7 +1786,7 @@ describe("index --filter, as JSON", () => {
 });
 
 describe("index --request --filter", () => {
-  // §6.6: what Copy agent request copies on the filtered page, with its
+  // §6.2: what Copy agent request copies on the filtered page, with its
   // Filter: line, and blocked-on read from the unfiltered sections.
   it("prints exactly planningAgentRequest with the filter, for any sections", async () => {
     const root = fullTree();
@@ -1839,7 +1839,7 @@ describe("index --request --filter", () => {
 
 describe("index --filter over the fixture of forms", () => {
   // The tree on disk is the fixture's index: the checker's walk batches it as
-  // the page's tests build it, so every `keeps` holds for both (§10.4).
+  // the page's tests build it, so every `keeps` holds for both (§6.19).
   it("scans the fixture's tree into the fixture's index", async () => {
     const forms = filterForms();
     const { code, payload } = await indexJson(filterFormsTree(forms));
@@ -1881,7 +1881,7 @@ describe("index --filter over the fixture of forms", () => {
       ),
     );
 
-    // The request the page copies for the same text (§6.6), or nothing.
+    // The request the page copies for the same text (§6.2), or nothing.
     const built = buildPlanningIndex(formsSources(forms));
     const sections = derivePlanningSections(built);
     const applied = applyPlanningFilter(

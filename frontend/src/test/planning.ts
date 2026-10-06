@@ -156,8 +156,8 @@ export const FILTER_FORMS_PATH =
   "packages/vantage-md/src/planning/filterForms.json";
 
 /**
- * The planning filter's fixture of forms (`docs/design/planning-filter.md`
- * §10.4): a small index, every filter text this release reads with what it
+ * The planning filter's fixture of forms (`docs/reference/planning-index.md`
+ * §6.19): a small index, every filter text this release reads with what it
  * keeps there, and texts it does not understand with the term each names, or
  * the reason where there is none.
  *
@@ -170,7 +170,7 @@ export const FILTER_FORMS_PATH =
  * `sectionEntryKeys` writes them; and `unknownKeys` the words its notice says
  * are not filter keys. It is an ordinary fixture of one release: any entry
  * may be edited, moved or removed when the language changes, and nothing
- * compares it with an earlier release's (§10.4, OQ-PF7).
+ * compares it with an earlier release's (§6.19, OQ-PF7).
  */
 export interface PlanningFilterForms {
   index: {
@@ -193,7 +193,7 @@ export interface PlanningFilterForms {
      * that match no listed path.
      */
     unmatched: string[];
-    /** Each unknown key's word, once, in the order written (§5.3). */
+    /** Each unknown key's word, once, in the order written (§6.12). */
     unknownKeys: string[];
   }[];
   notUnderstood: (

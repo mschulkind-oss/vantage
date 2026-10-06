@@ -197,7 +197,7 @@ describe("useKeyboardShortcuts", () => {
     document.body.removeChild(input);
   });
 
-  // docs/design/planning-filter.md §7: `/` focuses the planning page's
+  // docs/reference/planning-index.md §6.17: `/` focuses the planning page's
   // Filter box, and on any other page is left to the browser, which opens
   // Firefox's quick find with it.
   const slash = () => {

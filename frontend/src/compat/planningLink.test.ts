@@ -1,8 +1,8 @@
 /**
- * What a 0.8.x viewer makes of a planning link (`docs/design/planning-filter.md`
- * §10.1, §10.4): a written model of its URL handling, following the
- * `questionOffersTake` precedent in `notation.ts`, which models 0.7.1's review
- * mode. UNMEASURED: no 0.8.x build is run.
+ * What a 0.8.x viewer makes of a planning link
+ * (`docs/reference/planning-index.md` §6.19): a written model of its URL
+ * handling, following the `questionOffersTake` precedent in `notation.ts`,
+ * which models 0.7.1's review mode. UNMEASURED: no 0.8.x build is run.
  *
  * 0.8.0 and 0.8.1 rewrite the query once the sections are in, with
  * `planningSearch` (PlanningPage.tsx at v0.8.1, lines 1155-1166), and that is

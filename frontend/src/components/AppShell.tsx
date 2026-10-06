@@ -198,7 +198,7 @@ const ShellFrame: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     [],
   );
   // `/`, wired only while the page on screen has a filter box: elsewhere the
-  // key stays the browser's (docs/design/planning-filter.md §7).
+  // key stays the browser's (docs/reference/planning-index.md §6.17).
   const focusFilter = useCallback(
     () => (pageRef.current?.onFocusFilter ?? noop)(),
     [],

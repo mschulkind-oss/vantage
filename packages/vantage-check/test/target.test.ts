@@ -344,7 +344,7 @@ describe("readsOnlyOq", () => {
 
 // A viewer before the planning filter's release ignores `filter=` and shows
 // every entry, so `index --filter` cautions under its link
-// (docs/design/planning-filter.md §9.5).
+// (docs/reference/planning-index.md §13.5).
 describe("predatesFilter", () => {
   it.each([
     ["0.7", true],
