@@ -224,6 +224,9 @@ export const useKeyboardShortcuts = ({
         case "/":
           if (onFocusFilter !== undefined) {
             e.preventDefault();
+            // The help lists `/` and is a modal over the page: it closes
+            // first, so the focus never lands in a box behind it.
+            if (shortcutsOpen) setShortcutsOpen(false);
             onFocusFilter();
           }
           break;

@@ -62,6 +62,7 @@ import React, {
 import {
   useLocation,
   useNavigate,
+  useNavigationType,
   useParams,
   useSearchParams,
 } from "react-router-dom";
@@ -854,7 +855,9 @@ const FilterNotice: React.FC<{
     id={id}
     data-testid="filter-notice"
     className={cn(
-      "mb-3 space-y-0.5 text-sm",
+      // A path in it breaks anywhere rather than push the pane sideways at a
+      // phone's width, as the roadmap picker's and the outline's do.
+      "mb-3 space-y-0.5 text-sm [overflow-wrap:anywhere]",
       notUnderstood
         ? "text-amber-700 dark:text-amber-400"
         : "text-slate-600 dark:text-slate-300",
@@ -893,7 +896,12 @@ const Notices: React.FC<{
   filterNotice: React.ReactNode;
   /** A filter is applied: *Nothing needs you* takes its filtered words (§6.2). */
   filtered: boolean;
-}> = ({ sections, config, filterNotice, filtered }) => {
+  /**
+   * The filtered *Nothing needs you*'s id, which describes the Filter box
+   * with the filter notice (`planning-filter.md` §6.7).
+   */
+  nothingId?: string;
+}> = ({ sections, config, filterNotice, filtered, nothingId }) => {
   const roadmapNotice = PLANNING_NOTICES.roadmapNotice(
     config,
     sections.roadmaps,
@@ -903,6 +911,7 @@ const Notices: React.FC<{
       {filterNotice}
       {sections.nothingNeedsYou && (
         <p
+          id={filtered ? nothingId : undefined}
           data-testid="nothing-needs-you"
           className="mb-6 text-base font-medium text-slate-700 dark:text-slate-200"
         >
@@ -1343,20 +1352,38 @@ export const PlanningPage: React.FC = () => {
     inputs.shown !== null && ready !== null && inputs.shown.inputs.repo === repo
       ? inputs.shown
       : null;
+  // The layout the URL asks for is a flip of the one on screen while both
+  // are laid out under one filter. Another filter's is no flip: the old page
+  // stays up whole, its pagers included, until the new page's inputs are in,
+  // and only the filter line's own slot says it is on its way
+  // (planning-filter.md §6.4, §7).
+  const askedIsFlip =
+    shown === null ||
+    layout === null ||
+    shown.inputs.layout.filter === layout.filter;
   // The sections whose page is still on its way, once that is worth saying.
   const busy = useMemo(() => {
-    if (!inputs.slow || shown === null || layout === null) return NO_SECTIONS;
+    if (!inputs.slow || shown === null || layout === null || !askedIsFlip) {
+      return NO_SECTIONS;
+    }
     const on = new Map(
       shown.inputs.layout.sections.map((s) => [s.id, s.page] as const),
     );
     return new Set(
       layout.sections.filter((s) => on.get(s.id) !== s.page).map((s) => s.id),
     );
-  }, [inputs.slow, shown, layout]);
-  // Each section as the URL asks for it, which its pager goes on from.
+  }, [inputs.slow, shown, layout, askedIsFlip]);
+  // Each section as the URL asks for it, which its pager goes on from; none
+  // while another filter's page is on its way, so that each pager goes on
+  // from its section as it is on screen.
   const asked = useMemo(
-    () => new Map((layout?.sections ?? []).map((s) => [s.id, s] as const)),
-    [layout],
+    () =>
+      new Map(
+        (askedIsFlip ? (layout?.sections ?? []) : []).map(
+          (s) => [s.id, s] as const,
+        ),
+      ),
+    [layout, askedIsFlip],
   );
   // The filter the page on screen is laid out under: the shown set's, until
   // the next one is in, as the frame is (below), so what Copy answers and the
@@ -1937,10 +1964,16 @@ export const PlanningPage: React.FC = () => {
   const leaveFilter = useCallback(() => {
     contentRef.current?.focus({ preventScroll: true });
   }, []);
-  // The query a reader's Enter, ✕ or paste navigated to, until the page it
-  // asks for is on screen, when the live region speaks its notice: after a
-  // reader's change, never as the page opens (§7).
-  const [announceFor, setAnnounceFor] = useState<string | null>(null);
+  // What a reader's Enter, ✕ or paste applied: the filter the URL holds for
+  // it, and the location it was applied from. Held until the page it asks
+  // for is on screen under a URL as the page writes it, when the live region
+  // speaks its notice: after a reader's change, never as the page opens
+  // (§7). Matched by its filter, not its query, since the in-place rewrite
+  // and an index still building may change the rest.
+  const [announceFor, setAnnounceFor] = useState<{
+    filter: string;
+    from: string;
+  } | null>(null);
   const [announcement, setAnnouncement] = useState("");
   // Enter, ✕ or a pasted link (§6.4): one replace navigation, written with
   // the link encoding for `filter`, every section back on its first page,
@@ -1948,21 +1981,39 @@ export const PlanningPage: React.FC = () => {
   // text already applied, under the roadmap already shown, does nothing.
   const applyFilter = useCallback(
     (text: string, roadmap: string | null) => {
-      const next = withFilter(search, text, roadmap);
+      let next = withFilter(search, text, roadmap);
+      // A pasted link's roadmap, written as the in-place rewrite would leave
+      // it, so that a paste is one replace as Enter is: when two or more
+      // route, the roadmap the page chooses for it, read without a leading
+      // `./` (planning-index.md §6.8); when fewer do, none, and the URL's
+      // stays. Before the index is in, as written.
+      if (roadmap !== null && index !== null && !index.refused) {
+        const { roadmaps } = sectionsOf(index);
+        const chosen =
+          routingRoadmaps(roadmaps).length >= 2
+            ? chooseRoadmap(
+                roadmaps,
+                readRoadmapRequest(next),
+                rememberedRoadmap,
+              )
+            : null;
+        next = withFilter(search, text, chosen);
+      }
       const sameRoadmap =
-        roadmap === null ||
         readRoadmapRequest(next) === readRoadmapRequest(search);
       if (readFilterRequest(next) === filterValue(filterText) && sameRoadmap) {
         return;
       }
       const query = planningQuery(next);
-      const target = query === "" ? "" : `?${query}`;
-      setAnnounceFor(target);
+      setAnnounceFor({ filter: readFilterRequest(next), from: location.key });
+      // Emptied first, so that a notice the same as the last one said is
+      // still a change, and is said.
+      setAnnouncement("");
       scrollToRef.current = null;
       jumpRef.current = null;
-      navigate({ search: target }, { replace: true });
+      navigate({ search: query === "" ? "" : `?${query}` }, { replace: true });
     },
-    [search, filterText, navigate],
+    [search, filterText, navigate, index, rememberedRoadmap, location.key],
   );
   // The filter notice's lines, for the frame: what the page on screen shows.
   const filterNotice = useMemo(
@@ -1971,19 +2022,62 @@ export const PlanningPage: React.FC = () => {
   );
   const filterNoticeId = React.useId();
   const noticeShown = frameReady && filterNotice !== null;
+  // Applied, nothing kept, and any applied filter whose sections hold
+  // nothing that needs the human: the notice, then the filtered *Nothing
+  // needs you*, which the frame draws after it as a notice of its own (§6.7).
+  // The box is described by both, and the region says both.
+  const nothingFiltered =
+    frameFilter !== "" && frameSections?.nothingNeedsYou === true;
+  const nothingId = React.useId();
+  const filterDescribedBy = !noticeShown
+    ? undefined
+    : nothingFiltered
+      ? `${filterNoticeId} ${nothingId}`
+      : filterNoticeId;
   const spoken =
     filterNotice === null
       ? FILTER_CLEARED
-      : filterNotice.map(spokenLine).join(" ");
-  // Once the page the reader asked for is on screen, its frame settled.
-  if (
-    announceFor !== null &&
-    location.search === announceFor &&
-    (shown === null || !inputs.waiting) &&
-    frameUrlFilter === urlFilter
-  ) {
-    setAnnounceFor(null);
-    if (frameReady) setAnnouncement(spoken);
+      : [
+          ...filterNotice.map(spokenLine),
+          ...(nothingFiltered
+            ? [PLANNING_NOTICES.nothingFilteredNeedsYou]
+            : []),
+        ].join(" ");
+  // A push or a pop (`g p`, the sidebar's entry, Back, Forward) is no
+  // reader's Enter: it forgets what the region said, so the same notice
+  // applied again is a change and is said, and what it was still to say.
+  // The page's own replaces (its rewrite, a clamp, a flip, a pick) keep the
+  // filter, and leave both alone.
+  const navigationType = useNavigationType();
+  const [announceKey, setAnnounceKey] = useState(location.key);
+  let toSay = announceFor;
+  if (announceKey !== location.key) {
+    setAnnounceKey(location.key);
+    if (navigationType !== "REPLACE") {
+      toSay = null;
+      if (announceFor !== null) setAnnounceFor(null);
+      if (announcement !== "") setAnnouncement("");
+    }
+  }
+  if (toSay !== null) {
+    if (!onThisRepo || load.status === "error" || index?.refused === true) {
+      // No frame is coming, so no notice: nothing to say.
+      setAnnounceFor(null);
+    } else if (
+      // The page asked for is on screen, its frame settled, and its URL as
+      // the page writes it; an index still building waits for its frame.
+      location.key !== toSay.from &&
+      filterText === toSay.filter &&
+      frameReady &&
+      (shown === null || !inputs.waiting) &&
+      frameUrlFilter === urlFilter &&
+      layout !== null &&
+      sections !== null &&
+      planningSearch(search, layout, sections) === null
+    ) {
+      setAnnounceFor(null);
+      setAnnouncement(spoken);
+    }
   }
 
   // The roadmap picker (§6.8), and only one of it: at the head of the
@@ -2198,7 +2292,7 @@ export const PlanningPage: React.FC = () => {
                   onApply={applyFilter}
                   onLeave={leaveFilter}
                   inputRef={filterInputRef}
-                  describedBy={noticeShown ? filterNoticeId : undefined}
+                  describedBy={filterDescribedBy}
                   announcement={announcement}
                   printText={frameFilter}
                 />
@@ -2338,6 +2432,7 @@ export const PlanningPage: React.FC = () => {
                           sections={frameSections}
                           config={frameConfig}
                           filtered={frameFilter !== ""}
+                          nothingId={nothingId}
                           filterNotice={
                             filterNotice !== null && (
                               <FilterNotice
