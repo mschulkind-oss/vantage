@@ -19,10 +19,10 @@
  *
  * Its last part, for a live document holding a question, is a link to the
  * planning page filtered to that document, *its questions on the planning
- * page* (`docs/design/planning-filter.md` §7). It is a link of its own after
- * the disclosure button and after the plain-text line, never inside either,
- * since a link inside a `<button>` is invalid nested interactive content. It
- * never shrinks: where the line is cut off, the words before it give way.
+ * page* (§7.1). It is a link of its own after the disclosure button and after
+ * the plain-text line, never inside either, since a link inside a `<button>`
+ * is invalid nested interactive content. It never shrinks: where the line is
+ * cut off, the words before it give way.
  *
  * - **A disclosure button**, not `<details>`: `aria-expanded` and
  *   `aria-controls` on a real `<button>`, which is keyboard operable and which
@@ -91,7 +91,7 @@ export const HEADINGS_SHOWN = 4;
 const counted = (n: number, one: string, many: string) =>
   `${n.toLocaleString("en-US")} ${n === 1 ? one : many}`;
 
-/** The words of the line's link to the filtered planning page (§7). */
+/** The words of the line's link to the filtered planning page (§7.1). */
 const PLANNING_PART = "its questions on the planning page";
 
 /** What the line says: up to four parts, joined by " · " in this order. */
@@ -115,12 +115,11 @@ export interface SummaryLine {
   unrouted: string | null;
   /**
    * `its questions on the planning page`, always last: the words of a link to
-   * the planning page filtered to this document
-   * (`docs/design/planning-filter.md` §7). Present when its stage has no
-   * `done` role and it holds at least one question, of any state, which the
-   * filter keeps (`hasLiveQuestions`), and there is a page to link
-   * (`planningHref`). Otherwise `null`, and the rest of the line is as it
-   * would be without it.
+   * the planning page filtered to this document (§7.1). Present when its
+   * stage has no `done` role and it holds at least one question, of any
+   * state, which the filter keeps (`hasLiveQuestions`), and there is a page
+   * to link (`planningHref`). Otherwise `null`, and the rest of the line is
+   * as it would be without it.
    */
   planning: string | null;
 }
@@ -137,7 +136,7 @@ export interface SummaryLine {
  * there is none; the summary decides whether the line links it. So a live
  * document that nothing links to and that has nothing unrouted, such as one
  * whose questions are all settled, or any in a repository no roadmap routes,
- * gets a line holding only the link (planning-filter.md §7).
+ * gets a line holding only the link (§7.1).
  */
 // eslint-disable-next-line react-refresh/only-export-components -- the component's own wording, exported for its tests
 export function summaryLine(
@@ -369,7 +368,7 @@ export function ReferencedBy({
   // The link's part, its separator and the link in one flex item, so the
   // separator always sits beside the link it joins. Where the line is one
   // line, the part keeps its width and the words before it are cut off
-  // instead (planning-filter.md §7). Below `sm`, unless it fills a
+  // instead (§7.1). Below `sm`, unless it fills a
   // reservation, the part takes a line of its own, without the separator,
   // starting where the words start, after the button's chevron. Left to wrap
   // item by item, the separator hung alone at the end of the words' line or

@@ -1022,7 +1022,7 @@ describe("the Referenced by summary (§7)", () => {
   });
 
   // The link to the planning page filtered to the document
-  // (`docs/design/planning-filter.md` §7) is drawn on these facts alone.
+  // (`docs/reference/planning-index.md` §7.1) is drawn on these facts alone.
   it("says whether the document is live and holds a question", () => {
     const has = (
       files: Record<string, string>,

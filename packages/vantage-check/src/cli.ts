@@ -170,7 +170,7 @@ function parseCheck(argv: string[]): Invocation {
  * a filter, an exclusion, rather than an unknown option.
  * Given twice, the values join with one space, in order, which is what typing
  * both into the planning page's Filter box gives
- * (`docs/design/planning-filter.md` §8.1). Whether the text is understood is
+ * (`docs/reference/planning-index.md` §13.4). Whether the text is understood is
  * the command's to say, not the parser's: it exits 2 with its own message.
  */
 function parseIndex(argv: string[]): Invocation {

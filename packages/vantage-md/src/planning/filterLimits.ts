@@ -1,6 +1,6 @@
 /**
  * How much text a planning filter may hold before it is read as not
- * understood (`docs/design/planning-filter.md` §5.5).
+ * understood (`docs/reference/planning-index.md` §6.14).
  *
  * In a module of its own so that the filter notices in `sections.ts` can name
  * the limits without importing `filter.ts`, which imports `sections.ts`: a

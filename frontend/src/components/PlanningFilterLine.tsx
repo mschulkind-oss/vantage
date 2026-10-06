@@ -1,9 +1,9 @@
 /**
- * The planning page's filter line (`docs/design/planning-filter.md` §7): one
- * fixed-height row at the top of the page's column, above every state of the
- * route, holding the Filter box.
+ * The planning page's filter line (`docs/reference/planning-index.md`
+ * §6.17): one fixed-height row at the top of the page's column, above every
+ * state of the route, holding the Filter box.
  *
- * - **Typing applies, and the box never waits for it** (§6.4, F7). The box's
+ * - **Typing applies, and the box never waits for it** (§6.16, F7). The box's
  *   text is local state, so a keystroke's own render is the box's alone, and
  *   each change is handed to the page through `onType`, which lays out its
  *   results in a transition and writes the URL after the idle pause. While an
@@ -30,7 +30,7 @@
  *   icon in a slot of its own, then the visible label, which stays the
  *   accessible name; the row never wraps. The input's description names the
  *   hint while it shows, at every width.
- * - **Esc never clears** (§7): it puts back the applied filter's text over a
+ * - **Esc never clears** (§6.17): it puts back the applied filter's text over a
  *   text that is not applied, and otherwise hands the focus back to the pane.
  *
  * The page draws it in every state but a static export, which has no
@@ -51,7 +51,7 @@ export const FILTER_PLACEHOLDER = "path:docs/design/*.md is:open";
 
 /**
  * What the hint slot says while the box holds a text that is not applied: one
- * the language cannot read, which the reader has not entered (§7). Enter
+ * the language cannot read, which the reader has not entered (§6.17). Enter
  * applies it as written, and the notice then names what it cannot read.
  */
 export const FILTER_HINT = "Not applied: Enter says why";
@@ -67,7 +67,7 @@ export const PlanningFilterLine: React.FC<{
    * The text Esc puts back over a text that is not applied: the newest
    * understood text the reader typed while the URL has not taken it, which
    * the page applies, or holds back until the URL takes it when it keeps no
-   * entry (§6.4); else the URL's text.
+   * entry (§6.16); else the URL's text.
    */
   appliedText: string;
   /**
@@ -78,7 +78,7 @@ export const PlanningFilterLine: React.FC<{
   leads?: boolean;
   /**
    * A not-understood filter is applied, from the URL or an Enter:
-   * `aria-invalid`, and an amber ring. Never for one only typed (§7).
+   * `aria-invalid`, and an amber ring. Never for one only typed (§6.17).
    */
   invalid: boolean;
   /**
@@ -90,12 +90,12 @@ export const PlanningFilterLine: React.FC<{
   /**
    * The box's text changed: each keystroke's, a composition's once it ends,
    * and a paste that is no planning link's. `now` is set for the paste, which
-   * is written at once rather than after the idle pause (§6.4).
+   * is written at once rather than after the idle pause (§6.16).
    */
   onType: (text: string, now: boolean) => void;
   /**
    * Apply `text` at once, and choose `roadmap` when a pasted link names one:
-   * Enter, ✕ and a pasted link, one replace navigation (§6.4). Text already
+   * Enter, ✕ and a pasted link, one replace navigation (§6.16). Text already
    * applied and written does nothing.
    */
   onApply: (text: string, roadmap: string | null) => void;
@@ -142,7 +142,7 @@ export const PlanningFilterLine: React.FC<{
   // it, until the next location or the reader's next change: the router
   // commits a location in a transition, and until it does the URL still
   // holds the old text, which the box neither calls not applied nor puts
-  // back on Esc (§7).
+  // back on Esc (§6.17).
   const [applied, setApplied] = useState<string | null>(null);
 
   // Reset from the URL on every navigation the box did not cause, before it
@@ -175,7 +175,7 @@ export const PlanningFilterLine: React.FC<{
   };
 
   // An input method is composing: nothing is handed to the page until it
-  // ends (§7), so the page never chases unconverted letters.
+  // ends (§6.17), so the page never chases unconverted letters.
   const composing = useRef(false);
   // A paste that is no planning link is typing written at once: its change
   // follows the paste event in the same task, so the mark is gone by the
@@ -190,7 +190,7 @@ export const PlanningFilterLine: React.FC<{
     text !== entered && parsePlanningFilter(text).kind === "not-understood";
   // The hint's words, which describe the box while it shows: at a narrow
   // width only an icon is drawn, and the words are for assistive technology
-  // alone (§7).
+  // alone (§6.17).
   const hintId = useId();
   const described =
     [describedBy, unapplied ? hintId : undefined].filter(Boolean).join(" ") ||
@@ -198,7 +198,7 @@ export const PlanningFilterLine: React.FC<{
   return (
     // In print the input row is hidden, and with no filter the line with
     // it, margin and all: a printout of the page changes only to say it is
-    // filtered (planning-filter.md §7).
+    // filtered (§6.17).
     <div className={cn("@container mb-4", printText === "" && "print:hidden")}>
       <form
         role="search"
@@ -228,7 +228,7 @@ export const PlanningFilterLine: React.FC<{
           <input
             ref={inputRef}
             id={id}
-            // Not `search`: Chrome clears that kind on Esc (§7).
+            // Not `search`: Chrome clears that kind on Esc (§6.17).
             type="text"
             value={text}
             placeholder={FILTER_PLACEHOLDER}
@@ -264,7 +264,7 @@ export const PlanningFilterLine: React.FC<{
             }}
             onPaste={(e) => {
               // A pasted planning link applies at once, whole or inside the
-              // lines the checker prints around it (§7); anything else is
+              // lines the checker prints around it (§6.17); anything else is
               // text, applied as typed text is and written at once.
               const link = readPastedPlanningLink(
                 e.clipboardData.getData("text"),
@@ -288,12 +288,12 @@ export const PlanningFilterLine: React.FC<{
                 type="button"
                 aria-label="Clear the filter"
                 title="Clear the filter"
-                // The focus stays in the box (§7), so pressing ✕ is not
+                // The focus stays in the box (§6.17), so pressing ✕ is not
                 // leaving it, which would write what ✕ is about to clear.
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => {
                   apply("");
-                  // The focus stays in the box (§7).
+                  // The focus stays in the box (§6.17).
                   inputRef.current?.focus();
                 }}
                 className="flex size-6 items-center justify-center rounded text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-200"

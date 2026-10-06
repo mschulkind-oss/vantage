@@ -82,17 +82,17 @@ export interface PlanningLimits {
   /** How long the page inputs may take before a spinner shows, in ms. */
   spinnerMs: number;
   /**
-   * The idle pause (`docs/design/planning-filter.md` §6.4): how long the
-   * Filter box's text must stay as it is before the URL takes the filter it
-   * applied, in ms. The results never wait for it.
+   * The idle pause (§6.16): how long the Filter box's text must stay as it
+   * is before the URL takes the filter it applied, in ms. The results never
+   * wait for it.
    */
   filterIdleMs: number;
   /**
    * How long the Filter box's text must stay as it is before the live region
-   * speaks the notice of what the idle pause wrote (`planning-filter.md` §7),
-   * in ms, counted from the same keystroke as `filterIdleMs`. Longer than the
-   * pause, so a slow typist hears the notice once they stop rather than
-   * after every key. The design names no number, so this one is coined here.
+   * speaks the notice of what the idle pause wrote (§6.17), in ms, counted
+   * from the same keystroke as `filterIdleMs`. Longer than the pause, so a
+   * slow typist hears the notice once they stop rather than after every key.
+   * The filter's design named no number, so this one was coined here.
    */
   filterSpeechMs: number;
   /** How long the sections wait for their documents' reviews, in ms. */

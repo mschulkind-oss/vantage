@@ -4,7 +4,8 @@
  * the canonical text a keystroke makes is exactly the page's (P7), and the
  * typing flow can tell which keystrokes change the applied filter (T2): not
  * one whose text is not understood, nor one whose text keeps no entry, which
- * the page holds back until the idle pause (planning-filter.md §6.4).
+ * the page holds back until the idle pause (`docs/reference/planning-index.md`
+ * §6.16).
  *
  * Node runs a `.ts` module by stripping its types and resolves nothing else,
  * while the module imports its siblings as `./x.js`, as a bundler resolves
@@ -34,7 +35,7 @@ const { derivePlanningSections } =
 /**
  * What `text` makes the applied filter: its canonical text, `""` for no
  * filter, or `null` when it is not understood, which applies nothing while
- * the reader types (planning-filter.md §6.4).
+ * the reader types (§6.16).
  */
 export function appliedBy(text: string): string | null {
   const filter = parsePlanningFilter(text);
@@ -47,7 +48,7 @@ export function appliedBy(text: string): string | null {
  * entry of `index`'s planning page under its default roadmap, which a typing
  * run's new profile chooses. While the reader types, the page holds such a
  * text back until the idle pause, so a key that makes one changes nothing
- * then, and T2 does not count it (planning-filter.md §6.4, §16).
+ * then, and T2 does not count it (§6.16, §18).
  */
 export function keepingNothing(
   index: Parameters<typeof derivePlanningSections>[0],

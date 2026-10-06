@@ -114,8 +114,8 @@ describe("parseArgs", () => {
     });
   });
 
-  // docs/design/planning-filter.md §8.1: given twice, the values join with one
-  // space, in order, which is what typing both into the Filter box gives.
+  // docs/reference/planning-index.md §13.4: given twice, the values join with
+  // one space, in order, which is what typing both into the Filter box gives.
   it("parses index's --filter, every value joined with one space", () => {
     expect(
       parseArgs(["index", "--filter", "path:docs/a.md", "--filter=is:open"]),
@@ -321,7 +321,7 @@ describe("run", () => {
     expect(io.stderr).toContain("unknown option: --frobnicate");
   });
 
-  // The help is where an agent learns the filter (planning-filter.md §9.5):
+  // The help is where an agent learns the filter (planning-index.md §13.5):
   // its words and keys, the -, how terms combine, and what to do with the
   // link.
   it("lists --filter, its words, keys and -, among index's options, and its exit 2", async () => {
@@ -368,9 +368,9 @@ describe("run", () => {
     ]);
   });
 
-  // §5.4, §5.5: a bare value holds any character but white space and a
-  // quote, so the help says only what quotes are for: a space, and a `*`
-  // that is a `*`.
+  // planning-index.md §6.13, §6.14: a bare value holds any character but
+  // white space and a quote, so the help says only what quotes are for: a
+  // space, and a `*` that is a `*`.
   it("says which paths go in quotes as the parser reads them", () => {
     for (const ch of [
       "A",

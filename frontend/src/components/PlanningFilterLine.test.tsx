@@ -4,7 +4,7 @@ import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { FILTER_HINT, PlanningFilterLine } from "./PlanningFilterLine";
 
-// The filter line on its own (docs/design/planning-filter.md §7): what it
+// The filter line on its own (docs/reference/planning-index.md §6.17): what it
 // hands the page as the reader types, and between the box's own Enter, ✕ or
 // paste and the location it navigates to. The router commits a location in
 // a transition, so for that while the URL still holds the old text: here it

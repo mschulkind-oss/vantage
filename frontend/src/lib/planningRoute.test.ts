@@ -1,7 +1,7 @@
 /**
  * The planning page's URL (`docs/reference/planning-index.md` §6), and its
- * repository segment in daemon mode, which `docs/design/planning-filter.md`
- * §9.4 needs encoded so a filtered link can be put after it.
+ * repository segment in daemon mode, which `docs/reference/planning-index.md`
+ * §13.5 needs encoded so a filtered link can be put after it.
  */
 import { matchRoutes } from "react-router-dom";
 import { describe, expect, it } from "vitest";

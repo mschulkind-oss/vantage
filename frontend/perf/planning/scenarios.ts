@@ -13,8 +13,7 @@
  * - **The first build** is the cold load alone (D7 cold, on this repository).
  * - **The typing flow** opens the planning page with `g p`, waits for its
  *   first pages and the visit's review requests, presses `/`, and types a
- *   query into the Filter box one key at a time (T1 to T4 of
- *   `docs/design/planning-filter.md` §16).
+ *   query into the Filter box one key at a time (T1 to T4 of §18).
  */
 import type { Browser, CDPSession, Page, Request } from "@playwright/test";
 import { appliedBy } from "./filterText.ts";
@@ -557,7 +556,7 @@ export interface Keystroke {
   applies: string | null;
   /**
    * Its text keeps no entry, so the page holds it back until the idle pause
-   * (planning-filter.md §6.4): typed on, it changes nothing, and T2 does not
+   * (§6.16): typed on, it changes nothing, and T2 does not
    * count it.
    */
   held: boolean;
@@ -598,7 +597,7 @@ export interface TypingRun extends TypingPass {
   cls: number;
   /** The same, counting the shifts it forgives within 500 ms of an input. */
   clsAll: number;
-  /** History entries the typing added: 0, as the design requires. */
+  /** History entries the typing added: 0, as §6.16 requires. */
   historyAdded: number;
   /** The URL's `filter` once the flow's wait was over. */
   urlFilter: string | null;
