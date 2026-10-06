@@ -110,10 +110,11 @@ Measures the planning index's scale targets (docs/reference/planning-index.md
   --help                print this
 
 first-build is this repository's first build (or --repo's), whatever --size
-says. T1 to T4 are docs/design/planning-filter.md §16's typing targets, and
-their percentiles pool every run's keystrokes; §16 asks for ten runs or more. D3 is the slope of D2 between the two largest sizes run; §18 defines it
-from 45 to 60, and three runs cannot resolve it (the README says how many
-can). Nothing here judges a result: compare with §18's table.`;
+says. T1 to T4 are §18's typing targets, and their percentiles pool every
+run's keystrokes; §18 asks for ten runs or more. D3 is the slope of D2 between
+the two largest sizes run; §18 defines it from 45 to 60, and three runs cannot
+resolve it (the README says how many can). Nothing here judges a result:
+compare with §18's tables.`;
 
 interface Args {
   sizes: number[];
