@@ -861,14 +861,16 @@ bare `path:` pattern holding any character the table above puts in quotes; a
 `**` that is not a whole folder with more of the path after it, as in
 `docs/**`, where `/docs/` keeps everything under the root's `docs` folder, or
 two `**` folders in a row; two `/` in a row, or a `.` or `..` folder past a
-leading `./`, in a `path:` value; a control or invisible character anywhere,
-such as a zero-width space; and more than 64 terms or 2,048 code points. Such a
+leading `./`, in a `path:` value; a control or invisible character inside a
+term, such as a zero-width space, though a tab or a line break between terms
+is only a space; and more than 64 terms or 2,048 code points. Such a
 filter is **not understood**, and none of it is applied, since applying only
 the terms it reads could hide entries the filter asked for:
 
 - **While you type one,** such as a phrase whose closing quote is still to
   come, the page keeps what it shows, and the box's hint says *Not applied:
-  Enter says why*.
+  Enter says why*. On a narrow screen the hint is an amber icon beside the
+  box, with those words as its tooltip.
 - **Press Enter on it, or open a link that holds one,** and the page shows
   every entry, the box gets an amber ring, and the notice names what it could
   not read, as in *Not filtered: this Vantage cannot read `is:closed`. It
@@ -885,9 +887,10 @@ shows:
 paths, 5 of them open questions.*
 
 That is the entries shown, of all the entries the page would list without it;
-the documents it keeps, of every path the index lists; and how many of the
-entries shown are open questions. A line follows for each of these that
-applies:
+the documents its `path:` terms keep, of every path the index lists; and how
+many of the entries shown are open questions. The paths are left out when the
+filter keeps every one, as a filter of words alone does. A line follows for
+each of these that applies:
 
 - **A `path:` term that matches no path:** *`path:docs/desing` matches no
   path the index lists.* The rest of the filter still applies, and that term
@@ -1000,10 +1003,11 @@ is encoded too, so a sentence's period after a pasted address cannot take it.
 - In print, the box is left out. A line, *Filter:* and the filter, prints in
   its place, and the notice prints too, so a printout always says it is
   filtered and by how much.
-- A screen reader hears the notice when the address takes a filter, after
-  the pause or on Enter, ✕ or a paste, and that every entry is shown after you
-  clear one. It hears nothing per key, and nothing as the page opens. The box
-  is described by the notice.
+- A screen reader hears the notice when the address takes a filter: at once
+  on Enter, ✕ or a paste, and for typing once you have stopped for a second
+  or left the box. It hears that every entry is shown after you clear one. It
+  hears nothing per key, however slowly you type, and nothing as the page
+  opens. The box is described by the notice, and by its hint while it shows.
 
 #### Filtered links
 
