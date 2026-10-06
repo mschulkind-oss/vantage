@@ -14,10 +14,9 @@
  * with the term as the one line of `.git/info/exclude`: written with a
  * leading `/` when it anchors, as the filter gives it to the port, and with
  * every glob character escaped when it is a quoted literal. Nothing here runs
- * git for that. The one test that does reads the fixture at the previous
- * release's tag, and skips where the tag or the file is absent.
+ * git. The fixture is one release's: nothing compares it with an earlier
+ * release's, since a later release may read a text differently (§10.3).
  */
-import { execFileSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 import {
   PLANNING_FILTER_LIMITS,
@@ -30,6 +29,7 @@ import {
   derivePlanningSections,
   documentFilter,
   encodePlanningQueryValue,
+  filterKeepsDocument,
   filterKeepsQuestion,
   noticeText,
   parsePlanningFilter,
@@ -37,21 +37,18 @@ import {
   planningLink,
   readPastedPlanningLink,
   type PlanningFilter,
+  type PlanningFilterQuestion,
   type PlanningFilterSummary,
   type PlanningIndex,
   type PlanningSections,
   type UnderstoodPlanningFilter,
 } from "vantage-md/planning";
-import { pickPreviousRelease } from "../compat/previousRelease";
 import { planningPath } from "./planningRoute";
 import {
-  FILTER_FORMS_PATH,
   filterForms,
   filterFormsIndex,
   indexOf,
-  repoPath,
   sectionEntryKeys,
-  type PlanningFilterForms,
 } from "../test/planning";
 
 const FORMS = filterForms();
@@ -77,16 +74,24 @@ const apply = (
   sections: PlanningSections = SECTIONS,
 ) => applyPlanningFilter(index, sections, understood(text));
 
-/** The documents `filter` keeps: what its `path:` terms keep, alone. */
-function keptDocuments(filter: UnderstoodPlanningFilter): string[] {
-  const paths: UnderstoodPlanningFilter = {
-    ...filter,
-    terms: filter.terms.filter((term) => term.key === "path"),
-  };
-  return LISTED.filter((path) =>
-    filterKeepsQuestion(paths, { path, state: "open" }),
-  );
-}
+/** The documents `filter` keeps: what its `path:` and `-path:` terms keep. */
+const keptDocuments = (filter: UnderstoodPlanningFilter): string[] =>
+  LISTED.filter((path) => filterKeepsDocument(filter, path));
+
+/** Every question the fixture's index holds. */
+const QUESTIONS = INDEX.documents.flatMap((doc) => doc.questions);
+
+/** A question at `path` in `state`, with no id, title or leaning to search. */
+const at = (
+  path: string,
+  state: PlanningFilterQuestion["state"] = "open",
+): PlanningFilterQuestion => ({
+  path,
+  state,
+  id: null,
+  title: "",
+  leaning: null,
+});
 
 /** What `URLSearchParams` reads back from a link's query. */
 const queryOf = (link: string) =>
@@ -164,6 +169,50 @@ describe("the fixture of forms (§10.4)", () => {
     );
   });
 
+  // §10.4's text cases, each pinned to the field or rule it shows.
+  it("holds the text cases the design lists", () => {
+    const read = (text: string) => {
+      const entry = FORMS.read.find((e) => e.text === text);
+      if (entry === undefined) throw new Error(`no read entry ${text}`);
+      return entry;
+    };
+    const question = (id: string) => QUESTIONS.find((q) => q.id === id)!;
+    const lower = (text: string | null) => (text ?? "").toLowerCase();
+    // A question by each of its fields alone: its id, which its title does
+    // not hold; its title; its leaning; its document's path.
+    expect(lower(question("OQ-X1").title)).not.toContain("oq-x1");
+    expect(read("oq-x1").questions).toEqual(["x/docs/design/a.md#OQ-X1"]);
+    expect(read("outer").questions).toEqual(["docs/design/a.md#OQ-A3"]);
+    expect(question("OQ-C2").leaning).toBe("Quietly.");
+    expect(lower(question("OQ-C2").title)).not.toContain("quietly");
+    expect(read("quietly").questions).toEqual(["docs/design/sub/c.md#OQ-C2"]);
+    expect(read("caf\u00e9").questions).toEqual(["docs/caf\u00e9.md#OQ-K1"]);
+    // A row by its stage, and by its next.
+    expect(read("built").keeps).toEqual(["graduate notes/e.md"]);
+    const built = INDEX.documents.find((doc) => doc.path === "notes/e.md");
+    expect(built?.next).toBe("Graduate into the reference");
+    expect(read('"graduate into"').keeps).toEqual(["graduate notes/e.md"]);
+    // A Too large and an Unreadable path.
+    expect(read("big.md").keeps).toEqual(["skipped docs/big.md"]);
+    expect(read("broken").keeps).toEqual(["could-not-read notes/broken.md"]);
+    // A match only in case, NFC against NFD, a phrase against its words apart.
+    expect(read("oq-a1").keeps).toEqual(["needs-you docs/design/a.md#OQ-A1"]);
+    expect(read("CAF\u00c9").questions).toEqual(read("caf\u00e9").questions);
+    expect(read("cafe\u0301").keeps).toEqual([]);
+    expect(read("inner ruled").questions).toEqual(["docs/design/a.md#OQ-A4"]);
+    expect(read('"inner ruled"').questions).toEqual([]);
+    // An exclusion of each kind, and an unknown key's hint.
+    expect(read("path:docs/design/a.md -outer").questions).not.toContain(
+      "docs/design/a.md#OQ-A3",
+    );
+    expect(read("-path:docs/design").documents).not.toContain(
+      "docs/design/a.md",
+    );
+    expect(read("path:notes -is:open").questions).toEqual(["notes/b.md#OQ-B1"]);
+    expect(read("stage:decided").unknownKeys).toEqual(["stage"]);
+    expect(read("http://x").unknownKeys).toEqual([]);
+  });
+
   it("never lists a text both as read and as not understood", () => {
     const read = new Set(FORMS.read.map((entry) => entry.text));
     for (const entry of FORMS.notUnderstood) {
@@ -180,6 +229,8 @@ describe("the fixture of forms (§10.4)", () => {
       const again = understood(entry.canonical);
       expect(again.canonical).toBe(entry.canonical);
       expect(again.terms).toEqual(filter.terms);
+      expect(filter.unknownKeys).toEqual(entry.unknownKeys);
+      expect(again.unknownKeys).toEqual(entry.unknownKeys);
     });
 
     it("keeping the questions it reads as kept, wherever the sections put them", () => {
@@ -200,6 +251,9 @@ describe("the fixture of forms (§10.4)", () => {
       );
       expect(sectionEntryKeys(sections)).toEqual(entry.keeps);
       expect(summary.unmatched).toEqual(entry.unmatched);
+      expect(summary.unknownKeys.map(({ key }) => key)).toEqual(
+        entry.unknownKeys,
+      );
       expect(summary.documents).toEqual({
         kept: entry.documents.length,
         of: LISTED.length,
@@ -218,33 +272,59 @@ describe("the fixture of forms (§10.4)", () => {
         roadmap: null,
       });
       // Nothing a chat client or Markdown reads as markup, or that cuts the
-      // value short, and `:` and `/` as they are, to be read.
+      // value short, and `:` and `/` as they are, to be read, but for a last
+      // character a pasted link's end drops (§9.2).
       expect(link).not.toMatch(/[*#&"` ]/);
-      expect(link).not.toMatch(/%3A|%2F/i);
+      expect(link.replace(/%(2E|5F|7E|3A)$/, "")).not.toMatch(/%3A|%2F/i);
     });
   });
 
-  // The keeps are only as right as the rule they were drawn with: an entry is
-  // kept when its path is a kept document and, under an `is:` term, it is an
-  // open question (§5.3).
-  it("keeps exactly the entries of kept documents an is: term allows", () => {
+  // The keeps are only as right as the rule they were drawn with (§5.3), so
+  // it is written here a second time, plainly: an entry is kept when its path
+  // is a kept document (git's answer, in `documents`), it passes the is: and
+  // -is: terms, every text term is a substring of one of its searched fields
+  // whatever the case, and no -text term is.
+  it("keeps exactly the questions and entries the four tests of §5.3 keep", () => {
     const all = sectionEntryKeys(SECTIONS);
+    const passes = (
+      filter: UnderstoodPlanningFilter,
+      state: string | null,
+      fields: readonly (string | null)[],
+    ) =>
+      filter.terms.every((term) => {
+        if (term.key === "path") return true;
+        const matches =
+          term.key === "is"
+            ? state === "open"
+            : fields.some((field) =>
+                (field ?? "").toLowerCase().includes(term.value.toLowerCase()),
+              );
+        return matches !== term.exclude;
+      });
     for (const entry of FORMS.read) {
       const filter = understood(entry.text);
-      const hasIs = filter.terms.some((term) => term.key === "is");
+      const questions = QUESTIONS.filter(
+        (q) =>
+          entry.documents.includes(q.path) &&
+          passes(filter, q.state, [q.id, q.title, q.leaning, q.path]),
+      )
+        .map((q) => `${q.path}#${q.id}`)
+        .sort();
+      expect(entry.questions, entry.text).toEqual(questions);
       const allowed = all.filter((key) => {
+        const section = key.slice(0, key.indexOf(" "));
         const target = key.slice(key.indexOf(" ") + 1);
-        const path = target.includes("#")
-          ? target.slice(0, target.lastIndexOf("#"))
-          : target;
+        const hash = target.lastIndexOf("#");
+        const path = hash === -1 ? target : target.slice(0, hash);
         if (!entry.documents.includes(path)) return false;
-        if (!hasIs) return true;
-        if (!target.includes("#")) return false;
-        const id = target.slice(target.lastIndexOf("#") + 1);
-        const q = INDEX.documents
-          .flatMap((doc) => doc.questions)
-          .find((question) => question.path === path && question.id === id);
-        return q?.state === "open";
+        if (hash !== -1) return questions.includes(target);
+        // A row has no state; a Too large or Unreadable one only a path.
+        const doc = INDEX.documents.find((d) => d.path === path);
+        const fields =
+          section === "skipped" || section === "could-not-read"
+            ? [path]
+            : [path, doc?.stage ?? null, doc?.next ?? null];
+        return passes(filter, null, fields);
       });
       expect(entry.keeps, entry.text).toEqual(allowed);
     }
@@ -260,74 +340,6 @@ describe("the fixture of forms (§10.4)", () => {
         reason: "reason" in entry ? entry.reason : null,
       });
     });
-  });
-});
-
-/**
- * The fixture of forms at the previous release's tag, or why there is none
- * to compare with: no git, no release tag, or no fixture at it.
- */
-function previousForms():
-  | { kind: "found"; tag: string; forms: PlanningFilterForms }
-  | { kind: "absent"; reason: string } {
-  const root = repoPath("");
-  const git = (...args: string[]) =>
-    execFileSync("git", args, {
-      cwd: root,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-    });
-  let tags: string[];
-  try {
-    tags = git("tag", "--list", "v[0-9]*").split("\n").filter(Boolean);
-  } catch {
-    return { kind: "absent", reason: "git cannot list this checkout's tags" };
-  }
-  const previous = pickPreviousRelease({
-    tags,
-    changelog: "",
-    published: tags.map((tag) => tag.replace(/^v/, "")),
-  });
-  if (previous.kind === "none") {
-    return { kind: "absent", reason: previous.reason };
-  }
-  const tag = `v${previous.version}`;
-  try {
-    const text = git("show", `${tag}:${FILTER_FORMS_PATH}`);
-    return { kind: "found", tag, forms: JSON.parse(text) };
-  } catch {
-    return { kind: "absent", reason: `${tag} has no ${FILTER_FORMS_PATH}` };
-  }
-}
-
-describe("the fixture of forms against the previous release", () => {
-  const previous = previousForms();
-  if (previous.kind === "absent") {
-    it.skip(`skipped, because ${previous.reason}`, () => {});
-    return;
-  }
-  // Every field but `keeps`: which section an entry is in, and in what
-  // order, is the derivation's, which may change, never the filter's
-  // meaning, which `questions` and `documents` hold (planning-filter.md
-  // §10.3, §10.4).
-  const meaning = ({
-    keeps: _sections,
-    ...rest
-  }: PlanningFilterForms["read"][number]) => rest;
-  it(`edits and removes no read entry of ${previous.tag}`, () => {
-    for (const entry of previous.forms.read) {
-      const now = FORMS.read.find((read) => read.text === entry.text);
-      expect(now, entry.text).toBeDefined();
-      expect(meaning(now!), entry.text).toEqual(meaning(entry));
-    }
-  });
-  it(`removes no not-understood entry of ${previous.tag}, except by reading it`, () => {
-    const now = new Set(
-      [...FORMS.read, ...FORMS.notUnderstood].map((entry) => entry.text),
-    );
-    for (const entry of previous.forms.notUnderstood) {
-      expect(now.has(entry.text), entry.text).toBe(true);
-    }
   });
 });
 
@@ -359,12 +371,149 @@ describe("the grammar (§5.2, §5.5)", () => {
   });
 
   it("names the first term it cannot read, as written", () => {
-    expect(parsePlanningFilter('path:docs "a b" OR')).toMatchObject({
-      term: '"a b"',
+    expect(parsePlanningFilter('path:docs "a b" a"b" is:x')).toMatchObject({
+      term: 'a"b"',
     });
-    expect(parsePlanningFilter("is:open path:x Path:y -z")).toMatchObject({
-      term: "Path:y",
+    expect(
+      parsePlanningFilter("is:open path:x Path:y is:Open -z"),
+    ).toMatchObject({ term: "is:Open" });
+  });
+
+  // The colon rule (§5.2): a qualifier exactly when the part before the
+  // first `:` is a key, which must then read as one; any other term is text.
+  it("reads a term as a qualifier only when the part before its first colon is a key", () => {
+    const keys = (text: string) => understood(text).terms.map((t) => t.key);
+    expect(keys("path:a is:open")).toEqual(["path", "is"]);
+    for (const text of [
+      "word",
+      "stage:ready",
+      "Path:a",
+      "PATH:a",
+      "IS:open",
+      "http://x",
+      "Note:",
+      ":x",
+      ":",
+      '"path:a"',
+      "(path:a)",
+      "!path:a",
+      "pathx:a",
+    ]) {
+      expect(keys(text), text).toEqual(["text"]);
+    }
+    // A key's term that does not read as one is not understood, never text.
+    for (const text of ["path:", "is:", "is:closed", "path:a?", "is:open:x"]) {
+      expect(parsePlanningFilter(text).kind, text).toBe("not-understood");
+    }
+  });
+
+  it("reads a word or a quoted phrase as a text term, in its own case", () => {
+    expect(understood("Generator").terms).toEqual([
+      {
+        key: "text",
+        text: "Generator",
+        value: "Generator",
+        quoted: false,
+        exclude: false,
+        unknownKey: null,
+      },
+    ]);
+    expect(understood('"command surface"').terms).toEqual([
+      {
+        key: "text",
+        text: '"command surface"',
+        value: "command surface",
+        quoted: true,
+        exclude: false,
+        unknownKey: null,
+      },
+    ]);
+    // A word may hold what a pattern may not: `*`, `?`, `#`, a no-break space.
+    expect(understood("a*b?c#\u00a0d").terms[0]).toMatchObject({
+      key: "text",
+      value: "a*b?c#\u00a0d",
     });
+  });
+
+  it("reads one leading - as an exclusion of the term after it", () => {
+    expect(understood("-path:a -is:open -word").terms).toEqual([
+      {
+        key: "path",
+        text: "-path:a",
+        value: "a",
+        quoted: false,
+        exclude: true,
+      },
+      { key: "is", text: "-is:open", value: "open", exclude: true },
+      {
+        key: "text",
+        text: "-word",
+        value: "word",
+        quoted: false,
+        exclude: true,
+        unknownKey: null,
+      },
+    ]);
+    // Only one: `--x` excludes the text `-x`, and `-"-x"` does too.
+    expect(understood("--x").terms[0]).toMatchObject({
+      key: "text",
+      value: "-x",
+      exclude: true,
+    });
+    expect(understood('-"-x"').terms[0]).toMatchObject({
+      value: "-x",
+      exclude: true,
+    });
+    // A lone `-` excludes nothing, and is not understood.
+    for (const text of ["-", "a - b", "-path:", "-is:", '-""']) {
+      expect(parsePlanningFilter(text).kind, text).toBe("not-understood");
+    }
+    expect(parsePlanningFilter("a - b")).toMatchObject({ term: "-" });
+  });
+
+  it("refuses a quote that does not wrap a whole value, and an empty one", () => {
+    for (const [text, term] of [
+      ['a"b"', 'a"b"'],
+      ['"a"b', '"a"b'],
+      ['stage:"ready"', 'stage:"ready"'],
+      ['x a"b c"', 'a"b c"'],
+      ['""', '""'],
+      ['path:""', 'path:""'],
+      ['"a\\x"', '"a\\x"'],
+    ]) {
+      expect(parsePlanningFilter(text), text).toMatchObject({
+        kind: "not-understood",
+        term,
+      });
+    }
+  });
+
+  // §5.3: the hint's rule is exact.
+  it("notes an unknown key: lowercase letters before the colon, no key, and no / after it", () => {
+    expect(understood("stage:ready").unknownKeys).toEqual(["stage"]);
+    expect(understood("-title:x").unknownKeys).toEqual(["title"]);
+    expect(understood("title:").unknownKeys).toEqual(["title"]);
+    expect(understood("a:b").unknownKeys).toEqual(["a"]);
+    // Once each, in the order written, with the term that opened it.
+    const filter = understood("stage:a title:b stage:c");
+    expect(filter.unknownKeys).toEqual(["stage", "title"]);
+    expect(
+      filter.terms.map((t) => (t.key === "text" ? t.unknownKey : null)),
+    ).toEqual(["stage", "title", "stage"]);
+    for (const text of [
+      "http://x",
+      "Note:",
+      "Path:x",
+      "IS:open",
+      "oq-pf1:",
+      "x1:y",
+      ":x",
+      '"stage:ready"',
+      '-"title:x"',
+      "word",
+    ]) {
+      expect(understood(text).unknownKeys, text).toEqual([]);
+    }
   });
 
   it("runs an unclosed quote to the end of the text, and names the reason", () => {
@@ -382,10 +531,10 @@ describe("the grammar (§5.2, §5.5)", () => {
 
   it("reads is: only with the value open, bare", () => {
     expect(understood("is:open").terms).toEqual([
-      { key: "is", text: "is:open", value: "open" },
+      { key: "is", text: "is:open", value: "open", exclude: false },
     ]);
-    // `is:"open"` is left free (the sketch's risk 1): a later release may
-    // move a form to `read`, and never back.
+    // `is:"open"` is not understood (the sketch's risk 1): a quote may wrap
+    // a `path:` value, and `open` is the one value `is:` reads.
     for (const text of [
       'is:"open"',
       "is:Open",
@@ -444,47 +593,52 @@ describe("the grammar (§5.2, §5.5)", () => {
   // reason stands in only where there is no term to name.
   it("names the first term it cannot read in a filter past a limit", () => {
     const terms = { terms: 2, codePoints: 2048 };
-    expect(parsePlanningFilter("OR AND NOT", terms)).toMatchObject({
-      term: "OR",
+    expect(parsePlanningFilter("is:x is:y is:z", terms)).toMatchObject({
+      term: "is:x",
       reason: null,
     });
     // Past the term limit too: every term is read.
     expect(
-      parsePlanningFilter("is:open is:open is:open title:x", terms),
-    ).toMatchObject({ term: "title:x", reason: null });
+      parsePlanningFilter("is:open is:open is:open is:x", terms),
+    ).toMatchObject({ term: "is:x", reason: null });
+    // Words count as terms.
+    expect(parsePlanningFilter("a b c", terms)).toMatchObject({
+      term: null,
+      reason: "too-many-terms",
+    });
 
     const length = { terms: 64, codePoints: 10 };
-    expect(parsePlanningFilter("foo xxxxxxxxxxxxxxxxxxxx", length)).toEqual({
+    expect(parsePlanningFilter("is:x xxxxxxxxxxxxxxxxxxxx", length)).toEqual({
       kind: "not-understood",
-      text: "foo xxxxxxxxxxxxxxxxxxxx",
-      term: "foo",
+      text: "is:x xxxxxxxxxxxxxxxxxxxx",
+      term: "is:x",
       reason: null,
     });
-    expect(parsePlanningFilter("OR is:open path:abc", length)).toMatchObject({
-      term: "OR",
+    expect(parsePlanningFilter('x a"b" is:open', length)).toMatchObject({
+      term: 'a"b"',
     });
     // A term that ends exactly at the limit is read whole: the one code
     // point after it says it ends there.
-    expect(parsePlanningFilter("is:open OR path:abc", length)).toMatchObject({
-      term: "OR",
+    expect(parsePlanningFilter('is:open "" path:abc', length)).toMatchObject({
+      term: '""',
     });
     // A term the limit cuts off is never named, even where what is read of
     // it is not understood, since nothing past the limit is read.
-    expect(parsePlanningFilter("is:open TITLE:x", length)).toMatchObject({
+    expect(parsePlanningFilter("is:open is:x", length)).toMatchObject({
       term: null,
       reason: "too-long",
     });
-    expect(parsePlanningFilter('is:open "OR x"', length)).toMatchObject({
+    expect(parsePlanningFilter('is:open a"b"', length)).toMatchObject({
       term: null,
       reason: "too-long",
     });
     // Before an unclosed quote, a term is named too.
-    expect(parsePlanningFilter('OR path:"a b', terms)).toMatchObject({
-      term: "OR",
+    expect(parsePlanningFilter('is:x path:"a b', terms)).toMatchObject({
+      term: "is:x",
     });
   });
 
-  it("refuses each end of each excluded range inside quotes, and what lies just outside none", () => {
+  it("refuses each end of each excluded range inside quotes and in a word, and what lies just outside none", () => {
     const ranges: [number, number][] = [
       [0x0000, 0x001f],
       [0x007f, 0x009f],
@@ -496,28 +650,38 @@ describe("the grammar (§5.2, §5.5)", () => {
       [0x2060, 0x206f],
       [0xfeff, 0xfeff],
     ];
-    const quoted = (cp: number) => `path:"a${String.fromCodePoint(cp)}b.md"`;
-    for (const [lo, hi] of ranges) {
-      for (const cp of [lo, hi]) {
-        expect(parsePlanningFilter(quoted(cp)).kind, cp.toString(16)).toBe(
-          "not-understood",
-        );
-      }
-      for (const cp of [lo - 1, hi + 1]) {
-        if (cp < 0 || ranges.some(([a, b]) => cp >= a && cp <= b)) continue;
-        expect(parsePlanningFilter(quoted(cp)).kind, cp.toString(16)).toBe(
-          "understood",
-        );
+    const forms = [
+      (c: string) => `path:"a${c}b.md"`,
+      (c: string) => `"a${c}b"`,
+      (c: string) => `a${c}b`,
+      (c: string) => `-a${c}b`,
+    ];
+    // Space, tab, CR and LF split a word, so they lie outside one.
+    const splits = (cp: number) => [0x20, 0x09, 0x0d, 0x0a].includes(cp);
+    for (const form of forms) {
+      for (const [lo, hi] of ranges) {
+        for (const cp of [lo, hi]) {
+          const text = form(String.fromCodePoint(cp));
+          if (splits(cp) && !text.includes('"')) continue;
+          expect(parsePlanningFilter(text).kind, text).toBe("not-understood");
+        }
+        for (const cp of [lo - 1, hi + 1]) {
+          if (cp < 0 || ranges.some(([a, b]) => cp >= a && cp <= b)) continue;
+          if (splits(cp)) continue;
+          const text = form(String.fromCodePoint(cp));
+          expect(parsePlanningFilter(text).kind, text).toBe("understood");
+        }
       }
     }
   });
 
   it("refuses a lone surrogate (the sketch's risk 2)", () => {
     for (const unit of ["\ud800", "\udbff", "\udc00", "\udfff"]) {
-      expect(parsePlanningFilter(`path:"a${unit}b"`).kind).toBe(
-        "not-understood",
-      );
+      for (const text of [`path:"a${unit}b"`, `a${unit}b`, `"a${unit}b"`]) {
+        expect(parsePlanningFilter(text).kind).toBe("not-understood");
+      }
     }
+    expect(understood("a\u{1F4AC}b").canonical).toBe("a\u{1F4AC}b");
     // A pair is one code point, and a path may hold it.
     expect(understood('path:"a\u{1F4AC}b"').canonical).toBe(
       'path:"a\u{1F4AC}b"',
@@ -539,6 +703,13 @@ describe("canonical text (§5.6)", () => {
     expect(
       understood(" is:open\n\npath:b  path:a is:open path:b ").canonical,
     ).toBe("is:open path:b path:a");
+    // A repeat is one of the same canonical text: a word's case is its own.
+    expect(understood('word "word" Word -word -"word"').canonical).toBe(
+      "word Word -word",
+    );
+    expect(understood("is:open -is:open path:a -path:a").canonical).toBe(
+      "is:open -is:open path:a -path:a",
+    );
   });
 
   it("2: reads one leading ./ as /, and drops a / that does not anchor", () => {
@@ -565,7 +736,36 @@ describe("canonical text (§5.6)", () => {
     );
   });
 
-  it('4: escapes only " and \\ inside quotes', () => {
+  it("4: writes a word as typed, and a phrase bare where it reads the same so", () => {
+    expect(understood("Generator").canonical).toBe("Generator");
+    expect(understood('"Generator"').canonical).toBe("Generator");
+    expect(understood('"a\\\\b"').canonical).toBe("a\\b");
+    expect(understood("a\\b").terms).toEqual(understood('"a\\\\b"').terms);
+    // Quoted where bare it would split, quote, draw a hint or be a qualifier,
+    // or exclude.
+    for (const phrase of [
+      '"command surface"',
+      '"a\\"b"',
+      '"stage:ready"',
+      '"path:a"',
+      '"-x"',
+    ]) {
+      expect(understood(phrase).canonical, phrase).toBe(phrase);
+    }
+  });
+
+  it("5: writes an exclusion as a - before its term's canonical text", () => {
+    expect(understood('-path:"./docs/x.md" -"Word" -is:open').canonical).toBe(
+      "-path:docs/x.md -Word -is:open",
+    );
+    expect(understood('-path:"my notes.md" -"a b"').canonical).toBe(
+      '-path:"my notes.md" -"a b"',
+    );
+    expect(understood("--x").canonical).toBe("--x");
+    expect(understood('-"-x"').canonical).toBe('-"-x"');
+  });
+
+  it('6: escapes only " and \\ inside quotes', () => {
     expect(understood('path:"a\\\\b \\"c\\" #?.md"').canonical).toBe(
       'path:"a\\\\b \\"c\\" #?.md"',
     );
@@ -575,11 +775,13 @@ describe("canonical text (§5.6)", () => {
         text: 'path:"a\\\\b \\"c\\" #?.md"',
         value: 'a\\b "c" #?.md',
         quoted: true,
+        exclude: false,
       },
     ]);
+    expect(understood('"a\\\\b \\"c\\""').canonical).toBe('"a\\\\b \\"c\\""');
   });
 
-  it("5: no terms is no filter", () => {
+  it("7: no terms is no filter", () => {
     expect(parsePlanningFilter("   ")).toEqual({ kind: "none" });
     expect(planningLink("")).toBe(PLANNING_PAGE_PATH);
   });
@@ -593,19 +795,117 @@ describe("canonical text (§5.6)", () => {
 });
 
 describe("matching (§5.3, §5.4)", () => {
-  const keeps = (text: string, path: string, state = "open" as const) =>
-    filterKeepsQuestion(understood(text), { path, state });
+  const keeps = (text: string, path: string) =>
+    filterKeepsQuestion(understood(text), at(path));
 
-  it("ORs terms of one key and ANDs different keys", () => {
+  it("ORs path: terms and ANDs the tests", () => {
     const filter = understood("path:docs/a.md path:docs/b.md is:open");
-    const at = (path: string, state: "open" | "blocked" | "answered") =>
-      filterKeepsQuestion(filter, { path, state });
-    expect(at("docs/a.md", "open")).toBe(true);
-    expect(at("docs/b.md", "open")).toBe(true);
-    expect(at("docs/c.md", "open")).toBe(false);
-    expect(at("docs/a.md", "blocked")).toBe(false);
-    expect(at("docs/a.md", "answered")).toBe(false);
+    const kept = (path: string, state: PlanningFilterQuestion["state"]) =>
+      filterKeepsQuestion(filter, at(path, state));
+    expect(kept("docs/a.md", "open")).toBe(true);
+    expect(kept("docs/b.md", "open")).toBe(true);
+    expect(kept("docs/c.md", "open")).toBe(false);
+    expect(kept("docs/a.md", "blocked")).toBe(false);
+    expect(kept("docs/a.md", "answered")).toBe(false);
     expect(keeps("is:open", "anything/at/all.md")).toBe(true);
+  });
+
+  it("keeps a document by its path: terms, less its -path: terms, whatever else the filter says", () => {
+    const filter = understood("path:docs -path:docs/x is:open word -other");
+    expect(filterKeepsDocument(filter, "docs/a.md")).toBe(true);
+    expect(filterKeepsDocument(filter, "docs/x/a.md")).toBe(false);
+    expect(filterKeepsDocument(filter, "notes/a.md")).toBe(false);
+    expect(filterKeepsDocument(understood("-path:docs"), "a.md")).toBe(true);
+    expect(filterKeepsDocument(understood("-path:docs"), "docs/a.md")).toBe(
+      false,
+    );
+    expect(filterKeepsDocument(understood("word"), "anything.md")).toBe(true);
+  });
+
+  const question = (fields: Partial<PlanningFilterQuestion>) => ({
+    ...at("docs/a.md"),
+    ...fields,
+  });
+  const keepsQuestion = (text: string, q: PlanningFilterQuestion) =>
+    filterKeepsQuestion(understood(text), q);
+
+  it("matches a text term as a substring of any one field, whatever the case", () => {
+    const q = question({
+      id: "OQ-PF1",
+      title: "OQ-PF1: Which keys does the first release read?",
+      leaning: "Path and is",
+      path: "docs/design/planning-filter.md",
+    });
+    for (const text of [
+      "oq-pf",
+      "PF1",
+      "KEYS",
+      "release read",
+      "first",
+      '"keys does"',
+      "path and",
+      "planning-filter",
+      "DESIGN/PLAN",
+      ".md",
+      "?",
+      ":",
+    ]) {
+      expect(keepsQuestion(text, q), text).toBe(true);
+    }
+    for (const text of [
+      "keyz",
+      '"does keys"',
+      "planning-filter nothere",
+      '"read? path"',
+      '"filter.md oq"',
+    ]) {
+      expect(keepsQuestion(text, q), text).toBe(false);
+    }
+  });
+
+  it("ANDs text terms in any order, each in a field of its own choosing", () => {
+    const q = question({ id: "OQ-A1", title: "The first?", leaning: "Yes." });
+    expect(keepsQuestion("first yes", q)).toBe(true);
+    expect(keepsQuestion("yes first oq-a1 docs", q)).toBe(true);
+    expect(keepsQuestion("first nope", q)).toBe(false);
+    // A phrase is one substring, spaces included, and never spans two fields.
+    expect(keepsQuestion('"the first"', q)).toBe(true);
+    expect(keepsQuestion('"first the"', q)).toBe(false);
+    expect(keepsQuestion('"first? yes"', q)).toBe(false);
+  });
+
+  it("reads nothing as a wildcard, folds only case, and normalizes nothing", () => {
+    const q = question({ title: "Caf\u00e9 au lait, stra\u00dfe" });
+    expect(keepsQuestion("caf*", q)).toBe(false);
+    expect(keepsQuestion("ca?", q)).toBe(false);
+    expect(keepsQuestion("CAF\u00c9", q)).toBe(true);
+    expect(keepsQuestion("cafe\u0301", q)).toBe(false);
+    expect(keepsQuestion("strasse", q)).toBe(false);
+    expect(keepsQuestion("STRA\u00dfE", q)).toBe(true);
+    expect(keepsQuestion("*", question({ title: "a * b" }))).toBe(true);
+  });
+
+  it("matches nothing with a field the index holds as null", () => {
+    const q = question({ id: null, title: "T", leaning: null });
+    expect(keepsQuestion("null", q)).toBe(false);
+    expect(keepsQuestion("-null", q)).toBe(true);
+  });
+
+  it("drops what an exclusion would keep, and nothing else", () => {
+    const open = question({ title: "Alpha beta" });
+    const blocked = question({ title: "Alpha", state: "blocked" });
+    expect(keepsQuestion("-beta", open)).toBe(false);
+    expect(keepsQuestion("-beta", blocked)).toBe(true);
+    expect(keepsQuestion("alpha -beta", blocked)).toBe(true);
+    expect(keepsQuestion("-is:open", open)).toBe(false);
+    expect(keepsQuestion("-is:open", blocked)).toBe(true);
+    expect(keepsQuestion("-path:docs", open)).toBe(false);
+    expect(keepsQuestion("-path:notes", open)).toBe(true);
+    // Excluding the text a term keeps leaves nothing.
+    expect(keepsQuestion("alpha -alpha", open)).toBe(false);
+    // `--x` excludes the text `-x`.
+    expect(keepsQuestion("--x", question({ title: "a-x" }))).toBe(false);
+    expect(keepsQuestion("--x", question({ title: "x" }))).toBe(true);
   });
 
   it("anchors a pattern with an inner slash, as git does and the port does not", () => {
@@ -631,6 +931,7 @@ describe("matching (§5.3, §5.4)", () => {
     for (const entry of FORMS.read) {
       if (!entry.text.includes('"')) continue;
       const bare = understood(entry.text);
+      if (!bare.terms.some((term) => term.key === "path")) continue;
       if (bare.terms.some((term) => term.key === "path" && term.quoted)) {
         continue;
       }
@@ -642,9 +943,9 @@ describe("matching (§5.3, §5.4)", () => {
       };
       for (const path of paths) {
         expect(
-          filterKeepsQuestion(literal, { path, state: "open" }),
+          filterKeepsDocument(literal, path),
           `${entry.text} on ${path}`,
-        ).toBe(filterKeepsQuestion(bare, { path, state: "open" }));
+        ).toBe(filterKeepsDocument(bare, path));
       }
       compared++;
     }
@@ -729,6 +1030,20 @@ describe("applying a filter to the sections (§6.1, §6.2)", () => {
     for (const entry of FORMS.read) apply(entry.text, index, sections);
     expect(index).toEqual(INDEX);
     expect(sections).toEqual(SECTIONS);
+  });
+
+  // Sections derived from the index always resolve; a hand-built or stale
+  // reference has only its path and id to be read by, and no state.
+  it("judges a reference the index cannot resolve by its path and id alone", () => {
+    const real = SECTIONS.unrouted![0]!;
+    const stale = { ...real, id: "OQ-STALE9" };
+    const sections: PlanningSections = { ...SECTIONS, unrouted: [stale, real] };
+    const kept = (text: string) =>
+      apply(text, INDEX, sections).sections.unrouted?.map((ref) => ref.id);
+    expect(kept("oq-stale")).toEqual(["OQ-STALE9"]);
+    expect(kept(documentFilter(real.path)!)).toEqual(["OQ-STALE9", real.id]);
+    expect(kept("is:open")).toEqual([real.id]);
+    expect(kept("-is:open")).toEqual(["OQ-STALE9"]);
   });
 
   it("keeps the roadmaps, their states, the chosen one and stagesDeclared", () => {
@@ -897,6 +1212,51 @@ describe("applying a filter to the sections (§6.1, §6.2)", () => {
     );
     expect(apply("path:docs/design/a.md").summary.blockedLeftOut).toBe(0);
     expect(apply("path:notes/e.md is:open").summary.blockedLeftOut).toBe(0);
+    // Only those every other term keeps: OQ-A2 is "Paused on an outside
+    // event?", and OQ-B1 "Waits on something?".
+    expect(apply("paused is:open").summary.blockedLeftOut).toBe(1);
+    expect(apply("outer is:open").summary.blockedLeftOut).toBe(0);
+    expect(apply("is:open -paused").summary.blockedLeftOut).toBe(1);
+    expect(apply("is:open -path:notes").summary.blockedLeftOut).toBe(1);
+    // `-is:open` leaves no 🔒 question out, and neither does a text term.
+    expect(apply("-is:open").summary.blockedLeftOut).toBe(0);
+    expect(apply("outer").summary.blockedLeftOut).toBe(0);
+  });
+
+  it("keeps a row by its path, stage or next, never by an is: term, and whatever -is:open says", () => {
+    const keys = (text: string) => sectionEntryKeys(apply(text).sections);
+    expect(keys("decided")).toEqual([
+      "waiting notes/b.md",
+      "ready notes/b.md",
+      "disagrees notes/f.md",
+    ]);
+    expect(keys('"the reference"')).toEqual(["graduate notes/e.md"]);
+    expect(keys("notes/e")).toEqual(["graduate notes/e.md"]);
+    expect(keys("decided is:open")).toEqual([]);
+    expect(keys("decided -is:open")).toEqual(keys("decided"));
+    // A text term reads a row's fields, not its document's questions'.
+    expect(keys("still")).toEqual(["unrouted notes/f.md#OQ-F1"]);
+  });
+
+  it("recounts needsYouCount and nothingNeedsYou over the questions text terms keep", () => {
+    const counts = (text: string) =>
+      Object.fromEntries(
+        apply(text).sections.roadmaps.map((r) => [r.path, r.needsYouCount]),
+      );
+    expect(counts("oq-c1")).toEqual({ "roadmap.md": 0, "x/roadmap.md": 1 });
+    expect(counts("outer")).toEqual({ "roadmap.md": 1, "x/roadmap.md": 0 });
+    expect(counts("-outer")).toEqual({ "roadmap.md": 3, "x/roadmap.md": 1 });
+    expect(apply("outer").sections.nothingNeedsYou).toBe(false);
+    expect(apply("inner").sections.nothingNeedsYou).toBe(true);
+    expect(apply("nothing-holds-this").sections.nothingNeedsYou).toBe(true);
+  });
+
+  it("names what waits outside the documents -path: leaves", () => {
+    expect(apply("-path:docs/design/sub").summary.waitsOutside).toEqual([
+      { path: "notes/b.md", target: "docs/design/sub/c.md#OQ-C1" },
+    ]);
+    // Text and is: terms never change which documents are kept.
+    expect(apply("decided is:open").summary.waitsOutside).toEqual([]);
   });
 
   it("counts entries, kept documents and open questions", () => {
@@ -934,6 +1294,33 @@ describe("applying a filter to the sections (§6.1, §6.2)", () => {
       "path:notes/e.md is:open",
     );
     expect(apply("is:open").summary.requestText).toBe("is:open");
+  });
+
+  it("leaves an unmatched -path: term out of the request's text, which may leave none", () => {
+    expect(apply("-path:docs/desing").summary).toMatchObject({
+      unmatched: ["-path:docs/desing"],
+      requestText: "",
+    });
+    expect(apply("outer -path:docs/desing is:open").summary).toMatchObject({
+      unmatched: ["-path:docs/desing"],
+      requestText: "outer is:open",
+    });
+    // A matched -path: term stays, and an unmatched one beside a kept
+    // path: term goes.
+    expect(
+      apply("path:docs/design -path:docs/design/sub -path:docs/desing").summary
+        .requestText,
+    ).toBe("path:docs/design -path:docs/design/sub");
+    // Every path: term unmatched: nothing is kept, whatever -path: says.
+    expect(
+      apply("path:docs/desing -path:docs/design").summary.requestText,
+    ).toBeNull();
+    // A text term that matches nothing is no unmatched term.
+    expect(apply("nothing-holds-this").summary).toMatchObject({
+      unmatched: [],
+      requestText: "nothing-holds-this",
+      entries: { shown: 0 },
+    });
   });
 });
 
@@ -1002,26 +1389,41 @@ describe("the agent request under a filter (§6.3, §6.6)", () => {
     );
   });
 
-  // No key this release reads keeps a Ready row and drops what Blocked holds
-  // it for, so the case is built by hand (§6.3).
+  // `decided` keeps notes/b.md's Ready row by its stage, and drops its 🔒
+  // OQ-B1, whose fields do not hold the word, and the Blocked row's own
+  // waiting entry with it: the case §6.3 reads the unfiltered sections for.
   it("reads what a row is blocked on from the unfiltered sections", () => {
-    const kept: PlanningSections = { ...SECTIONS, waiting: [] };
+    const { sections, summary } = apply("decided");
+    expect(sectionEntryKeys(sections)).toContain("ready notes/b.md");
+    expect(sectionEntryKeys(sections)).not.toContain(
+      "waiting notes/b.md#OQ-B1",
+    );
     const blocked =
       "- notes/b.md  (stage DECIDED; blocked on docs/design/sub/c.md#OQ-C1, \u{1F512} OQ-B1)";
-    const filtered = planningAgentRequest(INDEX, kept, {
+    const filtered = planningAgentRequest(INDEX, sections, {
       repository,
       ids: ["ready"],
-      filter: { text: "path:notes", unfiltered: SECTIONS },
+      filter: { text: summary.requestText!, unfiltered: SECTIONS },
     })!;
     expect(filtered).toContain(blocked);
     expect(filtered).toContain("Skip any entry marked blocked");
-    // Without it, the hand-built sections would erase the annotation.
-    const erased = planningAgentRequest(INDEX, kept, {
+    // Read from the filtered sections, the annotation would lose OQ-B1.
+    const wrong = planningAgentRequest(INDEX, sections, {
       repository,
       ids: ["ready"],
     })!;
-    expect(erased).toContain("- notes/b.md  (stage DECIDED)");
-    expect(erased).not.toContain("Skip any entry marked blocked");
+    expect(wrong).not.toContain(blocked);
+  });
+
+  it("has no Filter: line when every term was an unmatched -path: term", () => {
+    const { sections, summary } = apply("-path:docs/desing");
+    expect(summary.requestText).toBe("");
+    expect(
+      planningAgentRequest(INDEX, sections, {
+        repository,
+        filter: { text: summary.requestText!, unfiltered: SECTIONS },
+      }),
+    ).toBe(planningAgentRequest(INDEX, SECTIONS, { repository }));
   });
 });
 
@@ -1387,10 +1789,12 @@ describe("the filter notice (§6.7)", () => {
         { path: "a/z.md", target: "e.md" },
       ],
       unmatched: ["path:z"],
+      unknownKeys: [{ key: "stage", terms: ["stage:x"] }],
     };
     expect(checker(summary)).toEqual([
       "Filtered by `path:a is:open`: 1,234 of 5,678 entries, in 1 of 1 path, 1,234 of them open questions.",
       "`path:z` matches no path the index lists.",
+      "`stage:` is not a filter key, so `stage:x` is searched as text. The keys are `path:` and `is:`.",
       "2 more questions it keeps are on another roadmap: `b/roadmap.md` (2). Rerun with --roadmap naming it.",
       "3 of its questions are blocked and will need you later.",
       "a/x.md waits on c.md and d.md#OQ-D1, which this filter leaves out.",
@@ -1398,9 +1802,46 @@ describe("the filter notice (§6.7)", () => {
       "a/z.md waits on c.md, d.md, and e.md, which this filter leaves out.",
       "Run without --filter to see the other 4,444.",
     ]);
-    expect(page(summary)[2]).toBe(
+    expect(page(summary)[3]).toBe(
       "2 more questions it keeps are on another roadmap: `b/roadmap.md` (2). Choose that roadmap to see them; the filter stays.",
     );
+  });
+
+  it("says each unknown key is not a filter key, naming the terms it opens", () => {
+    const { summary } = apply(
+      "stage:decided -title:x path:docs/desing stage:built Path:x http://y",
+    );
+    expect(summary.unknownKeys).toEqual([
+      { key: "stage", terms: ["stage:decided", "stage:built"] },
+      { key: "title", terms: ["-title:x"] },
+    ]);
+    expect(checker(summary).slice(1, 4)).toEqual([
+      "`path:docs/desing` matches no path the index lists.",
+      "`stage:` is not a filter key, so `stage:decided` and `stage:built` are searched as text. The keys are `path:` and `is:`.",
+      "`title:` is not a filter key, so `-title:x` is searched as text. The keys are `path:` and `is:`.",
+    ]);
+    const [, , line] = PLANNING_NOTICES.filtered(summary, "page");
+    expect(line).toEqual([
+      { code: "stage:" },
+      " is not a filter key, so ",
+      { code: "stage:decided" },
+      " and ",
+      { code: "stage:built" },
+      " are searched as text.",
+      " The keys are ",
+      { code: "path:" },
+      " and ",
+      { code: "is:" },
+      ".",
+    ]);
+    expect(checker(apply("a:1 a:2 a:3").summary)[1]).toBe(
+      "`a:` is not a filter key, so `a:1`, `a:2` and `a:3` are searched as text. The keys are `path:` and `is:`.",
+    );
+    // A text term that matches nothing is counted, and named nowhere.
+    expect(checker(apply("nothing-holds-this").summary)).toEqual([
+      "Filtered by `nothing-holds-this`: 0 of 20 entries, in 19 of 19 paths, none of them open questions.",
+      "Run without --filter to see the other 20.",
+    ]);
   });
 
   it("says when it hides nothing", () => {
@@ -1422,27 +1863,31 @@ describe("the filter notice (§6.7)", () => {
     return parsed;
   };
 
-  it("says a filter it does not understand is not applied, naming its term or reason", () => {
+  it("says a filter it cannot read is not applied, naming its term or reason", () => {
     expect(
       PLANNING_NOTICES.notFiltered(
-        notUnderstood("path:docs/design/*.md OR is:open"),
+        notUnderstood("path:docs/design/*.md is:closed"),
       ),
     ).toEqual([
-      "Not filtered: this Vantage does not understand ",
-      { code: "OR" },
-      ". It reads path: and is: terms, such as ",
-      { code: "path:docs/design/*.md is:open" },
+      "Not filtered: this Vantage cannot read ",
+      { code: "is:closed" },
+      '. It reads words, "quoted phrases", path: and is:open terms, and a - before any of them to leave out what it matches, such as ',
+      { code: "generator path:docs/design/*.md is:open" },
       ". Every entry is shown.",
     ]);
     expect(
       noticeText(PLANNING_NOTICES.notFiltered(notUnderstood('path:"a b'))),
     ).toBe(
-      "Not filtered: this Vantage does not understand an unclosed quote. It reads path: and is: terms, such as `path:docs/design/*.md is:open`. Every entry is shown.",
+      'Not filtered: this Vantage cannot read an unclosed quote. It reads words, "quoted phrases", path: and is:open terms, and a - before any of them to leave out what it matches, such as `generator path:docs/design/*.md is:open`. Every entry is shown.',
     );
-    // Its example is a filter this release reads.
-    expect(parsePlanningFilter("path:docs/design/*.md is:open").kind).toBe(
-      "understood",
-    );
+    // Its example is a filter the language reads, with a term of each kind
+    // it names but the -.
+    const example = understood("generator path:docs/design/*.md is:open");
+    expect(example.terms.map((term) => term.key)).toEqual([
+      "text",
+      "path",
+      "is",
+    ]);
   });
 
   // §8.2: the checker exits 2 on an unmatched term, in the notice's words
@@ -1465,9 +1910,9 @@ describe("the filter notice (§6.7)", () => {
 
   it("gives the checker's exit 2 a message of its own, unprefixed", () => {
     expect(
-      PLANNING_NOTICES.filterNotUnderstood(notUnderstood("Path:docs/x.md")),
+      PLANNING_NOTICES.filterNotUnderstood(notUnderstood('Path:"docs/x.md"')),
     ).toBe(
-      "this checker does not understand `Path:docs/x.md`; it reads path: and is: terms",
+      'this checker cannot read `Path:"docs/x.md"`; it reads words, "quoted phrases", path: and is:open terms, and a - before any of them to leave out what it matches',
     );
     const reasons = {
       "unclosed-quote": "an unclosed quote",
@@ -1482,10 +1927,10 @@ describe("the filter notice (§6.7)", () => {
         reason: reason as keyof typeof reasons,
       };
       expect(PLANNING_NOTICES.filterNotUnderstood(filter)).toBe(
-        `this checker does not understand ${words}; it reads path: and is: terms`,
+        `this checker cannot read ${words}; it reads words, "quoted phrases", path: and is:open terms, and a - before any of them to leave out what it matches`,
       );
       expect(noticeText(PLANNING_NOTICES.notFiltered(filter))).toContain(
-        `does not understand ${words}. It reads`,
+        `cannot read ${words}. It reads`,
       );
     }
   });

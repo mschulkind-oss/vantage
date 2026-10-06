@@ -3181,7 +3181,7 @@ describe("each section's explanation, and Copy agent request", () => {
     // Not understood, it is not applied, and its request is the plain one.
     cleanup();
     writeText.mockClear();
-    await renderPage("/.vantage/planning?filter=OR");
+    await renderPage("/.vantage/planning?filter=is:closed");
     await press(copyAll());
     expect(writeText.mock.calls[0][0]).toBe(
       planningAgentRequest(index, derivePlanningSections(index), {
@@ -4544,27 +4544,48 @@ describe("the planning filter (planning-filter.md)", () => {
       expect(cardsIn("Needs you")).toHaveLength(3);
     });
 
-    it("applies nothing it does not understand, shows every entry, names the term and leaves the address as written", async () => {
-      const url = "/.vantage/planning?filter=path:plans/design.md+OR+is:open";
+    it("applies nothing it cannot read, shows every entry, names the term and leaves the address as written", async () => {
+      const url =
+        "/.vantage/planning?filter=path:plans/design.md+is:closed+is:open";
       await renderPage(url);
       expect(cardsIn("Needs you")).toHaveLength(3);
       expect(cardsIn("Not on a roadmap")).toHaveLength(2);
       expect(querySection("Blocked")).not.toBeNull();
       expect(noticeLines()).toEqual([
-        "Not filtered: this Vantage does not understand OR. It reads path: and is: terms, such as path:docs/design/*.md is:open. Every entry is shown.",
+        `Not filtered: this Vantage cannot read is:closed. It reads words, "quoted phrases", path: and is:open terms, and a - before any of them to leave out what it matches, such as generator path:docs/design/*.md is:open. Every entry is shown.`,
       ]);
-      expect(notice()!.querySelector("code")).toHaveTextContent(/^OR$/);
+      expect(notice()!.querySelector("code")).toHaveTextContent(/^is:closed$/);
       expect(box()).toHaveAttribute("aria-invalid", "true");
-      expect(box().value).toBe("path:plans/design.md OR is:open");
+      expect(box().value).toBe("path:plans/design.md is:closed is:open");
       expect(router.location).toBe(url);
     });
 
     it("gives the reason where there is no term to name", async () => {
       await renderPage('/.vantage/planning?filter=path:"plans');
       expect(noticeLines()).toEqual([
-        "Not filtered: this Vantage does not understand an unclosed quote. It reads path: and is: terms, such as path:docs/design/*.md is:open. Every entry is shown.",
+        `Not filtered: this Vantage cannot read an unclosed quote. It reads words, "quoted phrases", path: and is:open terms, and a - before any of them to leave out what it matches, such as generator path:docs/design/*.md is:open. Every entry is shown.`,
       ]);
       expect(box()).toHaveAttribute("aria-invalid", "true");
+    });
+
+    // OQ-PF1, overturned: a word searches what the index holds, and an
+    // unknown key is searched as text, with a line saying so.
+    it("searches a word, says an unknown key is none, and marks neither invalid", async () => {
+      await renderPage("/.vantage/planning?filter=QUESTION+oq-d3");
+      expect(cardsIn("Needs you")).toEqual(["OQ-D3: Question OQ-D3?"]);
+      expect(querySection("Not on a roadmap")).toBeNull();
+      expect(noticeLines()[0]).toBe(
+        "Filtered by QUESTION oq-d3: 1 of 10 entries, in 9 of 9 paths, 1 of them an open question.",
+      );
+      expect(box()).not.toHaveAttribute("aria-invalid");
+      expect(router.location).toBe("/.vantage/planning?filter=QUESTION+oq-d3");
+
+      cleanup();
+      await renderPage("/.vantage/planning?filter=stage:decided");
+      expect(noticeLines()).toContain(
+        "stage: is not a filter key, so stage:decided is searched as text. The keys are path: and is:.",
+      );
+      expect(box()).not.toHaveAttribute("aria-invalid");
     });
 
     it("names an unmatched term, keeps nothing, and says nothing it keeps needs you", async () => {
@@ -4956,17 +4977,30 @@ describe("the planning filter (planning-filter.md)", () => {
       expect(cardsIn("Needs you")).toEqual(["OQ-D3: Question OQ-D3?"]);
     });
 
-    it("applies text it does not understand as typed, and shows every entry", async () => {
+    it("applies text it cannot read as typed, and shows every entry", async () => {
+      await renderPage("/.vantage/planning?filter=path:plans/design.md");
+      await enter("path:plans/design.md is:Open");
+      expect(router.location).toBe(
+        "/.vantage/planning?filter=path:plans/design.md+is:Open",
+      );
+      expect(box().value).toBe("path:plans/design.md is:Open");
+      expect(box()).toHaveAttribute("aria-invalid", "true");
+      expect(cardsIn("Needs you")).toHaveLength(3);
+      expect(noticeLines()[0]).toMatch(
+        /^Not filtered: this Vantage cannot read is:Open\./,
+      );
+    });
+
+    it("applies an unknown key's text as text, which may keep nothing", async () => {
       await renderPage("/.vantage/planning?filter=path:plans/design.md");
       await enter("Path:plans/design.md");
       expect(router.location).toBe(
         "/.vantage/planning?filter=Path:plans/design.md",
       );
-      expect(box().value).toBe("Path:plans/design.md");
-      expect(box()).toHaveAttribute("aria-invalid", "true");
-      expect(cardsIn("Needs you")).toHaveLength(3);
-      expect(noticeLines()[0]).toMatch(
-        /^Not filtered: this Vantage does not understand Path:plans\/design\.md\./,
+      expect(box()).not.toHaveAttribute("aria-invalid");
+      expect(querySection("Needs you")).toBeNull();
+      expect(noticeLines()[0]).toBe(
+        "Filtered by Path:plans/design.md: 0 of 10 entries, in 9 of 9 paths, none of them open questions.",
       );
     });
 
@@ -5420,15 +5454,17 @@ describe("the planning filter (planning-filter.md)", () => {
       expect(box().value).toBe("");
     });
 
-    it("applies a link's filter it does not understand as written, so the notice names its term", async () => {
+    it("applies a link's filter it cannot read as written, so the notice names its term", async () => {
       await renderPage();
-      await paste("/.vantage/planning?filter=path:plans/design.md+OR+is:open");
-      expect(router.location).toBe(
-        "/.vantage/planning?filter=path:plans/design.md+OR+is:open",
+      await paste(
+        "/.vantage/planning?filter=path:plans/design.md+is:closed+is:open",
       );
-      expect(box().value).toBe("path:plans/design.md OR is:open");
+      expect(router.location).toBe(
+        "/.vantage/planning?filter=path:plans/design.md+is:closed+is:open",
+      );
+      expect(box().value).toBe("path:plans/design.md is:closed is:open");
       expect(box()).toHaveAttribute("aria-invalid", "true");
-      expect(noticeLines()[0]).toMatch(/does not understand OR\./);
+      expect(noticeLines()[0]).toMatch(/cannot read is:closed\./);
     });
 
     it("never says Enter to apply through a paste, a ✕ or an Enter, which apply what the box holds", async () => {

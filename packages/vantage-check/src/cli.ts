@@ -167,7 +167,7 @@ function parseCheck(argv: string[]): Invocation {
  * text, so it refuses `--format json`.
  *
  * `--filter` takes the next argument whatever it is, so `--filter -path:x` is
- * a filter this release does not understand rather than an unknown option.
+ * a filter, an exclusion, rather than an unknown option.
  * Given twice, the values join with one space, in order, which is what typing
  * both into the planning page's Filter box gives
  * (`docs/design/planning-filter.md` §8.1). Whether the text is understood is

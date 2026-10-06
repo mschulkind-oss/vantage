@@ -81,9 +81,11 @@ import { VERSION } from "../version.js";
  * linked by vantage-md's planning module, the page's own reader (F1).
  *
  * It reports and does not judge, so it never exits 1: 0 when it ran, 2 for bad
- * arguments or a bad config, a filter it does not understand or one with a
- * term that matches nothing, 3 when it could not run, which includes a project
- * with more candidates than `max-candidates` (Plan Q7).
+ * arguments or a bad config, a filter it cannot read or one with a `path:`
+ * term, with or without its `-`, that matches no path, 3 when it could not
+ * run, which includes a project with more candidates than `max-candidates`
+ * (Plan Q7). A text term that matches nothing is an answer, not an error, and
+ * exits 0.
  */
 export interface IndexOptions {
   format: "text" | "json";
@@ -163,10 +165,10 @@ export function indexCommand(options: IndexOptions, io: Io): number {
     io.err(`vantage-check: warning: ${warning}\n`);
   }
 
-  // What a filter's text means depends on nothing in the tree, so one this
-  // release does not understand is refused before the scan, past
-  // max-candidates too, and never partly applied (F3, §8.2). The message is
-  // the whole answer, as `--roadmap`'s is: it says what this release reads.
+  // What a filter's text means depends on nothing in the tree, so one it
+  // cannot read is refused before the scan, past max-candidates too, and
+  // never partly applied (F3, §8.2). The message is the whole answer, as
+  // `--roadmap`'s is: it says what the language reads.
   const parsed =
     options.filter === undefined ? null : parsePlanningFilter(options.filter);
   if (parsed?.kind === "not-understood") {
@@ -218,9 +220,10 @@ export function indexCommand(options: IndexOptions, io: Io): number {
           applyPlanningFilter(index, sections, filter),
           sections,
         );
-  // The page applies an unmatched term, keeps nothing and names it. Here it is
-  // the agent's likeliest mistake, a mistyped path, so it stops before the
-  // human is handed an empty page (F5, §8.2).
+  // The page applies an unmatched term, keeps nothing or excludes nothing, and
+  // names it. Here it is the agent's likeliest mistake, a mistyped path, so it
+  // stops before the human is handed an empty page, or a fuller one than the
+  // agent meant (F5, §8.2). A text term that matches nothing is not one.
   if (applied !== null && applied.filtered.summary.unmatched.length > 0) {
     for (const term of applied.filtered.summary.unmatched) {
       io.err(
@@ -563,8 +566,10 @@ function renderJson(
 /**
  * The JSON `filter` key's value (§8.3), in the design's key order, built key
  * by key: the summary holds names (`requestText`, `unmatched`,
- * `onOtherRoadmaps`) that are not keys of it, and this key's subkeys may only
- * widen (§10.3). `link` is always root-relative.
+ * `onOtherRoadmaps`) that are not keys of it, and a script reads these keys,
+ * so each keeps its meaning (P0, §10.3). `unknownKeys` lists the words alone,
+ * which the summary pairs with the terms they open. `link` is always
+ * root-relative.
  */
 function filterJson(applied: AppliedFilter) {
   const { summary, sections } = applied.filtered;
@@ -584,6 +589,7 @@ function filterJson(applied: AppliedFilter) {
       path,
       target,
     })),
+    unknownKeys: summary.unknownKeys.map(({ key }) => key),
     sections,
   };
 }

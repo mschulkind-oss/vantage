@@ -1122,9 +1122,9 @@ function understood(text: string): UnderstoodPlanningFilter {
   return filter;
 }
 
-/** Exit 2's message for a filter this release does not understand (§8.2). */
+/** Exit 2's message for a filter it cannot read (§8.2). */
 const notUnderstood = (named: string) =>
-  `vantage-check: --filter: this checker does not understand ${named}; it reads path: and is: terms\n`;
+  `vantage-check: --filter: this checker cannot read ${named}; it reads words, "quoted phrases", path: and is:open terms, and a - before any of them to leave out what it matches\n`;
 
 /**
  * Exit 2's message for a term that matches no path the index lists: the
@@ -1203,11 +1203,12 @@ describe("index --filter, not understood", () => {
   // F3: none of it applies, and since its meaning depends on nothing in the
   // tree, it is refused before the scan (§8.2).
   it.each([
-    ["path:docs/design/*.md OR is:open", "`OR`"],
-    ["Path:docs/design", "`Path:docs/design`"],
+    ["path:docs/design/*.md is:closed", "`is:closed`"],
+    ['word a"b"', '`a"b"`'],
     // `--filter` takes the next argument whatever it is: a value, never an
     // unknown option.
-    ["-path:docs/a.md", "`-path:docs/a.md`"],
+    ["-", "`-`"],
+    ["-is:", "`-is:`"],
     ['path:"docs/my notes.md', "an unclosed quote"],
   ])(
     "exits 2 before the scan on %j, naming %s, in all three outputs",
@@ -1248,6 +1249,119 @@ describe("index --filter, not understood", () => {
       );
     },
   );
+});
+
+describe("index --filter, with words, phrases and exclusions", () => {
+  // §5.3 and §8.2: a text term searches what the index holds, and one that
+  // matches nothing is an answer, which exits 0.
+  it("keeps what a word finds, through the planning module", async () => {
+    const root = fullTree();
+    const built = buildPlanningIndex(fullSources());
+    const sections = derivePlanningSections(built);
+    for (const text of [
+      "a2",
+      "QUESTION a1",
+      '"question b"',
+      "decided",
+      "huge",
+      "latin1",
+      "path:docs -a2 is:open",
+      "-path:docs/a.md -is:open",
+    ]) {
+      const { code, payload } = await indexJson(root, "--filter", text);
+      const applied = applyPlanningFilter(built, sections, understood(text));
+
+      expect(code, text).toBe(EXIT_OK);
+      expect(payload.filter.sections, text).toEqual(applied.sections);
+      expect(payload.filter.entries, text).toEqual(applied.summary.entries);
+    }
+    const { payload } = await indexJson(root, "--filter", "a2");
+    expect(entryKeys(payload.filter.sections)).toEqual([
+      "unrouted docs/a.md#OQ-A2",
+    ]);
+  });
+
+  it("exits 0 for a word that matches nothing, keeping no entry, in all three outputs", async () => {
+    const root = fullTree();
+    const text = await index(root, "--filter", "nothing-holds-this");
+    expect(text.code).toBe(EXIT_OK);
+    expect(text.stderr).toBe("");
+    expect(text.stdout.split("\n").slice(0, 3)).toEqual([
+      "Filtered by `nothing-holds-this`: 0 of 13 entries, in 10 of 10 paths, none of them open questions.",
+      "Run without --filter to see the other 13.",
+      "Planning page: /.vantage/planning?filter=nothing-holds-this",
+    ]);
+
+    const { code, payload } = await indexJson(
+      root,
+      "--filter",
+      "nothing-holds-this",
+    );
+    expect(code).toBe(EXIT_OK);
+    expect(payload.filter.entries).toEqual({ shown: 0, of: 13 });
+    expect(entryKeys(payload.filter.sections)).toEqual([]);
+
+    const request = await index(
+      root,
+      "--request",
+      "--filter",
+      "nothing-holds-this",
+    );
+    expect(request.code).toBe(EXIT_OK);
+    expect(request.stdout).toBe("");
+    expect(request.stderr).toMatch(/the filter keeps\n$/);
+  });
+
+  it("says an unknown key is not a filter key, after the notice's first line, and exits 0", async () => {
+    const { code, stdout, stderr } = await index(
+      fullTree(),
+      "--filter",
+      "stage:ready",
+    );
+
+    expect(code).toBe(EXIT_OK);
+    expect(stderr).toBe("");
+    expect(stdout.split("\n").slice(0, 3)).toEqual([
+      "Filtered by `stage:ready`: 0 of 13 entries, in 10 of 10 paths, none of them open questions.",
+      "`stage:` is not a filter key, so `stage:ready` is searched as text. The keys are `path:` and `is:`.",
+      "Run without --filter to see the other 13.",
+    ]);
+  });
+
+  // `--filter` takes the next argument whatever it is, so `-path:` is a
+  // value: an exclusion.
+  it("reads -path: as an exclusion, and leaves the excluded documents out", async () => {
+    const { code, payload } = await indexJson(
+      fullTree(),
+      "--filter",
+      "-path:docs/a.md",
+    );
+
+    expect(code).toBe(EXIT_OK);
+    expect(payload.filter.canonical).toBe("-path:docs/a.md");
+    expect(payload.filter.documents).toEqual({ kept: 9, of: 10 });
+    expect(
+      entryKeys(payload.filter.sections).filter((key) =>
+        key.includes("docs/a.md"),
+      ),
+    ).toEqual([]);
+  });
+
+  it("exits 2 for a -path: term that matches no path, naming it, in all three outputs", async () => {
+    const root = fullTree();
+    for (const output of OUTPUTS) {
+      const { code, stdout, stderr } = await index(
+        root,
+        ...output,
+        "--filter",
+        "a2 -path:docs/desing -path:docs/a.md",
+      );
+
+      expect(code).toBe(EXIT_USAGE);
+      expect(stdout).toBe("");
+      expect(stderr).toBe(unmatched("-path:docs/desing"));
+    }
+  });
 });
 
 describe("index --filter, with a term that matches nothing", () => {
@@ -1622,6 +1736,7 @@ describe("index --filter, as JSON", () => {
       "blockedLeftOut",
       "otherRoadmaps",
       "waitsOutside",
+      "unknownKeys",
       "sections",
     ]);
     expect(filter).toEqual({
@@ -1634,9 +1749,24 @@ describe("index --filter, as JSON", () => {
       blockedLeftOut: 1,
       otherRoadmaps: [],
       waitsOutside: [],
+      unknownKeys: [],
       sections: applied.sections,
     });
     expect(filter.sections).toEqual(applied.sections);
+  });
+
+  it("lists each unknown key's word once, in the order written", async () => {
+    const { code, payload } = await indexJson(
+      fullTree(),
+      "--filter",
+      "stage:ready -title:a stage:built http://x Path:y",
+    );
+
+    expect(code).toBe(EXIT_OK);
+    expect(payload.filter.unknownKeys).toEqual(["stage", "title"]);
+    expect(payload.filter.canonical).toBe(
+      "stage:ready -title:a stage:built http://x Path:y",
+    );
   });
 
   it("carries the text as given, every --filter joined, and what it waits on outside", async () => {
