@@ -661,6 +661,39 @@ describe("the planning filter (planning-index.md §6.16)", () => {
       );
     });
 
+    it("drops the space id only when told to, and keeps it as written otherwise (planning-index.md §13.6)", () => {
+      const keep = (query: string, dropSpace: boolean) => {
+        const search = new URLSearchParams(query);
+        const asked = filterValue(readFilterRequest(search));
+        const applied = understoodFilter(asked) === null ? "" : asked;
+        const sections = sectionsOf(index, null, applied);
+        const layout = layoutPlanningPage(
+          index,
+          sections,
+          readPageRequest(search),
+          applied,
+        );
+        const next = planningSearch(search, layout, sections, dropSpace);
+        return next === null ? null : planningQuery(next);
+      };
+      const link =
+        "filter=path:/docs/design/a.md&roadmap=roadmap.md&space=q4zmuykxw2a7hbne";
+      expect(keep(link, false)).toBeNull();
+      expect(keep(link, true)).toBe(
+        "filter=path:/docs/design/a.md&roadmap=roadmap.md",
+      );
+      // Every one of them, with the rest of the rewrite in the same one.
+      expect(
+        keep(
+          "space=a&filter=path:./docs/design/a.md&space=b&roadmap=roadmap.md",
+          true,
+        ),
+      ).toBe("filter=path:/docs/design/a.md&roadmap=roadmap.md");
+      expect(
+        keep("filter=path:/docs/design/a.md&roadmap=roadmap.md", true),
+      ).toBeNull();
+    });
+
     it("clamps the pages against the filtered sections, in the same rewrite", () => {
       setPlanningLimitsForTests({ pageEntries: 1 });
       // docs/design/a.md: four cards under Needs you, one under Blocked.

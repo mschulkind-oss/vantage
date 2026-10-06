@@ -30,7 +30,7 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { Outlet, useNavigate } from "react-router-dom";
+import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   ChevronRight,
   Clock,
@@ -74,6 +74,11 @@ import {
 } from "../hooks/useShellPage";
 import { prefetchPlanningPage } from "../hooks/usePlanningPageInputs";
 import { planningPath } from "../lib/planningRoute";
+import {
+  projectlessSpace,
+  usePlanningSpace,
+  usePlanningSpaceHold,
+} from "../lib/planningSpace";
 import { cn } from "../lib/utils";
 import { useFilePickerStore } from "../stores/useFilePickerStore";
 import { useGitStore } from "../stores/useGitStore";
@@ -112,18 +117,38 @@ const noop = () => {};
  * The shell: its loading state until the repositories are known, since which
  * sidebar to draw is not known before, then the frame. `children` stand in
  * for the route's outlet, for a test that draws one page in it.
+ *
+ * A planning link with no project segment that names a space
+ * (`docs/reference/planning-index.md` §13.6) is the one first load where the
+ * repositories do not say which sidebar to draw: in daemon mode it is the
+ * sidebar of the project holding the space, which the server names. So the
+ * shell asks for it beside the repositories, and its loading state holds the
+ * first paint for the answer as well, for at most the hold's deadline after
+ * the repositories are in (§12.3). The planning page then opens on that
+ * project's page, its sidebar drawn, and nothing painted moves under it. Only
+ * the app's first paint is held: a page drawn in the shell later never makes
+ * the shell take it down again.
  */
 export const AppShell: React.FC<{ children?: React.ReactNode }> = ({
   children,
 }) => {
-  const { reposLoaded, loadRepos } = useRepoStore();
+  const { reposLoaded, loadRepos, isMultiRepo } = useRepoStore();
   // Once for the app, as the history and recents pages ask for them: going
   // between the shell's pages keeps the repositories it has, and pushes keep
   // them current (`refreshRepos`).
   useEffect(() => {
     if (!reposLoaded) loadRepos();
   }, [loadRepos, reposLoaded]);
-  if (!reposLoaded) return <ShellLoading />;
+  const { pathname, search } = useLocation();
+  const [opened, setOpened] = useState(false);
+  const space = opened ? null : projectlessSpace(pathname, search);
+  // Asked at once, before the mode is known, so the answer is in as soon as
+  // the repositories are; single-project mode's planning page reads it too.
+  usePlanningSpace(space);
+  const held = usePlanningSpaceHold(reposLoaded && isMultiRepo ? space : null);
+  const ready = reposLoaded && !held;
+  if (ready && !opened) setOpened(true);
+  if (!ready) return <ShellLoading />;
   return <ShellFrame>{children ?? <Outlet />}</ShellFrame>;
 };
 

@@ -40,6 +40,7 @@
 import {
   PLANNING_FILTER_PARAM,
   PLANNING_ROADMAP_PARAM,
+  PLANNING_SPACE_PARAM,
   PLANNING_SECTION_IDS,
   PLANNING_SECTION_TITLES,
   applyPlanningFilter,
@@ -510,12 +511,15 @@ export function rememberRoadmap(repo: string, path: string): void {
  * one is shown, and removed when fewer do, as a page parameter naming page 1
  * is. An applied filter is named by its canonical text as one parameter, an
  * empty one is removed, and one that is not understood is left exactly as
- * written, so it can be fixed (§6.16, §6.14).
+ * written, so it can be fixed (§6.16, §6.14). With `dropSpace`, every
+ * `space` parameter goes too: the page has no use for a space id it has
+ * already acted on or that a project segment overrides (§13.6).
  */
 export function planningSearch(
   search: URLSearchParams,
   layout: PlanningLayout,
   sections: PlanningSections,
+  dropSpace = false,
 ): URLSearchParams | null {
   let next = pageSearch(search, layout);
   const edit = (): URLSearchParams => (next ??= new URLSearchParams(search));
@@ -539,6 +543,9 @@ export function planningSearch(
     parsePlanningFilter(asked.join(" ")).kind === "none"
   ) {
     edit().delete(PLANNING_FILTER_PARAM);
+  }
+  if (dropSpace && search.has(PLANNING_SPACE_PARAM)) {
+    edit().delete(PLANNING_SPACE_PARAM);
   }
   return next;
 }
