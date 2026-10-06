@@ -81,6 +81,12 @@ export interface PlanningLimits {
   commitMarkdownChars: number;
   /** How long the page inputs may take before a spinner shows, in ms. */
   spinnerMs: number;
+  /**
+   * The idle pause (`docs/design/planning-filter.md` §6.4): how long the
+   * Filter box's text must stay as it is before the URL takes the filter it
+   * applied, in ms. The results never wait for it.
+   */
+  filterIdleMs: number;
   /** How long the sections wait for their documents' reviews, in ms. */
   reviewsDeadlineMs: number;
   /** How long the sections wait for their Mermaid diagrams, in ms. */
@@ -129,6 +135,7 @@ export const DEFAULT_PLANNING_LIMITS: Readonly<PlanningLimits> = Object.freeze({
   commitCards: 30,
   commitMarkdownChars: 96 * 1024,
   spinnerMs: 150,
+  filterIdleMs: 300,
   reviewsDeadlineMs: 1000,
   mermaidDeadlineMs: 1000,
   mermaidFramePx: 240,

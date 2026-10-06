@@ -30,6 +30,17 @@
  * cache ahead of a visit, on the `g` of `g p` and from the viewer's planning
  * entry, for the roadmap the page would choose and no filter (§6.5;
  * `docs/design/planning-filter.md` §6.5).
+ *
+ * **Typing takes none of those places** (`planning-filter.md` §6.5). A set
+ * laid out for a filter the reader is typing, which the URL has not taken,
+ * is held apart, in the typing slot, and the slot keeps two: the set on
+ * screen and the newest. A set typed past before it was shown is dropped
+ * there, so typing never evicts a set another history entry was shown
+ * with. Once the URL takes the text, its set moves into the cache, where a
+ * Back to the entry finds it, and the one the same visit's typing moved
+ * there before leaves: the entry it was shown with now holds the newer
+ * filter. So a visit's typing holds one place of the cache, as an Enter
+ * does.
  */
 import {
   startTransition,
@@ -38,7 +49,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { useNavigationType } from "react-router-dom";
+import { useLocation, useNavigationType } from "react-router-dom";
 import type { CardBlock, PlanningIndex } from "vantage-md/planning";
 import { mermaidFences, prerenderMermaid } from "vantage-md/react";
 import {
@@ -111,9 +122,17 @@ interface Entry {
   promise: Promise<PageInputs | null>;
   /** Set once the promise settles: `null` for a set that was superseded. */
   result?: PageInputs | null;
+  /**
+   * The visit whose typing laid this set out and whose URL then took it
+   * (`usePlanningPageInputs`), while it is in the cache for that reason.
+   */
+  typedBy?: symbol;
 }
 
 const cache = new Map<string, Entry>();
+
+/** The typing slot: sets for a filter the URL has not taken (above). */
+const typing = new Map<string, Entry>();
 
 /** Paths refreshed for a stale block, by repository, path and hash. */
 const refreshed = new Set<string>();
@@ -121,7 +140,16 @@ const refreshed = new Set<string>();
 /** Forget every set of inputs, and every stale refresh. For tests. */
 export function resetPlanningPageInputs(): void {
   cache.clear();
+  typing.clear();
   refreshed.clear();
+}
+
+/** The keys of the sets held, the cache's and the typing slot's. For tests. */
+export function heldPlanningPageInputs(): {
+  cached: string[];
+  typing: string[];
+} {
+  return { cached: [...cache.keys()], typing: [...typing.keys()] };
 }
 
 const inputsKey = (
@@ -244,7 +272,7 @@ function versionMoves(
 /** The block a cached set holds for `want`'s path, line and content hash. */
 function heldBlock(repo: string, want: CardWant): CardBlock | undefined {
   const at = blockKey(want.path, want.startLine);
-  for (const entry of cache.values()) {
+  for (const entry of [...cache.values(), ...typing.values()]) {
     const had = entry.result;
     if (had?.repo !== repo || had.hashes[want.path] !== want.hash) continue;
     const block = had.blocks.get(at);
@@ -362,6 +390,33 @@ async function gather(
   };
 }
 
+/** Put `entry` in the cache, most recently used, the oldest past the bound out. */
+function keep(key: string, entry: Entry): void {
+  cache.delete(key);
+  cache.set(key, entry);
+  while (cache.size > planningLimits.pageInputsKept) {
+    const oldest = cache.keys().next().value;
+    if (oldest === undefined) break;
+    cache.delete(oldest);
+  }
+}
+
+/** How a set is asked for: typed, or as the URL holds it. */
+export interface LoadOptions {
+  /**
+   * Laid out for a filter the reader is typing, which the URL has not taken:
+   * held in the typing slot, never the cache (§6.5).
+   */
+  typed?: boolean;
+  /** The set on screen, which the typing slot keeps beside the newest. */
+  shown?: string | null;
+  /**
+   * The visit asking, when the URL has just taken a typed set: the set the
+   * same visit's typing moved into the cache before leaves it.
+   */
+  visit?: symbol;
+}
+
 /**
  * The inputs of `layout`'s pages, from the cache or asked for now. Asking
  * again for a set still on its way waits for the same one.
@@ -370,33 +425,63 @@ export function loadPageInputs(
   repo: string,
   ready: ReadyLoad,
   layout: PlanningLayout,
+  options: LoadOptions = {},
 ): Entry {
+  const { typed = false, shown = null, visit } = options;
   const key = inputsKey(repo, ready.version, layout);
   const had = cache.get(key);
   if (had !== undefined) {
     // Most recently used, last out.
-    cache.delete(key);
-    cache.set(key, had);
+    keep(key, had);
+    if (typed) dropTyped(key, shown);
     return had;
+  }
+  const held = typing.get(key);
+  if (held !== undefined) {
+    if (typed) {
+      dropTyped(key, shown);
+      return held;
+    }
+    // The URL has taken it: into the cache, for Back.
+    typing.delete(key);
+    if (visit !== undefined) {
+      for (const [other, entry] of cache) {
+        if (entry.typedBy === visit) cache.delete(other);
+      }
+      held.typedBy = visit;
+    }
+    keep(key, held);
+    return held;
   }
   const entry: Entry = { promise: gather(key, repo, ready, layout) };
   void entry.promise.then(
     (result) => {
       entry.result = result;
       // A superseded set is never wanted again: its version has moved on.
-      if (result === null && cache.get(key) === entry) cache.delete(key);
+      if (result === null) forget(key, entry);
     },
-    () => {
-      if (cache.get(key) === entry) cache.delete(key);
-    },
+    () => forget(key, entry),
   );
-  cache.set(key, entry);
-  while (cache.size > planningLimits.pageInputsKept) {
-    const oldest = cache.keys().next().value;
-    if (oldest === undefined) break;
-    cache.delete(oldest);
+  if (typed) {
+    typing.set(key, entry);
+    dropTyped(key, shown);
+  } else {
+    keep(key, entry);
   }
   return entry;
+}
+
+/** `key`'s entry out of wherever it is held, if it is still `entry`. */
+function forget(key: string, entry: Entry): void {
+  if (cache.get(key) === entry) cache.delete(key);
+  if (typing.get(key) === entry) typing.delete(key);
+}
+
+/** Every typed set but the newest and the one on screen out of the slot. */
+function dropTyped(newest: string, shown: string | null): void {
+  for (const key of typing.keys()) {
+    if (key !== newest && key !== shown) typing.delete(key);
+  }
 }
 
 /**
@@ -457,8 +542,10 @@ export function usePlanningPageInputs(
   repo: string | null,
   ready: ReadyLoad | null,
   layout: PlanningLayout | null,
+  typed = false,
 ): { shown: ShownInputs | null; waiting: boolean; slow: boolean } {
   const navigationType = useNavigationType();
+  const { key: locationKey } = useLocation();
   const wanted =
     repo !== null && ready !== null && layout !== null && !isStaticMode()
       ? inputsKey(repo, ready.version, layout)
@@ -472,9 +559,24 @@ export function usePlanningPageInputs(
 
   // `wanted` names the set; the load and the layout only say how to build it.
   const latest = useRef({ ready, layout });
+  const shownKey = useRef<string | null>(null);
   useLayoutEffect(() => {
     latest.current = { ready, layout };
+    shownKey.current = shown?.inputs.key ?? null;
   });
+  // This visit of the page's history entry: a new one on each push or pop,
+  // which a replace, the URL taking a typed filter included, keeps.
+  const [visit, setVisit] = useState(() => ({
+    at: locationKey,
+    id: Symbol("visit"),
+  }));
+  if (visit.at !== locationKey) {
+    setVisit({
+      at: locationKey,
+      id: navigationType === "REPLACE" ? visit.id : Symbol("visit"),
+    });
+  }
+  const visitId = visit.id;
 
   // No set renders before the frame this page first committed has painted
   // (§6.3): a set already in hand when the frame commits — a prefetch on the
@@ -500,7 +602,11 @@ export function usePlanningPageInputs(
     if (repo === null || ready === null || layout === null || wanted === null) {
       return;
     }
-    const entry = loadPageInputs(repo, ready, layout);
+    const entry = loadPageInputs(repo, ready, layout, {
+      typed,
+      shown: shownKey.current,
+      visit: visitId,
+    });
     let live = true;
     void Promise.all([entry.promise, gate.current]).then(([inputs]) => {
       if (!live || inputs === null) return;
@@ -513,7 +619,10 @@ export function usePlanningPageInputs(
     return () => {
       live = false;
     };
-  }, [repo, wanted]);
+    // `visitId` only says whose typing it was; a new visit asks again only
+    // with a new `wanted`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [repo, wanted, typed]);
 
   const waiting = wanted !== null && shown?.inputs.key !== wanted;
   const [slowFor, setSlowFor] = useState<string | null>(null);
