@@ -197,6 +197,50 @@ describe("useKeyboardShortcuts", () => {
     document.body.removeChild(input);
   });
 
+  // docs/design/planning-filter.md §7: `/` focuses the planning page's
+  // Filter box, and on any other page is left to the browser, which opens
+  // Firefox's quick find with it.
+  const slash = () => {
+    const event = new KeyboardEvent("keydown", {
+      key: "/",
+      bubbles: true,
+      cancelable: true,
+    });
+    act(() => {
+      document.dispatchEvent(event);
+    });
+    return event;
+  };
+
+  it("focuses a page's filter box on /, which it keeps from the browser", () => {
+    const onFocusFilter = vi.fn();
+    renderHook(() => useKeyboardShortcuts({ ...mockCallbacks, onFocusFilter }));
+    expect(slash().defaultPrevented).toBe(true);
+    expect(onFocusFilter).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves / to the browser on a page with no filter box", () => {
+    renderHook(() => useKeyboardShortcuts(mockCallbacks));
+    expect(slash().defaultPrevented).toBe(false);
+  });
+
+  it("leaves / alone while an input has the focus, or with the shortcuts off", () => {
+    const onFocusFilter = vi.fn();
+    const { unmount } = renderHook(() =>
+      useKeyboardShortcuts({ ...mockCallbacks, onFocusFilter, enabled: false }),
+    );
+    expect(slash().defaultPrevented).toBe(false);
+    unmount();
+    const input = document.createElement("input");
+    document.body.appendChild(input);
+    input.focus();
+    renderHook(() => useKeyboardShortcuts({ ...mockCallbacks, onFocusFilter }));
+    // Typed in a text field, `/` is a path character.
+    expect(slash().defaultPrevented).toBe(false);
+    document.body.removeChild(input);
+    expect(onFocusFilter).not.toHaveBeenCalled();
+  });
+
   it("does not fire shortcuts when disabled", () => {
     renderHook(() =>
       useKeyboardShortcuts({ ...mockCallbacks, enabled: false }),

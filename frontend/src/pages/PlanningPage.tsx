@@ -20,6 +20,14 @@
  * the request for every entry of the section, or of every such section, on
  * every page, generated from the index on screen when it is pressed.
  *
+ * Filtered (`docs/design/planning-filter.md`): a filter line at the top of the
+ * column holds the Filter box, whose text is the URL's `filter=`, read and
+ * applied by the shared planning module to the sections derived from the
+ * whole index (F1, F2). Enter, ✕ and a pasted planning link apply it in one
+ * replace navigation; the filter notice, first of the frame's notices, says
+ * what it hides. A filter this release does not understand is applied not at
+ * all, and the notice names its term (F3).
+ *
  * Several roadmaps (`planning-index.md` §6.8): when two or more route, the
  * roadmap line above the section bar offers a picker, and *Needs you* follows
  * the chosen one. The choice is in the URL as `?roadmap=`, and a pick is
@@ -71,15 +79,20 @@ import {
 import {
   PLANNING_NOTICES,
   badgeFor,
+  filterKeepsQuestion,
   findDocument,
   isPlanningAgentSectionId,
+  parsePlanningFilter,
   planningAgentRequest,
   type CardBlock,
   type DependsOn,
+  type NotUnderstoodPlanningFilter,
   type PlanningBadge,
   type PlanningAgentSectionId,
   type PlanningConfig,
+  type PlanningFilterSummary,
   type PlanningIndex,
+  type PlanningNoticeLine,
   type PlanningQuestion,
   type PlanningRoadmap,
   type PlanningSections,
@@ -94,6 +107,7 @@ import {
 import { CollapsedFolders } from "../components/CollapsedFolders";
 import { HeaderOverflow } from "../components/HeaderOverflow";
 import { PlanningBadgeChip } from "../components/PlanningBadge";
+import { PlanningFilterLine } from "../components/PlanningFilterLine";
 import { PlanningOutline } from "../components/PlanningOutline";
 import { PlanningPager, type PagerPlace } from "../components/PlanningPager";
 import {
@@ -132,9 +146,14 @@ import {
 } from "../hooks/usePlanningPageInputs";
 import {
   chooseRoadmap,
+  filterSummaryOf,
+  filterValue,
   layoutPlanningPage,
+  listedDocuments,
   listedQuestions as listedQuestionsOf,
+  planningQuery,
   planningSearch,
+  readFilterRequest,
   readPageRequest,
   readRememberedRoadmap,
   readRoadmapRequest,
@@ -142,6 +161,8 @@ import {
   requestWithPage,
   routingRoadmaps,
   sectionsOf,
+  understoodFilter,
+  withFilter,
   withPage,
   withRoadmap,
   type CardEntry,
@@ -149,6 +170,8 @@ import {
   type PlanningLayout,
   type SectionId,
 } from "../lib/planningPages";
+import { planningPath } from "../lib/planningRoute";
+import { isStaticMode } from "../lib/staticMode";
 import {
   planningScanner,
   type QuoteWant,
@@ -172,6 +195,7 @@ import {
   answeredPerSection,
   needYou,
   pendingAnswers,
+  type KeepsQuestion,
 } from "../lib/planningAnswers";
 import type { ReviewComment } from "../types";
 
@@ -529,7 +553,9 @@ const Section: React.FC<{
   const { id, title, explanation, total, pageCount } = section;
   // Said once a flip of this section lands, and not for the page it opened
   // on: a reader who flipped hears where it went, and focus left on Next
-  // says nothing of the entries that changed below it.
+  // says nothing of the entries that changed below it. A filter applied is
+  // no flip: it draws the sections anew (keyed by `frameFilterKey`), and the
+  // filter's own live region speaks its notice (planning-filter.md §7).
   const [landed, setLanded] = useState({ page: section.page, flipped: false });
   if (landed.page !== section.page) {
     setLanded({ page: section.page, flipped: true });
@@ -792,27 +818,97 @@ const ProgressLine: React.FC<{
   </p>
 );
 
+/** A notice line's parts, its code parts drawn as code (§6.7). */
+const NoticeLine: React.FC<{ line: PlanningNoticeLine }> = ({ line }) => (
+  <>
+    {line.map((part, i) =>
+      typeof part === "string" ? (
+        <React.Fragment key={i}>{part}</React.Fragment>
+      ) : (
+        <code key={i}>{part.code}</code>
+      ),
+    )}
+  </>
+);
+
+/** A notice line as a screen reader is told it: its code parts as text. */
+const spokenLine = (line: PlanningNoticeLine): string =>
+  line.map((part) => (typeof part === "string" ? part : part.code)).join("");
+
+/** What the filter's live region says after a clear, when there is no notice. */
+const FILTER_CLEARED = "The filter is cleared. Every entry is shown.";
+
+/**
+ * The filter notice (`planning-filter.md` §6.7), the first of the frame's
+ * notices: what an applied filter shows of the unfiltered total and the
+ * clauses that apply, or, for a filter this release does not understand,
+ * that nothing is filtered and why. It prints, so a printout always says it
+ * is filtered and by how much. Its id is the Filter box's description.
+ */
+const FilterNotice: React.FC<{
+  id: string;
+  lines: readonly PlanningNoticeLine[];
+  notUnderstood: boolean;
+}> = ({ id, lines, notUnderstood }) => (
+  <div
+    id={id}
+    data-testid="filter-notice"
+    className={cn(
+      "mb-3 space-y-0.5 text-sm",
+      notUnderstood
+        ? "text-amber-700 dark:text-amber-400"
+        : "text-slate-600 dark:text-slate-300",
+    )}
+  >
+    {lines.map((line, i) => (
+      <p key={i}>
+        <NoticeLine line={line} />
+      </p>
+    ))}
+  </div>
+);
+
+/** The filter notice's lines for the frame's filter, or `null` for none. */
+function filterNoticeLines(
+  summary: PlanningFilterSummary | null,
+  notUnderstood: NotUnderstoodPlanningFilter | null,
+): PlanningNoticeLine[] | null {
+  if (summary !== null) return PLANNING_NOTICES.filtered(summary, "page");
+  if (notUnderstood !== null) {
+    return [PLANNING_NOTICES.notFiltered(notUnderstood)];
+  }
+  return null;
+}
+
 /**
  * The notices under the section bar (§6.2): each only when it applies. The
- * roadmap notice names what the page looked for when no roadmap routes, or a
- * listed roadmap it could not read while another routes (§6.8).
+ * filter notice comes first (`planning-filter.md` §6.7). The roadmap notice
+ * names what the page looked for when no roadmap routes, or a listed roadmap
+ * it could not read while another routes (§6.8).
  */
 const Notices: React.FC<{
   sections: PlanningSections;
   config: PlanningConfig;
-}> = ({ sections, config }) => {
+  /** The filter notice, drawn first, when a filter is applied or not understood. */
+  filterNotice: React.ReactNode;
+  /** A filter is applied: *Nothing needs you* takes its filtered words (§6.2). */
+  filtered: boolean;
+}> = ({ sections, config, filterNotice, filtered }) => {
   const roadmapNotice = PLANNING_NOTICES.roadmapNotice(
     config,
     sections.roadmaps,
   );
   return (
     <>
+      {filterNotice}
       {sections.nothingNeedsYou && (
         <p
           data-testid="nothing-needs-you"
           className="mb-6 text-base font-medium text-slate-700 dark:text-slate-200"
         >
-          {PLANNING_NOTICES.nothingNeedsYou}
+          {filtered
+            ? PLANNING_NOTICES.nothingFilteredNeedsYou
+            : PLANNING_NOTICES.nothingNeedsYou}
         </p>
       )}
       {roadmapNotice !== null && (
@@ -830,6 +926,10 @@ const Notices: React.FC<{
  */
 const answeredCount = (n: number): string =>
   `(${n.toLocaleString("en-US")} answered)`;
+
+/** `1 answer`, `3 answers`: pending answers a filter leaves out of Copy answers. */
+const leftOutAnswers = (n: number): string =>
+  `${n.toLocaleString("en-US")} ${n === 1 ? "answer" : "answers"}`;
 
 /** `(4 need you)`, or `(1 needs you)`: a roadmap's count in the picker. */
 const needYouCount = (n: number): string =>
@@ -1132,33 +1232,55 @@ export const PlanningPage: React.FC = () => {
           askedRoadmap,
           rememberedRoadmap,
         );
-  const sections = useMemo(
+  // The filter, from the URL (planning-filter.md §6.4): every `filter` value
+  // joined with a space, applied only when it is understood (F3). Its
+  // canonical text names what the page shows, as the roadmap does (§6.5); a
+  // filter that is not understood shows what none does.
+  const filterText = useMemo(() => readFilterRequest(search), [search]);
+  const urlFilter = useMemo(
+    () => parsePlanningFilter(filterText),
+    [filterText],
+  );
+  const appliedFilter =
+    urlFilter.kind === "understood" ? urlFilter.canonical : "";
+  // The whole index's sections under the chosen roadmap (F2), and what the
+  // filter keeps of them.
+  const unfilteredSections = useMemo(
     () =>
       index === null || index.refused ? null : sectionsOf(index, chosenRoadmap),
     [index, chosenRoadmap],
   );
+  const sections = useMemo(
+    () =>
+      index === null || index.refused
+        ? null
+        : sectionsOf(index, chosenRoadmap, appliedFilter),
+    [index, chosenRoadmap, appliedFilter],
+  );
 
-  // The pages, from the URL (§6.4).
+  // The pages, from the URL (§6.4), read against the filtered sections.
   const request = useMemo(() => readPageRequest(search), [search]);
   const layout = useMemo(
     () =>
       index === null || sections === null
         ? null
-        : layoutPlanningPage(index, sections, request),
-    [index, sections, request],
+        : layoutPlanningPage(index, sections, request, appliedFilter),
+    [index, sections, request, appliedFilter],
   );
   // A page past a section's end, a malformed page and an explicit page 1 are
   // rewritten in place, and so is the roadmap: named when two or more route,
-  // gone when fewer do. The fragment stays: a link to a card or a section
-  // that needs its query rewritten still goes where it points, once the
-  // sections are in (below). Setting the query alone would drop it.
+  // gone when fewer do; and an understood filter, as its canonical text, in
+  // the link encoding (planning-filter.md §6.4). The fragment stays: a link
+  // to a card or a section that needs its query rewritten still goes where
+  // it points, once the sections are in (below). Setting the query alone
+  // would drop it.
   const navigate = useNavigate();
   const { hash } = location;
   useEffect(() => {
     if (layout === null || sections === null) return;
     const canonical = planningSearch(search, layout, sections);
     if (canonical === null) return;
-    const query = canonical.toString();
+    const query = planningQuery(canonical);
     navigate(
       { search: query === "" ? "" : `?${query}`, hash },
       { replace: true },
@@ -1207,10 +1329,11 @@ export const PlanningPage: React.FC = () => {
           repo,
           requestWithPage(request, id, page),
           chosenRoadmap,
+          appliedFilter,
         );
       }
     },
-    [onThisRepo, repo, request, chosenRoadmap],
+    [onThisRepo, repo, request, chosenRoadmap, appliedFilter],
   );
 
   // The inputs of the pages shown (§6.5). The sections render only from a
@@ -1235,6 +1358,16 @@ export const PlanningPage: React.FC = () => {
     () => new Map((layout?.sections ?? []).map((s) => [s.id, s] as const)),
     [layout],
   );
+  // The filter the page on screen is laid out under: the shown set's, until
+  // the next one is in, as the frame is (below), so what Copy answers and the
+  // need-you numbers count is what is on screen (planning-filter.md §6.6).
+  const frameFilter = (shown?.inputs.layout ?? layout)?.filter ?? "";
+  const frameKeeps = useMemo((): KeepsQuestion | undefined => {
+    const filter = understoodFilter(frameFilter);
+    return filter === null
+      ? undefined
+      : (question) => filterKeepsQuestion(filter, question);
+  }, [frameFilter]);
 
   // Opened while the index was still building: the progress line stays until
   // the section bar and the sections replace it in one commit (§6.10).
@@ -1249,17 +1382,25 @@ export const PlanningPage: React.FC = () => {
   const frameReady =
     index !== null && !index.refused && (!openedBuilding || shown !== null);
 
-  // Every question with a card, on any page: what Copy answers covers.
+  // Every question with a card, on any page, unfiltered: what Copy answers
+  // places comments over, before it narrows them to what the filter keeps
+  // (planning-filter.md §6.6).
   const listedQuestions = useMemo(
     () =>
-      index === null || sections === null
+      index === null || unfilteredSections === null
         ? []
-        : listedQuestionsOf(index, sections),
-    [index, sections],
+        : listedQuestionsOf(index, unfilteredSections),
+    [index, unfilteredSections],
   );
+  // Every document the unfiltered sections list, their rows' too, so that no
+  // filter change, nor a flip to a later page of rows, asks for a third
+  // request (§6.6).
   const listedPaths = useMemo(
-    () => [...new Set(listedQuestions.map((q) => q.path))],
-    [listedQuestions],
+    () =>
+      index === null || unfilteredSections === null
+        ? []
+        : listedDocuments(index, unfilteredSections),
+    [index, unfilteredSections],
   );
   // The shown pages' documents come with their inputs, and every other
   // listed document in one more request once the sections have painted. Each
@@ -1308,9 +1449,12 @@ export const PlanningPage: React.FC = () => {
   // document — built from the reviews, never from the cards, so a comment
   // two cards could both see appears once. A card's own report decides for
   // it; placement decides for a question with none, never both.
-  const pendingGroups = useMemo(
-    () => pendingAnswers(listedQuestions, reviews.byPath, scoped).groups,
-    [scoped, listedQuestions, reviews.byPath],
+  // Under a filter, the comments are placed over every listed question and
+  // then narrowed to those it keeps; how many it leaves out is said in the
+  // button's tooltip and name, never in text that moves (§6.6).
+  const { groups: pendingGroups, leftOut: pendingLeftOut } = useMemo(
+    () => pendingAnswers(listedQuestions, reviews.byPath, scoped, frameKeeps),
+    [scoped, listedQuestions, reviews.byPath, frameKeeps],
   );
 
   // The documents whose reviews the page's need-you numbers read (§6.7, §12):
@@ -1413,13 +1557,53 @@ export const PlanningPage: React.FC = () => {
   );
 
   // The frame follows the sections on screen once there are any: an index
-  // update changes the section bar and the notices in the commit that
-  // changes the sections, not before it (§6.5). Before, it is the index's.
+  // update, or a filter applied, changes the section bar and the notices in
+  // the commit that changes the sections, not before it (§6.5;
+  // planning-filter.md §6.4). Before, it is the index's.
   const frameLayout = shown?.inputs.layout ?? layout;
   const frameSections =
     shown !== null
-      ? sectionsOf(shown.inputs.index, shown.inputs.layout.roadmap)
+      ? sectionsOf(
+          shown.inputs.index,
+          shown.inputs.layout.roadmap,
+          shown.inputs.layout.filter,
+        )
       : sections;
+  // The same, unfiltered: what Copy answers places comments over, and what
+  // an agent request reads every blocked-on fact from (planning-filter.md
+  // §6.3).
+  const frameUnfiltered =
+    shown !== null
+      ? sectionsOf(shown.inputs.index, shown.inputs.layout.roadmap)
+      : unfilteredSections;
+  const frameSummary =
+    shown !== null
+      ? filterSummaryOf(
+          shown.inputs.index,
+          shown.inputs.layout.roadmap,
+          shown.inputs.layout.filter,
+        )
+      : index === null || index.refused
+        ? null
+        : filterSummaryOf(index, chosenRoadmap, appliedFilter);
+  // The URL's filter as the frame reads it, for the Not filtered notice: the
+  // URL's own once the page on screen is the one it asks for, and until then
+  // the one the page on screen was laid out under, so the notice changes in
+  // the commit that changes the sections.
+  const [frameUrlFilter, setFrameUrlFilter] = useState(urlFilter);
+  if ((shown === null || !inputs.waiting) && frameUrlFilter !== urlFilter) {
+    setFrameUrlFilter(urlFilter);
+  }
+  const frameNotUnderstood =
+    frameFilter === "" && frameUrlFilter.kind === "not-understood"
+      ? frameUrlFilter
+      : null;
+  // What names the frame's filter and its notice: the section bar's box, the
+  // notices and the sections below them are drawn anew when it changes, so a
+  // filter applied removes and inserts them rather than moving them
+  // (planning-filter.md §7). A canonical text holds no line break.
+  const frameFilterKey =
+    frameNotUnderstood === null ? frameFilter : `\n${frameNotUnderstood.text}`;
   const frameConfig = (shown?.inputs.index ?? index)?.config ?? null;
   // The roadmap line's options, from the frame; its value, the roadmap asked
   // for, as soon as it is asked for (§6.8).
@@ -1434,6 +1618,12 @@ export const PlanningPage: React.FC = () => {
     shown !== null &&
     layout !== null &&
     shown.inputs.layout.roadmap !== layout.roadmap;
+  // The same for a filter applied: its spinner is the filter line's own.
+  const filterSwapSlow =
+    inputs.slow &&
+    shown !== null &&
+    layout !== null &&
+    shown.inputs.layout.filter !== layout.filter;
 
   const shownPages = shown?.inputs.layout.pages ?? null;
   const shownLayout = shown?.inputs.layout ?? null;
@@ -1494,20 +1684,37 @@ export const PlanningPage: React.FC = () => {
   // count, which an answer only lowers, so they read every review held, the
   // moment it arrives; *Nothing needs you*, which adds a line, reads the
   // counted documents' reviews alone, so it changes only with the sections.
+  //
+  // Under a filter they count kept questions alone, from the filtered
+  // sections, with the comments placed over the unfiltered listed questions
+  // first (planning-filter.md §6.2, §6.6).
   const frameNeedYou = useMemo(() => {
-    if (frameIndex === null || frameSections === null) return null;
-    const listed = listedQuestionsOf(frameIndex, frameSections);
+    if (
+      frameIndex === null ||
+      frameSections === null ||
+      frameUnfiltered === null
+    ) {
+      return null;
+    }
+    const listed = listedQuestionsOf(frameIndex, frameUnfiltered);
     const held = needYou(
       frameIndex,
       frameSections,
-      pendingAnswers(listed, reviews.byPath, scoped).answered,
+      pendingAnswers(listed, reviews.byPath, scoped, frameKeeps).answered,
+      frameKeeps,
     );
     const countedAnswered = pendingAnswers(
       listed,
       countedReviews,
       scoped,
+      frameKeeps,
     ).answered;
-    const counted = needYou(frameIndex, frameSections, countedAnswered);
+    const counted = needYou(
+      frameIndex,
+      frameSections,
+      countedAnswered,
+      frameKeeps,
+    );
     return {
       ...held,
       nothing: counted.nothing,
@@ -1515,7 +1722,15 @@ export const PlanningPage: React.FC = () => {
       // Counted, as the line is, so a late answer moves nothing painted.
       sections: answeredPerSection(frameSections, countedAnswered),
     };
-  }, [frameIndex, frameSections, reviews.byPath, countedReviews, scoped]);
+  }, [
+    frameIndex,
+    frameSections,
+    frameUnfiltered,
+    frameKeeps,
+    reviews.byPath,
+    countedReviews,
+    scoped,
+  ]);
   // *Nothing needs you* because every open question is answered: drawn at
   // the head of the sections, in the commit that draws them, rather than
   // among the notices the frame painted before them, which it would move.
@@ -1528,16 +1743,36 @@ export const PlanningPage: React.FC = () => {
   // pressed, from the frame's index and sections, which are the ones on
   // screen. They name the repository by its root, which `/info` reports.
   useRepoRoot(onThisRepo ? repo : null, isMultiRepo);
+  // Under a filter, a request lists the kept entries, says so in its
+  // `Filter:` line, whose text leaves out the unmatched terms, and reads every
+  // blocked-on fact from the unfiltered sections; with every `path:` term
+  // unmatched nothing is kept, and there is no request (planning-filter.md
+  // §6.6, §6.3).
   const requestOf = useCallback<AgentRequestOf>(
-    (ids) =>
-      frameIndex === null || frameSections === null || repo === null
-        ? null
-        : planningAgentRequest(frameIndex, frameSections, {
-            repository: repoLabel(repo),
-            ids,
-            viewer: VIEWER_RELEASE,
-          }),
-    [frameIndex, frameSections, repo],
+    (ids) => {
+      if (frameIndex === null || frameSections === null || repo === null) {
+        return null;
+      }
+      if (frameSummary !== null && frameSummary.requestText === null) {
+        return null;
+      }
+      return planningAgentRequest(frameIndex, frameSections, {
+        repository: repoLabel(repo),
+        ids,
+        viewer: VIEWER_RELEASE,
+        ...(frameSummary !== null &&
+        frameSummary.requestText !== null &&
+        frameUnfiltered !== null
+          ? {
+              filter: {
+                text: frameSummary.requestText,
+                unfiltered: frameUnfiltered,
+              },
+            }
+          : {}),
+      });
+    },
+    [frameIndex, frameSections, frameSummary, frameUnfiltered, repo],
   );
   const outline = useMemo(
     () =>
@@ -1688,6 +1923,69 @@ export const PlanningPage: React.FC = () => {
 
   const headerRef = useHeaderFit();
 
+  // The filter line (planning-filter.md §7), drawn in every state but a
+  // static export, which has no planning page to filter.
+  const filterLineShown = !isStaticMode();
+  const filterInputRef = useRef<HTMLInputElement>(null);
+  // `/` focuses the box and selects its text, so a paste replaces it.
+  const focusFilter = useCallback(() => {
+    const input = filterInputRef.current;
+    if (input === null) return;
+    input.focus();
+    input.select();
+  }, []);
+  const leaveFilter = useCallback(() => {
+    contentRef.current?.focus({ preventScroll: true });
+  }, []);
+  // The query a reader's Enter, ✕ or paste navigated to, until the page it
+  // asks for is on screen, when the live region speaks its notice: after a
+  // reader's change, never as the page opens (§7).
+  const [announceFor, setAnnounceFor] = useState<string | null>(null);
+  const [announcement, setAnnouncement] = useState("");
+  // Enter, ✕ or a pasted link (§6.4): one replace navigation, written with
+  // the link encoding for `filter`, every section back on its first page,
+  // `roadmap` and every unknown parameter kept, the fragment dropped. The
+  // text already applied, under the roadmap already shown, does nothing.
+  const applyFilter = useCallback(
+    (text: string, roadmap: string | null) => {
+      const next = withFilter(search, text, roadmap);
+      const sameRoadmap =
+        roadmap === null ||
+        readRoadmapRequest(next) === readRoadmapRequest(search);
+      if (readFilterRequest(next) === filterValue(filterText) && sameRoadmap) {
+        return;
+      }
+      const query = planningQuery(next);
+      const target = query === "" ? "" : `?${query}`;
+      setAnnounceFor(target);
+      scrollToRef.current = null;
+      jumpRef.current = null;
+      navigate({ search: target }, { replace: true });
+    },
+    [search, filterText, navigate],
+  );
+  // The filter notice's lines, for the frame: what the page on screen shows.
+  const filterNotice = useMemo(
+    () => filterNoticeLines(frameSummary, frameNotUnderstood),
+    [frameSummary, frameNotUnderstood],
+  );
+  const filterNoticeId = React.useId();
+  const noticeShown = frameReady && filterNotice !== null;
+  const spoken =
+    filterNotice === null
+      ? FILTER_CLEARED
+      : filterNotice.map(spokenLine).join(" ");
+  // Once the page the reader asked for is on screen, its frame settled.
+  if (
+    announceFor !== null &&
+    location.search === announceFor &&
+    (shown === null || !inputs.waiting) &&
+    frameUrlFilter === urlFilter
+  ) {
+    setAnnounceFor(null);
+    if (frameReady) setAnnouncement(spoken);
+  }
+
   // The roadmap picker (§6.8), and only one of it: at the head of the
   // planning outline while the outline is drawn, else on its line above the
   // section bar (§6.9). Its options are the frame's.
@@ -1731,6 +2029,7 @@ export const PlanningPage: React.FC = () => {
     showSidebar,
     routeKey: `planning\n${pathParam ?? ""}`,
     currentPath: null,
+    onFocusFilter: filterLineShown ? focusFilter : undefined,
   });
 
   // The header is the viewer's, fitted by the same yield steps
@@ -1787,14 +2086,25 @@ export const PlanningPage: React.FC = () => {
             type="button"
             onClick={copyAnswers}
             disabled={!countKnown || pendingCount === 0 || quotesLoading}
+            // Under a filter, how many pending answers it leaves out: in the
+            // name and the tooltip, never in text that moves (§6.6).
+            aria-label={
+              countKnown && pendingLeftOut > 0
+                ? `${copied ? "Copied" : "Copy answers"} ${pendingCount}, not counting ${leftOutAnswers(pendingLeftOut)} the filter leaves out`
+                : undefined
+            }
             title={
               reviewsFailed
                 ? "Comments could not be loaded, so the answers waiting on the agent cannot be counted"
                 : !countKnown
                   ? "The answers waiting on the agent are still being counted"
-                  : pendingCount === 0
-                    ? "No answers are waiting on the agent"
-                    : "Copy every answer waiting on the agent, grouped by document, for one trip"
+                  : pendingLeftOut > 0
+                    ? pendingCount === 0
+                      ? `No answers the filter keeps are waiting on the agent. It leaves out ${leftOutAnswers(pendingLeftOut)}: clear it to copy them`
+                      : `Copy every answer waiting on the agent that the filter keeps, grouped by document, for one trip. It leaves out ${leftOutAnswers(pendingLeftOut)}: clear it to copy them too`
+                    : pendingCount === 0
+                      ? "No answers are waiting on the agent"
+                      : "Copy every answer waiting on the agent, grouped by document, for one trip"
             }
             className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700"
           >
@@ -1858,6 +2168,9 @@ export const PlanningPage: React.FC = () => {
           <div className="flex gap-12 py-4 px-4 sm:py-6 sm:px-8">
             {outlineShown && (
               <PlanningOutline
+                // Replaced, not moved, by a filter applied, as the sections
+                // are (below).
+                key={frameFilterKey}
                 outline={outline}
                 active={outlineActive}
                 picker={picker?.(true) ?? null}
@@ -1874,20 +2187,51 @@ export const PlanningPage: React.FC = () => {
                 fullWidth ? "max-w-none" : "max-w-4xl",
               )}
             >
+              {/* The filter line (planning-filter.md §7): first, above every
+                  state of the route, and the same height in each, so
+                  nothing is ever inserted above it. */}
+              {filterLineShown && (
+                <PlanningFilterLine
+                  urlText={filterText}
+                  invalid={urlFilter.kind === "not-understood"}
+                  busy={filterSwapSlow}
+                  onApply={applyFilter}
+                  onLeave={leaveFilter}
+                  inputRef={filterInputRef}
+                  describedBy={noticeShown ? filterNoticeId : undefined}
+                  announcement={announcement}
+                  printText={frameFilter}
+                />
+              )}
               {ready?.rescanning && (
                 <div className="absolute top-0 right-0 left-0 h-0.5 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-700">
                   <div className="h-full w-full animate-pulse bg-blue-500" />
                 </div>
               )}
               {isMultiRepo && reposLoaded && repoName === "" ? (
-                <Notice>
-                  Choose a project to see its planning page.{" "}
-                  <AppLink to="/" className="text-blue-600 dark:text-blue-400">
-                    Projects
-                  </AppLink>
-                </Notice>
+                <>
+                  <Notice>
+                    Choose a project to see its planning page.{" "}
+                    <AppLink
+                      to="/"
+                      className="text-blue-600 dark:text-blue-400"
+                    >
+                      Projects
+                    </AppLink>
+                  </Notice>
+                  <ProjectPlanningLinks
+                    names={repos.map((r) => r.name)}
+                    search={location.search}
+                  />
+                </>
               ) : isMultiRepo && reposLoaded && !repoExists ? (
-                <Notice>Repository not found: {repoName}</Notice>
+                <>
+                  <Notice>Repository not found: {repoName}</Notice>
+                  <ProjectPlanningLinks
+                    names={repos.map((r) => r.name)}
+                    search={location.search}
+                  />
+                </>
               ) : load.status === "error" ? (
                 <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-300">
                   <AlertCircle size={16} className="shrink-0" />
@@ -1926,10 +2270,17 @@ export const PlanningPage: React.FC = () => {
                           shift on every cold load of a page with a picker,
                           though nothing painted under it moved
                           (planning-index.md §6.10). Replaced, it is
-                          a removal and an insertion, which score nothing. */}
+                          a removal and an insertion, which score nothing.
+                          So is it, and all below it, when a filter is
+                          applied: a shorter bar, or one with no Copy all
+                          agent requests, moved its controls, and the
+                          notice the frame gains moved the sections
+                          (planning-filter.md §7). */}
                   <div
                     key={
-                      frameReady && frameLayout !== null ? "bar" : "progress"
+                      frameReady && frameLayout !== null
+                        ? `bar\n${frameFilterKey}`
+                        : "progress"
                     }
                     className="mb-6 flex min-h-7 flex-wrap items-center gap-x-3 gap-y-1"
                   >
@@ -1979,59 +2330,76 @@ export const PlanningPage: React.FC = () => {
                       />
                     )}
                   </div>
-                  {frameReady &&
-                    frameSections !== null &&
-                    frameConfig !== null && (
-                      <Notices sections={frameSections} config={frameConfig} />
-                    )}
-                  <div ref={sectionsRef} data-planning-sections>
-                    {shown !== null && frameReady ? (
-                      <>
-                        {shown.inputs.reviewsFailed && (
-                          <p
-                            role="alert"
-                            className="mb-6 flex items-center gap-2 text-sm text-amber-700 dark:text-amber-400"
-                          >
-                            <AlertCircle size={14} className="shrink-0" />
-                            Comments could not be loaded.
-                          </p>
-                        )}
-                        {answeredAll && (
-                          <p
-                            data-testid="nothing-needs-you"
-                            className="mb-6 text-base font-medium text-slate-700 dark:text-slate-200"
-                          >
-                            {PLANNING_NOTICES.nothingNeedsYou}{" "}
-                            <span className="text-sm font-normal text-slate-500 dark:text-slate-400">
-                              Every open question has your answer, waiting on
-                              the agent.
-                            </span>
-                          </p>
-                        )}
-                        <Sections
-                          layout={shown.inputs.layout}
-                          index={shown.inputs.index}
-                          card={card}
-                          documentRow={documentRow}
-                          buildPath={buildPath}
-                          asked={asked}
-                          onFlip={flip}
-                          onPrefetch={prefetch}
-                          busy={busy}
-                          requestOf={requestOf}
-                          answered={frameNeedYou?.sections}
+                  <React.Fragment key={frameFilterKey}>
+                    {frameReady &&
+                      frameSections !== null &&
+                      frameConfig !== null && (
+                        <Notices
+                          sections={frameSections}
+                          config={frameConfig}
+                          filtered={frameFilter !== ""}
+                          filterNotice={
+                            filterNotice !== null && (
+                              <FilterNotice
+                                id={filterNoticeId}
+                                lines={filterNotice}
+                                notUnderstood={frameNotUnderstood !== null}
+                              />
+                            )
+                          }
                         />
-                      </>
-                    ) : inputs.slow ? (
-                      <div className="flex items-center justify-center py-20">
-                        <Loader2
-                          size={32}
-                          className="animate-spin text-blue-600"
-                          aria-label="Loading this page's cards"
-                        />
-                      </div>
-                    ) : null}
-                  </div>
+                      )}
+                    <div ref={sectionsRef} data-planning-sections>
+                      {shown !== null && frameReady ? (
+                        <>
+                          {shown.inputs.reviewsFailed && (
+                            <p
+                              role="alert"
+                              className="mb-6 flex items-center gap-2 text-sm text-amber-700 dark:text-amber-400"
+                            >
+                              <AlertCircle size={14} className="shrink-0" />
+                              Comments could not be loaded.
+                            </p>
+                          )}
+                          {answeredAll && (
+                            <p
+                              data-testid="nothing-needs-you"
+                              className="mb-6 text-base font-medium text-slate-700 dark:text-slate-200"
+                            >
+                              {frameFilter !== ""
+                                ? PLANNING_NOTICES.nothingFilteredNeedsYou
+                                : PLANNING_NOTICES.nothingNeedsYou}{" "}
+                              <span className="text-sm font-normal text-slate-500 dark:text-slate-400">
+                                Every open question has your answer, waiting on
+                                the agent.
+                              </span>
+                            </p>
+                          )}
+                          <Sections
+                            layout={shown.inputs.layout}
+                            index={shown.inputs.index}
+                            card={card}
+                            documentRow={documentRow}
+                            buildPath={buildPath}
+                            asked={asked}
+                            onFlip={flip}
+                            onPrefetch={prefetch}
+                            busy={busy}
+                            requestOf={requestOf}
+                            answered={frameNeedYou?.sections}
+                          />
+                        </>
+                      ) : inputs.slow ? (
+                        <div className="flex items-center justify-center py-20">
+                          <Loader2
+                            size={32}
+                            className="animate-spin text-blue-600"
+                            aria-label="Loading this page's cards"
+                          />
+                        </div>
+                      ) : null}
+                    </div>
+                  </React.Fragment>
                 </>
               )}
             </main>
@@ -2046,6 +2414,32 @@ export const PlanningPage: React.FC = () => {
     </>
   );
 };
+
+/**
+ * Daemon mode's way on from *Choose a project* and *Repository not found*
+ * (`planning-filter.md` §9.4): each served project's planning page, with the
+ * same query, so a root-relative link with an address in front keeps its
+ * filter and costs one click.
+ */
+const ProjectPlanningLinks: React.FC<{
+  names: readonly string[];
+  /** The URL's query, `?` and all, or `""`. */
+  search: string;
+}> = ({ names, search }) =>
+  names.length === 0 ? null : (
+    <ul data-testid="planning-projects" className="mb-3 space-y-1 text-sm">
+      {names.map((name) => (
+        <li key={name}>
+          <AppLink
+            to={`${planningPath(true, name)}${search}`}
+            className="text-blue-600 no-underline hover:underline dark:text-blue-400"
+          >
+            {name}
+          </AppLink>
+        </li>
+      ))}
+    </ul>
+  );
 
 /** One document, by name, with its badge and whatever the section adds. */
 const DocumentRow: React.FC<{

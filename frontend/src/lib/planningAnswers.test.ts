@@ -4,7 +4,10 @@
  * pending for the agent anywhere in a question's unit answers it.
  */
 import { describe, expect, it } from "vitest";
-import type { PlanningQuestion } from "vantage-md/planning";
+import {
+  filterKeepsQuestion,
+  type PlanningQuestion,
+} from "vantage-md/planning";
 import {
   answeredPerSection,
   needYou,
@@ -12,8 +15,8 @@ import {
   questionKey,
 } from "./planningAnswers";
 import { needYouDocuments } from "../hooks/usePlanningPageInputs";
-import { listedQuestions, sectionsOf } from "./planningPages";
-import { indexOf, questionDirective } from "../test/planning";
+import { listedQuestions, sectionsOf, understoodFilter } from "./planningPages";
+import { filterFormsIndex, indexOf, questionDirective } from "../test/planning";
 import type { ReviewComment } from "../types";
 
 const OPEN = "\u{1F4AC}";
@@ -195,5 +198,88 @@ describe("needYouDocuments", () => {
       "b.md",
       "c.md",
     ]);
+  });
+});
+
+describe("under a planning filter (planning-filter.md §6.6)", () => {
+  /** The filter's keep predicate, as the page builds it. */
+  const keepsOf = (text: string) => {
+    const filter = understoodFilter(text)!;
+    return (question: PlanningQuestion) =>
+      filterKeepsQuestion(filter, question);
+  };
+
+  it("places over every listed question, then narrows to the kept ones, saying how many it leaves out", () => {
+    const a1 = byId("OQ-A1");
+    const c1 = byId("OQ-C1");
+    const byPath = {
+      "a.md": [on(a1.unitLine)],
+      "c.md": [on(c1.unitLine), on(c1.line)],
+    };
+    const { groups, answered, leftOut } = pendingAnswers(
+      listed,
+      byPath,
+      {},
+      keepsOf("path:a.md"),
+    );
+    expect(groups).toEqual([{ path: "a.md", comments: byPath["a.md"] }]);
+    expect([...answered]).toEqual([questionKey(a1)]);
+    expect(leftOut).toBe(2);
+    // With no filter, nothing is left out.
+    expect(pendingAnswers(listed, byPath, {}).leftOut).toBe(0);
+  });
+
+  // The fixture of forms' docs/design/a.md: OQ-A4, ✅, nested in OQ-A3, open.
+  it("leaves out a comment on a hidden ✅ question nested in a kept open one, never crediting it to the kept one", () => {
+    const forms = filterFormsIndex();
+    const all = listedQuestions(forms, sectionsOf(forms));
+    const of = (id: string) => all.find((q) => q.id === id)!;
+    const [a3, a4] = [of("OQ-A3"), of("OQ-A4")];
+    // A4's unit is inside A3's, so placement by line alone over A3 would
+    // take the comment for A3's.
+    expect(a4.unitLine).toBeGreaterThan(a3.unitLine);
+    expect(a4.unitEndLine).toBeLessThanOrEqual(a3.unitEndLine);
+    const comment = on(a4.unitLine);
+    const byPath = { "docs/design/a.md": [comment] };
+    const filtered = pendingAnswers(all, byPath, {}, keepsOf("is:open"));
+    expect(filtered).toEqual({ groups: [], answered: new Set(), leftOut: 1 });
+    // Over the kept questions alone, it would have been credited to A3.
+    const kept = all.filter(keepsOf("is:open"));
+    expect([...pendingAnswers(kept, byPath, {}).answered]).toEqual([
+      questionKey(a3),
+    ]);
+    // Unfiltered, it is A4's.
+    expect([...pendingAnswers(all, byPath, {}).answered]).toEqual([
+      questionKey(a4),
+    ]);
+  });
+
+  it("recounts each roadmap's need-you numbers over the kept questions", () => {
+    const filtered = sectionsOf(index, "roadmap.md", "path:a.md");
+    const keeps = keepsOf("path:a.md");
+    // The filtered sections' own counts, with nothing answered.
+    expect(
+      Object.fromEntries(needYou(index, filtered, new Set(), keeps).roadmaps),
+    ).toEqual({ "plans/roadmap.md": 1, "roadmap.md": 3 });
+    // Answering B1, which the filter hides, takes nothing more off; A1 does.
+    const counts = needYou(
+      index,
+      filtered,
+      new Set([questionKey(byId("OQ-B1")), questionKey(byId("OQ-A1"))]),
+      keeps,
+    );
+    expect(Object.fromEntries(counts.roadmaps)).toEqual({
+      "plans/roadmap.md": 1,
+      "roadmap.md": 2,
+    });
+    // Every open question it keeps answered: nothing it keeps needs you.
+    expect(
+      needYou(
+        index,
+        filtered,
+        new Set(["OQ-A1", "OQ-A2"].map((id) => questionKey(byId(id)))),
+        keeps,
+      ).nothing,
+    ).toBe(true);
   });
 });

@@ -158,7 +158,8 @@ const ShellFrame: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       prev.showSidebar === next.showSidebar &&
       prev.routeKey === next.routeKey &&
       prev.currentPath === next.currentPath &&
-      prev.documentKeys === next.documentKeys
+      prev.documentKeys === next.documentKeys &&
+      prev.filterKey === next.filterKey
         ? prev
         : next,
     );
@@ -196,6 +197,13 @@ const ShellFrame: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     () => (pageRef.current?.shortcuts?.onEscape ?? noop)(),
     [],
   );
+  // `/`, wired only while the page on screen has a filter box: elsewhere the
+  // key stays the browser's (docs/design/planning-filter.md §7).
+  const focusFilter = useCallback(
+    () => (pageRef.current?.onFocusFilter ?? noop)(),
+    [],
+  );
+  const onFocusFilter = shown?.filterKey === true ? focusFilter : undefined;
   // How much of the pane's bottom the degradation banner covers.
   const [bannerSpace, setBannerSpace] = useState(0);
 
@@ -417,6 +425,7 @@ const ShellFrame: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     onViewHistory,
     onCopyPath,
     onEscape,
+    onFocusFilter,
     contentScrollRef,
     isMultiRepo,
     currentRepo,
@@ -703,6 +712,7 @@ const ShellFrame: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           isOpen={shortcutsOpen}
           onClose={() => setShortcutsOpen(false)}
           documentKeys={shown?.documentKeys ?? true}
+          filterKey={shown?.filterKey ?? false}
         />
         {/* Style Guide Modal */}
         <StyleGuideModal

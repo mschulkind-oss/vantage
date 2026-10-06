@@ -17,6 +17,12 @@
  * `vantage-check index` counts from the index alone; the page holds the
  * reviews, so the page subtracts.
  *
+ * Under a planning filter (`docs/design/planning-filter.md` §6.6) they
+ * follow it: Copy answers covers the questions it keeps, and the need-you
+ * numbers count them. Comments are still placed over every listed question,
+ * and only then narrowed to the kept ones, so a comment on a question the
+ * filter hides is never credited to a kept one around it.
+ *
  * Pure functions of the index, the sections and the reviews, so the page and
  * its tests read them alike.
  */
@@ -58,7 +64,15 @@ export interface PendingAnswers {
   groups: PendingGroup[];
   /** The keys (`questionKey`) of the listed questions a pending comment answers. */
   answered: ReadonlySet<string>;
+  /**
+   * The pending comments on listed questions that `keeps` leaves out: what
+   * Copy answers' tooltip says the filter leaves out. `0` with no filter.
+   */
+  leftOut: number;
 }
+
+/** Whether a question is kept: by a planning filter, or by none, every one. */
+export type KeepsQuestion = (question: PlanningQuestion) => boolean;
 
 /**
  * Every comment still pending for the agent on a listed question, grouped by
@@ -71,11 +85,17 @@ export interface PendingAnswers {
  * question and its document's comments are the ones it read; every other
  * question takes the comments its unit holds by line (`placeComment`, the
  * innermost unit winning).
+ *
+ * `keeps` narrows the result to the questions a planning filter keeps, once
+ * every comment is placed over all of `questions` (`planning-filter.md`
+ * §6.6): a comment on a hidden ✅ question nested in a kept open one is that
+ * hidden question's, and is left out, never the kept one's.
  */
 export function pendingAnswers(
   questions: readonly PlanningQuestion[],
   byPath: Readonly<Record<string, readonly ReviewComment[]>>,
   reports: Readonly<Record<string, QuestionReport>>,
+  keeps?: KeepsQuestion,
 ): PendingAnswers {
   const byDocument = new Map<string, PlanningQuestion[]>();
   for (const question of questions) {
@@ -85,6 +105,12 @@ export function pendingAnswers(
   }
   const groups: PendingGroup[] = [];
   const answered = new Set<string>();
+  /** Each listed question's key, kept or not. */
+  const kept = new Map<string, boolean>();
+  for (const question of questions) {
+    kept.set(questionKey(question), keeps?.(question) ?? true);
+  }
+  let leftOut = 0;
   for (const path of [...byDocument.keys()].sort()) {
     const listed = byDocument.get(path) ?? [];
     const comments = byPath[path];
@@ -120,12 +146,16 @@ export function pendingAnswers(
         }
       }
       if (key === undefined) continue;
+      if (kept.get(key) === false) {
+        leftOut++;
+        continue;
+      }
       pending.push(comment);
       answered.add(key);
     }
     if (pending.length > 0) groups.push({ path, comments: pending });
   }
-  return { groups, answered };
+  return { groups, answered, leftOut };
 }
 
 /** What the page says needs the human, less what they have answered. */
@@ -153,11 +183,17 @@ const needs = (question: PlanningQuestion | undefined): boolean =>
  * The page's need-you numbers for `sections`, with every question `answered`
  * holds (by `questionKey`) taken off. With nothing answered they are the
  * index's own, and nothing is routed again.
+ *
+ * Under a planning filter, `sections` are the filtered ones, whose counts
+ * are already over kept questions alone, and `keeps` is the filter's: the
+ * recount routes each roadmap again from the index, so it applies the same
+ * predicate (`planning-filter.md` §6.2).
  */
 export function needYou(
   index: PlanningIndex,
   sections: PlanningSections,
   answered: ReadonlySet<string>,
+  keeps?: KeepsQuestion,
 ): NeedYou {
   const routing = sections.roadmaps.filter((r) => r.state === "routes");
   if (answered.size === 0) {
@@ -172,9 +208,15 @@ export function needYou(
   for (const roadmap of routing) {
     roadmaps.set(
       roadmap.path,
-      routeQuestions(index, roadmap.path).filter(
-        (ref) => needs(questionFor(index, ref)) && !isAnswered(ref),
-      ).length,
+      routeQuestions(index, roadmap.path).filter((ref) => {
+        const question = questionFor(index, ref);
+        return (
+          question !== undefined &&
+          needs(question) &&
+          !isAnswered(ref) &&
+          (keeps?.(question) ?? true)
+        );
+      }).length,
     );
   }
   // Every open question outside the `done` role is listed: routed by the
