@@ -22,6 +22,7 @@ import type {
   NotUnderstoodPlanningFilter,
   PlanningFilterReason,
   PlanningFilterSummary,
+  PlanningNothingMatches,
 } from "./filter.js";
 import { PLANNING_FILTER_LIMITS } from "./filterLimits.js";
 import { PLANNING_SECTION_TITLES, codeSpan } from "./guide.js";
@@ -303,10 +304,104 @@ function filteredNotice(
   return lines;
 }
 
+/**
+ * What the reason line after *Nothing matches* says of words: the fields they
+ * are matched against (§6.12), in plain words, a question's path being its
+ * document's.
+ */
+const WORDS_MATCH =
+  "Words and quoted phrases are matched only against a question's id, title and leaning, and a document's path, stage and next step.";
+
+/** The one reason line after *Nothing matches*, in `reader`'s words. */
+function nothingMatchesReason(
+  why: PlanningNothingMatches,
+  reader: PlanningNoticeReader,
+): PlanningNoticeLine {
+  switch (why.kind) {
+    case "other-roadmaps": {
+      const { questions, roadmaps } = why;
+      const them = questions === 1 ? "it" : "them";
+      // As the notice's Other roadmaps line counts them, without "more".
+      const lead =
+        questions === 1
+          ? "1 question it keeps is on "
+          : `${count(questions)} questions it keeps are on `;
+      const where =
+        roadmaps === 1
+          ? "another roadmap."
+          : `${count(roadmaps)} other roadmaps.`;
+      const remedy =
+        reader === "page"
+          ? roadmaps === 1
+            ? ` Choose that roadmap in the Roadmap menu to see ${them}; the filter stays.`
+            : ` Choose one in the Roadmap menu to see ${them}; the filter stays.`
+          : roadmaps === 1
+            ? " Rerun with --roadmap naming it."
+            : " Rerun with --roadmap naming one.";
+      return [`${lead}${where}${remedy}`];
+    }
+    case "no-entries":
+      return [
+        reader === "page"
+          ? "The page lists no entry without a filter either."
+          : "The index lists no entry without --filter either.",
+      ];
+    case "documents":
+      return [
+        why.documents === 0
+          ? "It keeps no document the index lists."
+          : why.documents === 1
+            ? "It keeps 1 document, and it has no question or next step listed here."
+            : `It keeps ${count(why.documents)} documents, and none of them has a question or a next step listed here.`,
+      ];
+    case "state": {
+      const keeps = why.terms.includes("is:open");
+      const drops = why.terms.includes("-is:open");
+      const one = why.entries === 1;
+      const which =
+        keeps && !drops
+          ? one
+            ? ", and it is not an open question."
+            : ", and none of them is an open question."
+          : drops && !keeps
+            ? one
+              ? ", and it is an open question."
+              : ", and every one of them is an open question."
+            : ".";
+      return [
+        "Without ",
+        { code: why.terms.join(" ") },
+        ` it would keep ${plural(why.entries, "entry", "entries")}${which}`,
+      ];
+    }
+    case "words":
+      return [WORDS_MATCH];
+  }
+}
+
+/**
+ * What stands in place of the sections when an applied filter keeps no entry:
+ * *Nothing matches* and the filter as code, then the reason line.
+ */
+function nothingMatchesNotice(
+  summary: PlanningFilterSummary,
+  reader: PlanningNoticeReader,
+): PlanningNoticeLine[] | null {
+  const why = summary.nothingMatches;
+  if (why === null) return null;
+  return [
+    ["Nothing matches ", { code: summary.canonical }, "."],
+    nothingMatchesReason(why, reader),
+  ];
+}
+
 /** One wording for the page and the CLI (P7). */
 export const PLANNING_NOTICES: {
   nothingNeedsYou: string;
-  /** *Nothing needs you* under a filter (§6.15): no open question it keeps. */
+  /**
+   * *Nothing needs you* under a filter (§6.15): no open question it keeps,
+   * where it keeps an entry. Where it keeps none, `nothingMatches` is said.
+   */
   nothingFilteredNeedsYou: string;
   /**
    * The filter notice of an applied filter (§6.18): the first line with its
@@ -319,6 +414,18 @@ export const PLANNING_NOTICES: {
     summary: PlanningFilterSummary,
     reader: PlanningNoticeReader,
   ): PlanningNoticeLine[];
+  /**
+   * What stands in place of the sections when an applied filter keeps no
+   * entry in any of them: the headline, *Nothing matches* and the filter as
+   * code, then the one reason line that applies (`PlanningNothingMatches`),
+   * in `reader`'s words. `null` when it keeps an entry. *Nothing this filter
+   * keeps needs you* is not said beside it, since it reads as though
+   * something were kept.
+   */
+  nothingMatches(
+    summary: PlanningFilterSummary,
+    reader: PlanningNoticeReader,
+  ): PlanningNoticeLine[] | null;
   /** The page's notice for a filter it cannot read, and so does not apply. */
   notFiltered(filter: NotUnderstoodPlanningFilter): PlanningNoticeLine;
   /** The checker's exit-2 message for a filter it cannot read, unprefixed. */
@@ -345,6 +452,7 @@ export const PLANNING_NOTICES: {
   nothingNeedsYou: "Nothing needs you.",
   nothingFilteredNeedsYou: "Nothing this filter keeps needs you.",
   filtered: filteredNotice,
+  nothingMatches: nothingMatchesNotice,
   notFiltered: (filter) => [
     "Not filtered: this Vantage cannot read ",
     notUnderstoodPart(filter),

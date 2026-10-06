@@ -1518,6 +1518,14 @@ describe("index --filter, as text", () => {
     expect(stdout).not.toContain(PLANNING_NOTICES.nothingNeedsYou);
   });
 
+  it("still says nothing it keeps needs you when it keeps an entry, and says nothing matches only when it keeps none", async () => {
+    const { stdout } = await index(fullTree(), "--filter", "path:docs/d.md");
+    expect(stdout).toContain(
+      `\n\n${PLANNING_NOTICES.nothingFilteredNeedsYou}\n\n`,
+    );
+    expect(stdout).not.toContain("Nothing matches");
+  });
+
   // §18 criterion 1, over a copy of the end-to-end fixture checked as its own
   // root. Only what the criterion names is pinned: the page's other specs add
   // documents to that fixture, which change the totals and nothing here.
@@ -1642,6 +1650,123 @@ describe("index --filter, as text", () => {
   });
 });
 
+describe("index --filter, keeping no entry", () => {
+  // Ruled 2026-10-06: an empty result says so, in the page's words (P7),
+  // where the sections would be, with the one reason that applies, and never
+  // says that nothing it keeps needs you. It is an answer, and exits 0.
+  const nothing = async (root: string, text: string) => {
+    const { code, stdout, stderr } = await index(root, "--filter", text);
+    expect(code, text).toBe(EXIT_OK);
+    expect(stderr, text).toBe("");
+    expect(stdout, text).not.toContain(
+      PLANNING_NOTICES.nothingFilteredNeedsYou,
+    );
+    expect(stdout, text).not.toContain("Agent requests:");
+    const blocks = stdout.split("\n\n");
+    expect(blocks[0], text).toMatch(/^Filtered by .*: 0 of /);
+    return blocks;
+  };
+
+  it("names what words are matched against, for a word that matches nothing", async () => {
+    const blocks = await nothing(fullTree(), "nothing-holds-this");
+    expect(blocks[1]).toBe(
+      [
+        "Nothing matches `nothing-holds-this`.",
+        "Words and quoted phrases are matched only against a question's id, title and leaning, and a document's path, stage and next step.",
+      ].join("\n"),
+    );
+    expect(blocks[2]).toBe("Roadmap: roadmap.md");
+  });
+
+  it("says the documents its path: terms keep list nothing here", async () => {
+    // docs/old.md has the done role: its open question is in no section.
+    const blocks = await nothing(fullTree(), "path:docs/old.md");
+    expect(blocks[1]).toBe(
+      [
+        "Nothing matches `path:docs/old.md`.",
+        "It keeps 1 document, and it has no question or next step listed here.",
+      ].join("\n"),
+    );
+    // With a word too: it is the documents that list nothing, not the word.
+    expect((await nothing(fullTree(), "path:docs/old.md zzz"))[1]).toBe(
+      [
+        "Nothing matches `path:docs/old.md zzz`.",
+        "It keeps 1 document, and it has no question or next step listed here.",
+      ].join("\n"),
+    );
+    expect(
+      (await nothing(fullTree(), "path:docs/old.md path:/roadmap.md"))[1],
+    ).toBe(
+      [
+        "Nothing matches `path:docs/old.md path:/roadmap.md`.",
+        "It keeps 2 documents, and none of them has a question or a next step listed here.",
+      ].join("\n"),
+    );
+  });
+
+  it("says what its is:open term leaves out, as at the end of the agent's loop", async () => {
+    // docs/d.md is built, with no questions: a Ready to graduate row.
+    const blocks = await nothing(fullTree(), "path:/docs/d.md is:open");
+    expect(blocks[1]).toBe(
+      [
+        "Nothing matches `path:/docs/d.md is:open`.",
+        "Without `is:open` it would keep 1 entry, and it is not an open question.",
+      ].join("\n"),
+    );
+  });
+
+  it("says there is no entry to match in an index that lists none", async () => {
+    const root = makeTree({
+      ".git/HEAD": "",
+      ".vantage.toml": STAGES_TOML,
+      "a.md": doc("status: accepted\nstage: RETIRED", questions("A", OPEN)),
+    });
+    const blocks = await nothing(root, "zzz");
+    // After the notices, of which No roadmap is one here.
+    expect(blocks[1]).toMatch(/^No roadmap: /);
+    expect(blocks[2]).toBe(
+      [
+        "Nothing matches `zzz`.",
+        "The index lists no entry without --filter either.",
+        // The last block: there is no roadmap to print after it.
+        "",
+      ].join("\n"),
+    );
+  });
+
+  it("leaves the JSON and --request as they were", async () => {
+    const { payload } = await indexJson(
+      fullTree(),
+      "--filter",
+      "path:docs/old.md",
+    );
+    expect(payload.filter.entries).toEqual({ shown: 0, of: 13 });
+    expect(Object.keys(payload.filter)).toEqual([
+      "text",
+      "canonical",
+      "link",
+      "documents",
+      "entries",
+      "openQuestions",
+      "blockedLeftOut",
+      "otherRoadmaps",
+      "waitsOutside",
+      "unknownKeys",
+      "sections",
+    ]);
+    expect(JSON.stringify(payload)).not.toContain("Nothing matches");
+    const request = await index(
+      fullTree(),
+      "--request",
+      "--filter",
+      "path:docs/old.md",
+    );
+    expect(request.code).toBe(EXIT_OK);
+    expect(request.stdout).toBe("");
+    expect(request.stderr).toMatch(/the filter keeps\n$/);
+  });
+});
+
 describe("index --filter, with several roadmaps", () => {
   // §13.5: the link names the chosen roadmap whenever two or more can be
   // chosen, so the human's Needs you follows the roadmap the agent checked.
@@ -1667,6 +1792,10 @@ describe("index --filter, with several roadmaps", () => {
         "  roadmap.md  0 need you  (chosen)",
         "  docs/old/roadmap.md  ignored: has a stage with the done role",
         "  docs/plans/roadmap.md  1 needs you",
+        "",
+        // It keeps no entry, and says why in place of the sections.
+        "Nothing matches `path:docs/b.md`.",
+        "1 question it keeps is on another roadmap. Rerun with --roadmap naming it.",
         "",
         "Roadmap: roadmap.md",
         "",

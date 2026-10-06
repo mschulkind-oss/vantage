@@ -1994,6 +1994,145 @@ describe("a pasted link (§6.17)", () => {
   });
 });
 
+describe("Nothing matches, when a filter keeps no entry (ruled 2026-10-06)", () => {
+  const checker = (summary: PlanningFilterSummary) =>
+    PLANNING_NOTICES.nothingMatches(summary, "checker")?.map(noticeText) ??
+    null;
+  const page = (summary: PlanningFilterSummary) =>
+    PLANNING_NOTICES.nothingMatches(summary, "page")?.map(noticeText) ?? null;
+  /** The reason line, as both readers have it where they word it alike. */
+  const reason = (text: string, index?: PlanningIndex) => {
+    const { summary } =
+      index === undefined
+        ? apply(text)
+        : apply(text, index, derivePlanningSections(index));
+    expect(page(summary)?.[1]).toBe(checker(summary)?.[1]);
+    return checker(summary)?.[1];
+  };
+
+  it("is said only of a filter that keeps no entry, with the filter as code", () => {
+    expect(apply("path:*.md").summary.nothingMatches).toBeNull();
+    expect(
+      PLANNING_NOTICES.nothingMatches(apply("path:*.md").summary, "page"),
+    ).toBeNull();
+    const { summary } = apply("nothing-holds-this");
+    expect(summary.entries.shown).toBe(0);
+    expect(PLANNING_NOTICES.nothingMatches(summary, "page")?.[0]).toEqual([
+      "Nothing matches ",
+      { code: "nothing-holds-this" },
+      ".",
+    ]);
+    expect(checker(apply("path:a`b.md").summary)?.[0]).toBe(
+      "Nothing matches ``path:a`b.md``.",
+    );
+  });
+
+  it("says first that the questions it keeps are on other roadmaps, counted, in each reader's words", () => {
+    // OQ-C1 is x/roadmap.md's, which is not the default roadmap.
+    const { summary } = apply("oq-c1");
+    expect(summary.nothingMatches).toEqual({
+      kind: "other-roadmaps",
+      questions: 1,
+      roadmaps: 1,
+    });
+    expect(checker(summary)).toEqual([
+      "Nothing matches `oq-c1`.",
+      "1 question it keeps is on another roadmap. Rerun with --roadmap naming it.",
+    ]);
+    expect(page(summary)?.[1]).toBe(
+      "1 question it keeps is on another roadmap. Choose that roadmap in the Roadmap menu to see it; the filter stays.",
+    );
+    // Before the is:open reason, which holds too.
+    expect(apply("oq-c1 is:open").summary.nothingMatches?.kind).toBe(
+      "other-roadmaps",
+    );
+    const many = (
+      questions: number,
+      roadmaps: number,
+    ): PlanningFilterSummary => ({
+      ...summary,
+      nothingMatches: { kind: "other-roadmaps", questions, roadmaps },
+    });
+    expect(page(many(3, 1))?.[1]).toBe(
+      "3 questions it keeps are on another roadmap. Choose that roadmap in the Roadmap menu to see them; the filter stays.",
+    );
+    expect(page(many(1, 2))?.[1]).toBe(
+      "1 question it keeps is on 2 other roadmaps. Choose one in the Roadmap menu to see it; the filter stays.",
+    );
+    expect(checker(many(1234, 2))?.[1]).toBe(
+      "1,234 questions it keeps are on 2 other roadmaps. Rerun with --roadmap naming one.",
+    );
+  });
+
+  it("says when there is no entry to match even without it", () => {
+    const empty = indexOf({ "a.md": "---\nstatus: draft\n---\n\n# A\n" });
+    const { summary } = apply("zzz", empty, derivePlanningSections(empty));
+    expect(summary.nothingMatches).toEqual({ kind: "no-entries" });
+    expect(page(summary)?.[1]).toBe(
+      "The page lists no entry without a filter either.",
+    );
+    expect(checker(summary)?.[1]).toBe(
+      "The index lists no entry without --filter either.",
+    );
+  });
+
+  it("says the documents its path: terms keep list nothing here, words or no words", () => {
+    // a.md has no question and no stage; ref/r.md has the done role.
+    expect(apply("path:/a.md").summary.nothingMatches).toEqual({
+      kind: "documents",
+      documents: 1,
+    });
+    expect(reason("path:/a.md")).toBe(
+      "It keeps 1 document, and it has no question or next step listed here.",
+    );
+    expect(reason("path:/a.md path:ref generator")).toBe(
+      "It keeps 2 documents, and none of them has a question or a next step listed here.",
+    );
+    // None at all: every path left out, or a term that matches none.
+    expect(reason("-path:.md")).toBe("It keeps no document the index lists.");
+    expect(reason("path:docs/desing")).toBe(
+      "It keeps no document the index lists.",
+    );
+  });
+
+  it("says what its is: terms leave out of what the rest of it keeps", () => {
+    // notes/e.md is built, with no question: a Ready to graduate row.
+    expect(apply("path:notes/e.md is:open").summary.nothingMatches).toEqual({
+      kind: "state",
+      terms: ["is:open"],
+      entries: 1,
+    });
+    const { summary } = apply("path:notes/e.md is:open");
+    expect(PLANNING_NOTICES.nothingMatches(summary, "page")?.[1]).toEqual([
+      "Without ",
+      { code: "is:open" },
+      " it would keep 1 entry, and it is not an open question.",
+    ]);
+    // notes/b.md's two rows and its blocked question, and notes/e.md's row.
+    expect(reason("path:notes/b.md path:notes/e.md is:open")).toBe(
+      "Without `is:open` it would keep 4 entries, and none of them is an open question.",
+    );
+    expect(reason("oq-f1 -is:open")).toBe(
+      "Without `-is:open` it would keep 1 entry, and it is an open question.",
+    );
+    expect(reason("oq-f1 is:open -is:open")).toBe(
+      "Without `is:open -is:open` it would keep 1 entry.",
+    );
+  });
+
+  it("says otherwise what words are matched against", () => {
+    expect(apply("nothing-holds-this").summary.nothingMatches).toEqual({
+      kind: "words",
+    });
+    const words =
+      "Words and quoted phrases are matched only against a question's id, title and leaning, and a document's path, stage and next step.";
+    expect(reason("nothing-holds-this")).toBe(words);
+    // The documents its path: terms keep list entries, and a word keeps none.
+    expect(reason("path:notes zzz")).toBe(words);
+    expect(reason('"first? the" is:open')).toBe(words);
+  });
+});
+
 describe("the filter notice (§6.18)", () => {
   const checker = (summary: PlanningFilterSummary) =>
     PLANNING_NOTICES.filtered(summary, "checker").map(noticeText);
@@ -2095,6 +2234,7 @@ describe("the filter notice (§6.18)", () => {
       ],
       unmatched: ["path:z"],
       unknownKeys: [{ key: "stage", terms: ["stage:x"] }],
+      nothingMatches: null,
     };
     expect(checker(summary)).toEqual([
       "Filtered by `path:a is:open`: 1,234 of 5,678 entries, in 1 of 2 paths, 1,234 of them open questions.",
