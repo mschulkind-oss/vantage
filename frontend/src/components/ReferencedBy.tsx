@@ -37,9 +37,10 @@
  * - **One line from `sm` up, wrapped below it.** Cut off at a phone's width,
  *   the line lost its end, which is the roadmap's answer and the part the line
  *   exists for, and a touch screen has no hover to show the title. Below `sm`
- *   the line wraps, the link taking a line of its own when it does not fit
- *   beside the words, and a row wraps with a hanging indent and breaks a file
- *   name with nowhere else to break rather than widen the page.
+ *   the line wraps, the link taking a line of its own under the words, with
+ *   no separator to hang at a line's edge, and a row wraps with a hanging
+ *   indent and breaks a file name with nowhere else to break rather than
+ *   widen the page.
  * - **One line at every width when it fills a reservation** (`oneLine`): the
  *   line the viewer reserved at first paint for an index still on its way
  *   (`docs/reference/planning-index.md` §12.2) is one line tall, and a
@@ -364,13 +365,22 @@ export function ReferencedBy({
   const hasWords = partsOf(line).length > 0;
   const labels = labelsOf(summary);
   const truncate = oneLine ? "truncate" : "sm:truncate";
-  // Where the line is one line, the link keeps its width and the words before
-  // it are cut off instead (planning-filter.md §7). Below `sm`, unless it
-  // fills a reservation, the row wraps, and the link takes a line of its own
-  // when it does not fit beside the words.
-  const whole = oneLine
+  const hasButton = summary.sources.length > 0;
+  // The link's part, its separator and the link in one flex item, so the
+  // separator always sits beside the link it joins. Where the line is one
+  // line, the part keeps its width and the words before it are cut off
+  // instead (planning-filter.md §7). Below `sm`, unless it fills a
+  // reservation, the part takes a line of its own, without the separator,
+  // starting where the words start, after the button's chevron. Left to wrap
+  // item by item, the separator hung alone at the end of the words' line or
+  // opened the link's, joining nothing, and the link started under the
+  // chevron rather than under the words.
+  const linkPart = oneLine
     ? "shrink-0 whitespace-nowrap"
-    : "sm:shrink-0 sm:whitespace-nowrap";
+    : cn(
+        "basis-full sm:basis-auto sm:shrink-0 sm:whitespace-nowrap",
+        hasButton && "pl-[18px] sm:pl-0",
+      );
 
   return (
     <div
@@ -383,7 +393,7 @@ export function ReferencedBy({
           oneLine ? "flex-nowrap" : "flex-wrap sm:flex-nowrap",
         )}
       >
-        {!hasWords ? null : summary.sources.length === 0 ? (
+        {!hasWords ? null : !hasButton ? (
           <div className={cn("min-w-0", truncate)} title={text}>
             <LineWords line={line} />
           </div>
@@ -409,22 +419,24 @@ export function ReferencedBy({
           </button>
         )}
         {line.planning !== null && planningHref !== null && (
-          <>
+          <span className={linkPart}>
             {hasWords && (
-              <span className="shrink-0 whitespace-pre">{" · "}</span>
+              <span
+                className={cn("whitespace-pre", !oneLine && "hidden sm:inline")}
+              >
+                {" · "}
+              </span>
             )}
             {/* A plain link, so a Ctrl or middle click opens a tab, and it
-                prints as text. */}
+                prints as text. Inline in its part, so only its words take a
+                click, never the rest of a line of its own. */}
             <AppLink
               to={planningHref}
-              className={cn(
-                "text-blue-600 hover:underline dark:text-blue-400",
-                whole,
-              )}
+              className="text-blue-600 hover:underline dark:text-blue-400"
             >
               {line.planning}
             </AppLink>
-          </>
+          </span>
         )}
       </div>
       {summary.sources.length > 0 && (
