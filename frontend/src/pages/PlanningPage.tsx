@@ -90,10 +90,12 @@ import {
 } from "lucide-react";
 import {
   PLANNING_NOTICES,
+  PLANNING_SPACE_PARAM,
   badgeFor,
   filterKeepsQuestion,
   findDocument,
   isPlanningAgentSectionId,
+  isPlanningSpaceId,
   parsePlanningFilter,
   planningAgentRequest,
   type CardBlock,
@@ -186,6 +188,13 @@ import {
   type SectionId,
 } from "../lib/planningPages";
 import { planningPath } from "../lib/planningRoute";
+import {
+  PLANNING_SPACE_MESSAGES,
+  readSpaceRequest,
+  usePlanningSpace,
+  usePlanningSpaceHold,
+  withoutSpace,
+} from "../lib/planningSpace";
 import { isStaticMode } from "../lib/staticMode";
 import {
   planningScanner,
@@ -935,6 +944,12 @@ const Notices: React.FC<{
    * with the filter notice (§6.18).
    */
   nothingId?: string;
+  /**
+   * Single-project mode, and the link's space id is not this checkout's
+   * (§13.6): one line after the filter notice says which checkout the page
+   * shows.
+   */
+  otherCheckout?: boolean;
 }> = ({
   sections,
   config,
@@ -942,6 +957,7 @@ const Notices: React.FC<{
   filtered,
   nothingMatches = false,
   nothingId,
+  otherCheckout = false,
 }) => {
   const roadmapNotice = PLANNING_NOTICES.roadmapNotice(
     config,
@@ -950,6 +966,11 @@ const Notices: React.FC<{
   return (
     <>
       {filterNotice}
+      {otherCheckout && (
+        <Notice testId="other-checkout">
+          {PLANNING_SPACE_MESSAGES.otherCheckout}
+        </Notice>
+      )}
       {sections.nothingNeedsYou && !nothingMatches && (
         <p
           id={filtered ? nothingId : undefined}
@@ -1265,16 +1286,63 @@ export const PlanningPage: React.FC = () => {
   }, []);
   const { isMultiRepo, currentRepo, setCurrentRepo, repos, reposLoaded } =
     useRepoStore();
+  const [search] = useSearchParams();
 
   // The repository the URL names, in daemon mode.
-  const repoName = isMultiRepo
+  const urlRepo = isMultiRepo
     ? (pathParam?.split("/").filter(Boolean)[0] ?? "")
     : "";
+  // The checkout the link was made in, by its space id (§13.6). In daemon
+  // mode a URL that names no project but names a space is a link an agent
+  // made: the page asks the server which project holds the id and opens
+  // that project's page, rather than ask the reader for one. With a project
+  // segment the URL has said which, and `space=` is ignored. In
+  // single-project mode the page asks only to say so when the link was made
+  // in another checkout. A static export has no server to ask.
+  const spaceAsked = readSpaceRequest(search);
+  const findsProject = isMultiRepo && urlRepo === "" && spaceAsked !== null;
+  const spaceId =
+    spaceAsked !== null &&
+    isPlanningSpaceId(spaceAsked) &&
+    !isStaticMode() &&
+    (findsProject || !isMultiRepo)
+      ? spaceAsked
+      : null;
+  const space = usePlanningSpace(spaceId);
+  // The project holding it, which the page is from its first render on, as
+  // though the URL named it, until the URL does (below).
+  const spaceRepo =
+    findsProject && space?.kind === "found" && space.repo !== ""
+      ? space.repo
+      : null;
+  // The answer is still on its way: the frame and the filter line alone,
+  // and never *Choose a project*, which the answer will most often skip.
+  const spacePending = findsProject && spaceId !== null && space === null;
+  // What stands where *Choose a project* would, once no project can be
+  // opened for the space: why, before the projects' pages as the way on.
+  const spaceMissed = !findsProject
+    ? null
+    : spaceId === null
+      ? PLANNING_SPACE_MESSAGES.notAnId
+      : space === null || spaceRepo !== null
+        ? null
+        : space.kind === "failed"
+          ? PLANNING_SPACE_MESSAGES.failed
+          : PLANNING_SPACE_MESSAGES.notServed;
+  const repoName = isMultiRepo ? urlRepo || (spaceRepo ?? "") : "";
+  // Whether the in-place rewrite drops `space=` (§13.6): wherever a project
+  // segment says which project the page is, and in single-project mode once
+  // the server says the id is this checkout's. One naming another checkout
+  // stays, as its notice does (below).
+  const dropSpace = isMultiRepo ? urlRepo !== "" : space?.kind === "found";
   const repoExists = !isMultiRepo || repos.some((r) => r.name === repoName);
   // The sidebar is the repository's, so it is drawn wherever the URL names
   // one that is served, as the viewer draws it, and not over a page asking
-  // for a project or naming one that is not there.
-  const showSidebar = !isMultiRepo || (repoName !== "" && repoExists);
+  // for a project or naming one that is not there. While the server is
+  // asked which project a space is, it stays as the shell has it.
+  const showSidebar = spacePending
+    ? !(isMultiRepo && !currentRepo)
+    : !isMultiRepo || (repoName !== "" && repoExists);
 
   // The viewer's own two reading preferences, and the same ones: a reader who
   // keeps the contents column open, or reads at full width, does so here too,
@@ -1346,7 +1414,6 @@ export const PlanningPage: React.FC = () => {
 
   const ready = load.status === "ready" ? load : null;
   const index = ready?.index ?? null;
-  const [search] = useSearchParams();
 
   // The roadmap this browser remembers for the repository, read once per
   // visit (§6.8): another tab's pick never changes a page already on screen.
@@ -1488,17 +1555,46 @@ export const PlanningPage: React.FC = () => {
   // would drop it.
   const navigate = useNavigate();
   const { hash } = location;
+  // A space the server says a project holds (§13.6): the URL becomes that
+  // project's page, in one replace navigation, so it adds no history entry,
+  // with `space=` dropped and every other parameter and the fragment kept,
+  // the query written as the page writes its own. Nothing is stored.
+  useEffect(() => {
+    if (spaceRepo === null) return;
+    const query = planningQuery(withoutSpace(search));
+    navigate(
+      {
+        pathname: planningPath(true, spaceRepo),
+        search: query === "" ? "" : `?${query}`,
+        hash,
+      },
+      { replace: true },
+    );
+  }, [spaceRepo, search, hash, navigate]);
   useEffect(() => {
     // Not while the box leads: the URL takes its text on the idle pause.
-    if (boxLeads || layout === null || sections === null) return;
-    const canonical = planningSearch(search, layout, sections);
+    // Nor while the URL has a project still to find, which the navigation
+    // above writes.
+    if (boxLeads || findsProject || layout === null || sections === null) {
+      return;
+    }
+    const canonical = planningSearch(search, layout, sections, dropSpace);
     if (canonical === null) return;
     const query = planningQuery(canonical);
     navigate(
       { search: query === "" ? "" : `?${query}`, hash },
       { replace: true },
     );
-  }, [boxLeads, layout, sections, search, navigate, hash]);
+  }, [
+    boxLeads,
+    findsProject,
+    layout,
+    sections,
+    search,
+    navigate,
+    hash,
+    dropSpace,
+  ]);
 
   /** A section to bring into view once its new page is on screen. */
   const scrollToRef = useRef<SectionId | null>(null);
@@ -1806,8 +1902,27 @@ export const PlanningPage: React.FC = () => {
   ) {
     setOpenedBuilding(true);
   }
+  // In single-project mode, the frame's first paint waits for the server's
+  // answer about the link's space, at most the hold's deadline (§12.3), so
+  // a notice that the link was made in another checkout paints with it
+  // rather than move it. An answer that comes later says nothing.
+  const spaceHeld = usePlanningSpaceHold(isMultiRepo ? null : spaceId);
   const frameReady =
-    index !== null && !index.refused && (!openedBuilding || shown !== null);
+    index !== null &&
+    !index.refused &&
+    (!openedBuilding || shown !== null) &&
+    !spaceHeld;
+  const [spaceLate, setSpaceLate] = useState<string | null>(null);
+  if (
+    frameReady &&
+    spaceId !== null &&
+    space === null &&
+    spaceLate !== spaceId
+  ) {
+    setSpaceLate(spaceId);
+  }
+  const otherCheckout =
+    !isMultiRepo && space?.kind === "none" && spaceLate !== spaceId;
 
   // Every question with a card, on any page, unfiltered: what Copy answers
   // places comments over, before it narrows them to what the filter keeps
@@ -2665,7 +2780,7 @@ export const PlanningPage: React.FC = () => {
       frameUrlFilter === urlFilter &&
       layout !== null &&
       sections !== null &&
-      planningSearch(search, layout, sections) === null
+      planningSearch(search, layout, sections, dropSpace) === null
     ) {
       setAnnounceFor(null);
       setAnnouncement(spoken);
@@ -2694,6 +2809,15 @@ export const PlanningPage: React.FC = () => {
           />
         )
       : null;
+
+  // The query each project's planning page is listed with, where the page
+  // offers them: the URL's, but for a `space=`, which a project segment
+  // makes mean nothing.
+  const projectsSearch = useMemo(() => {
+    if (!search.has(PLANNING_SPACE_PARAM)) return location.search;
+    const query = planningQuery(withoutSpace(search));
+    return query === "" ? "" : `?${query}`;
+  }, [search, location.search]);
 
   // The header's breadcrumb: the repository, then the page.
   const crumbRoot = isMultiRepo
@@ -2906,7 +3030,15 @@ export const PlanningPage: React.FC = () => {
                   <div className="h-full w-full animate-pulse bg-blue-500" />
                 </div>
               )}
-              {isMultiRepo && reposLoaded && repoName === "" ? (
+              {spacePending ? null : spaceMissed !== null ? (
+                <>
+                  <Notice testId="space-not-found">{spaceMissed}</Notice>
+                  <ProjectPlanningLinks
+                    names={repos.map((r) => r.name)}
+                    search={projectsSearch}
+                  />
+                </>
+              ) : isMultiRepo && reposLoaded && repoName === "" ? (
                 <>
                   <Notice>
                     Choose a project to see its planning page.{" "}
@@ -2919,7 +3051,7 @@ export const PlanningPage: React.FC = () => {
                   </Notice>
                   <ProjectPlanningLinks
                     names={repos.map((r) => r.name)}
-                    search={location.search}
+                    search={projectsSearch}
                   />
                 </>
               ) : isMultiRepo && reposLoaded && !repoExists ? (
@@ -2927,7 +3059,7 @@ export const PlanningPage: React.FC = () => {
                   <Notice>Repository not found: {repoName}</Notice>
                   <ProjectPlanningLinks
                     names={repos.map((r) => r.name)}
-                    search={location.search}
+                    search={projectsSearch}
                   />
                 </>
               ) : load.status === "error" ? (
@@ -3061,6 +3193,7 @@ export const PlanningPage: React.FC = () => {
                           key={frameFilterKey}
                           sections={frameSections}
                           config={frameConfig}
+                          otherCheckout={otherCheckout}
                           filtered={frameFilter !== ""}
                           nothingMatches={nothingMatches !== null}
                           nothingId={nothingId}

@@ -10,12 +10,17 @@ const FILTER = "path:/plans/design.md is:open";
 const FILTERED = "/.vantage/planning?filter=path:/plans/design.md+is:open";
 const KEPT = ["OQ-E1: Which way does it go?", "OQ-E2: How soon?"];
 
-/** What `vantage-check index --filter 'path:/plans/design.md is:open'` prints around its link (criterion 1). */
+/**
+ * What `vantage-check index --filter 'path:/plans/design.md is:open'` prints
+ * around its link (criterion 1): the link ends with the checkout's space id
+ * (docs/reference/planning-index.md §13.6), which a paste ignores.
+ */
 const CHECKER_BLOCK = [
   "Filtered by `path:/plans/design.md is:open`: 2 of 52 entries, in 1 of 20 paths, 2 of them open questions.",
   "Run without --filter to see the other 50.",
-  `Planning page: ${FILTERED}`,
+  `Planning page: ${FILTERED}&space=q4zmuykxw2a7hbne`,
   "  Press / on the planning page and paste this line, or put the scheme, host and port you open Vantage at in front of the link.",
+  "  space= is this checkout's id, kept in .vantage/space: with an address in front, the link opens this project's page even where one Vantage serves several.",
   "",
 ].join("\n");
 

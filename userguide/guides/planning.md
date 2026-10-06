@@ -392,10 +392,12 @@ Its address is `/.vantage/planning`, or `/.vantage/planning/<repo>` in
 or `/<repo>/<path>`, so a page at `/planning` would hide every document under a
 top-level `planning/` directory, and a whole repository named `planning`.
 Vantage never serves a `.vantage` path as a document, so this address hides
-nothing. In daemon mode, the address with no repository, or with one Vantage
-does not serve, lists each repository's planning page, with the rest of the
-address kept, so a [filtered](#filtering-the-page) link is one click from the
-page it was made for.
+nothing. In daemon mode, an agent's [filtered](#filtering-the-page) link names
+no repository, and opens the one it was made in all the same
+([Filtered links](#filtered-links)). Otherwise the address with no repository,
+or with one Vantage does not serve, lists each repository's planning page, with
+the rest of the address kept, so a filtered link is one click from the page it
+was made for.
 
 > [!NOTE]
 > **The history and recent-files pages do hide something.** They are older, and
@@ -1079,9 +1081,19 @@ A filtered page is usually reached by a link:
   line, or put that address in front of the link, such as
   `http://localhost:8000`, and open it.
 - **In [daemon mode](daemon-mode.md),** such a link has no repository in it,
-  so opened with an address in front it lists each repository's planning page,
-  every one with the same filter. Pasted into a repository's Filter box, it
-  needs no click.
+  but it ends with `&space=`, the id the checker keeps in the checkout's
+  `.vantage/space`
+  ([What `--filter` writes](vantage-check.md#what---filter-writes)). Opened
+  with an address in front, the page asks Vantage which repository holds that
+  id, and opens that repository's planning page with the filter. Its address
+  replaces the one you opened rather than adding a step for Back, and no list
+  of repositories shows on the way. Pasted into a repository's Filter box, the link applies its filter
+  there, whichever repository made it.
+- **A link made in a checkout Vantage does not serve,** such as a clone
+  elsewhere on the machine, says so, and then lists each repository's planning
+  page with the filter, one click away. In single-repository mode the page
+  shows the checkout it serves, under a line saying the link was made in
+  another one.
 
 A filtered link is for handing over, not for keeping. A later Vantage may keep
 other entries for the same text, so an agent runs `vantage-check index
@@ -1219,6 +1231,12 @@ every candidate on every page load, and everything else works the same.
   no path, which the page applies and names.
 - **A filtered link opened in Vantage 0.8.1 or earlier:** the whole planning
   page, with no notice, since that release has no filter.
+- **A link with `&space=` opened in Vantage 0.9.0:** in daemon mode, the list
+  of each repository's planning page, with the filter, since that release does
+  not read `space=`.
+- **Vantage cannot say which repository holds a link's `&space=`,** as when
+  the request fails: in daemon mode the page says so and lists each
+  repository's planning page with the filter.
 - **The comments cannot be loaded:** the planning page's sections appear
   without them, under the line *Comments could not be loaded.*, and Copy
   answers stays disabled.
