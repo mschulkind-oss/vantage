@@ -25,22 +25,39 @@
  * remembers for the repository, so the page, its inputs and every prefetch
  * resolve it alike; `planningSearch` rewrites the URL to name it.
  *
+ * A planning filter (`docs/design/planning-filter.md`) narrows the sections,
+ * as `?filter=path:docs/design/x.md+is:open`: the planning module parses and
+ * applies it (F1), to the sections derived from the whole index under the
+ * chosen roadmap (F2), and this file is the page's one reader and writer of
+ * the parameter, beside `roadmap=` (§6.4). The applied filter's canonical
+ * text joins every identity a layout has (§6.5): the derived sections are
+ * cached by index, roadmap and filter, and a layout names its filter as it
+ * names its roadmap.
+ *
  * Pure functions of the index and the limits module, so the page, its inputs
  * and the viewer's prefetch lay a page out identically.
  */
 import {
+  PLANNING_FILTER_PARAM,
+  PLANNING_ROADMAP_PARAM,
   PLANNING_SECTION_IDS,
   PLANNING_SECTION_TITLES,
+  applyPlanningFilter,
   derivePlanningSections,
+  encodePlanningQueryValue,
+  parsePlanningFilter,
   questionFor,
   sectionExplanation,
   type DependsOn,
+  type FilteredPlanningSections,
+  type PlanningFilterSummary,
   type PlanningIndex,
   type PlanningQuestion,
   type PlanningRoadmap,
   type PlanningSectionId,
   type PlanningSections,
   type QuestionRef,
+  type UnderstoodPlanningFilter,
 } from "vantage-md/planning";
 import { planningLimits } from "../planningScan/limits";
 import {
@@ -104,12 +121,19 @@ export interface PlanningLayout {
    * routes. Part of what names a layout, with `pages`.
    */
   roadmap: string | null;
+  /**
+   * The applied planning filter's canonical text: `""` for none, and for a
+   * filter that is not understood, which is not applied and so shows what no
+   * filter does (`planning-filter.md` §6.5). Part of what names a layout.
+   */
+  filter: string;
   /** The non-empty sections, top to bottom. */
   sections: readonly LaidOutSection[];
   /**
    * The shown pages, canonically: `needs-you=2&waiting=3`, sections in order,
    * page 1 left out, `""` when every section is on its first page. Two layouts
-   * of one index with the same `roadmap` and `pages` show the same entries.
+   * of one index with the same `roadmap`, `filter` and `pages` show the same
+   * entries.
    */
   pages: string;
 }
@@ -256,12 +280,16 @@ export function pageBounds(section: SectionEntries): number[] {
 
 /**
  * Lay the page out: every non-empty section, with the page `request` asks
- * for, clamped to the section's last.
+ * for, clamped to the section's last. `sections` are `sectionsOf(index,
+ * roadmap, filter)`, and `filter` the canonical text they were filtered by,
+ * which the layout names: a filtered link's page parameters are read against
+ * the filtered sections (`planning-filter.md` §6.4).
  */
 export function layoutPlanningPage(
   index: PlanningIndex,
   sections: PlanningSections,
   request: PageRequest,
+  filter = "",
 ): PlanningLayout {
   const laid: LaidOutSection[] = [];
   const pages: string[] = [];
@@ -287,6 +315,7 @@ export function layoutPlanningPage(
   }
   return {
     roadmap: sections.chosenRoadmap,
+    filter,
     sections: laid,
     pages: pages.join("&"),
   };
@@ -294,18 +323,40 @@ export function layoutPlanningPage(
 
 /**
  * The sections of `index` with `roadmap` asked for, derived once per index
- * and chosen roadmap. `derivePlanningSections` falls back from a roadmap that
- * does not route, and `null` asks for the default, so a derivation is kept
- * under the roadmap it chose as well as the one asked for: asking for the
- * default by name or by `null` is one derivation, and one object.
+ * and chosen roadmap, then filtered by `filter`, once per filter. `filter` is
+ * a canonical text, as `PlanningLayout.filter` holds one; `""`, or a text
+ * that is not understood, is the unfiltered derivation itself.
+ *
+ * `derivePlanningSections` falls back from a roadmap that does not route,
+ * and `null` asks for the default, so a derivation is kept under the roadmap
+ * it chose as well as the one asked for: asking for the default by name or by
+ * `null` is one derivation, and one object. A filter applies to that
+ * derivation, over the whole index (F2), so it is cached under the
+ * derivation's object: index, then roadmap, then filter (§6.5).
  */
 const derived = new WeakMap<
   PlanningIndex,
   Map<string | null, PlanningSections>
 >();
+const filtered = new WeakMap<
+  PlanningSections,
+  Map<string, FilteredPlanningSections>
+>();
 export function sectionsOf(
   index: PlanningIndex,
   roadmap: string | null = null,
+  filter = "",
+): PlanningSections {
+  return (
+    filteredSectionsOf(index, roadmap, filter)?.sections ??
+    derivedSectionsOf(index, roadmap)
+  );
+}
+
+/** The unfiltered derivation, once per index and chosen roadmap. */
+function derivedSectionsOf(
+  index: PlanningIndex,
+  roadmap: string | null,
 ): PlanningSections {
   let byRoadmap = derived.get(index);
   if (byRoadmap === undefined) {
@@ -322,8 +373,70 @@ export function sectionsOf(
   return sections;
 }
 
-/** The URL parameter that names the chosen roadmap. */
-export const ROADMAP_PARAM = "roadmap";
+/**
+ * The sections `filter` keeps of `sectionsOf(index, roadmap)`, and what the
+ * filter notice says of them (`planning-filter.md` §6.7), from the same
+ * cache as `sectionsOf`; `null` when `filter` applies nothing: `""`, or a
+ * text that is not understood.
+ */
+export function filteredSectionsOf(
+  index: PlanningIndex,
+  roadmap: string | null,
+  filter: string,
+): FilteredPlanningSections | null {
+  const parsed = understoodFilter(filter);
+  if (parsed === null) return null;
+  const base = derivedSectionsOf(index, roadmap);
+  let byFilter = filtered.get(base);
+  if (byFilter === undefined) {
+    byFilter = new Map();
+    filtered.set(base, byFilter);
+  }
+  let out = byFilter.get(parsed.canonical);
+  if (out === undefined) {
+    out = applyPlanningFilter(index, base, parsed);
+    byFilter.set(parsed.canonical, out);
+  }
+  return out;
+}
+
+/** The filter notice's numbers for `filter` over `index`'s sections, or `null`. */
+export function filterSummaryOf(
+  index: PlanningIndex,
+  roadmap: string | null,
+  filter: string,
+): PlanningFilterSummary | null {
+  return filteredSectionsOf(index, roadmap, filter)?.summary ?? null;
+}
+
+/** How many parsed filters `understoodFilter` keeps, the last used last out. */
+const FILTERS_KEPT = 16;
+const understood = new Map<string, UnderstoodPlanningFilter | null>();
+
+/**
+ * `filter` parsed, or `null` when it applies nothing: one object per text, so
+ * the matchers the planning module compiles once per filter object are
+ * compiled once for the page, its recounts and its Copy answers alike.
+ */
+export function understoodFilter(
+  filter: string,
+): UnderstoodPlanningFilter | null {
+  if (filter === "") return null;
+  let parsed = understood.get(filter);
+  if (parsed === undefined) {
+    const read = parsePlanningFilter(filter);
+    parsed = read.kind === "understood" ? read : null;
+  } else {
+    understood.delete(filter);
+  }
+  understood.set(filter, parsed);
+  while (understood.size > FILTERS_KEPT) {
+    const oldest = understood.keys().next().value;
+    if (oldest === undefined) break;
+    understood.delete(oldest);
+  }
+  return parsed;
+}
 
 /**
  * The roadmap the URL asks for, repo-relative with one leading `./` dropped,
@@ -331,7 +444,7 @@ export const ROADMAP_PARAM = "roadmap";
  * and `docs%2Fplans%2Fx.md` read alike.
  */
 export function readRoadmapRequest(search: URLSearchParams): string | null {
-  const asked = search.get(ROADMAP_PARAM);
+  const asked = search.get(PLANNING_ROADMAP_PARAM);
   if (asked === null || asked === "") return null;
   return asked.startsWith("./") ? asked.slice(2) : asked;
 }
@@ -379,30 +492,107 @@ export function rememberRoadmap(repo: string, path: string): void {
 }
 
 /**
- * `search` rewritten to name exactly `layout`'s pages and roadmap, or `null`
- * when it already does. The pages are `pageSearch`'s. The roadmap is named
- * when two or more roadmaps route, so the address always says which one is
- * shown, and removed when fewer do, as a page parameter naming page 1 is.
+ * `search` rewritten to name exactly `layout`'s pages, roadmap and filter, or
+ * `null` when it already does. The pages are `pageSearch`'s. The roadmap is
+ * named when two or more roadmaps route, so the address always says which
+ * one is shown, and removed when fewer do, as a page parameter naming page 1
+ * is. An applied filter is named by its canonical text as one parameter, an
+ * empty one is removed, and one that is not understood is left exactly as
+ * written, so it can be fixed (`planning-filter.md` §6.4, §5.5).
  */
 export function planningSearch(
   search: URLSearchParams,
   layout: PlanningLayout,
   sections: PlanningSections,
 ): URLSearchParams | null {
-  const paged = pageSearch(search, layout);
-  const base = paged ?? search;
+  let next = pageSearch(search, layout);
+  const edit = (): URLSearchParams => (next ??= new URLSearchParams(search));
   const want =
     routingRoadmaps(sections.roadmaps).length >= 2 ? layout.roadmap : null;
+  const base = next ?? search;
   if (
-    base.get(ROADMAP_PARAM) === want &&
-    base.getAll(ROADMAP_PARAM).length <= 1
+    base.get(PLANNING_ROADMAP_PARAM) !== want ||
+    base.getAll(PLANNING_ROADMAP_PARAM).length > 1
   ) {
-    return paged;
+    if (want === null) edit().delete(PLANNING_ROADMAP_PARAM);
+    else edit().set(PLANNING_ROADMAP_PARAM, want);
   }
-  const next = new URLSearchParams(base);
-  if (want === null) next.delete(ROADMAP_PARAM);
-  else next.set(ROADMAP_PARAM, want);
+  const asked = search.getAll(PLANNING_FILTER_PARAM);
+  if (layout.filter !== "") {
+    if (asked.length !== 1 || asked[0] !== layout.filter) {
+      edit().set(PLANNING_FILTER_PARAM, layout.filter);
+    }
+  } else if (
+    asked.length > 0 &&
+    parsePlanningFilter(asked.join(" ")).kind === "none"
+  ) {
+    edit().delete(PLANNING_FILTER_PARAM);
+  }
   return next;
+}
+
+/**
+ * The filter the URL asks for, as one text: every `filter` value joined with
+ * one space, in order, which is what typing them all into the box gives
+ * (`planning-filter.md` §5.1). `""` when there is none.
+ */
+export function readFilterRequest(search: URLSearchParams): string {
+  return search.getAll(PLANNING_FILTER_PARAM).join(" ");
+}
+
+/**
+ * The `filter` value a text is written as (§6.4): its canonical text when it
+ * is understood, the text as typed when it is not, and `""`, no parameter,
+ * when it is empty or white space alone.
+ */
+export function filterValue(text: string): string {
+  const parsed = parsePlanningFilter(text);
+  return parsed.kind === "understood"
+    ? parsed.canonical
+    : parsed.kind === "none"
+      ? ""
+      : text;
+}
+
+/**
+ * `search` with the filter `text` applied, by Enter, ✕ or a pasted link
+ * (`planning-filter.md` §6.4): `filter` set to `filterValue(text)`, or
+ * removed when that is empty; every section's page parameter deleted, as a
+ * roadmap pick deletes Needs you's, since the pages were another filter's;
+ * and `roadmap` set to the one a pasted link names, if it names one. Every
+ * other parameter stays, `roadmap` and unknown ones included.
+ */
+export function withFilter(
+  search: URLSearchParams,
+  text: string,
+  roadmap: string | null = null,
+): URLSearchParams {
+  const next = new URLSearchParams(search);
+  for (const id of SECTION_IDS) next.delete(id);
+  const value = filterValue(text);
+  if (value === "") next.delete(PLANNING_FILTER_PARAM);
+  else next.set(PLANNING_FILTER_PARAM, value);
+  if (roadmap !== null) next.set(PLANNING_ROADMAP_PARAM, roadmap);
+  return next;
+}
+
+/**
+ * `search` written as the page writes a query it navigates to itself, with
+ * no `?`: form encoding, as `URLSearchParams` writes it, except for `filter`,
+ * which is written as a planning link writes it (`encodePlanningQueryValue`,
+ * `planning-filter.md` §9.2), so the address bar after Enter shows what an
+ * agent's link shows. Both read back to the same text.
+ */
+export function planningQuery(search: URLSearchParams): string {
+  const parts: string[] = [];
+  for (const [key, value] of search) {
+    parts.push(
+      key === PLANNING_FILTER_PARAM
+        ? `${PLANNING_FILTER_PARAM}=${encodePlanningQueryValue(value)}`
+        : new URLSearchParams([[key, value]]).toString(),
+    );
+  }
+  return parts.join("&");
 }
 
 /**
@@ -415,7 +605,7 @@ export function withRoadmap(
   roadmap: string,
 ): URLSearchParams {
   const next = new URLSearchParams(search);
-  next.set(ROADMAP_PARAM, roadmap);
+  next.set(PLANNING_ROADMAP_PARAM, roadmap);
   next.delete("needs-you");
   return next;
 }
@@ -487,6 +677,32 @@ export function listedQuestions(
     const question = questionFor(index, ref);
     return question === undefined ? [] : [question];
   });
+}
+
+/**
+ * Every document any section lists: the documents of `listedQuestions`, and
+ * the document of every Blocked row and every stage row (Ready to build,
+ * Ready to graduate, Stage conflict), in page order. Over the unfiltered
+ * sections, what a visit's second reviews request reads
+ * (`planning-filter.md` §6.6), so no filter change, nor a flip to a later
+ * page of rows, asks for a third.
+ */
+export function listedDocuments(
+  index: PlanningIndex,
+  sections: PlanningSections,
+): string[] {
+  const paths = new Set(listedQuestions(index, sections).map((q) => q.path));
+  for (const entry of sections.waiting) {
+    if (entry.kind === "document") paths.add(entry.path);
+  }
+  for (const path of [
+    ...(sections.ready ?? []),
+    ...(sections.graduate ?? []),
+    ...(sections.disagrees ?? []),
+  ]) {
+    paths.add(path);
+  }
+  return [...paths];
 }
 
 /**

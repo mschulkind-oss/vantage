@@ -76,6 +76,24 @@ describe("KeyboardShortcutsModal", () => {
     ).toContain("gthenp");
   });
 
+  // docs/design/planning-filter.md §7: `/` is the planning page's alone.
+  it("lists / in a row of its own where the page has a filter box, and nowhere else", () => {
+    const { unmount } = render(
+      <KeyboardShortcutsModal
+        isOpen={true}
+        onClose={vi.fn()}
+        documentKeys={false}
+        filterKey={true}
+      />,
+    );
+    expect(
+      screen.getByText("Filter the planning page").parentElement!.textContent,
+    ).toBe("Filter the planning page/");
+    unmount();
+    render(<KeyboardShortcutsModal isOpen={true} onClose={vi.fn()} />);
+    expect(screen.queryByText("Filter the planning page")).toBeNull();
+  });
+
   it("lists opening a menu row in a new tab, under every menu it works in", () => {
     render(<KeyboardShortcutsModal isOpen={true} onClose={vi.fn()} />);
     const row = screen.getByText(

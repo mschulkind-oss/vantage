@@ -21,6 +21,7 @@ export const useKeyboardShortcuts = ({
   onViewHistory,
   onCopyPath,
   onEscape,
+  onFocusFilter,
   contentScrollRef,
   isMultiRepo,
   currentRepo,
@@ -42,6 +43,13 @@ export const useKeyboardShortcuts = ({
    * way it leaves everything else that takes the pane over.
    */
   onEscape: () => void;
+  /**
+   * `/`: focus the page's filter box, given only while the page on screen
+   * has one (the planning page's Filter box,
+   * `docs/design/planning-filter.md` §7). Without it the key is left to the
+   * browser, whose quick find in Firefox it opens.
+   */
+  onFocusFilter?: () => void;
   contentScrollRef: React.RefObject<HTMLDivElement | null>;
   isMultiRepo: boolean;
   currentRepo: string | null;
@@ -213,6 +221,12 @@ export const useKeyboardShortcuts = ({
           e.preventDefault();
           onCopyPath();
           break;
+        case "/":
+          if (onFocusFilter !== undefined) {
+            e.preventDefault();
+            onFocusFilter();
+          }
+          break;
       }
     };
 
@@ -236,6 +250,7 @@ export const useKeyboardShortcuts = ({
     onViewDiff,
     onViewHistory,
     onCopyPath,
+    onFocusFilter,
     contentScrollRef,
     isMultiRepo,
     currentRepo,

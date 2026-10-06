@@ -15,6 +15,11 @@ interface Shortcut {
   document?: true;
   /** What it says on such a page, when it does something else there. */
   withoutDocument?: string;
+  /**
+   * A key only a page with a filter box wires (the planning page's Filter
+   * box): the help lists it there alone.
+   */
+  filter?: true;
 }
 
 interface ShortcutGroup {
@@ -39,6 +44,11 @@ const shortcutGroups: ShortcutGroup[] = [
       { keys: ["g", "h"], description: "Go home (root)" },
       { keys: ["g", "r"], description: "Go to recent files page" },
       { keys: ["g", "p"], description: "Go to the planning page" },
+      {
+        keys: ["/"],
+        description: "Filter the planning page",
+        filter: true,
+      },
       { keys: ["b"], description: "Toggle sidebar" },
       {
         keys: ["Esc"],
@@ -119,17 +129,27 @@ interface KeyboardShortcutsModalProps {
    * it does not, the help lists only what the keys do there.
    */
   documentKeys?: boolean;
+  /** Whether `/` focuses a filter box on the page on screen. */
+  filterKey?: boolean;
 }
 
-/** The groups as a page lists them: without its document keys, if it has none. */
-function groupsFor(documentKeys: boolean): ShortcutGroup[] {
-  if (documentKeys) return shortcutGroups;
+/**
+ * The groups as a page lists them: without its document keys, if it has
+ * none, and with `/` only where it has a filter box.
+ */
+function groupsFor(documentKeys: boolean, filterKey: boolean): ShortcutGroup[] {
   return shortcutGroups.map((group) => ({
-    title: group.titleWithoutDocument ?? group.title,
+    title: documentKeys
+      ? group.title
+      : (group.titleWithoutDocument ?? group.title),
     shortcuts: group.shortcuts
-      .filter((shortcut) => shortcut.document !== true)
+      .filter(
+        (shortcut) =>
+          (documentKeys || shortcut.document !== true) &&
+          (filterKey || shortcut.filter !== true),
+      )
       .map((shortcut) =>
-        shortcut.withoutDocument === undefined
+        documentKeys || shortcut.withoutDocument === undefined
           ? shortcut
           : { ...shortcut, description: shortcut.withoutDocument },
       ),
@@ -140,6 +160,7 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({
   isOpen,
   onClose,
   documentKeys = true,
+  filterKey = false,
 }) => {
   useEffect(() => {
     if (!isOpen) return;
@@ -188,7 +209,7 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({
 
         {/* Body */}
         <div className="px-6 py-4 overflow-y-auto flex-1 space-y-5">
-          {groupsFor(documentKeys).map((group) => (
+          {groupsFor(documentKeys, filterKey).map((group) => (
             <div key={group.title}>
               <h3 className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">
                 {group.title}
