@@ -511,7 +511,7 @@ describe("the chosen roadmap (planning-index.md §6.8)", () => {
   });
 });
 
-describe("the planning filter (planning-filter.md §6.4, §6.5)", () => {
+describe("the planning filter (planning-index.md §6.16)", () => {
   const forms = filterForms();
   const index = filterFormsIndex(forms);
   const DESIGN = "path:/docs/design/a.md";

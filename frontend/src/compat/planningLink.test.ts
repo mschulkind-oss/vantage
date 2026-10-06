@@ -100,7 +100,7 @@ function afterOpen(
   return planningSearch(search, layout, sections) ?? search;
 }
 
-describe("a 0.8.x viewer given a planning link (§10.1)", () => {
+describe("a 0.8.x viewer given a planning link (§6.19)", () => {
   const forms = filterForms();
   const index = filterFormsIndex(forms);
   const sections = derivePlanningSections(index);

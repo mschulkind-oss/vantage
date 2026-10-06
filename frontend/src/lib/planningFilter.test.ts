@@ -93,8 +93,8 @@ const at = (
 const queryOf = (link: string) =>
   new URLSearchParams(link.slice(link.indexOf("?") + 1));
 
-describe("the fixture of forms (§10.4)", () => {
-  it("holds the cases the design lists", () => {
+describe("the fixture of forms (§6.19)", () => {
+  it("holds the cases §6.19 lists", () => {
     const paths = Object.keys(FORMS.index.files);
     expect(paths).toEqual(
       expect.arrayContaining(["roadmap.md", "x/roadmap.md"]),
@@ -169,8 +169,8 @@ describe("the fixture of forms (§10.4)", () => {
     );
   });
 
-  // §6.19's text cases, each pinned to the field or rule it shows.
-  it("holds the text cases the design lists", () => {
+  // Each pinned to the searched field or the rule of §6.12 it shows.
+  it("holds a text case for each searched field and each rule of §6.12", () => {
     const read = (text: string) => {
       const entry = FORMS.read.find((e) => e.text === text);
       if (entry === undefined) throw new Error(`no read entry ${text}`);
@@ -242,7 +242,7 @@ describe("the fixture of forms (§10.4)", () => {
       expect(kept).toEqual(entry.questions);
     });
 
-    it("keeping the documents §5.4 keeps, and the entries they hold", () => {
+    it("keeping the documents §6.13 keeps, and the entries they hold", () => {
       expect(keptDocuments(filter)).toEqual(entry.documents);
       const { sections, summary } = applyPlanningFilter(
         INDEX,
@@ -284,7 +284,7 @@ describe("the fixture of forms (§10.4)", () => {
   // is a kept document (§6.13's answer, in `documents`), it passes the is: and
   // -is: terms, every text term is a substring of one of its searched fields
   // whatever the case, and no -text term is.
-  it("keeps exactly the questions and entries the four tests of §5.3 keep", () => {
+  it("keeps exactly the questions and entries the four tests of §6.12 keep", () => {
     const all = sectionEntryKeys(SECTIONS);
     const passes = (
       filter: UnderstoodPlanningFilter,
@@ -343,7 +343,7 @@ describe("the fixture of forms (§10.4)", () => {
   });
 });
 
-describe("the grammar (§5.2, §5.5)", () => {
+describe("the grammar (§6.12, §6.14)", () => {
   it("reads empty text and white space alone as no filter", () => {
     for (const text of ["", " ", "\t\r\n ", "\n\n"]) {
       expect(parsePlanningFilter(text)).toEqual({ kind: "none" });
@@ -697,7 +697,7 @@ describe("the grammar (§5.2, §5.5)", () => {
     }
   });
 
-  it("refuses a lone surrogate (the sketch's risk 2)", () => {
+  it("refuses a lone surrogate (§6.14)", () => {
     for (const unit of ["\ud800", "\udbff", "\udc00", "\udfff"]) {
       for (const text of [`path:"a${unit}b"`, `a${unit}b`, `"a${unit}b"`]) {
         expect(parsePlanningFilter(text).kind).toBe("not-understood");
@@ -717,7 +717,7 @@ describe("the grammar (§5.2, §5.5)", () => {
   });
 });
 
-describe("canonical text (§5.6)", () => {
+describe("canonical text (§6.14)", () => {
   it("1: joins the terms with one space, in order, and drops a repeat", () => {
     expect(
       understood(" is:open\n\npath:b  path:a is:open path:b ").canonical,
@@ -823,7 +823,7 @@ describe("canonical text (§5.6)", () => {
   });
 });
 
-describe("matching (§5.3, §5.4)", () => {
+describe("matching (§6.12, §6.13)", () => {
   const keeps = (text: string, path: string) =>
     filterKeepsQuestion(understood(text), at(path));
 
@@ -1067,12 +1067,12 @@ describe("matching (§5.3, §5.4)", () => {
     expect(keeps('path:"docs/**/a.md"', "docs/**/a.md")).toBe(true);
   });
 
-  // §5.4's rules written apart from the module, as one regular expression
+  // §6.13's rules written apart from the module, as one regular expression
   // per value, held against the module's matcher over every value of up to
   // five characters from `a`, `/` and `*`, and every path of up to five from
   // `a`, `b` and `/`. The module does not match with a regular expression,
   // which backtracks (below).
-  it("keeps what §5.4's rules, written as a regular expression, keep", () => {
+  it("keeps what §6.13's rules, written as a regular expression, keep", () => {
     const expression = (value: string): RegExp => {
       const pinned = value.startsWith("/");
       const text = pinned ? value.slice(1) : value;
@@ -1263,7 +1263,7 @@ describe("matching (§5.3, §5.4)", () => {
   });
 
   // Ruling 1's own examples, over the fixture.
-  it("keeps what the design's examples say, over the fixture's paths", () => {
+  it("keeps what §6.13 says of the ruling's examples, over the fixture's paths", () => {
     const docs = (text: string) => keptDocuments(understood(text));
     expect(docs("path:docs/des")).toEqual([
       "docs/design/a-plan.md",
@@ -1287,7 +1287,7 @@ describe("matching (§5.3, §5.4)", () => {
   });
 });
 
-describe("applying a filter to the sections (§6.1, §6.2)", () => {
+describe("applying a filter to the sections (§6.11, §6.15)", () => {
   it("keeps the entries' order and drops a section it empties", () => {
     const all = sectionEntryKeys(SECTIONS);
     for (const entry of FORMS.read) {
@@ -1624,7 +1624,7 @@ describe("applying a filter to the sections (§6.1, §6.2)", () => {
   });
 });
 
-describe("the agent request under a filter (§6.3, §6.6)", () => {
+describe("the agent request under a filter (§6.15, §6.2)", () => {
   const repository = "/repo";
 
   it("fences a code span one backtick longer than any run inside, padded where it must be", () => {
@@ -1727,7 +1727,7 @@ describe("the agent request under a filter (§6.3, §6.6)", () => {
   });
 });
 
-describe("the link (§9.2)", () => {
+describe("the link (§13.5)", () => {
   it("percent-encodes all but A-Z a-z 0-9 - . _ ~ : /, and writes a space as +", () => {
     expect(encodePlanningQueryValue("path:docs/design/*.md is:open")).toBe(
       "path:docs/design/%2A.md+is:open",
@@ -1767,7 +1767,7 @@ describe("the link (§9.2)", () => {
     expect(PLANNING_ROADMAP_PARAM).toBe("roadmap");
   });
 
-  it("never ends with a character a pasted link's end drops (§7)", () => {
+  it("never ends with a character a pasted link's end drops (§6.17)", () => {
     // `.`, `_`, `~` and `:` are written bare, and the paste reader drops them
     // from a link's end as a sentence's punctuation, so the last one is
     // escaped instead, which `URLSearchParams` reads back the same.
@@ -1829,7 +1829,7 @@ describe("the link (§9.2)", () => {
   });
 });
 
-describe("a pasted link (§7)", () => {
+describe("a pasted link (§6.17)", () => {
   const link = "/.vantage/planning?filter=path:plans/design.md+is:open";
   const read = { filter: "path:plans/design.md is:open", roadmap: null };
 
@@ -1913,7 +1913,7 @@ describe("a pasted link (§7)", () => {
     ).toEqual({ filter: "path:a", roadmap: null });
   });
 
-  it("reads the page's own form encoding, which writes `*` bare (§9.2)", () => {
+  it("reads the page's own form encoding, which writes `*` bare (§13.5)", () => {
     // As a flip wrote the address before the page wrote one encoding, and
     // as a reader may still type it: `URLSearchParams` leaves `*` bare.
     for (const entry of FORMS.read) {
@@ -1994,7 +1994,7 @@ describe("a pasted link (§7)", () => {
   });
 });
 
-describe("the filter notice (§6.7)", () => {
+describe("the filter notice (§6.18)", () => {
   const checker = (summary: PlanningFilterSummary) =>
     PLANNING_NOTICES.filtered(summary, "checker").map(noticeText);
   const page = (summary: PlanningFilterSummary) =>
@@ -2075,7 +2075,7 @@ describe("the filter notice (§6.7)", () => {
     );
   });
 
-  it("puts the clauses in the design's order, one line per waiting document", () => {
+  it("puts the clauses in §6.18's order, one line per waiting document", () => {
     const summary: PlanningFilterSummary = {
       canonical: "path:a is:open",
       requestText: "path:a is:open",

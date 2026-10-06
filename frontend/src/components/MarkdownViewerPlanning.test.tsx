@@ -481,7 +481,7 @@ describe("Referenced by (§7)", () => {
     expect(surface()).toBeNull();
   });
 
-  describe("its link to the filtered planning page (planning-filter.md §7)", () => {
+  describe("its link to the filtered planning page (§7.1)", () => {
     const LINK = "its questions on the planning page";
     const planningLink = () => screen.queryByRole("link", { name: LINK });
     /** The line itself, without the list behind it, which is in the DOM, hidden. */
