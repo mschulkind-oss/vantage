@@ -892,14 +892,15 @@ filter keeps needs you* in place of *Nothing needs you*.
 - **Pasting a planning link** applies its filter at once, as Enter does. The
   link can be a whole URL or start at `/.vantage/planning`, on its own or
   inside the lines `vantage-check index --filter` prints around it. Backticks,
-  quotes or brackets around it, and a period after it, are not read as part of
-  it. Only its filter, and its roadmap when it names one, are read, never its
+  quotes, brackets or the `*` of emphasis around it, and a period after it,
+  are not read as part of it. Only its filter, and its roadmap when it names one, are read, never its
   scheme, host, port, repository or pages, so a link made for another address
   or another machine applies to the repository on screen. The roadmap it names
   is shown, not remembered. A link with no filter in it clears the filter.
   Pasted text that holds no planning link is text, applied on Enter.
 - **The filtered page** replaces the shown one only once its cards are ready,
-  and then all at once. A spinner in the box's row shows when that takes more
+  and then all at once. Until then the shown page's pagers and contents column
+  do nothing, and a spinner in the box's row shows when the wait takes more
   than 150 ms. Applying the filter already shown does nothing.
 
 #### The address
@@ -908,7 +909,8 @@ The page's address carries the filter, as
 `/.vantage/planning?filter=path:docs/design/search.md+is:open`. That is how
 the checker prints it too: `:` and `/` stay readable, a space is a `+`, and
 every other character but `A`–`Z`, `a`–`z`, `0`–`9`, `-`, `.`, `_` and `~` is
-percent-encoded, such as `*` as `%2A`.
+percent-encoded, such as `*` as `%2A`. A `.` or `_` that would end the address
+is encoded too, so a sentence's period after a pasted address cannot take it.
 
 - **Enter, ✕ and a paste** replace the history entry rather than adding one,
   as a flip does. They show every section from its first page, keep the
@@ -921,8 +923,8 @@ percent-encoded, such as `*` as `%2A`.
 - **A filter Vantage does not understand** stays in the address and the box
   exactly as written, so you can fix it.
 - **A flip, a roadmap choice and the contents column's links keep the
-  filter.** After a flip the address may write `%3A` and `%2F` for `:` and
-  `/`, and both read alike.
+  filter,** written the same way. An address written by hand may spell it
+  with `%3A` and `%2F` for `:` and `/`, and both read alike.
 - **`g p` and the sidebar's planning entry open the page with no filter,**
   whatever document you were on, and **Back** returns to the filtered page,
   with the box holding its filter again.
