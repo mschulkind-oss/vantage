@@ -236,14 +236,23 @@ describe("the planning index and the contents column (§3.3)", () => {
   }, 30_000);
 
   // One render per document for both readings: the column's list, and
-  // where a comment on each of its blocks is placed.
-  it.each(corpus)("agree on %s", (path) => {
-    const content = readRepoFile(path);
-    const { seen, container } = columnOf(path, content);
-    expect(index(path, content)).toEqual(seen);
-    const { page, index: byLine } = placements(path, content, container);
-    expect(byLine, "where a comment on each block is placed").toEqual(page);
-  });
+  // where a comment on each of its blocks is placed. A document's render
+  // grows with the document, and the planning reference is the largest:
+  // 4,196 lines once the planning filter graduated into it, about 2 s alone
+  // on an idle machine and 6.3 s on CI's ubuntu runner beside the rest of
+  // the suite, where vitest's default 5 s failed main with nothing wrong. So
+  // each has the corpus check's room.
+  it.each(corpus)(
+    "agree on %s",
+    (path) => {
+      const content = readRepoFile(path);
+      const { seen, container } = columnOf(path, content);
+      expect(index(path, content)).toEqual(seen);
+      const { page, index: byLine } = placements(path, content, container);
+      expect(byLine, "where a comment on each block is placed").toEqual(page);
+    },
+    30_000,
+  );
 
   const fixtures: Record<string, string> = {
     "✅ in the body, 💬 on the title": [
