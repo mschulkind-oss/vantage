@@ -68,10 +68,14 @@ export const PlanningOutline: React.FC<PlanningOutlineProps> = ({
     className="hidden md:block w-64 shrink-0"
   >
     {/* z-10 for the table of contents' reason: nothing a card renders may
-        paint over the column and take its clicks. */}
+        paint over the column and take its clicks. The scroll container clips
+        what overflows it, focus rings included, and the picker's box is as
+        wide as the column: so the nav reaches 4 px past the column on each
+        side and pads its content back by as much, which leaves a ring (2 px,
+        offset 1 px) room to be drawn whole without moving anything. */}
     <nav
       aria-label="Planning outline"
-      className="sticky top-2 z-10 max-h-[calc(100vh-8rem)] overflow-y-auto pb-6"
+      className="sticky top-2 z-10 -mx-1 max-h-[calc(100vh-8rem)] overflow-y-auto px-1 pb-6"
     >
       {/* Nothing in the column before the outline: its head arrives with
           it, in the commit that draws the section bar, so the picker is never

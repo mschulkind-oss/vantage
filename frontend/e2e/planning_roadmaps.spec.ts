@@ -359,6 +359,44 @@ test.describe("several roadmaps", () => {
     await expect(shown).toHaveText("roadmap.md (2 need you)");
   });
 
+  // The outline scrolls, so it clips whatever overflows it, and the picker's
+  // box is as wide as the column. A click on a select is :focus-visible in
+  // Chromium, so the ring around the box shows on every pick and was drawn
+  // cut off at its left edge.
+  test("draws the picker's focus ring whole at the head of the outline", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.addInitScript(() => {
+      localStorage.setItem("vantage:tocOpen", "true");
+    });
+    await page.goto("/.vantage/planning");
+    const outline = page.getByRole("navigation", { name: "Planning outline" });
+    const select = outline.getByRole("combobox", { name: "Roadmap" });
+    const before = await outline.getByTestId("roadmap-shown").boundingBox();
+    await select.click();
+    await page.keyboard.press("Escape");
+    const ring = await outline.getByTestId("roadmap-shown").evaluate((el) => {
+      const control = el.parentElement!;
+      const style = getComputedStyle(control);
+      const reach =
+        parseFloat(style.outlineWidth) + parseFloat(style.outlineOffset);
+      const box = control.getBoundingClientRect();
+      const nav = control.closest("nav")!.getBoundingClientRect();
+      return {
+        drawn: style.outlineStyle !== "none" && reach > 0,
+        left: box.left - reach >= nav.left,
+        right: box.right + reach <= nav.right,
+        top: box.top - reach >= nav.top,
+      };
+    });
+    expect(ring).toEqual({ drawn: true, left: true, right: true, top: true });
+    // The room is padding, so the box is where it was.
+    expect(await outline.getByTestId("roadmap-shown").boundingBox()).toEqual(
+      before,
+    );
+  });
+
   // Late data never moves painted content: the picker arrives with the
   // index, so the outline's head is drawn only with it. A Contents label
   // painted first was pushed down by it, about 110 px, on every cold load.
