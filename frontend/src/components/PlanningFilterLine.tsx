@@ -105,6 +105,11 @@ export const PlanningFilterLine: React.FC<{
   onLeave: () => void;
   /** The input, for `/`, which focuses it and selects its text. */
   inputRef: React.RefObject<HTMLInputElement | null>;
+  /**
+   * Set to what ✕ does, for the page's own Clear the filter, which stands
+   * under *Nothing matches* and does exactly that.
+   */
+  clearRef?: React.RefObject<(() => void) | null>;
   /** The filter notice's id, which describes the input while there is one. */
   describedBy?: string;
   /** What the polite live region says: the notice, once the URL takes it. */
@@ -125,6 +130,7 @@ export const PlanningFilterLine: React.FC<{
   onFlush,
   onLeave,
   inputRef,
+  clearRef,
   describedBy,
   announcement,
   printText,
@@ -173,6 +179,19 @@ export const PlanningFilterLine: React.FC<{
     setApplied(value);
     onApply(next, roadmap);
   };
+
+  /** ✕: the filter cleared at once, and the focus in the box (§6.17). */
+  const clear = () => {
+    apply("");
+    inputRef.current?.focus();
+  };
+  useLayoutEffect(() => {
+    if (clearRef === undefined) return;
+    clearRef.current = clear;
+    return () => {
+      clearRef.current = null;
+    };
+  });
 
   // An input method is composing: nothing is handed to the page until it
   // ends (§6.17), so the page never chases unconverted letters.
@@ -291,11 +310,7 @@ export const PlanningFilterLine: React.FC<{
                 // The focus stays in the box (§6.17), so pressing ✕ is not
                 // leaving it, which would write what ✕ is about to clear.
                 onMouseDown={(e) => e.preventDefault()}
-                onClick={() => {
-                  apply("");
-                  // The focus stays in the box (§6.17).
-                  inputRef.current?.focus();
-                }}
+                onClick={clear}
                 className="flex size-6 items-center justify-center rounded text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-200"
               >
                 <X size={14} aria-hidden="true" />

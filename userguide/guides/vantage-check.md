@@ -900,6 +900,29 @@ Open or answered questions on this roadmap, in its order. Rule each open one, th
   filter keeps needs you*, the Roadmaps block counts the questions the filter
   keeps, and the `Agent requests:` line carries the filter, as
   `vantage-check index --request --filter '<the filter>'`.
+- **A filter that keeps no entry says *Nothing matches*,** in the page's
+  words, where the sections would be, with one line saying why, and it still
+  exits `0`. *Nothing this filter keeps needs you* is not printed then, and
+  there is no `Agent requests:` line. The reasons, first that applies, are the
+  ones [the planning page gives](planning.md#when-nothing-matches): the
+  questions it keeps are on other roadmaps (*Rerun with --roadmap naming
+  it.*), the index lists no entry at all, its `path:` terms keep documents
+  that list nothing, `is:open` leaves out everything else it keeps, or else
+  what words are matched against:
+
+  ```console
+  $ vantage-check index --filter 'path:/docs/design/search.md is:open'
+  Filtered by `path:/docs/design/search.md is:open`: 0 of 5 entries, in 1 of 5 paths, none of them open questions.
+  Run without --filter to see the other 5.
+  Planning page: /.vantage/planning?filter=path:/docs/design/search.md+is:open
+    Press / on the planning page and paste this line, or put the scheme, host and port you open Vantage at in front of the link.
+
+  Nothing matches `path:/docs/design/search.md is:open`.
+  Without `is:open` it would keep 1 entry, and it is not an open question.
+  ```
+
+  The JSON and `--request` are as for any other filter: `entries.shown` is
+  `0`, and `--request` prints nothing and says why.
 
 **JSON.** With `--filter`, the object gains one last key, `filter`, and every
 other key is byte for byte what it is without the flag: `index` is the whole
@@ -1059,8 +1082,10 @@ them the planning page filtered to that work. The loop:
 4. **The human answers on the page** and presses **Copy answers**, which under
    the filter copies only the answers to the questions it keeps.
 5. **Apply the answers, and rerun the same command** until it says *Nothing
-   this filter keeps needs you*. The line counting blocked questions says
-   whether another round will follow.
+   this filter keeps needs you*, or, once no entry is left at all, *Nothing
+   matches*, as in *Without `is:open` it would keep 1 entry, and it is not an
+   open question.* The line counting blocked questions says whether another
+   round will follow.
 
 What you hand over can be as short as this:
 

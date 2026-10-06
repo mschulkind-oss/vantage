@@ -357,6 +357,44 @@ test.describe("the planning filter", () => {
     ).toBe(true);
   });
 
+  // Ruled 2026-10-06: a filter that keeps no entry says so in place of the
+  // sections, never as a bare page under its notice. A typed word that
+  // matches nothing waits for the idle pause, then shows it.
+  test("says Nothing matches once the pause passes after a word that matches nothing, and its Clear the filter brings every entry back, moving nothing painted", async ({
+    page,
+  }) => {
+    await watchPaint(page);
+    await page.goto("/.vantage/planning");
+    await expect(cards(page, "Needs you")).toHaveCount(10);
+    const entries = await page.evaluate(() => history.length);
+    await page.keyboard.press("/");
+    await expect(box(page)).toBeFocused();
+    await page.keyboard.type("zqxj");
+    const empty = page.getByTestId("nothing-matches");
+    await expect(page).toHaveURL(/\?filter=zqxj$/);
+    await expect(empty.getByRole("heading")).toHaveText(
+      "Nothing matches zqxj.",
+    );
+    await expect(empty).toContainText(
+      "Words and quoted phrases are matched only against a question's id, title and leaning, and a document's path, stage and next step.",
+    );
+    await expect(notice(page)).toContainText("Filtered by zqxj: 0 of ");
+    await expect(cards(page, "Needs you")).toHaveCount(0);
+    await expect(page.getByTestId("nothing-needs-you")).toHaveCount(0);
+    await expect(page.getByTestId("planning-filter-status")).toContainText(
+      "Nothing matches zqxj.",
+    );
+    await empty.getByRole("button", { name: "Clear the filter" }).click();
+    await expect(page).toHaveURL(/\/\.vantage\/planning$/);
+    await expect(cards(page, "Needs you")).toHaveCount(10);
+    await expect(empty).toHaveCount(0);
+    await expect(box(page)).toHaveValue("");
+    await expect(box(page)).toBeFocused();
+    const shifts = await shiftsOf(page);
+    expect(shifts, JSON.stringify(shifts)).toEqual([]);
+    expect(await page.evaluate(() => history.length)).toBe(entries);
+  });
+
   test("shows the page of criterion 2 after / and a paste of the checker's output (criterion 11)", async ({
     page,
   }) => {

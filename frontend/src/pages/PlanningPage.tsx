@@ -29,9 +29,12 @@
  * (§6.16); the filter notice, first of the frame's notices, says what it
  * hides. A typed text that keeps no entry at all waits for the URL to take
  * it, so a half-typed word does not empty the page between two keystrokes
- * that come within the idle pause of each other. A filter this release does
- * not understand is applied not at all: typed, it leaves the page as it was,
- * and entered, the notice names its term (F3).
+ * that come within the idle pause of each other. An applied filter that
+ * keeps no entry says *Nothing matches* in place of the sections, with the
+ * one reason that applies and a Clear the filter that does what the box's ✕
+ * does, rather than leave the page blank under its notice (§6.18). A filter
+ * this release does not understand is applied not at all: typed, it leaves
+ * the page as it was, and entered, the notice names its term (F3).
  *
  * Several roadmaps (`planning-index.md` §6.8): when two or more route, the
  * roadmap line above the section bar offers a picker, and *Needs you* follows
@@ -920,11 +923,24 @@ const Notices: React.FC<{
   /** A filter is applied: *Nothing needs you* takes filtered words (§6.15). */
   filtered: boolean;
   /**
+   * The filter keeps no entry, and *Nothing matches* stands in place of the
+   * sections: *Nothing needs you* is not said, since under a filter it reads
+   * as though something were kept.
+   */
+  nothingMatches?: boolean;
+  /**
    * The filtered *Nothing needs you*'s id, which describes the Filter box
    * with the filter notice (§6.18).
    */
   nothingId?: string;
-}> = ({ sections, config, filterNotice, filtered, nothingId }) => {
+}> = ({
+  sections,
+  config,
+  filterNotice,
+  filtered,
+  nothingMatches = false,
+  nothingId,
+}) => {
   const roadmapNotice = PLANNING_NOTICES.roadmapNotice(
     config,
     sections.roadmaps,
@@ -932,7 +948,7 @@ const Notices: React.FC<{
   return (
     <>
       {filterNotice}
-      {sections.nothingNeedsYou && (
+      {sections.nothingNeedsYou && !nothingMatches && (
         <p
           id={filtered ? nothingId : undefined}
           data-testid="nothing-needs-you"
@@ -948,6 +964,58 @@ const Notices: React.FC<{
       )}
       {!sections.stagesDeclared && <Notice>{PLANNING_NOTICES.noStages}</Notice>}
     </>
+  );
+};
+
+/**
+ * What stands in place of the sections when an applied filter keeps no entry
+ * in any of them (ruled 2026-10-06): the headline, *Nothing matches* and the
+ * filter as code, in the page's own text size and not a warning's color; the
+ * one reason line that applies; and Clear the filter, which does what the
+ * box's ✕ does. Drawn in the sections' box, in the commit that would have
+ * drawn them, so it moves nothing painted. It prints, but for its button. Its
+ * headline's id describes the Filter box with the filter notice.
+ */
+const NothingMatches: React.FC<{
+  id: string;
+  /** `PLANNING_NOTICES.nothingMatches`' lines: the headline, then the reason. */
+  lines: readonly PlanningNoticeLine[];
+  onClear: () => void;
+}> = ({ id, lines, onClear }) => {
+  const [headline, ...reasons] = lines;
+  return (
+    <section
+      aria-labelledby={id}
+      data-testid="nothing-matches"
+      className="mb-10 [overflow-wrap:anywhere]"
+    >
+      <h2
+        id={id}
+        className="text-base font-medium text-slate-700 dark:text-slate-200"
+      >
+        {headline !== undefined && <NoticeLine line={headline} />}
+      </h2>
+      {reasons.map((line, i) => (
+        <p
+          key={i}
+          data-testid="nothing-matches-reason"
+          className="mt-1 text-sm text-slate-600 dark:text-slate-300"
+        >
+          <NoticeLine line={line} />
+        </p>
+      ))}
+      <button
+        type="button"
+        // As the box's ✕ does: the focus is not taken from the box on the
+        // way, so pressing it is not leaving the box, which would write what
+        // it is about to clear. The press puts the focus in the box.
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={onClear}
+        className="mt-3 inline-flex items-center gap-1.5 rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100 print:hidden dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700"
+      >
+        Clear the filter
+      </button>
+    </section>
   );
 };
 
@@ -2110,7 +2178,8 @@ export const PlanningPage: React.FC = () => {
   const answeredAll =
     frameSections !== null &&
     !frameSections.nothingNeedsYou &&
-    frameNeedYou?.nothing === true;
+    frameNeedYou?.nothing === true &&
+    frameSummary?.nothingMatches == null;
 
   // The agent requests, generated when a Copy agent request button is
   // pressed, from the frame's index and sections, which are the ones on
@@ -2313,6 +2382,9 @@ export const PlanningPage: React.FC = () => {
   // static export, which has no planning page to filter.
   const filterLineShown = !isStaticMode();
   const filterInputRef = useRef<HTMLInputElement>(null);
+  // The box's own ✕, which Clear the filter under *Nothing matches* presses:
+  // set by the filter line while it is drawn.
+  const filterClearRef = useRef<(() => void) | null>(null);
   // `/` focuses the box and selects its text, so a paste replaces it.
   const focusFilter = useCallback(() => {
     const input = filterInputRef.current;
@@ -2448,6 +2520,12 @@ export const PlanningPage: React.FC = () => {
       followFilter,
     ],
   );
+  // Clear the filter under *Nothing matches*: what the box's ✕ does, the box
+  // emptied and the focus put in it; without the box, the clear alone.
+  const clearFilter = useCallback(() => {
+    if (filterClearRef.current !== null) filterClearRef.current();
+    else applyFilter("", null);
+  }, [applyFilter]);
   // The filter notice's lines, for the frame: what the page on screen shows.
   const filterNotice = useMemo(
     () => filterNoticeLines(frameSummary, frameNotUnderstood),
@@ -2455,18 +2533,33 @@ export const PlanningPage: React.FC = () => {
   );
   const filterNoticeId = React.useId();
   const noticeShown = frameReady && filterNotice !== null;
-  // Applied, nothing kept, and any applied filter whose sections hold
-  // nothing that needs the human: the notice, then the filtered *Nothing
-  // needs you*, which the frame draws after it as a notice of its own (§6.18).
-  // The box is described by both, and the region says both.
+  // An applied filter that keeps no entry: *Nothing matches* in place of the
+  // sections, after the notice, with its reason line. The box is described
+  // by the notice and its headline, and the region says both.
+  const nothingMatches = useMemo(
+    () =>
+      frameSummary === null
+        ? null
+        : PLANNING_NOTICES.nothingMatches(frameSummary, "page"),
+    [frameSummary],
+  );
+  const nothingMatchesId = React.useId();
+  // Any other applied filter whose sections hold nothing that needs the
+  // human: the notice, then the filtered *Nothing needs you*, which the frame
+  // draws after it as a notice of its own (§6.18). The box is described by
+  // both, and the region says both.
   const nothingFiltered =
-    frameFilter !== "" && frameSections?.nothingNeedsYou === true;
+    frameFilter !== "" &&
+    frameSections?.nothingNeedsYou === true &&
+    nothingMatches === null;
   const nothingId = React.useId();
   const filterDescribedBy = !noticeShown
     ? undefined
-    : nothingFiltered
-      ? `${filterNoticeId} ${nothingId}`
-      : filterNoticeId;
+    : nothingMatches !== null
+      ? `${filterNoticeId} ${nothingMatchesId}`
+      : nothingFiltered
+        ? `${filterNoticeId} ${nothingId}`
+        : filterNoticeId;
   const spoken =
     filterNotice === null
       ? FILTER_CLEARED
@@ -2474,6 +2567,9 @@ export const PlanningPage: React.FC = () => {
           ...filterNotice.map(spokenLine),
           ...(nothingFiltered
             ? [PLANNING_NOTICES.nothingFilteredNeedsYou]
+            : []),
+          ...(nothingMatches?.[0] !== undefined
+            ? [spokenLine(nothingMatches[0])]
             : []),
         ].join(" ");
   // A push or a pop (`g p`, the sidebar's entry, Back, Forward) is no
@@ -2746,6 +2842,7 @@ export const PlanningPage: React.FC = () => {
                   onFlush={flushFilter}
                   onLeave={leaveFilter}
                   inputRef={filterInputRef}
+                  clearRef={filterClearRef}
                   describedBy={filterDescribedBy}
                   announcement={announcement}
                   printText={frameFilter}
@@ -2900,6 +2997,7 @@ export const PlanningPage: React.FC = () => {
                           sections={frameSections}
                           config={frameConfig}
                           filtered={frameFilter !== ""}
+                          nothingMatches={nothingMatches !== null}
                           nothingId={nothingId}
                           filterNotice={
                             filterNotice !== null && (
@@ -2942,19 +3040,27 @@ export const PlanningPage: React.FC = () => {
                               </span>
                             </p>
                           )}
-                          <Sections
-                            layout={shown.inputs.layout}
-                            index={shown.inputs.index}
-                            card={card}
-                            documentRow={documentRow}
-                            buildPath={buildPath}
-                            asked={asked}
-                            onFlip={flip}
-                            onPrefetch={prefetch}
-                            busy={busy}
-                            requestOf={requestOf}
-                            answered={frameNeedYou?.sections}
-                          />
+                          {nothingMatches !== null ? (
+                            <NothingMatches
+                              id={nothingMatchesId}
+                              lines={nothingMatches}
+                              onClear={clearFilter}
+                            />
+                          ) : (
+                            <Sections
+                              layout={shown.inputs.layout}
+                              index={shown.inputs.index}
+                              card={card}
+                              documentRow={documentRow}
+                              buildPath={buildPath}
+                              asked={asked}
+                              onFlip={flip}
+                              onPrefetch={prefetch}
+                              busy={busy}
+                              requestOf={requestOf}
+                              answered={frameNeedYou?.sections}
+                            />
+                          )}
                         </>
                       ) : inputs.slow ? (
                         <div className="flex items-center justify-center py-20">
