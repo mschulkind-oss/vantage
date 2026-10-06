@@ -47,6 +47,8 @@ import {
   type PlanningConfig,
   type PlanningSources,
 } from "vantage-md/planning";
+import { filterSummaryOf, sectionsOf } from "../lib/planningPages";
+import { VIEWER_RELEASE } from "../lib/viewerRelease";
 import { PlanningPage } from "./PlanningPage";
 import { AppShell } from "../components/AppShell";
 import {
@@ -85,6 +87,7 @@ import { memoryScanStore } from "../planningScan/memoryStore";
 import { setPlanningLimitsForTests } from "../planningScan/limits";
 import {
   contentHash,
+  filterForms,
   planningConfig,
   questionDirective,
   readRepoFile,
@@ -3139,6 +3142,180 @@ describe("each section's explanation, and Copy agent request", () => {
       within(section("Blocked")).getByText(/^blocked on/),
     ).toHaveTextContent("blocked on design.md#OQ-D1");
   });
+
+  // planning-filter.md §6.6: a filtered page's request says so after
+  // `Repository:`, in a line whose text leaves out the unmatched terms, lists
+  // the kept entries alone, and reads every blocked-on fact from the
+  // unfiltered sections.
+  it("copies, on a filtered page, the kept entries under a Filter: line", async () => {
+    await renderPage(
+      "/.vantage/planning?filter=path:plans/desing+path:plans/ready.md",
+    );
+    await press(copyAll());
+    const copied = writeText.mock.calls[0][0] as string;
+    const { index } = shownState();
+    const sections = sectionsOf(
+      index,
+      null,
+      "path:plans/desing path:plans/ready.md",
+    );
+    expect(copied).toBe(
+      planningAgentRequest(index, sections, {
+        repository: ROOT,
+        filter: {
+          text: "path:plans/ready.md",
+          unfiltered: derivePlanningSections(index),
+        },
+      }),
+    );
+    expect(copied.split("\n").slice(0, 2)).toEqual([
+      `Repository: ${ROOT}`,
+      "Filter: `path:plans/ready.md`. Only the entries it keeps are listed.",
+    ]);
+    expect(copied).toContain("plans/ready.md");
+    expect(copied).not.toContain("plans/built.md");
+    // Not understood, it is not applied, and its request is the plain one.
+    cleanup();
+    writeText.mockClear();
+    await renderPage("/.vantage/planning?filter=OR");
+    await press(copyAll());
+    expect(writeText.mock.calls[0][0]).toBe(
+      planningAgentRequest(index, derivePlanningSections(index), {
+        repository: ROOT,
+      }),
+    );
+  });
+
+  it("offers no request when every path: term is unmatched, since nothing is kept", async () => {
+    await renderPage("/.vantage/planning?filter=path:plans/desing+is:open");
+    expect(agentButtons()).toEqual([]);
+  });
+
+  // Criterion 4: on a filtered page, what Copy all agent requests copies is
+  // what `vantage-check index --request --filter '<its Filter: line's
+  // text>'` prints for the same tree, for every understood text of the
+  // fixture of forms whose request is not empty. The CLI reads the fixture
+  // from disk, its Too large file a real file over max-file-bytes, as an
+  // agent's run does; the page reads it through its scanner.
+  it("copies, filtered, exactly what vantage-check index --request --filter prints, for every text of the fixture of forms", async (ctx) => {
+    const forms = filterForms();
+    const { files, skipped, stages, maxFileBytes } = forms.index;
+    const root = realpathSync(
+      mkdtempSync(join(tmpdir(), "vantage-filter-agree-")),
+    );
+    try {
+      const onDisk: Record<string, string> = {
+        ...files,
+        ...Object.fromEntries(
+          skipped.map(({ path, size }) => [path, "x".repeat(size)]),
+        ),
+        ".git/HEAD": "ref: refs/heads/main\n",
+        ".vantage.toml": [
+          "[planning]",
+          `max-file-bytes = ${maxFileBytes}`,
+          "",
+          "[planning.stages]",
+          ...Object.entries(stages).map(([w, r]) => `${w} = "${r}"`),
+          "",
+        ].join("\n"),
+      };
+      for (const [path, content] of Object.entries(onDisk)) {
+        mkdirSync(dirname(join(root, path)), { recursive: true });
+        writeFileSync(join(root, path), content);
+      }
+      const cli = async (...args: string[]) => {
+        const io = bufferIo(root);
+        const code = await run(["index", ...args], io);
+        return { code, stdout: io.stdout, stderr: io.stderr };
+      };
+      // A checker that predates --filter has nothing to compare with: the
+      // page is then held to the planning module's own request alone, and
+      // the test is marked skipped once it has been.
+      const probe = await cli("--request", "--filter", "is:open");
+      const cliReadsFilter = !/unknown option for index: --filter/.test(
+        probe.stderr,
+      );
+
+      resetRepoRootsForTests();
+      serveTree(files);
+      setLoad(
+        readyOf(
+          files,
+          { stages, maxFileBytes },
+          {
+            skipped,
+            candidateCount: Object.keys(files).length + skipped.length,
+          },
+        ),
+      );
+      serveInfo(root);
+      await renderPage();
+      const { index } = shownState();
+      let compared = 0;
+      for (const { text, canonical } of forms.read) {
+        writeText.mockClear();
+        if (/[\r\n]/.test(text)) {
+          // A text input holds no line break, so this one comes as a link.
+          act(() =>
+            router.navigate!(
+              { search: `?${new URLSearchParams({ filter: text })}` },
+              { replace: true },
+            ),
+          );
+        } else {
+          await act(async () => {
+            fireEvent.change(screen.getByRole("textbox", { name: "Filter" }), {
+              target: { value: text },
+            });
+          });
+          await act(async () => {
+            fireEvent.submit(screen.getByRole("search"));
+          });
+        }
+        await settle();
+        expect(
+          new URLSearchParams(router.location.split("?")[1]).get("filter"),
+          text,
+        ).toBe(canonical);
+        const summary = filterSummaryOf(index, "roadmap.md", canonical);
+        const button = screen.queryByRole("button", {
+          name: "Copy all agent requests",
+        });
+        if (button === null || summary?.requestText == null) continue;
+        await press(button);
+        const copied = writeText.mock.calls[0][0] as string;
+        expect(copied, text).toBe(
+          planningAgentRequest(
+            index,
+            sectionsOf(index, "roadmap.md", canonical),
+            {
+              repository: root,
+              viewer: VIEWER_RELEASE,
+              filter: {
+                text: summary.requestText,
+                unfiltered: sectionsOf(index, "roadmap.md"),
+              },
+            },
+          ),
+        );
+        if (cliReadsFilter) {
+          const printed = await cli(
+            "--request",
+            "--filter",
+            summary.requestText,
+          );
+          expect(printed.code, text).toBe(0);
+          expect(`${copied}\n`, text).toBe(printed.stdout);
+        }
+        compared++;
+      }
+      // Most of the fixture's texts keep an agent's entry.
+      expect(compared).toBeGreaterThan(20);
+      if (!cliReadsFilter) ctx.skip("this checker does not read --filter");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }, 120_000);
 });
 
 describe("a card's document name, then Back (§6.6)", () => {
@@ -4217,5 +4394,875 @@ describe("a comment on a question is its answer (§6.7)", () => {
       await settle();
       expect(screen.getByTestId("nothing-needs-you")).toBeTruthy();
     });
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * The planning filter (docs/design/planning-filter.md)
+ * ------------------------------------------------------------------ */
+
+describe("the planning filter (planning-filter.md)", () => {
+  beforeEach(() => seed());
+
+  /** A second roadmap, which routes plans/unrouted.md alone. */
+  const NESTED = "docs/plans/roadmap.md";
+  const TWO: Record<string, string> = {
+    ...TREE,
+    [NESTED]: "# Plans\n\n1. [The unrouted one](../../plans/unrouted.md)\n",
+  };
+
+  const box = () =>
+    screen.getByRole("textbox", { name: "Filter" }) as HTMLInputElement;
+  const form = () =>
+    screen.getByRole("search", { name: "Filter the planning page" });
+  const notice = () => screen.queryByTestId("filter-notice");
+  const noticeLines = () =>
+    Array.from(notice()?.querySelectorAll("p") ?? [], (p) => p.textContent);
+  const hint = () => screen.getByTestId("planning-filter-hint").textContent;
+  const status = () => screen.getByTestId("planning-filter-status");
+  const bar = () => screen.getByRole("navigation", { name: "Sections" });
+  const spinning = () =>
+    screen.getByTestId("planning-filter-spinner-slot").querySelector("svg") !==
+    null;
+
+  async function type(text: string): Promise<void> {
+    await act(async () => {
+      fireEvent.change(box(), { target: { value: text } });
+    });
+  }
+  /** Enter in the box: its form's submit, which is what Enter does. */
+  async function enter(text?: string): Promise<void> {
+    if (text !== undefined) await type(text);
+    await act(async () => {
+      fireEvent.submit(form());
+    });
+    await settle();
+  }
+  async function paste(text: string): Promise<void> {
+    await act(async () => {
+      fireEvent.paste(box(), { clipboardData: { getData: () => text } });
+    });
+    await settle();
+  }
+  async function press(key: string, target: EventTarget = document) {
+    await act(async () => {
+      fireEvent.keyDown(target, { key });
+    });
+    await settle();
+  }
+
+  /** What the checker prints for criterion 1, around its link. */
+  const CHECKER_BLOCK = [
+    "Filtered by `path:plans/design.md is:open`: 2 of 10 entries, in 1 of 9 paths, 2 of them open questions.",
+    "1 of its questions is blocked and will need you later.",
+    "Run without --filter to see the other 8.",
+    "Planning page: /.vantage/planning?filter=path:plans/design.md+is:open",
+    "  Press / on the planning page and paste this line, or put the scheme, host and port you open Vantage at in front of the link.",
+    "",
+  ].join("\n");
+
+  describe("opened from a link", () => {
+    it("shows only what the filter keeps, counted, with the box holding its text and the notice saying what is hidden", async () => {
+      await renderPage(
+        "/.vantage/planning?filter=path:plans/design.md+is:open",
+      );
+      expect(cardsIn("Needs you")).toEqual([
+        "OQ-D1: Question OQ-D1?",
+        "OQ-D3: Question OQ-D3?",
+      ]);
+      for (const name of ["Not on a roadmap", "Blocked", "Ready to build"]) {
+        expect(querySection(name)).toBeNull();
+      }
+      expect(bar()).toHaveTextContent(/^Needs you 2$/);
+      expect(box().value).toBe("path:plans/design.md is:open");
+      expect(noticeLines()).toEqual([
+        "Filtered by path:plans/design.md is:open: 2 of 10 entries, in 1 of 9 paths, 2 of them open questions.",
+        "1 of its questions is blocked and will need you later.",
+        "Clear the filter to see the other 8.",
+      ]);
+      // The text is set off as code, so the colon after it is not its own.
+      expect(notice()!.querySelector("code")).toHaveTextContent(
+        /^path:plans\/design\.md is:open$/,
+      );
+      // Already canonical, in the link encoding: nothing to rewrite.
+      expect(router.location).toBe(
+        "/.vantage/planning?filter=path:plans/design.md+is:open",
+      );
+      expect(box()).not.toHaveAttribute("aria-invalid");
+      // The box never takes the focus as the page opens.
+      expect(document.activeElement).not.toBe(box());
+    });
+
+    it("rewrites the filter to its canonical text as one parameter, in place, keeping the fragment", async () => {
+      await renderPage(
+        "/.vantage/planning?filter=path:./plans/design.md&x=1&filter=is:open#needs-you",
+        ["/plans/roadmap.md"],
+      );
+      expect(router.location).toBe(
+        "/.vantage/planning?filter=path:plans/design.md+is:open&x=1",
+      );
+      expect(router.hash).toBe("#needs-you");
+      expect(box().value).toBe("path:plans/design.md is:open");
+      expect(cardsIn("Needs you")).toEqual([
+        "OQ-D1: Question OQ-D1?",
+        "OQ-D3: Question OQ-D3?",
+      ]);
+      // In place of the history entry.
+      act(() => router.navigate!(-1));
+      expect(router.location).toBe("/plans/roadmap.md");
+    });
+
+    it("removes an empty filter, so an unfiltered address never carries one", async () => {
+      await renderPage("/.vantage/planning?filter=&x=1&filter=+");
+      expect(router.location).toBe("/.vantage/planning?x=1");
+      expect(notice()).toBeNull();
+      expect(cardsIn("Needs you")).toHaveLength(3);
+    });
+
+    it("applies nothing it does not understand, shows every entry, names the term and leaves the address as written", async () => {
+      const url = "/.vantage/planning?filter=path:plans/design.md+OR+is:open";
+      await renderPage(url);
+      expect(cardsIn("Needs you")).toHaveLength(3);
+      expect(cardsIn("Not on a roadmap")).toHaveLength(2);
+      expect(querySection("Blocked")).not.toBeNull();
+      expect(noticeLines()).toEqual([
+        "Not filtered: this Vantage does not understand OR. It reads path: and is: terms, such as path:docs/design/*.md is:open. Every entry is shown.",
+      ]);
+      expect(notice()!.querySelector("code")).toHaveTextContent(/^OR$/);
+      expect(box()).toHaveAttribute("aria-invalid", "true");
+      expect(box().value).toBe("path:plans/design.md OR is:open");
+      expect(router.location).toBe(url);
+    });
+
+    it("gives the reason where there is no term to name", async () => {
+      await renderPage('/.vantage/planning?filter=path:"plans');
+      expect(noticeLines()).toEqual([
+        "Not filtered: this Vantage does not understand an unclosed quote. It reads path: and is: terms, such as path:docs/design/*.md is:open. Every entry is shown.",
+      ]);
+      expect(box()).toHaveAttribute("aria-invalid", "true");
+    });
+
+    it("names an unmatched term, keeps nothing, and says nothing it keeps needs you", async () => {
+      await renderPage("/.vantage/planning?filter=path:plans/desing");
+      expect(noticeLines()).toEqual([
+        "Filtered by path:plans/desing: 0 of 10 entries, in 0 of 9 paths, none of them open questions.",
+        "path:plans/desing matches no path the index lists.",
+        "Clear the filter to see the other 10.",
+      ]);
+      expect(screen.getByTestId("nothing-needs-you")).toHaveTextContent(
+        PLANNING_NOTICES.nothingFilteredNeedsYou,
+      );
+      expect(screen.queryAllByRole("article")).toEqual([]);
+      expect(bar()).toHaveTextContent(/^$/);
+    });
+
+    it("names a kept document's blocker the filter leaves out, with every blocker still on its row", async () => {
+      await renderPage("/.vantage/planning?filter=path:plans/deps.md");
+      expect(documentsIn("Blocked")).toEqual(["plans/deps.md"]);
+      expect(
+        within(section("Blocked")).getByText(/^blocked on/),
+      ).toHaveTextContent("blocked on design.md#OQ-D1");
+      expect(noticeLines()).toEqual([
+        "Filtered by path:plans/deps.md: 1 of 10 entries, in 1 of 9 paths, none of them open questions.",
+        "plans/deps.md waits on plans/design.md#OQ-D1, which this filter leaves out.",
+        "Clear the filter to see the other 9.",
+      ]);
+    });
+
+    it("names each other roadmap holding a question it keeps, and a pick keeps the filter", async () => {
+      seed(TWO);
+      await renderPage("/.vantage/planning?filter=path:plans/unrouted.md");
+      expect(screen.queryAllByRole("article")).toEqual([]);
+      expect(noticeLines()).toEqual([
+        "Filtered by path:plans/unrouted.md: 0 of 9 entries, in 1 of 10 paths, none of them open questions.",
+        `1 more question it keeps is on another roadmap: ${NESTED} (1). Choose that roadmap to see it; the filter stays.`,
+        "Clear the filter to see the other 9.",
+      ]);
+      // The picker's counts and the line after it are the filter's too.
+      expect(
+        Array.from(
+          (
+            screen.getByRole("combobox", {
+              name: "Roadmap",
+            }) as HTMLSelectElement
+          ).options,
+          (o) => o.textContent,
+        ),
+      ).toEqual(["roadmap.md (0 need you)", `${NESTED} (1 needs you)`]);
+      expect(screen.getByTestId("other-roadmaps")).toHaveTextContent(
+        "1 more question needs you on another roadmap.",
+      );
+      await act(async () => {
+        fireEvent.change(screen.getByRole("combobox", { name: "Roadmap" }), {
+          target: { value: NESTED },
+        });
+      });
+      await settle();
+      expect(
+        new URLSearchParams(router.location.split("?")[1]).get("filter"),
+      ).toBe("path:plans/unrouted.md");
+      expect(cardsIn("Needs you")).toEqual(["OQ-U1: Question OQ-U1?"]);
+      expect(box().value).toBe("path:plans/unrouted.md");
+    });
+
+    it("reads a filtered link's page parameters against the filtered sections", async () => {
+      setPlanningLimitsForTests({ pageEntries: 1 });
+      await renderPage(
+        "/.vantage/planning?filter=path:plans/design.md&needs-you=2&waiting=4",
+      );
+      expect(cardsIn("Needs you")).toEqual(["OQ-D3: Question OQ-D3?"]);
+      // Blocked holds one entry under this filter, so page 4 is clamped.
+      expect(router.location).toBe(
+        "/.vantage/planning?filter=path:plans/design.md&needs-you=2",
+      );
+    });
+
+    it("applies the same text to the next index", async () => {
+      await renderPage(
+        "/.vantage/planning?filter=path:plans/design.md+is:open",
+      );
+      const grown = {
+        ...TREE,
+        "plans/design.md": doc(
+          "status: in-review\nstage: DESIGN",
+          q("OQ-D1", OPEN),
+          q("OQ-D2", BLOCKED),
+          q("OQ-D3", OPEN),
+          q("OQ-D4", OPEN),
+        ),
+      };
+      serveTree(grown);
+      setLoad(readyOf(grown));
+      await settle();
+      expect(cardsIn("Needs you")).toEqual([
+        "OQ-D1: Question OQ-D1?",
+        "OQ-D3: Question OQ-D3?",
+        "OQ-D4: Question OQ-D4?",
+      ]);
+      expect(noticeLines()[0]).toBe(
+        "Filtered by path:plans/design.md is:open: 3 of 11 entries, in 1 of 9 paths, 3 of them open questions.",
+      );
+    });
+
+    it("prints a line saying what it is filtered by, in place of the box", async () => {
+      await renderPage("/.vantage/planning?filter=path:plans/design.md");
+      expect(form()).toHaveClass("print:hidden");
+      const printed = screen.getByTestId("planning-filter-print");
+      expect(printed).toHaveClass("hidden", "print:block");
+      expect(printed).toHaveTextContent(/^Filter: path:plans\/design\.md$/);
+      cleanup();
+      await renderPage();
+      expect(screen.queryByTestId("planning-filter-print")).toBeNull();
+    });
+  });
+
+  describe("the box", () => {
+    it("applies on Enter in one replace: page parameters gone, the roadmap and the rest kept, the fragment dropped", async () => {
+      seed(TWO);
+      setPlanningLimitsForTests({ pageEntries: 2 });
+      await renderPage(
+        "/.vantage/planning?needs-you=2&roadmap=roadmap.md&x=1#needs-you",
+        ["/plans/roadmap.md"],
+      );
+      expect(cardsIn("Needs you")).toEqual(["OQ-A1: Question OQ-A1?"]);
+      await enter("path:./plans/design.md");
+      expect(router.location).toBe(
+        "/.vantage/planning?roadmap=roadmap.md&x=1&filter=path:plans/design.md",
+      );
+      expect(router.hash).toBe("");
+      expect(box().value).toBe("path:plans/design.md");
+      expect(cardsIn("Needs you")).toEqual([
+        "OQ-D1: Question OQ-D1?",
+        "OQ-D3: Question OQ-D3?",
+      ]);
+      act(() => router.navigate!(-1));
+      expect(router.location).toBe("/plans/roadmap.md");
+    });
+
+    it("writes what an agent's link writes, and the same page (criterion 3)", async () => {
+      await renderPage();
+      await enter("path:/plans/design.md is:open");
+      expect(router.location).toBe(
+        "/.vantage/planning?filter=path:plans/design.md+is:open",
+      );
+      expect(cardsIn("Needs you")).toEqual([
+        "OQ-D1: Question OQ-D1?",
+        "OQ-D3: Question OQ-D3?",
+      ]);
+      // `*` is written %2A, so no chat client reads it as emphasis.
+      await enter("path:plans/*.md");
+      expect(router.location).toBe(
+        "/.vantage/planning?filter=path:plans/%2A.md",
+      );
+    });
+
+    it("keeps the old page up until the new one's inputs are in, with a spinner in its own slot past spinnerMs", async () => {
+      // OQ-A1 is on Needs you's second page, so its block is not in hand.
+      setPlanningLimitsForTests({ pageEntries: 2, spinnerMs: 0 });
+      let hold = false;
+      let release: () => void = () => {};
+      serveTree(TREE, "/api", (inline) => ({
+        cards: (repo, want, options) =>
+          hold
+            ? new Promise<CardAnswer[]>((resolve) => {
+                release = () => resolve(inline.cards(repo, want, options));
+              })
+            : inline.cards(repo, want, options),
+      }));
+      await renderPage();
+      hold = true;
+      await enter("path:plans/answered.md");
+      expect(router.location).toBe(
+        "/.vantage/planning?filter=path:plans/answered.md",
+      );
+      // The page on screen, its frame included, is still the unfiltered one.
+      expect(cardsIn("Needs you")).toEqual([
+        "OQ-D1: Question OQ-D1?",
+        "OQ-D3: Question OQ-D3?",
+      ]);
+      expect(bar()).toHaveTextContent(/^Needs you 3/);
+      expect(notice()).toBeNull();
+      expect(spinning()).toBe(true);
+      expect(box().value).toBe("path:plans/answered.md");
+      release();
+      await settle();
+      expect(cardsIn("Needs you")).toEqual(["OQ-A1: Question OQ-A1?"]);
+      expect(bar()).toHaveTextContent(/^Needs you 1$/);
+      expect(noticeLines()[0]).toMatch(
+        /^Filtered by path:plans\/answered\.md:/,
+      );
+      expect(spinning()).toBe(false);
+    });
+
+    it("does nothing on Enter with the text already applied", async () => {
+      setPlanningLimitsForTests({ pageEntries: 1 });
+      await renderPage(
+        "/.vantage/planning?filter=path:plans/design.md&needs-you=2",
+      );
+      await enter("  path:plans/design.md ");
+      expect(router.location).toBe(
+        "/.vantage/planning?filter=path:plans/design.md&needs-you=2",
+      );
+      expect(box().value).toBe("path:plans/design.md");
+      expect(cardsIn("Needs you")).toEqual(["OQ-D3: Question OQ-D3?"]);
+    });
+
+    it("applies text it does not understand as typed, and shows every entry", async () => {
+      await renderPage("/.vantage/planning?filter=path:plans/design.md");
+      await enter("Path:plans/design.md");
+      expect(router.location).toBe(
+        "/.vantage/planning?filter=Path:plans/design.md",
+      );
+      expect(box().value).toBe("Path:plans/design.md");
+      expect(box()).toHaveAttribute("aria-invalid", "true");
+      expect(cardsIn("Needs you")).toHaveLength(3);
+      expect(noticeLines()[0]).toMatch(
+        /^Not filtered: this Vantage does not understand Path:plans\/design\.md\./,
+      );
+    });
+
+    it("clears and applies with ✕, the focus staying in the box", async () => {
+      await renderPage("/.vantage/planning?filter=path:plans/design.md&x=1");
+      box().focus();
+      await act(async () => {
+        fireEvent.click(
+          screen.getByRole("button", { name: "Clear the filter" }),
+        );
+      });
+      await settle();
+      expect(router.location).toBe("/.vantage/planning?x=1");
+      expect(box().value).toBe("");
+      expect(document.activeElement).toBe(box());
+      expect(notice()).toBeNull();
+      expect(cardsIn("Needs you")).toHaveLength(3);
+      // Its slot stays, empty while there is no text.
+      expect(
+        screen.queryByRole("button", { name: "Clear the filter" }),
+      ).toBeNull();
+    });
+
+    it("puts the applied text back on Esc, then gives the pane the focus, and never clears", async () => {
+      await renderPage("/.vantage/planning?filter=path:plans/design.md");
+      box().focus();
+      await type("path:plans/unrouted.md");
+      expect(hint()).toBe("Enter to apply");
+      await press("Escape", box());
+      expect(box().value).toBe("path:plans/design.md");
+      expect(hint()).toBe("");
+      expect(document.activeElement).toBe(box());
+      await press("Escape", box());
+      expect(document.activeElement).toBe(scroller());
+      expect(box().value).toBe("path:plans/design.md");
+      expect(router.location).toBe(
+        "/.vantage/planning?filter=path:plans/design.md",
+      );
+    });
+
+    it("applies nothing when the focus leaves it, and says Enter applies the text it holds", async () => {
+      await renderPage();
+      box().focus();
+      expect(hint()).toBe("");
+      await type("path:plans/design.md");
+      act(() => scroller().focus());
+      await settle();
+      expect(router.location).toBe("/.vantage/planning");
+      expect(box().value).toBe("path:plans/design.md");
+      expect(hint()).toBe("Enter to apply");
+      expect(cardsIn("Needs you")).toHaveLength(3);
+    });
+
+    it("is reset by the page's own replace while it lacks the focus, and not while it has it", async () => {
+      setPlanningLimitsForTests({ pageEntries: 1 });
+      await renderPage("/.vantage/planning?filter=path:plans/design.md");
+      await type("unapplied");
+      // A flip, with the focus on the pager: the box follows the URL.
+      await act(async () => {
+        fireEvent.click(
+          within(
+            screen.getByRole("navigation", { name: "Needs you pages" }),
+          ).getByRole("button", { name: "Next ›" }),
+        );
+      });
+      await settle();
+      // A flip writes the page's own form encoding, which reads back to the
+      // same text and asks for no rewrite (planning-filter.md §6.4).
+      expect(router.location).toBe(
+        "/.vantage/planning?filter=path%3Aplans%2Fdesign.md&needs-you=2",
+      );
+      expect(box().value).toBe("path:plans/design.md");
+      // The same replace with the focus in the box leaves its text alone.
+      box().focus();
+      await type("still typing");
+      act(() =>
+        router.navigate!(
+          { search: "?filter=path:plans/design.md" },
+          { replace: true },
+        ),
+      );
+      await settle();
+      expect(box().value).toBe("still typing");
+    });
+
+    it("says the notice in a polite live region after Enter or ✕, never as the page opens", async () => {
+      await renderPage(
+        "/.vantage/planning?filter=path:plans/design.md+is:open",
+      );
+      expect(status()).toHaveAttribute("aria-live", "polite");
+      expect(status()).toHaveTextContent(/^$/);
+      expect(box()).toHaveAttribute("aria-describedby", notice()!.id);
+      await enter("path:plans/deps.md");
+      expect(status()).toHaveTextContent(
+        "Filtered by path:plans/deps.md: 1 of 10 entries, in 1 of 9 paths, none of them open questions. plans/deps.md waits on plans/design.md#OQ-D1, which this filter leaves out. Clear the filter to see the other 9.",
+      );
+      expect(box()).toHaveAttribute("aria-describedby", notice()!.id);
+      await act(async () => {
+        fireEvent.click(
+          screen.getByRole("button", { name: "Clear the filter" }),
+        );
+      });
+      await settle();
+      expect(status()).toHaveTextContent(
+        "The filter is cleared. Every entry is shown.",
+      );
+      expect(box()).not.toHaveAttribute("aria-describedby");
+    });
+
+    it("does not say a section put back on page 1 by a filter is a flip", async () => {
+      setPlanningLimitsForTests({ pageEntries: 1 });
+      await renderPage("/.vantage/planning?needs-you=3");
+      expect(cardsIn("Needs you")).toEqual(["OQ-A1: Question OQ-A1?"]);
+      const said = () =>
+        section("Needs you").querySelector('[aria-live="polite"][aria-atomic]');
+      await enter("path:plans/design.md");
+      expect(cardsIn("Needs you")).toEqual(["OQ-D1: Question OQ-D1?"]);
+      expect(said()).toHaveTextContent(/^$/);
+      // A flip after it still is.
+      await act(async () => {
+        fireEvent.click(
+          within(
+            screen.getByRole("navigation", { name: "Needs you pages" }),
+          ).getByRole("button", { name: "Next ›" }),
+        );
+      });
+      await settle();
+      expect(said()).toHaveTextContent("Needs you, page 2 of 2");
+    });
+  });
+
+  describe("the / key, and the navigations the box follows", () => {
+    it("focuses the box and selects its text with /", async () => {
+      await renderPage("/.vantage/planning?filter=path:plans/design.md");
+      const event = new KeyboardEvent("keydown", {
+        key: "/",
+        bubbles: true,
+        cancelable: true,
+      });
+      act(() => {
+        document.dispatchEvent(event);
+      });
+      expect(event.defaultPrevented).toBe(true);
+      expect(document.activeElement).toBe(box());
+      expect([box().selectionStart, box().selectionEnd]).toEqual([
+        0,
+        "path:plans/design.md".length,
+      ]);
+    });
+
+    it("does nothing with / while the shortcuts are off, and the box is still there to click", async () => {
+      localStorage.setItem("vantage:shortcuts-enabled", "false");
+      await renderPage();
+      const event = new KeyboardEvent("keydown", {
+        key: "/",
+        bubbles: true,
+        cancelable: true,
+      });
+      act(() => {
+        document.dispatchEvent(event);
+      });
+      expect(event.defaultPrevented).toBe(false);
+      expect(document.activeElement).not.toBe(box());
+      expect(box()).toBeEnabled();
+    });
+
+    it("lists / in the shortcuts help on the planning page", async () => {
+      await renderPage();
+      await press("?");
+      expect(
+        within(
+          screen.getByRole("dialog", { name: "Keyboard shortcuts" }),
+        ).getByText("Filter the planning page"),
+      ).toBeInTheDocument();
+    });
+
+    it("opens the bare page on g p, and Back returns to the filtered one with the box holding its text (criterion 9)", async () => {
+      await renderPage(
+        "/.vantage/planning?filter=path:plans/design.md+is:open",
+      );
+      await press("g");
+      await press("p");
+      expect(router.location).toBe("/.vantage/planning");
+      expect(box().value).toBe("");
+      expect(notice()).toBeNull();
+      expect(cardsIn("Needs you")).toHaveLength(3);
+      // With the focus in the box and text unapplied: Back still wins.
+      await press("/");
+      await type("unapplied");
+      act(() => router.navigate!(-1));
+      await settle();
+      expect(router.location).toBe(
+        "/.vantage/planning?filter=path:plans/design.md+is:open",
+      );
+      expect(box().value).toBe("path:plans/design.md is:open");
+      expect(document.activeElement).toBe(box());
+      expect(cardsIn("Needs you")).toEqual([
+        "OQ-D1: Question OQ-D1?",
+        "OQ-D3: Question OQ-D3?",
+      ]);
+    });
+  });
+
+  describe("a pasted planning link", () => {
+    it("applies a bare link at once, showing its filter", async () => {
+      await renderPage();
+      await paste("/.vantage/planning?filter=path:plans/design.md+is:open");
+      expect(router.location).toBe(
+        "/.vantage/planning?filter=path:plans/design.md+is:open",
+      );
+      expect(box().value).toBe("path:plans/design.md is:open");
+      expect(cardsIn("Needs you")).toEqual([
+        "OQ-D1: Question OQ-D1?",
+        "OQ-D3: Question OQ-D3?",
+      ]);
+    });
+
+    it("reads a whole address from another origin for its filter alone, ignoring its pages and fragment", async () => {
+      await renderPage("/.vantage/planning?x=1");
+      await paste(
+        "https://elsewhere.example:9000/.vantage/planning/other?filter=path%3Aplans%2Fdesign.md&needs-you=2#OQ-D3",
+      );
+      expect(router.location).toBe(
+        "/.vantage/planning?x=1&filter=path:plans/design.md",
+      );
+      expect(router.hash).toBe("");
+    });
+
+    it("reads the checker's whole output around its link (criterion 11)", async () => {
+      await renderPage();
+      await paste(CHECKER_BLOCK);
+      expect(router.location).toBe(
+        "/.vantage/planning?filter=path:plans/design.md+is:open",
+      );
+      expect(cardsIn("Needs you")).toEqual([
+        "OQ-D1: Question OQ-D1?",
+        "OQ-D3: Question OQ-D3?",
+      ]);
+    });
+
+    it("chooses the roadmap a link names, and remembers nothing", async () => {
+      seed(TWO);
+      await renderPage();
+      await paste(
+        `/.vantage/planning?filter=path:plans/unrouted.md&roadmap=${NESTED}`,
+      );
+      expect(
+        new URLSearchParams(router.location.split("?")[1]).get("roadmap"),
+      ).toBe(NESTED);
+      expect(
+        (screen.getByRole("combobox", { name: "Roadmap" }) as HTMLSelectElement)
+          .value,
+      ).toBe(NESTED);
+      expect(cardsIn("Needs you")).toEqual(["OQ-U1: Question OQ-U1?"]);
+      expect(localStorage.length).toBe(0);
+    });
+
+    it("clears the filter with a link that has none", async () => {
+      await renderPage("/.vantage/planning?filter=path:plans/design.md");
+      await paste("Planning page: http://localhost:8000/.vantage/planning");
+      expect(router.location).toBe("/.vantage/planning");
+      expect(box().value).toBe("");
+    });
+
+    it("applies a link's filter it does not understand as written, so the notice names its term", async () => {
+      await renderPage();
+      await paste("/.vantage/planning?filter=path:plans/design.md+OR+is:open");
+      expect(router.location).toBe(
+        "/.vantage/planning?filter=path:plans/design.md+OR+is:open",
+      );
+      expect(box().value).toBe("path:plans/design.md OR is:open");
+      expect(box()).toHaveAttribute("aria-invalid", "true");
+      expect(noticeLines()[0]).toMatch(/does not understand OR\./);
+    });
+
+    it("takes any other paste as text, applied on Enter", async () => {
+      await renderPage();
+      await paste("path:plans/design.md");
+      expect(router.location).toBe("/.vantage/planning");
+    });
+
+    it("applies to the repository on screen in daemon mode (criterion 11)", async () => {
+      useRepoStore.setState({
+        isMultiRepo: true,
+        currentRepo: "alpha",
+        repos: [{ name: "alpha" }, { name: "beta" }] as never,
+      });
+      serveTree(TREE, "/api/r/alpha");
+      setLoad(readyOf(TREE), "alpha");
+      await renderPage("/.vantage/planning/alpha");
+      await paste(CHECKER_BLOCK);
+      expect(router.location).toBe(
+        "/.vantage/planning/alpha?filter=path:plans/design.md+is:open",
+      );
+      expect(cardsIn("Needs you")).toEqual([
+        "OQ-D1: Question OQ-D1?",
+        "OQ-D3: Question OQ-D3?",
+      ]);
+    });
+  });
+
+  describe("in daemon mode, with no repository or a wrong one (criterion 10)", () => {
+    beforeEach(() => {
+      useRepoStore.setState({
+        isMultiRepo: true,
+        currentRepo: null,
+        repos: [{ name: "alpha" }, { name: "my notes" }] as never,
+      });
+    });
+
+    const projectLinks = () =>
+      within(screen.getByTestId("planning-projects"))
+        .getAllByRole("link")
+        .map((a) => [a.textContent, a.getAttribute("href")]);
+
+    it("lists each project's planning page with the same query on Choose a project, and one click reaches it filtered", async () => {
+      await renderPage(
+        "/.vantage/planning?filter=path:plans/design.md+is:open",
+      );
+      expect(screen.getByText(/Choose a project/)).toBeTruthy();
+      expect(projectLinks()).toEqual([
+        [
+          "alpha",
+          "/.vantage/planning/alpha?filter=path:plans/design.md+is:open",
+        ],
+        [
+          "my notes",
+          "/.vantage/planning/my%20notes?filter=path:plans/design.md+is:open",
+        ],
+      ]);
+      // The box reads the URL here too.
+      expect(box().value).toBe("path:plans/design.md is:open");
+      serveTree(TREE, "/api/r/alpha");
+      setLoad(readyOf(TREE), "alpha");
+      await act(async () => {
+        fireEvent.click(screen.getByRole("link", { name: "alpha" }));
+      });
+      await settle();
+      expect(router.location).toBe(
+        "/.vantage/planning/alpha?filter=path:plans/design.md+is:open",
+      );
+      expect(cardsIn("Needs you")).toEqual([
+        "OQ-D1: Question OQ-D1?",
+        "OQ-D3: Question OQ-D3?",
+      ]);
+    });
+
+    it("lists the projects with the filter kept on Repository not found", async () => {
+      await renderPage("/.vantage/planning/nope?filter=path:x.md");
+      expect(screen.getByText("Repository not found: nope")).toBeTruthy();
+      expect(projectLinks()).toEqual([
+        ["alpha", "/.vantage/planning/alpha?filter=path:x.md"],
+        ["my notes", "/.vantage/planning/my%20notes?filter=path:x.md"],
+      ]);
+    });
+  });
+
+  describe("Copy answers, and the visit's reviews (planning-filter.md §6.6)", () => {
+    const copyButton = () =>
+      screen.getByTestId("pending-answers").closest("button")!;
+    const pendingCount = () =>
+      screen.getByTestId("pending-answers").textContent;
+
+    /** A pending comment on the line `line`. */
+    const pendingOn = (id: string, line: number): ReviewComment => ({
+      id,
+      comment: `Answer ${id}`,
+      created_at: 0,
+      reactions: [],
+      anchor: {
+        source_line: line,
+        block_text_hash: "00000000",
+        selection_offset: 0,
+        selection_length: 0,
+      },
+    });
+    const questionOf = (tree: Record<string, string>, id: string) =>
+      readyOf(tree)
+        .index.documents.flatMap((d) => d.questions)
+        .find((x) => x.id === id)!;
+
+    it("copies the answers on the questions it keeps, and says how many it leaves out", async () => {
+      reviews["plans/design.md"] = [
+        pendingOn("kept-0001", questionOf(TREE, "OQ-D1").line),
+      ];
+      reviews["plans/unrouted.md"] = [
+        pendingOn("left-0001", questionOf(TREE, "OQ-U1").line),
+        pendingOn("left-0002", questionOf(TREE, "OQ-U1").line),
+      ];
+      await renderPage("/.vantage/planning?filter=path:plans/design.md");
+      expect(pendingCount()).toBe("1");
+      expect(copyButton()).toHaveAccessibleName(
+        "Copy answers 1, not counting 2 answers the filter leaves out",
+      );
+      expect(copyButton()).toHaveAttribute(
+        "title",
+        "Copy every answer waiting on the agent that the filter keeps, grouped by document, for one trip. It leaves out 2 answers: clear it to copy them too",
+      );
+      await act(async () => {
+        fireEvent.click(copyButton());
+      });
+      const payload = writeText.mock.calls[0][0] as string;
+      expect(payload).toContain("**Comment:** Answer kept-0001");
+      expect(payload).not.toContain("plans/unrouted.md");
+      // Cleared, it copies them all, and its name is its text again.
+      await act(async () => {
+        fireEvent.click(
+          screen.getByRole("button", { name: "Clear the filter" }),
+        );
+      });
+      await settle();
+      expect(pendingCount()).toBe("3");
+      expect(copyButton()).not.toHaveAttribute("aria-label");
+    });
+
+    it("leaves out a comment on a hidden question nested in a kept one, never crediting it to the kept one", async () => {
+      const NEST: Record<string, string> = {
+        "roadmap.md": "# Roadmap\n\n1. [Nested](plans/nested.md)\n",
+        "plans/nested.md": doc(
+          "stage: DESIGN",
+          [
+            `1. ${OPEN} **OQ-N1: Question OQ-N1?**`,
+            "",
+            `   ${questionDirective(OPEN, "OQ-N1", "Yes.")}`,
+            "",
+            "   _Leaning:_ Yes.",
+            "",
+            `   1. ${ANSWERED} **OQ-N2: Question OQ-N2?**`,
+            "",
+            `      ${questionDirective(ANSWERED, "OQ-N2")}`,
+            "",
+            "      Ruled.",
+            "",
+          ].join("\n"),
+        ),
+      };
+      seed(NEST);
+      reviews["plans/nested.md"] = [
+        pendingOn("inner-0001", questionOf(NEST, "OQ-N2").unitLine),
+      ];
+      await renderPage("/.vantage/planning?filter=is:open");
+      expect(cardsIn("Needs you")).toEqual(["OQ-N1: Question OQ-N1?"]);
+      expect(pendingCount()).toBe("0");
+      expect(copyButton()).toBeDisabled();
+      expect(copyButton()).toHaveAccessibleName(
+        "Copy answers 0, not counting 1 answer the filter leaves out",
+      );
+      expect(
+        within(cardFor("OQ-N1")).queryByText("Answered — waiting on the agent"),
+      ).toBeNull();
+      cleanup();
+      resetPlanningPageInputs();
+      await renderPage();
+      expect(pendingCount()).toBe("1");
+    });
+
+    it("reads every listed document in two requests, rows included, so clearing the filter asks for no third", async () => {
+      const reviewRequests = () =>
+        vi
+          .mocked(axios.post)
+          .mock.calls.filter(([url]) =>
+            String(url).endsWith("/planning/reviews"),
+          )
+          .map(([, body]) => (body as { paths: string[] }).paths);
+      await renderPage("/.vantage/planning?filter=path:plans/design.md");
+      const [first, rest] = reviewRequests();
+      expect(reviewRequests()).toHaveLength(2);
+      // The second holds the rows' documents, which no question holds.
+      expect(rest).toEqual(
+        expect.arrayContaining([
+          "plans/deps.md",
+          "plans/ready.md",
+          "plans/built.md",
+        ]),
+      );
+      expect(new Set([...first!, ...rest!])).toEqual(
+        new Set([
+          "plans/design.md",
+          "plans/answered.md",
+          "plans/unrouted.md",
+          "plans/disagrees.md",
+          "plans/deps.md",
+          "plans/ready.md",
+          "plans/built.md",
+        ]),
+      );
+      await act(async () => {
+        fireEvent.click(
+          screen.getByRole("button", { name: "Clear the filter" }),
+        );
+      });
+      await settle();
+      expect(documentsIn("Ready to build")).toEqual(["plans/ready.md"]);
+      expect(reviewRequests()).toHaveLength(2);
+      expect(reviewGets()).toEqual([]);
+    });
+  });
+
+  it("draws no filter line in a static export", async () => {
+    window.__VANTAGE_STATIC__ = true;
+    try {
+      await renderPage();
+      expect(screen.queryByRole("search")).toBeNull();
+    } finally {
+      delete window.__VANTAGE_STATIC__;
+    }
   });
 });

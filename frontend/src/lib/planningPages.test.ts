@@ -14,17 +14,25 @@ import {
   SECTION_IDS,
   SECTION_TITLES,
   chooseRoadmap,
+  filterSummaryOf,
+  filterValue,
+  filteredSectionsOf,
   isPreview,
   layoutPlanningPage,
+  listedDocuments,
   placeComment,
   listedQuestions,
   pageSearch,
+  planningQuery,
   planningSearch,
+  readFilterRequest,
   readPageRequest,
   readRememberedRoadmap,
   readRoadmapRequest,
   rememberRoadmap,
   sectionsOf,
+  understoodFilter,
+  withFilter,
   withPage,
   withRoadmap,
   type CardEntry,
@@ -32,7 +40,13 @@ import {
   type PageRequest,
 } from "./planningPages";
 import { setPlanningLimitsForTests } from "../planningScan/limits";
-import { indexOf, questionDirective } from "../test/planning";
+import {
+  filterForms,
+  filterFormsIndex,
+  indexOf,
+  questionDirective,
+  sectionEntryKeys,
+} from "../test/planning";
 
 afterEach(() => setPlanningLimitsForTests(null));
 
@@ -492,5 +506,190 @@ describe("the chosen roadmap (planning-index.md §6.8)", () => {
       "roadmap.md",
     );
     localStorage.clear();
+  });
+});
+
+describe("the planning filter (planning-filter.md §6.4, §6.5)", () => {
+  const forms = filterForms();
+  const index = filterFormsIndex(forms);
+  const DESIGN = "path:docs/design/a.md";
+
+  it("derives the filtered sections once per index, roadmap and filter, from the whole index's", () => {
+    const filtered = sectionsOf(index, null, DESIGN);
+    expect(sectionsOf(index, null, DESIGN)).toBe(filtered);
+    // Under the roadmap the default is, asked for by name or by none.
+    expect(sectionsOf(index, "roadmap.md", DESIGN)).toBe(filtered);
+    expect(sectionsOf(index, "x/roadmap.md", DESIGN)).not.toBe(filtered);
+    expect(sectionsOf(index, null, "is:open")).not.toBe(filtered);
+    // No filter, and one not understood, are the derivation itself.
+    expect(sectionsOf(index, null, "")).toBe(sectionsOf(index));
+    expect(sectionsOf(index, null, "OR")).toBe(sectionsOf(index));
+    expect(filteredSectionsOf(index, null, "")).toBeNull();
+    expect(filteredSectionsOf(index, null, "OR")).toBeNull();
+    // What the fixture says the text keeps, with its notice's numbers.
+    const read = forms.read.find((r) => r.text === DESIGN)!;
+    expect(sectionEntryKeys(filtered)).toEqual(read.keeps);
+    expect(filterSummaryOf(index, null, DESIGN)).toBe(
+      filteredSectionsOf(index, null, DESIGN)!.summary,
+    );
+    expect(filterSummaryOf(index, null, DESIGN)?.canonical).toBe(DESIGN);
+  });
+
+  it("keeps every fixture text's entries, under the default roadmap", () => {
+    for (const { canonical, keeps } of forms.read) {
+      expect(
+        sectionEntryKeys(sectionsOf(index, null, canonical)),
+        canonical,
+      ).toEqual(keeps);
+    }
+  });
+
+  it("parses each text once, so its matchers are compiled once", () => {
+    const parsed = understoodFilter(DESIGN);
+    expect(parsed?.canonical).toBe(DESIGN);
+    expect(understoodFilter(DESIGN)).toBe(parsed);
+    expect(understoodFilter("")).toBeNull();
+    expect(understoodFilter("path:")).toBeNull();
+  });
+
+  it("names its filter in the layout, which a not understood or no filter leaves empty", () => {
+    const layout = layoutPlanningPage(
+      index,
+      sectionsOf(index, null, DESIGN),
+      {},
+      DESIGN,
+    );
+    expect(layout.filter).toBe(DESIGN);
+    expect(layout.sections.map((s) => s.id)).toEqual(["needs-you", "waiting"]);
+    expect(layoutPlanningPage(index, sectionsOf(index), {}).filter).toBe("");
+  });
+
+  it("reads every filter value, joined with a space", () => {
+    expect(readFilterRequest(new URLSearchParams(""))).toBe("");
+    expect(
+      readFilterRequest(
+        new URLSearchParams("filter=path:a&x=1&filter=is%3Aopen"),
+      ),
+    ).toBe("path:a is:open");
+    expect(readFilterRequest(new URLSearchParams("filter=path:a+b"))).toBe(
+      "path:a b",
+    );
+  });
+
+  it("writes a text as its canonical text, as typed when not understood, and as nothing when empty", () => {
+    expect(filterValue("path:./docs/x.md  is:open")).toBe(
+      "path:docs/x.md is:open",
+    );
+    expect(filterValue(" OR ")).toBe(" OR ");
+    expect(filterValue(" \t ")).toBe("");
+    expect(filterValue("")).toBe("");
+  });
+
+  describe("the in-place rewrite", () => {
+    const rewrite = (query: string) => {
+      const search = new URLSearchParams(query);
+      const asked = filterValue(readFilterRequest(search));
+      const applied = understoodFilter(asked) === null ? "" : asked;
+      const sections = sectionsOf(index, null, applied);
+      const layout = layoutPlanningPage(
+        index,
+        sections,
+        readPageRequest(search),
+        applied,
+      );
+      const next = planningSearch(search, layout, sections);
+      return next === null ? null : planningQuery(next);
+    };
+
+    it("leaves a canonical filter alone, however it is encoded", () => {
+      expect(
+        rewrite("filter=path:docs/design/a.md&roadmap=roadmap.md"),
+      ).toBeNull();
+      expect(
+        rewrite("filter=path%3Adocs%2Fdesign%2Fa.md&roadmap=roadmap.md"),
+      ).toBeNull();
+    });
+
+    it("writes an understood filter canonically, as one parameter where the first was", () => {
+      expect(
+        rewrite(
+          "x=1&filter=path:./docs/design/a.md&roadmap=roadmap.md&filter=is:open",
+        ),
+      ).toBe("x=1&filter=path:docs/design/a.md+is:open&roadmap=roadmap.md");
+    });
+
+    it("removes an empty filter", () => {
+      expect(rewrite("filter=&roadmap=roadmap.md")).toBe("roadmap=roadmap.md");
+      expect(rewrite("filter=+&filter=&roadmap=roadmap.md")).toBe(
+        "roadmap=roadmap.md",
+      );
+    });
+
+    it("leaves one it does not understand exactly as written", () => {
+      expect(
+        rewrite("filter=OR&roadmap=roadmap.md&filter=path:a.md"),
+      ).toBeNull();
+      expect(rewrite("filter=Path:a.md&roadmap=roadmap.md")).toBeNull();
+    });
+
+    it("clamps the pages against the filtered sections, in the same rewrite", () => {
+      setPlanningLimitsForTests({ pageEntries: 1 });
+      // docs/design/a.md: three cards under Needs you, one under Blocked.
+      expect(
+        rewrite(
+          "filter=path:/docs/design/a.md&needs-you=9&waiting=2&roadmap=roadmap.md",
+        ),
+      ).toBe("filter=path:docs/design/a.md&needs-you=3&roadmap=roadmap.md");
+    });
+  });
+
+  it("applies a text: every page parameter gone, the roadmap and the rest kept", () => {
+    const search = new URLSearchParams(
+      "needs-you=2&x=1&roadmap=roadmap.md&waiting=3&filter=path:a.md",
+    );
+    expect(planningQuery(withFilter(search, "path:./docs/a.md is:open"))).toBe(
+      "x=1&roadmap=roadmap.md&filter=path:docs/a.md+is:open",
+    );
+    expect(planningQuery(withFilter(search, "  "))).toBe(
+      "x=1&roadmap=roadmap.md",
+    );
+    expect(withFilter(search, "a OR b").get("filter")).toBe("a OR b");
+    // A pasted link's roadmap.
+    expect(planningQuery(withFilter(search, "is:open", "x/roadmap.md"))).toBe(
+      "x=1&roadmap=x%2Froadmap.md&filter=is:open",
+    );
+  });
+
+  it("writes the filter as a planning link does, and the rest as the page does", () => {
+    const search = new URLSearchParams();
+    search.append("roadmap", "docs/plans/roadmap.md");
+    search.append("filter", 'path:docs/*.md path:"my notes.md" is:open');
+    search.append("q", "a b&c");
+    const query = planningQuery(search);
+    expect(query).toBe(
+      "roadmap=docs%2Fplans%2Froadmap.md&filter=path:docs/%2A.md+path:%22my+notes.md%22+is:open&q=a+b%26c",
+    );
+    // Both read back to the same values.
+    expect([...new URLSearchParams(query)]).toEqual([...search]);
+    expect(planningQuery(new URLSearchParams())).toBe("");
+  });
+
+  it("lists every document the sections list, rows included, for the second reviews request", () => {
+    const sections = sectionsOf(index);
+    const listed = listedDocuments(index, sections);
+    // Question documents, then each Blocked and stage row's.
+    expect(new Set(listed)).toEqual(
+      new Set([
+        ...listedQuestions(index, sections).map((q) => q.path),
+        "docs/design/a-plan.md",
+        "notes/b.md",
+        "notes/e.md",
+        "notes/f.md",
+      ]),
+    );
+    expect(listed).toHaveLength(new Set(listed).size);
+    // Too large and Unreadable are no documents with reviews.
+    expect(listed).not.toContain("docs/big.md");
+    expect(listed).not.toContain("notes/broken.md");
   });
 });

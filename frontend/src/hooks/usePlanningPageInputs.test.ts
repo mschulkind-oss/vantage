@@ -234,6 +234,34 @@ describe("one set of inputs", () => {
     expect(asked).toHaveLength(2);
   });
 
+  // planning-filter.md §6.5: the applied filter joins the set's identity.
+  it("keeps the same pages under another filter as another set", async () => {
+    const asked = serve();
+    const ready = readyOf();
+    const filter = "path:plans/b.md";
+    const unfiltered = layoutOf(ready);
+    const filtered = layoutPlanningPage(
+      ready.index,
+      sectionsOf(ready.index, null, filter),
+      {},
+      filter,
+    );
+    expect(filtered.pages).toBe(unfiltered.pages);
+    expect(filtered.roadmap).toBe(unfiltered.roadmap);
+    const first = loadPageInputs("", ready, unfiltered);
+    const a = await first.promise;
+    const second = loadPageInputs("", ready, filtered);
+    expect(second).not.toBe(first);
+    expect(loadPageInputs("", ready, filtered)).toBe(second);
+    expect(loadPageInputs("", ready, unfiltered)).toBe(first);
+    const b = await second.promise;
+    expect(a?.key).not.toBe(b?.key);
+    expect(b?.layout.filter).toBe(filter);
+    expect(b?.documents).toEqual(["plans/b.md"]);
+    // Its one card's block is the first set's, for the same content.
+    expect(asked).toHaveLength(1);
+  });
+
   it("refreshes a stale block's path once for its hash", async () => {
     setPlanningLimitsForTests({ reviewsDeadlineMs: 10 });
     serve(() => ({
@@ -391,6 +419,20 @@ describe("prefetchPlanningPage", () => {
     } finally {
       localStorage.clear();
     }
+  });
+
+  it("lays a pager's page out under the filter the page applies, and g p's under none", async () => {
+    usePlanningStore.setState({ byRepo: { "": readyOf() } });
+    const asked = serve();
+    prefetchPlanningPage("", {}, null, "path:plans/b.md");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(asked.map((want) => want.map((w) => w.path))).toEqual([
+      ["plans/b.md"],
+    ]);
+    prefetchPlanningPage("");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(asked).toHaveLength(2);
+    expect(asked[1]?.map((w) => w.path)).toEqual(["plans/a.md", "plans/a.md"]);
   });
 
   it("asks for nothing while the index builds, when it is refused, or in a static export", async () => {

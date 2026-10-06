@@ -7,8 +7,9 @@
  * it cannot hand the shell props. It calls {@link useShellPage} instead,
  * which publishes what the shell draws from (whether the sidebar is drawn,
  * the route, the file the recent files mark, whether the document keys do
- * anything here) and registers what it only reads when a key is pressed (the
- * pane the scrolling keys move, and the page's own shortcuts).
+ * anything here, whether `/` has a filter box to focus) and registers what it
+ * only reads when a key is pressed (the pane the scrolling keys move, the
+ * page's own shortcuts, and what `/` does).
  */
 import {
   createContext,
@@ -60,6 +61,13 @@ export interface ShellPage {
   /** The file the page shows, which the recent files mark; `null` for none. */
   currentPath: string | null;
   shortcuts?: PageShortcuts;
+  /**
+   * Focus the page's filter box and select its text, for `/`: the planning
+   * page's Filter box (`docs/design/planning-filter.md` §7, OQ-PF4). A page
+   * without one leaves it out, and `/` does nothing there, not even stop the
+   * browser's own use of it, such as Firefox's quick find.
+   */
+  onFocusFilter?: () => void;
 }
 
 /** What the shell draws from, as a page published it. */
@@ -69,12 +77,15 @@ export interface ShellShown {
   currentPath: string | null;
   /** Whether the page wires the document keys (`d`, `h`, `y`). */
   documentKeys: boolean;
+  /** Whether `/` focuses a filter box here, which the shortcuts help lists. */
+  filterKey: boolean;
 }
 
 /** What the shell reads when a key is pressed, as a page registered it. */
 export interface ShellRegistered {
   contentRef: RefObject<HTMLDivElement | null>;
   shortcuts: PageShortcuts | undefined;
+  onFocusFilter: (() => void) | undefined;
 }
 
 export interface ShellContextValue {
@@ -118,17 +129,25 @@ export function useShellPage(page: ShellPage): ShellControls {
     throw new Error("useShellPage: a page of the app shell outside AppShell");
   }
   const { publish, register, controls } = shell;
-  const { contentRef, showSidebar, routeKey, currentPath, shortcuts } = page;
+  const {
+    contentRef,
+    showSidebar,
+    routeKey,
+    currentPath,
+    shortcuts,
+    onFocusFilter,
+  } = page;
 
   useLayoutEffect(() => {
-    register({ contentRef, shortcuts });
+    register({ contentRef, shortcuts, onFocusFilter });
     return () => register(null);
-  }, [register, contentRef, shortcuts]);
+  }, [register, contentRef, shortcuts, onFocusFilter]);
 
   const documentKeys = shortcuts !== undefined;
+  const filterKey = onFocusFilter !== undefined;
   useLayoutEffect(() => {
-    publish({ showSidebar, routeKey, currentPath, documentKeys });
-  }, [publish, showSidebar, routeKey, currentPath, documentKeys]);
+    publish({ showSidebar, routeKey, currentPath, documentKeys, filterKey });
+  }, [publish, showSidebar, routeKey, currentPath, documentKeys, filterKey]);
 
   useLayoutEffect(() => {
     if (focusIsIdle(document.activeElement)) {

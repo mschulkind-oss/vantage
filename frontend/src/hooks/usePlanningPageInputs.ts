@@ -23,12 +23,13 @@
  * to have painted, and on a page opened before its index was ready, for the
  * Markdown pipeline to have run once (`lib/warmMarkdown.ts`).
  *
- * Each set is cached by repository, index version, chosen roadmap and pages,
- * the last `pageInputsKept` kept, outside any component: a history entry
- * returned to whose set is cached renders the frame and the sections in one
- * commit, and `prefetchPlanningPage` fills the cache ahead of a visit, on the
- * `g` of `g p` and from the viewer's planning entry, for the roadmap the page
- * would choose (§6.5).
+ * Each set is cached by repository, index version, chosen roadmap, applied
+ * planning filter and pages, the last `pageInputsKept` kept, outside any
+ * component: a history entry returned to whose set is cached renders the
+ * frame and the sections in one commit, and `prefetchPlanningPage` fills the
+ * cache ahead of a visit, on the `g` of `g p` and from the viewer's planning
+ * entry, for the roadmap the page would choose and no filter (§6.5;
+ * `docs/design/planning-filter.md` §6.5).
  */
 import {
   startTransition,
@@ -71,7 +72,10 @@ export const blockKey = (path: string, startLine: number): string =>
   `${path}\n${startLine}`;
 
 export interface PageInputs {
-  /** Repository, index version, chosen roadmap and pages: the cache's key. */
+  /**
+   * Repository, index version, chosen roadmap, filter and pages: the cache's
+   * key.
+   */
   key: string;
   repo: string;
   /** The index these pages were laid out from, and its hashes. */
@@ -125,8 +129,10 @@ const inputsKey = (
   version: number,
   layout: PlanningLayout,
 ): string =>
-  // A roadmap's path is never empty, so `""` stands for none.
-  `${repo}\n${version}\n${layout.roadmap ?? ""}\n${layout.pages}`;
+  // A roadmap's path is never empty, so `""` stands for none; nor is an
+  // applied filter's canonical text, which holds no control character, so it
+  // sits on a line of its own (planning-filter.md §5.6).
+  `${repo}\n${version}\n${layout.roadmap ?? ""}\n${layout.filter}\n${layout.pages}`;
 
 /** `promise`, or nothing once `ms` have passed. */
 function within(promise: Promise<unknown>, ms: number): Promise<void> {
@@ -400,12 +406,16 @@ export function loadPageInputs(
  *
  * `roadmap` is the roadmap the page shows, for a pager; without one, it is
  * the roadmap a visit would choose with no roadmap in its URL: the one this
- * browser remembers for `repo`, else the default (§6.5).
+ * browser remembers for `repo`, else the default (§6.5). `filter` is the
+ * filter the page applies, for a pager, as `PlanningLayout.filter` names it;
+ * `g p` and the sidebar entry open the bare page, with none
+ * (`planning-filter.md` §6.4).
  */
 export function prefetchPlanningPage(
   repo: string,
   request: PageRequest = {},
   roadmap?: string | null,
+  filter = "",
 ): void {
   if (isStaticMode()) return;
   const load = usePlanningStore.getState().byRepo[repo];
@@ -418,7 +428,12 @@ export function prefetchPlanningPage(
   loadPageInputs(
     repo,
     load,
-    layoutPlanningPage(load.index, sectionsOf(load.index, chosen), request),
+    layoutPlanningPage(
+      load.index,
+      sectionsOf(load.index, chosen, filter),
+      request,
+      filter,
+    ),
   );
 }
 
