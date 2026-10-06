@@ -9,6 +9,7 @@ import { useFilePickerStore } from "../stores/useFilePickerStore";
 import { useAllRecentsStore } from "../stores/useAllRecentsStore";
 import { usePlanningStore } from "../stores/usePlanningStore";
 import { useDegradedStore } from "../stores/useDegradedStore";
+import { useConnectionStore } from "../stores/useConnectionStore";
 
 vi.mock("../stores/useRepoStore");
 vi.mock("../stores/useGitStore");
@@ -319,6 +320,33 @@ describe("useWebSocket", () => {
     const { unmount } = renderHook(() => useWebSocket());
     unmount();
     expect(mockWebSocket.close).toHaveBeenCalled();
+  });
+
+  // Going from a document to the planning page unmounts one page's socket and
+  // mounts the next one's. The browser fires the closed socket's close event a
+  // moment after close(), and a handler still attached then read it as the
+  // backend going away: the Disconnected banner flashed until the next page's
+  // socket opened.
+  it("does not report a disconnect when a page closes its own socket", () => {
+    useConnectionStore.setState({ connected: false, disconnectedAt: null });
+    const { unmount } = renderHook(() => useWebSocket());
+    act(() => {
+      mockWebSocket.onopen!(new Event("open"));
+    });
+    expect(useConnectionStore.getState().connected).toBe(true);
+    const closing = mockWebSocket.onclose;
+    unmount();
+    expect(mockWebSocket.close).toHaveBeenCalled();
+    // What the browser does next, with whatever handler is left attached.
+    act(() => {
+      mockWebSocket.onclose?.(new Event("close"));
+    });
+    expect(useConnectionStore.getState()).toMatchObject({
+      connected: true,
+      disconnectedAt: null,
+    });
+    // The handler it had is the one a dropped connection still runs.
+    expect(closing).not.toBeNull();
   });
 
   it("stores server version from hello message without reloading", () => {

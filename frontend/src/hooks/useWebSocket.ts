@@ -747,7 +747,21 @@ export const useWebSocket = (options: UseWebSocketOptions = {}) => {
       if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
       if (maxWaitTimerRef.current) clearTimeout(maxWaitTimerRef.current);
       if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
-      if (socketRef.current) socketRef.current.close();
+      // The page is leaving, not the backend: going from a document to the
+      // planning page closes this page's socket and opens the next one's. So
+      // the handlers go first, as they do before a reconnect, or the close
+      // event the browser fires a moment later would mark the app
+      // disconnected and flash the banner until the next socket opened.
+      const socket = socketRef.current;
+      if (socket) {
+        socket.onopen = null;
+        socket.onmessage = null;
+        socket.onerror = null;
+        socket.onclose = null;
+        socket.close();
+        socketRef.current = null;
+        bindLoggerSocket(null);
+      }
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps -- staticMode and connect intentionally excluded (mount once only)
 };
