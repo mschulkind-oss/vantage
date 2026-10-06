@@ -820,10 +820,13 @@ full-width toggles, the breadcrumb with the page's name, and **Copy answers**.
   ([§6.17](#617-the-filter-line)).
 - **The [filter line](#617-the-filter-line) is the main column's first row**, above
   every state of the route, and the page's other content starts below it.
-- In daemon mode, the route with no repository segment shows *Choose a project*,
-  and one with a wrong segment *Repository not found*. Both list each served
-  project's planning page with the URL's query kept, so a filtered link with no
-  segment costs one click ([§13.5](#135-handing-the-human-a-filtered-page)).
+- In daemon mode, the route with no repository segment opens the project whose
+  `.vantage/space` holds the URL's `space=`, as an agent's planning link carries
+  it, with no chooser painted on the way ([§13.6](#136-the-space-id)). With no
+  `space=` it shows *Choose a project*, and one with a wrong segment *Repository
+  not found*. Both list each served project's planning page with the URL's query
+  kept, but for `space=`, so a filtered link with no segment costs one click
+  ([§13.5](#135-handing-the-human-a-filtered-page)).
 - The two toggles are the viewer's own preferences, so the page stores nothing
   new for them. Cards keep a reading width, and full width widens them to the
   pane. The page's one preference of its own, **Expand all** / **Collapse all**
@@ -1903,8 +1906,10 @@ handed the unfiltered sections for those facts, beside the filtered ones it list
   follows it.
 - **Before the index is ready,** there are no sections: the applied filter is
   recorded and the URL written, and the first layout uses it. In the load error,
-  the refusal, *Choose a project* and *Repository not found*, the box still reads
-  and writes the URL, typing included; there are simply no sections to filter.
+  the refusal, *Choose a project*, *Repository not found*, the wait for a space's
+  answer and the page saying no project here holds it
+  ([§13.6](#136-the-space-id)), the box still reads and writes the URL, typing
+  included; there are simply no sections to filter.
 - **Nothing is remembered** (F4).
 
 **Identities, and what typing must not churn.** The applied filter's canonical text
@@ -1968,9 +1973,12 @@ cost what Back relies on:
 
 **The filter line** is a fixed-height row at the top of the page's main column,
 above every state of the planning route: *Choose a project*, *Repository not
-found*, loading, building, ready, the load error and the refusal past
-`max-candidates` (`PlanningFilterLine`, drawn first in `PlanningPage`). The shell
-draws no page until the repository list has loaded, so which state shows is known
+found*, the wait for a space's answer and the page saying no project here holds it
+([§13.6](#136-the-space-id)), loading, building, ready, the load error and the
+refusal past `max-candidates` (`PlanningFilterLine`, drawn first in
+`PlanningPage`). The shell draws no page until the repository list has loaded, and,
+on a first load of a link naming a space in daemon mode, until the server says
+which project holds it or the hold's deadline passes, so which state shows is known
 at the page's first paint. It is not drawn in a static export, which has no planning
 page ([OQ-PF5](#why-its-this-way)).
 
@@ -3062,6 +3070,8 @@ by number.
 | The filter line | planning page | drawn at first paint from the URL alone, one fixed-height row above every state of the route; its ✕, hint and spinner have slots of their own; its notice is the frame's ([§6.17](#617-the-filter-line)) |
 | A typed filter's results | planning page | the next render the reader causes: the old results stay until the new set's inputs are in, then change in one commit, the sections' box put back in place before the paint; the roadmap line's counts keep the unfiltered sections' room ([§6.16](#616-typing-and-the-url)) |
 | *Nothing matches* | planning page | the sections' box, in the commit that would have drawn the sections; the section bar's row leaves in that commit, keyed by the filter, so nothing painted moves ([§6.18](#618-the-filter-notice-and-nothing-matches)) |
+| Which project a link's space id names | planning page, daemon mode | on a first load, the app shell's loading state, held for the answer at most the hold's deadline after the repositories are in, so the project's page is the first paint; past it, or followed inside the app, the frame and the filter line alone until the answer, then the project's page or the page saying no project here holds it, below them ([§13.6](#136-the-space-id)) |
+| The other-checkout notice | planning page, single-project mode | ready at the frame's first paint, which waits for the answer at most the hold's deadline; an answer after that is not drawn ([§13.6](#136-the-space-id)) |
 | Comments filed before the visit | cards | ready at first paint, through the gate |
 | Comments past the reviews deadline | cards | a fixed-width *N comments* count in the card's control row, which is always there, expanding on click; nothing inline |
 | The planning outline's head: its label and the roadmap picker | planning page, contents column | drawn with the outline, in the commit that draws the section bar; the column's width is held by its empty frame meanwhile |
@@ -3101,7 +3111,11 @@ on in `ViewerPage`'s `firstPaintWaiting`). It waits only for:
   date from, and the repository's `/info`, which the Path button's root comes from.
 
 It never waits for a cold build — the moment `started` says so the wait ends — and
-never on the planning page, which has its own gate. Nor for a live reload, a
+never on the planning page, which has its own gate. Two first paints hold the same
+way, for the same time, for one datum each, the server's answer about a link's space
+id ([§13.6](#136-the-space-id)): the app shell's, on a first load of a planning link
+that names a space and no project in daemon mode, and the planning page's frame in
+single-project mode (`usePlanningSpaceHold`). Nor for a live reload, a
 directory or an error, which show at once. Moving to a document when everything is
 already in hand waits for nothing. While it holds, the previous document stays up
 when moving between documents in the app, or the app's shell on a first load.
@@ -3446,9 +3460,9 @@ Planning page: /.vantage/planning?filter=path:/docs/design/x.md+is:open&space=q4
   ([§6.17](#617-the-filter-line)), the line works on any origin, in any mode and
   through any tunnel, because the box reads only the link's query. With an address
   in front it is a link to click. Its `space=` names the checkout it was made in
-  ([§13.6](#136-the-space-id)), so in daemon mode a viewer that reads it can open
-  that project's page; one that does not reaches *Choose a project*, which keeps
-  the filter (below). The filter's readable text is in the notice above it, for
+  ([§13.6](#136-the-space-id)), so in daemon mode the page opens that project's
+  page, with no chooser; a 0.9.0 viewer, which ignores it, reaches *Choose a
+  project*, which keeps the filter (below). The filter's readable text is in the notice above it, for
   typing.
 - **The query** carries `roadmap=<chosen>` whenever two or more roadmaps route, so
   the human's *Needs you* follows the roadmap the agent checked, whatever they last
@@ -3501,12 +3515,15 @@ folder with its `/` as `%2F`, and both spellings read alike.
 > never by hand: a raw `+`, `#` or `&` cuts the filter short.
 
 **Daemon mode.** A root-relative link has no repository segment; its `space=` is
-how a viewer that reads it finds the project ([§13.6](#136-the-space-id)). Without
-one, in daemon mode, `/.vantage/planning` with no segment shows *Choose a project*,
-and a wrong segment shows *Repository not found*. Both list each served project as
-`/.vantage/planning/<encoded name>?<the same query>`, so a root-relative link with an
-address in front costs the human one click instead of losing its filter. Pasted into
-the Filter box of a project's page, it needs no click at all.
+how the page finds the project: it asks the server which project holds the id and
+opens that project's filtered page in place, in one replace navigation
+([§13.6](#136-the-space-id)). A link with no `space=`, which a checker before it
+prints, and so does one whose `.vantage/space` holds no id, shows *Choose a
+project* in daemon mode, and a wrong segment shows *Repository not found*. Both
+list each served project as `/.vantage/planning/<encoded name>?<the same query>`,
+`space=` dropped, so such a link with an address in front costs the human one click
+instead of losing its filter. Pasted into the Filter box of a project's page, it
+needs no click at all.
 
 **The loop an agent runs:**
 
@@ -3618,6 +3635,43 @@ inode changed, so a file a checker made a moment ago is found and one that was
 removed is not. Two projects holding one id, a checkout copied whole, answer the
 first in registration order, and the log names the other. It parses no Markdown
 and writes nothing.
+
+**The page** (`frontend/src/lib/planningSpace.ts`, read by `PlanningPage` and
+`AppShell`) asks the endpoint when its URL's `space=` holds an id and, in daemon
+mode, names no project, or, in single-project mode, at all. A static export asks
+nothing.
+
+| Where | The answer | What the page does |
+| :--- | :--- | :--- |
+| Daemon mode, no project segment | a project's name | It is that project's page from its first render, its sidebar drawn, and one replace navigation makes the URL `/.vantage/planning/<encoded name>?<the same query>`, `space=` dropped, every other parameter and the fragment kept, the query written as the page writes its own. No history entry; nothing stored |
+| the same | `null` | *This link was made in a checkout this Vantage does not serve: no project here holds its space id.* The box keeps the filter, and only then come each project's planning pages with the query, `space=` dropped. The URL stays as it is |
+| the same | the request fails | *This Vantage could not say which project holds this link's space id*, then the same list |
+| the same | `space=` holds no id | No request; *This link's space= is not a space id, so it names no project*, then the same list |
+| Daemon mode, a project segment | not asked | `space=` is ignored, and the in-place rewrite drops it |
+| Single-project mode | `""` | The in-place rewrite drops it, and nothing is said |
+| Single-project mode | `null` | One notice line after the filter notice: *This link was made in another checkout: this page shows the checkout this Vantage serves.* `space=` stays, so the address still says where the link was made |
+| Single-project mode | the request fails, or `space=` holds no id | Nothing is said, and `space=` is left as written, as an unknown parameter is |
+
+**No chooser paints while the page asks.** On a first load the app shell asks
+beside `/api/repos`, and in daemon mode its loading state holds the first paint for
+the answer too, at most the hold's deadline after the repositories are in
+([§12.3](#123-the-hold)): the page then opens on the project's page, sidebar and
+all, and nothing painted moves under it. Past that deadline, or for a link followed
+inside the app, the page draws its header and the filter line alone until the
+answer, with the sidebar as the shell had it. In single-project mode the frame
+waits the same way, so the notice paints with it, and an answer that comes later
+says nothing (L1).
+
+**Answers are kept for the tab's session,** at most 16 ids, the oldest out first:
+a checkout's id never changes, and the checker makes the file before it prints the
+link, so an answer holds until the server's projects change, which a reload sees.
+A request in flight is shared, so the shell and the page ask once. A failed request
+is kept by nobody, and the next visit asks again.
+
+`frontend/e2e/planning_space.spec.ts` serves two clones in daemon mode, each with
+its own `.vantage/space`, and opens a link with no project segment carrying the
+second one's id: it lands on that project's filtered page, with no layout shift, no
+chooser ever inserted, one request and no history entry.
 
 **Older viewers** ignore `space=`: 0.9.0 keeps it in the URL and reads no meaning
 into it, so the link opens as a 0.9.0 link does.
@@ -3739,6 +3793,9 @@ declares its stage vocabulary; and runs `planning/unrouted` as a warning.
 | A filter past `max-candidates` | No sections, so nothing is applied: the page shows its refusal, with the filter line still reading and writing the URL, and `index --filter` exits `3`, never holding a term to the tree |
 | A 0.8.x viewer opens a planning link | It keeps `filter=`, ignores it and shows every entry, with no notice; its Copy agent request has no `Filter:` line ([§6.19](#619-across-releases)) |
 | A 0.8.x checker is given `--filter` | `unknown option for index: --filter`, exit `2` |
+| A link's `space=` is held by no project the server serves (made in a checkout it does not serve) | Daemon mode, no project segment: the page says so, keeps the filter in the box, and lists each project's planning page with it, `space=` dropped; single-project mode: one notice line says the page shows the checkout this Vantage serves ([§13.6](#136-the-space-id)) |
+| The space request fails (a server error, or a server without `/api/spaces`) | Daemon mode, no project segment: *This Vantage could not say which project holds this link's space id*, then the same list; single-project mode: nothing is said. No answer is kept, so the next visit asks again |
+| A 0.9.0 viewer opens a link with `space=` | It keeps `space=` and reads nothing into it: in daemon mode, *Choose a project*, which keeps the filter |
 | A static export | No filter line and no Referenced by link to a filtered page, since there is no planning page |
 
 ---
@@ -4118,7 +4175,9 @@ questions, [OQ-E1](../../frontend/e2e/fixtures/test_repo/plans/design.md#OQ-E1) 
    returns to the filtered one with the box holding its text.
 10. In daemon mode, a root-relative link reaches the filtered page in one click from
     *Choose a project*, and *Repository not found* lists the projects with the
-    filter kept.
+    filter kept. Since 2026-10-06 a link carrying its checkout's `space=` needs no
+    click: the page opens the project holding it
+    ([§13.6](#136-the-space-id), `frontend/e2e/planning_space.spec.ts`).
 11. On the unfiltered page, `/` and then pasting the checker's whole output for
     criterion 1 shows the page of criterion 2, in single-repository and daemon mode
     alike.
@@ -4158,7 +4217,11 @@ is the only place most of the numbers are stated.
 | Planning page URL | `/.vantage/planning`, `/.vantage/planning/<repo>`, the repository segment percent-encoded | `PLANNING_PAGE_PATH` in `packages/vantage-md/src/planning/filter.ts`, which `PLANNING_ROUTE` in `frontend/src/lib/planningRoute.ts` re-exports; `planningPath` there |
 | Keyboard chord | `g p` | `useKeyboardShortcuts` |
 | The Filter box's key | `/`, on the planning page only | `onFocusFilter` in `useKeyboardShortcuts`, the row in `KeyboardShortcuts.tsx` |
-| Section ids, which are the URL parameters | `needs-you`, `unrouted`, `waiting`, `ready`, `graduate`, `disagrees`, `skipped`, `could-not-read`; and `roadmap` and `filter` | `PLANNING_SECTION_IDS` in `packages/vantage-md/src/planning/guide.ts`; `PLANNING_ROADMAP_PARAM`, `PLANNING_FILTER_PARAM` in `filter.ts` |
+| Section ids, which are the URL parameters | `needs-you`, `unrouted`, `waiting`, `ready`, `graduate`, `disagrees`, `skipped`, `could-not-read`; and `roadmap`, `filter` and `space` | `PLANNING_SECTION_IDS` in `packages/vantage-md/src/planning/guide.ts`; `PLANNING_ROADMAP_PARAM`, `PLANNING_FILTER_PARAM` in `filter.ts`; `PLANNING_SPACE_PARAM` in `space.ts` |
+| A space id, and where a checkout keeps it | 16 characters of `a–z 2–7` (80 random bits); `.vantage/space` | `PLANNING_SPACE_ID_PATTERN`, `PLANNING_SPACE_FILE` in `packages/vantage-md/src/planning/space.ts`; `internal/spaceid` |
+| The space endpoint | `GET /api/spaces/{id}`, sent `no-store` | `Handlers.Space` in `internal/api/space_handlers.go` |
+| Space answers kept per tab | 16 ids, the oldest out first; a failure never | `KEPT` in `frontend/src/lib/planningSpace.ts` |
+| The page's lines where a space opens no project | `notServed`, `notAnId`, `failed`, `otherCheckout` | `PLANNING_SPACE_MESSAGES`, same file |
 | The planning filter's URL parameter and flag | `filter`, `--filter` | `PLANNING_FILTER_PARAM` in `filter.ts`; `parseIndex` in `packages/vantage-check/src/cli.ts` |
 | Filter keys, and the one `is:` value | `path`, `is`; `open` | `PLANNING_FILTER_KEYS` in `filter.ts` |
 | Filter limits | 64 terms, repeats counted; 2,048 code points, white space included | `PLANNING_FILTER_LIMITS` in `packages/vantage-md/src/planning/filterLimits.ts` |
@@ -4212,7 +4275,7 @@ is the only place most of the numbers are stated.
 | Pending count slot | 4 digits | `pendingCountDigits` |
 | Quote context | 2 lines either side | `quoteContextLines` |
 | Documents per section in the outline | 50 | `outlineDocuments` |
-| The hold | 150 ms after the content arrives | `holdMs` |
+| The hold | 150 ms after the content arrives; for a space's answer, after the repositories arrive, or the page mounts | `holdMs`; `usePlanningSpaceHold` in `frontend/src/lib/planningSpace.ts` |
 | Referenced by headings per row | 4, then *+M more* | `HEADINGS_SHOWN` in `ReferencedBy.tsx` |
 | `planning/question-length` default | 120 words (`max-words`) | `QUESTION_WORDS_DEFAULT` in `rules/questionLength.ts` |
 | A question answered by a comment, its chip | *Leaning taken* for its own take, else *Answered — waiting on the agent* | `OQ_TAKEN_LABEL`, `OQ_ANSWERED_LABEL` in `frontend/src/hooks/useOpenQuestionButtons.ts` |

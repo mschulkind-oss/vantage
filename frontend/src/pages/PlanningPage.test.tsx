@@ -99,6 +99,10 @@ import {
 } from "../test/planning";
 import { fakePlanningServer } from "../test/planningStream";
 import { planningCardId } from "../lib/planningCardId";
+import {
+  PLANNING_SPACE_MESSAGES,
+  resetPlanningSpacesForTests,
+} from "../lib/planningSpace";
 import { planningRowId } from "../lib/planningOutline";
 import type { ReviewComment, ReviewData } from "../types";
 
@@ -396,6 +400,7 @@ beforeEach(() => {
   resetPlanningTrackers();
   resetPlanningReviews();
   resetPlanningPageInputs();
+  resetPlanningSpacesForTests();
   clearMermaidCache();
   mermaid.draw = () => Promise.resolve();
   usePlanningStore.setState({ byRepo: {}, reviewEpoch: {} });
@@ -7082,6 +7087,338 @@ describe("the planning filter (planning-index.md §6.11)", () => {
         ["alpha", "/.vantage/planning/alpha?filter=path:x.md"],
         ["my notes", "/.vantage/planning/my%20notes?filter=path:x.md"],
       ]);
+    });
+  });
+
+  describe("a link naming a space (planning-index.md §13.6)", () => {
+    // Two checkouts' space ids: beta's, which the daemon serves, and one it
+    // does not.
+    const BETA = "betaspace2345677";
+    const ELSEWHERE = "elsewhere2345677";
+    const FILTERED = "filter=path:plans/design.md+is:open";
+
+    beforeEach(() => {
+      useRepoStore.setState({
+        isMultiRepo: true,
+        currentRepo: null,
+        repos: [{ name: "alpha" }, { name: "beta" }] as never,
+      });
+    });
+
+    /** Answer `GET /api/spaces/{id}` with `answer`, every other GET as before. */
+    function serveSpaces(answer: (id: string) => Promise<unknown>): void {
+      const rest = vi.mocked(axios.get).getMockImplementation()!;
+      vi.mocked(axios.get).mockImplementation(async (url, config) => {
+        const asked = /^\/api\/spaces\/([^/]+)$/.exec(String(url));
+        if (asked !== null) return { data: await answer(asked[1]!) };
+        return rest(url, config);
+      });
+    }
+    const spaceGets = () =>
+      vi
+        .mocked(axios.get)
+        .mock.calls.map(([url]) => String(url))
+        .filter((url) => url.startsWith("/api/spaces/"));
+    function deferred() {
+      let resolve!: (value: unknown) => void;
+      const promise = new Promise<unknown>((done) => {
+        resolve = done;
+      });
+      return { promise, resolve };
+    }
+    /**
+     * Every node the page inserts from now on that is or holds *Choose a
+     * project* or the projects' list, read as it was inserted, so one drawn
+     * and taken away again in the same task is seen too.
+     */
+    function watchForChooser() {
+      const seen: string[] = [];
+      const read = (records: MutationRecord[]) => {
+        for (const record of records) {
+          for (const node of record.addedNodes) {
+            if ((node.textContent ?? "").includes("Choose a project")) {
+              seen.push("Choose a project");
+            }
+            if (
+              node instanceof Element &&
+              (node.matches("[data-testid=planning-projects]") ||
+                node.querySelector("[data-testid=planning-projects]") !== null)
+            ) {
+              seen.push("the projects' list");
+            }
+          }
+        }
+      };
+      const observer = new MutationObserver(read);
+      observer.observe(document.body, { childList: true, subtree: true });
+      return {
+        seen: () => {
+          read(observer.takeRecords());
+          return seen;
+        },
+        stop: () => observer.disconnect(),
+      };
+    }
+    const projectLinks = () =>
+      within(screen.getByTestId("planning-projects"))
+        .getAllByRole("link")
+        .map((a) => [a.textContent, a.getAttribute("href")]);
+
+    it("opens the project holding it, held in the shell's loading state on a first load, so Choose a project never paints", async () => {
+      // The answer waits on the test, and the hold on it.
+      setPlanningLimitsForTests({ holdMs: 60_000 });
+      const answer = deferred();
+      serveSpaces(() => answer.promise);
+      serveTree(TREE, "/api/r/beta");
+      setLoad(readyOf(TREE), "beta");
+      const watch = watchForChooser();
+      try {
+        await renderPage(`/.vantage/planning?${FILTERED}&space=${BETA}`);
+        expect(screen.getByText("Loading…")).toBeTruthy();
+        expect(screen.queryByRole("main")).toBeNull();
+        expect(spaceGets()).toEqual([`/api/spaces/${BETA}`]);
+        await act(async () => answer.resolve({ repo: "beta" }));
+        await settle();
+        expect(router.location).toBe(`/.vantage/planning/beta?${FILTERED}`);
+        expect(cardsIn("Needs you")).toEqual([
+          "OQ-D1: Question OQ-D1?",
+          "OQ-D3: Question OQ-D3?",
+        ]);
+        expect(box().value).toBe("path:plans/design.md is:open");
+        expect(useRepoStore.getState().currentRepo).toBe("beta");
+        expect(watch.seen()).toEqual([]);
+        // Asked once, the shell and the page sharing the request.
+        expect(spaceGets()).toHaveLength(1);
+      } finally {
+        watch.stop();
+      }
+    });
+
+    it("keeps the filter, the roadmap and the fragment in one replace navigation, adding no history entry and storing nothing", async () => {
+      serveSpaces(async () => ({ repo: "beta" }));
+      serveTree(TWO, "/api/r/beta");
+      setLoad(readyOf(TWO), "beta");
+      const stored = Object.keys(localStorage).sort();
+      const from = router.types.length;
+      await renderPage(
+        `/.vantage/planning?filter=is:open&roadmap=${NESTED}&space=${BETA}#needs-you`,
+      );
+      const types = router.types.slice(from);
+      expect(router.location).toBe(
+        `/.vantage/planning/beta?filter=is:open&roadmap=${encodeURIComponent(NESTED)}`,
+      );
+      expect(router.hash).toBe("#needs-you");
+      expect(
+        (screen.getByRole("combobox", { name: "Roadmap" }) as HTMLSelectElement)
+          .value,
+      ).toBe(NESTED);
+      expect(box().value).toBe("is:open");
+      expect(types[0]).toBe("POP");
+      expect(types.length).toBeGreaterThan(1);
+      expect(types.slice(1).every((type) => type === "REPLACE")).toBe(true);
+      expect(Object.keys(localStorage).sort()).toEqual(stored);
+      expect(
+        Object.values(localStorage).some((value) => value.includes(BETA)),
+      ).toBe(false);
+    });
+
+    it("shows the frame and the filter line alone while it asks, after the shell has painted, then opens the project", async () => {
+      const answer = deferred();
+      serveSpaces(() => answer.promise);
+      serveTree(TREE, "/api/r/beta");
+      setLoad(readyOf(TREE), "beta");
+      await renderPage("/notes.md");
+      const watch = watchForChooser();
+      try {
+        // A link followed in the app, as a click on it in a document is.
+        await act(async () => {
+          router.navigate!(`/.vantage/planning?${FILTERED}&space=${BETA}`);
+        });
+        await settle();
+        expect(screen.getByTestId("planning-header")).toBeTruthy();
+        expect(box().value).toBe("path:plans/design.md is:open");
+        expect(
+          screen.queryByRole("navigation", { name: "Sections" }),
+        ).toBeNull();
+        expect(screen.queryByTestId("space-not-found")).toBeNull();
+        expect(screen.queryByRole("article")).toBeNull();
+        await act(async () => answer.resolve({ repo: "beta" }));
+        await settle();
+        expect(router.location).toBe(`/.vantage/planning/beta?${FILTERED}`);
+        expect(router.types.at(-1)).toBe("REPLACE");
+        expect(cardsIn("Needs you")).toEqual([
+          "OQ-D1: Question OQ-D1?",
+          "OQ-D3: Question OQ-D3?",
+        ]);
+        expect(watch.seen()).toEqual([]);
+      } finally {
+        watch.stop();
+      }
+    });
+
+    it("waits no longer than the hold's deadline on a first load, and still never paints Choose a project", async () => {
+      setPlanningLimitsForTests({ holdMs: 0 });
+      const answer = deferred();
+      serveSpaces(() => answer.promise);
+      serveTree(TREE, "/api/r/beta");
+      setLoad(readyOf(TREE), "beta");
+      const watch = watchForChooser();
+      try {
+        await renderPage(`/.vantage/planning?${FILTERED}&space=${BETA}`);
+        expect(screen.queryByText("Loading…")).toBeNull();
+        expect(box().value).toBe("path:plans/design.md is:open");
+        expect(screen.queryByRole("article")).toBeNull();
+        await act(async () => answer.resolve({ repo: "beta" }));
+        await settle();
+        expect(router.location).toBe(`/.vantage/planning/beta?${FILTERED}`);
+        expect(cardsIn("Needs you")).toHaveLength(2);
+        expect(watch.seen()).toEqual([]);
+      } finally {
+        watch.stop();
+      }
+    });
+
+    it("says the link was made in a checkout this Vantage does not serve, keeps the filter, and only then lists the projects", async () => {
+      serveSpaces(async () => ({ repo: null }));
+      await renderPage(`/.vantage/planning?${FILTERED}&space=${ELSEWHERE}`);
+      const said = screen.getByTestId("space-not-found");
+      expect(said).toHaveTextContent(PLANNING_SPACE_MESSAGES.notServed);
+      expect(screen.queryByText(/Choose a project/)).toBeNull();
+      expect(
+        said.compareDocumentPosition(screen.getByTestId("planning-projects")) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      // Each project's page with the filter, and without the space, which
+      // a project segment makes mean nothing.
+      expect(projectLinks()).toEqual([
+        ["alpha", `/.vantage/planning/alpha?${FILTERED}`],
+        ["beta", `/.vantage/planning/beta?${FILTERED}`],
+      ]);
+      expect(box().value).toBe("path:plans/design.md is:open");
+      // The URL is left as it is, the link it was.
+      expect(router.location).toBe(
+        `/.vantage/planning?${FILTERED}&space=${ELSEWHERE}`,
+      );
+    });
+
+    it("says it could not find the project when the request fails, and lists the projects with the filter", async () => {
+      serveSpaces(async () => {
+        throw new Error("offline");
+      });
+      await renderPage(`/.vantage/planning?${FILTERED}&space=${BETA}`);
+      expect(screen.getByTestId("space-not-found")).toHaveTextContent(
+        PLANNING_SPACE_MESSAGES.failed,
+      );
+      expect(projectLinks()).toEqual([
+        ["alpha", `/.vantage/planning/alpha?${FILTERED}`],
+        ["beta", `/.vantage/planning/beta?${FILTERED}`],
+      ]);
+      expect(screen.queryByText(/Choose a project/)).toBeNull();
+    });
+
+    it("asks nothing for a space= that is not a space id, and says so", async () => {
+      serveSpaces(async () => ({ repo: "beta" }));
+      await renderPage(`/.vantage/planning?${FILTERED}&space=Not-An-Id`);
+      expect(spaceGets()).toEqual([]);
+      expect(screen.getByTestId("space-not-found")).toHaveTextContent(
+        PLANNING_SPACE_MESSAGES.notAnId,
+      );
+      expect(projectLinks()[0]).toEqual([
+        "alpha",
+        `/.vantage/planning/alpha?${FILTERED}`,
+      ]);
+    });
+
+    it("ignores the space under a project segment, and the in-place rewrite drops it", async () => {
+      serveSpaces(async () => ({ repo: "beta" }));
+      serveTree(TREE, "/api/r/alpha");
+      setLoad(readyOf(TREE), "alpha");
+      const from = router.types.length;
+      await renderPage(`/.vantage/planning/alpha?${FILTERED}&space=${BETA}`);
+      expect(spaceGets()).toEqual([]);
+      expect(router.location).toBe(`/.vantage/planning/alpha?${FILTERED}`);
+      expect(
+        router.types.slice(from + 1).every((type) => type === "REPLACE"),
+      ).toBe(true);
+      expect(cardsIn("Needs you")).toHaveLength(2);
+    });
+
+    it("lists the projects without the space on Repository not found", async () => {
+      serveSpaces(async () => ({ repo: "beta" }));
+      await renderPage(`/.vantage/planning/nope?${FILTERED}&space=${BETA}`);
+      expect(spaceGets()).toEqual([]);
+      expect(screen.getByText("Repository not found: nope")).toBeTruthy();
+      expect(projectLinks()[1]).toEqual([
+        "beta",
+        `/.vantage/planning/beta?${FILTERED}`,
+      ]);
+    });
+
+    describe("in single-project mode", () => {
+      beforeEach(() => {
+        useRepoStore.setState({
+          isMultiRepo: false,
+          currentRepo: null,
+          repos: [{ name: "", path: "/repo" }] as never,
+        });
+      });
+      const otherCheckout = () => screen.queryByTestId("other-checkout");
+
+      it("drops a space this checkout holds, silently", async () => {
+        serveSpaces(async () => ({ repo: "" }));
+        await renderPage(`/.vantage/planning?${FILTERED}&space=${BETA}`);
+        expect(router.location).toBe(`/.vantage/planning?${FILTERED}`);
+        expect(otherCheckout()).toBeNull();
+        expect(cardsIn("Needs you")).toHaveLength(2);
+      });
+
+      it("says in one notice line, painted with the frame, that the page shows the checkout this Vantage serves when the space is another's", async () => {
+        setPlanningLimitsForTests({ holdMs: 60_000 });
+        const answer = deferred();
+        serveSpaces(() => answer.promise);
+        await renderPage(`/.vantage/planning?${FILTERED}&space=${ELSEWHERE}`);
+        // The frame waits for the answer, so the line moves nothing.
+        expect(queryBar()).toBeNull();
+        await act(async () => answer.resolve({ repo: null }));
+        await settle();
+        expect(bar()).toBeTruthy();
+        expect(otherCheckout()).toHaveTextContent(
+          PLANNING_SPACE_MESSAGES.otherCheckout,
+        );
+        expect(
+          notice()!.compareDocumentPosition(otherCheckout()!) &
+            Node.DOCUMENT_POSITION_FOLLOWING,
+        ).toBeTruthy();
+        expect(cardsIn("Needs you")).toHaveLength(2);
+        // Kept in the URL, which still says where the link was made.
+        expect(router.location).toBe(
+          `/.vantage/planning?${FILTERED}&space=${ELSEWHERE}`,
+        );
+      });
+
+      it("says nothing of an answer that comes after the frame painted", async () => {
+        setPlanningLimitsForTests({ holdMs: 0 });
+        const answer = deferred();
+        serveSpaces(() => answer.promise);
+        await renderPage(`/.vantage/planning?${FILTERED}&space=${ELSEWHERE}`);
+        expect(bar()).toBeTruthy();
+        await act(async () => answer.resolve({ repo: null }));
+        await settle();
+        expect(otherCheckout()).toBeNull();
+      });
+
+      it("reads a pasted link's filter and asks nothing about its space", async () => {
+        await renderPage();
+        await paste(await checkerBlock());
+        expect(router.location).toBe(
+          "/.vantage/planning?filter=path:/plans/design.md+is:open",
+        );
+        expect(spaceGets()).toEqual([]);
+        expect(cardsIn("Needs you")).toEqual([
+          "OQ-D1: Question OQ-D1?",
+          "OQ-D3: Question OQ-D3?",
+        ]);
+      });
     });
   });
 
