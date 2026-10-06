@@ -556,43 +556,53 @@ export function filterValue(text: string): string {
 
 /**
  * `search` with the filter `text` applied, by Enter, ✕ or a pasted link
- * (`planning-filter.md` §6.4): `filter` set to `filterValue(text)`, or
- * removed when that is empty; every section's page parameter deleted, as a
- * roadmap pick deletes Needs you's, since the pages were another filter's;
- * and `roadmap` set to the one a pasted link names, if it names one. Every
- * other parameter stays, `roadmap` and unknown ones included.
+ * (`planning-filter.md` §6.4): `filter` set to `filterValue(text)`, first, as
+ * a planning link writes it, or removed when that is empty; every section's
+ * page parameter deleted, as a roadmap pick deletes Needs you's, since the
+ * pages were another filter's; and `roadmap` set to the one a pasted link
+ * names, if it names one. Every other parameter stays, in its order after
+ * `filter`, `roadmap` and unknown ones included. So the address after Enter
+ * is the agent's link for the same filter and roadmap (§9.2).
  */
 export function withFilter(
   search: URLSearchParams,
   text: string,
   roadmap: string | null = null,
 ): URLSearchParams {
-  const next = new URLSearchParams(search);
-  for (const id of SECTION_IDS) next.delete(id);
   const value = filterValue(text);
-  if (value === "") next.delete(PLANNING_FILTER_PARAM);
-  else next.set(PLANNING_FILTER_PARAM, value);
+  const next = new URLSearchParams(
+    value === "" ? [] : [[PLANNING_FILTER_PARAM, value]],
+  );
+  for (const [key, kept] of search) {
+    if (key !== PLANNING_FILTER_PARAM && !isSectionId(key)) {
+      next.append(key, kept);
+    }
+  }
   if (roadmap !== null) next.set(PLANNING_ROADMAP_PARAM, roadmap);
   return next;
 }
 
+const isSectionId = (key: string): boolean =>
+  (SECTION_IDS as readonly string[]).includes(key);
+
 /**
- * `search` written as the page writes a query it navigates to itself, with
- * no `?`: form encoding, as `URLSearchParams` writes it, except for `filter`,
- * which is written as a planning link writes it (`encodePlanningQueryValue`,
- * `planning-filter.md` §9.2), so the address bar after Enter shows what an
- * agent's link shows. Both read back to the same text.
+ * `search` written as the page writes every query it navigates to itself,
+ * with no `?`: form encoding, as `URLSearchParams` writes it, except for
+ * `filter`, which is written as a planning link writes it
+ * (`encodePlanningQueryValue`, `planning-filter.md` §9.2), its last character
+ * escaped when it ends the query. So the address bar shows what an agent's
+ * link shows, after Enter, a flip or a roadmap pick alike, and a pasted copy
+ * of it reads back whole. Both encodings read back to the same text.
  */
 export function planningQuery(search: URLSearchParams): string {
-  const parts: string[] = [];
-  for (const [key, value] of search) {
-    parts.push(
+  const entries = [...search];
+  return entries
+    .map(([key, value], i) =>
       key === PLANNING_FILTER_PARAM
-        ? `${PLANNING_FILTER_PARAM}=${encodePlanningQueryValue(value)}`
+        ? `${PLANNING_FILTER_PARAM}=${encodePlanningQueryValue(value, i === entries.length - 1)}`
         : new URLSearchParams([[key, value]]).toString(),
-    );
-  }
-  return parts.join("&");
+    )
+    .join("&");
 }
 
 /**

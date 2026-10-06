@@ -517,6 +517,9 @@ export function usePlanningPageInputs(
 
   const waiting = wanted !== null && shown?.inputs.key !== wanted;
   const [slowFor, setSlowFor] = useState<string | null>(null);
+  // Forgotten once the wait is over: a later wait for the same set is slow
+  // only once it too has passed `spinnerMs`.
+  if (!waiting && slowFor !== null) setSlowFor(null);
   useEffect(() => {
     if (!waiting) return;
     const timer = setTimeout(

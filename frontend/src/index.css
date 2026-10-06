@@ -729,6 +729,23 @@ code {
   }
 }
 
+/* Hidden until its inline animation-delay has passed, then shown: the
+   browser times it alone, so it shows on time while React renders a
+   transition and commits nothing (the planning filter line's spinner,
+   planning-filter.md §6.4). */
+@keyframes planning-reveal {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.planning-reveal {
+  animation: planning-reveal 0s linear both;
+}
+
 /* ──────────────────────────────────────────
    Heading anchor links (GitHub-style)
    ────────────────────────────────────────── */

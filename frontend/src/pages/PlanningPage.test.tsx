@@ -4451,6 +4451,42 @@ describe("the planning filter (planning-filter.md)", () => {
   ].join("\n");
 
   describe("opened from a link", () => {
+    it("draws the sections' box anew when its frame lands after the index builds, so the notice moves nothing painted", async () => {
+      // Opened cold, the spinner paints in the sections' box under the
+      // progress line. The frame lands with the notice above that box, so
+      // the box is replaced, a removal and an insertion, rather than moved
+      // down (planning-filter.md §15 criterion 8).
+      setPlanningLimitsForTests({ spinnerMs: 0 });
+      setLoad({ status: "loading", warm: false, progress: null });
+      let release: () => void = () => {};
+      serveTree(TREE, "/api", (inline) => ({
+        cards: (repo, want, options) =>
+          new Promise<CardAnswer[]>((resolve) => {
+            release = () => resolve(inline.cards(repo, want, options));
+          }),
+      }));
+      await renderPage(
+        "/.vantage/planning?filter=path:plans/design.md+is:open",
+      );
+      setLoad(readyOf(TREE));
+      await settle();
+      const spinnerBox = document.querySelector("[data-planning-sections]")!;
+      expect(
+        within(spinnerBox as HTMLElement).getByLabelText(
+          "Loading this page's cards",
+        ),
+      ).toBeTruthy();
+      expect(notice()).toBeNull();
+      release();
+      await settle();
+      expect(notice()).not.toBeNull();
+      expect(cardsIn("Needs you")).toHaveLength(2);
+      expect(document.querySelector("[data-planning-sections]")).not.toBe(
+        spinnerBox,
+      );
+      expect(spinnerBox.isConnected).toBe(false);
+    });
+
     it("shows only what the filter keeps, counted, with the box holding its text and the notice saying what is hidden", async () => {
       await renderPage(
         "/.vantage/planning?filter=path:plans/design.md+is:open",
@@ -4656,7 +4692,7 @@ describe("the planning filter (planning-filter.md)", () => {
       expect(cardsIn("Needs you")).toEqual(["OQ-A1: Question OQ-A1?"]);
       await enter("path:./plans/design.md");
       expect(router.location).toBe(
-        "/.vantage/planning?roadmap=roadmap.md&x=1&filter=path:plans/design.md",
+        "/.vantage/planning?filter=path:plans/design.md&roadmap=roadmap.md&x=1",
       );
       expect(router.hash).toBe("");
       expect(box().value).toBe("path:plans/design.md");
@@ -4723,6 +4759,82 @@ describe("the planning filter (planning-filter.md)", () => {
       expect(spinning()).toBe(false);
     });
 
+    it("draws its spinner in the commit of the reader's Enter, for the browser to show past spinnerMs", async () => {
+      // Rendering the new page is a transition, and in a browser no later
+      // commit lands until it does: a spinner a timer asks for would show
+      // only once it is no longer needed (planning-filter.md §6.4).
+      setPlanningLimitsForTests({ pageEntries: 2, spinnerMs: 150 });
+      serveTree(TREE, "/api", (inline) => ({
+        cards: (repo, want, options) =>
+          want.some((w) => w.path === "plans/answered.md")
+            ? new Promise<CardAnswer[]>(() => {})
+            : inline.cards(repo, want, options),
+      }));
+      await renderPage();
+      const spinner = () => screen.queryByTestId("planning-filter-spinner");
+      expect(spinner()).toBeNull();
+      await type("path:plans/answered.md");
+      await act(async () => {
+        fireEvent.submit(form());
+      });
+      expect(spinner()).not.toBeNull();
+      expect(spinner()).toHaveClass("planning-reveal");
+      expect(spinner()!.style.animationDelay).toBe("150ms");
+      // The old page is still the one on screen.
+      expect(cardsIn("Needs you")).toEqual([
+        "OQ-D1: Question OQ-D1?",
+        "OQ-D3: Question OQ-D3?",
+      ]);
+    });
+
+    it("never shows its spinner at once for a page that was slow once before", async () => {
+      // A wait that passed spinnerMs once is not slow from its start the
+      // next time: the spinner would flash as the page clears the filter.
+      setPlanningLimitsForTests({ spinnerMs: 150 });
+      let hold = true;
+      let release: () => void = () => {};
+      serveTree(TREE, "/api", (inline) => ({
+        cards: (repo, want, options) =>
+          hold
+            ? new Promise<CardAnswer[]>((resolve) => {
+                release = () => resolve(inline.cards(repo, want, options));
+              })
+            : inline.cards(repo, want, options),
+      }));
+      await renderPage();
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 200));
+      });
+      expect(screen.getByLabelText("Loading this page's cards")).toBeTruthy();
+      hold = false;
+      release();
+      await settle();
+      await enter("path:plans/design.md");
+      expect(noticeLines()[0]).toMatch(/^Filtered by path:plans\/design\.md:/);
+      const delays: string[] = [];
+      const slot = screen.getByTestId("planning-filter-spinner-slot");
+      const observer = new MutationObserver(() => {
+        const shown = slot.querySelector<HTMLElement>(
+          "[data-testid=planning-filter-spinner]",
+        );
+        if (shown !== null) delays.push(shown.style.animationDelay);
+      });
+      observer.observe(slot, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+      });
+      await act(async () => {
+        fireEvent.click(
+          screen.getByRole("button", { name: "Clear the filter" }),
+        );
+      });
+      await settle();
+      observer.disconnect();
+      expect(notice()).toBeNull();
+      expect(delays).not.toContain("0ms");
+    });
+
     it("leaves the old page's pagers as they were while the filter's page is on its way, with no spinner of theirs", async () => {
       // A filter applied is no flip (planning-filter.md §6.4, §7): the old
       // page stays up whole, its pagers included, and only the filter
@@ -4771,6 +4883,64 @@ describe("the planning filter (planning-filter.md)", () => {
       expect(
         screen.queryByRole("navigation", { name: "Needs you pages" }),
       ).toBeNull();
+    });
+
+    it("flips nothing from the old page while another filter's page is on its way", async () => {
+      // The old page's pagers are another filter's: a click on one would
+      // send the reader to that page number of the filter just applied,
+      // which Enter put back on its first page (planning-filter.md §6.4).
+      // Needs you is on page 3 of 3, OQ-A1, and `path:plans/design.md`
+      // keeps two pages of it, OQ-D1 and OQ-D3, neither in hand.
+      setPlanningLimitsForTests({ pageEntries: 1, spinnerMs: 0 });
+      let hold = false;
+      const releases: (() => void)[] = [];
+      const asked: CardWant[][] = [];
+      serveTree(TREE, "/api", (inline) => ({
+        cards: (repo, want, options) => {
+          asked.push(want);
+          return hold
+            ? new Promise<CardAnswer[]>((resolve) => {
+                releases.push(() => resolve(inline.cards(repo, want, options)));
+              })
+            : inline.cards(repo, want, options);
+        },
+      }));
+      await renderPage("/.vantage/planning?needs-you=3");
+      expect(cardsIn("Needs you")).toEqual(["OQ-A1: Question OQ-A1?"]);
+      hold = true;
+      await enter("path:plans/design.md");
+      expect(cardsIn("Needs you")).toEqual(["OQ-A1: Question OQ-A1?"]);
+      expect(spinning()).toBe(true);
+      const pager = screen.getByRole("navigation", { name: "Needs you pages" });
+      const before = asked.length;
+      await act(async () => {
+        fireEvent.pointerEnter(pager);
+        fireEvent.click(
+          within(pager).getByRole("button", { name: "‹ Previous" }),
+        );
+      });
+      await settle();
+      expect(router.location).toBe(
+        "/.vantage/planning?filter=path:plans/design.md",
+      );
+      expect(asked).toHaveLength(before);
+      hold = false;
+      for (const release of releases) release();
+      await settle();
+      expect(router.location).toBe(
+        "/.vantage/planning?filter=path:plans/design.md",
+      );
+      expect(cardsIn("Needs you")).toEqual(["OQ-D1: Question OQ-D1?"]);
+      // Once it is in, its pagers flip it.
+      await act(async () => {
+        fireEvent.click(
+          within(
+            screen.getByRole("navigation", { name: "Needs you pages" }),
+          ).getByRole("button", { name: "Next ›" }),
+        );
+      });
+      await settle();
+      expect(cardsIn("Needs you")).toEqual(["OQ-D3: Question OQ-D3?"]);
     });
 
     it("does nothing on Enter with the text already applied", async () => {
@@ -4863,10 +5033,10 @@ describe("the planning filter (planning-filter.md)", () => {
         );
       });
       await settle();
-      // A flip writes the page's own form encoding, which reads back to the
-      // same text and asks for no rewrite (planning-filter.md §6.4).
+      // A flip writes the filter as Enter does, and asks for no rewrite
+      // (planning-filter.md §6.4).
       expect(router.location).toBe(
-        "/.vantage/planning?filter=path%3Aplans%2Fdesign.md&needs-you=2",
+        "/.vantage/planning?filter=path:plans/design.md&needs-you=2",
       );
       expect(box().value).toBe("path:plans/design.md");
       // The same replace with the focus in the box leaves its text alone.
@@ -5089,9 +5259,63 @@ describe("the planning filter (planning-filter.md)", () => {
         "https://elsewhere.example:9000/.vantage/planning/other?filter=path%3Aplans%2Fdesign.md&needs-you=2#OQ-D3",
       );
       expect(router.location).toBe(
-        "/.vantage/planning?x=1&filter=path:plans/design.md",
+        "/.vantage/planning?filter=path:plans/design.md&x=1",
       );
       expect(router.hash).toBe("");
+    });
+
+    it("reads back whole the address a flip, a roadmap pick and an outline link write", async () => {
+      // Each writes the filter as Enter does, `*` as %2A, so a copy of the
+      // address bar pasted into the box applies the same filter, a later
+      // term and all (planning-filter.md §7, §9.2).
+      seed(TWO);
+      localStorage.setItem("vantage:tocOpen", "true");
+      setPlanningLimitsForTests({ pageEntries: 1 });
+      await renderPage();
+      const text = "path:plans/*.md is:open";
+      await enter(text);
+      expect(router.location).toBe(
+        "/.vantage/planning?filter=path:plans/%2A.md+is:open&roadmap=roadmap.md",
+      );
+      await act(async () => {
+        fireEvent.click(
+          within(
+            screen.getByRole("navigation", { name: "Needs you pages" }),
+          ).getByRole("button", { name: "Next ›" }),
+        );
+      });
+      await settle();
+      expect(router.location).toBe(
+        "/.vantage/planning?filter=path:plans/%2A.md+is:open&roadmap=roadmap.md&needs-you=2",
+      );
+      const outlineLink = screen
+        .getByRole("navigation", { name: "Planning outline" })
+        .querySelector<HTMLAnchorElement>(
+          '[data-testid=outline-document][data-path="plans/design.md"]',
+        )!;
+      expect(outlineLink.getAttribute("href")).toMatch(
+        /^\/\.vantage\/planning\?filter=path:plans\/%2A\.md\+is:open&roadmap=roadmap\.md(&needs-you=\d+)?#/,
+      );
+      const flipped = `http://localhost:8000${router.location}`;
+      await act(async () => {
+        fireEvent.change(screen.getByRole("combobox", { name: "Roadmap" }), {
+          target: { value: NESTED },
+        });
+      });
+      await settle();
+      expect(router.location).toBe(
+        "/.vantage/planning?filter=path:plans/%2A.md+is:open&roadmap=docs%2Fplans%2Froadmap.md",
+      );
+      for (const address of [flipped, outlineLink.href]) {
+        cleanup();
+        resetPlanningPageInputs();
+        await renderPage();
+        await paste(address);
+        expect(box().value, address).toBe(text);
+        expect(
+          new URLSearchParams(router.location.split("?")[1]).get("filter"),
+        ).toBe(text);
+      }
     });
 
     it("reads the checker's whole output around its link (criterion 11)", async () => {
@@ -5144,7 +5368,7 @@ describe("the planning filter (planning-filter.md)", () => {
         ),
       ).toBe(1);
       expect(router.location).toBe(
-        "/.vantage/planning?roadmap=docs%2Fplans%2Froadmap.md&filter=path:plans/unrouted.md",
+        "/.vantage/planning?filter=path:plans/unrouted.md&roadmap=docs%2Fplans%2Froadmap.md",
       );
       expect(cardsIn("Needs you")).toEqual(["OQ-U1: Question OQ-U1?"]);
       expect(status()).toHaveTextContent(
@@ -5182,7 +5406,7 @@ describe("the planning filter (planning-filter.md)", () => {
       // What `?roadmap=docs/nowhere.md` opens with nothing remembered: the
       // default (planning-index.md §6.8).
       expect(router.location).toBe(
-        "/.vantage/planning?roadmap=roadmap.md&filter=path:plans/design.md",
+        "/.vantage/planning?filter=path:plans/design.md&roadmap=roadmap.md",
       );
       expect(status()).toHaveTextContent(
         /^Filtered by path:plans\/design\.md:/,
@@ -5435,6 +5659,52 @@ describe("the planning filter (planning-filter.md)", () => {
       await renderPage();
       expect(pendingCount()).toBe("1");
     });
+
+    it.each(["held", "failed"] as const)(
+      "counts its answers once every listed question's document is read, with the rows' request %s",
+      async (second) => {
+        // The second request holds the rows' documents too, which hold no
+        // question and so no answer: neither its wait nor its failure
+        // leaves the count unknown (planning-filter.md §6.6).
+        const ROWS: Record<string, string> = { ...TREE };
+        for (let i = 0; i < 6; i++) {
+          ROWS[`plans/r${i}.md`] = doc(
+            "status: accepted\nstage: DECIDED",
+            "Decided.",
+          );
+        }
+        seed(ROWS);
+        setPlanningLimitsForTests({ pageRows: 2 });
+        reviews["plans/design.md"] = [
+          pendingOn("kept-0001", questionOf(TREE, "OQ-D1").line),
+        ];
+        const real = vi.mocked(axios.post).getMockImplementation()!;
+        const asked: string[][] = [];
+        vi.mocked(axios.post).mockImplementation((url, body, config) => {
+          if (String(url).endsWith("/planning/reviews")) {
+            asked.push((body as { paths: string[] }).paths);
+            if (asked.length === 2) {
+              return second === "held"
+                ? new Promise(() => {})
+                : Promise.reject(new Error("down"));
+            }
+          }
+          return real(url, body, config);
+        });
+        await renderPage();
+        expect(asked).toHaveLength(2);
+        expect(asked[1]!.length).toBeGreaterThan(0);
+        expect(
+          asked[1]!.every((path) =>
+            /^plans\/(r\d|ready|built|deps)\.md$/.test(path),
+          ),
+          asked[1]!.join(" "),
+        ).toBe(true);
+        expect(pendingCount()).toBe("1");
+        expect(copyButton()).toBeEnabled();
+        expect(screen.queryByTestId("reviews-failed")).toBeNull();
+      },
+    );
 
     it("reads every listed document in two requests, rows included, so clearing the filter asks for no third", async () => {
       const reviewRequests = () =>

@@ -48,8 +48,12 @@ export const PlanningFilterLine: React.FC<{
   urlText: string;
   /** The URL's filter is not understood: `aria-invalid`, and an amber ring. */
   invalid: boolean;
-  /** The page has waited past `spinnerMs` for a filter's page inputs. */
-  busy: boolean;
+  /**
+   * Another filter's page is on its way: the spinner is drawn now, and shows
+   * once this many milliseconds have passed, which the browser times on its
+   * own, so no later render need land first. `null` for no spinner.
+   */
+  busyAfter: number | null;
   /**
    * Apply `text`, and choose `roadmap` when a pasted link names one: the
    * page's one replace navigation (§6.4). Text already applied does nothing.
@@ -71,7 +75,7 @@ export const PlanningFilterLine: React.FC<{
 }> = ({
   urlText,
   invalid,
-  busy,
+  busyAfter,
   onApply,
   onLeave,
   inputRef,
@@ -114,7 +118,10 @@ export const PlanningFilterLine: React.FC<{
   const appliedText = applied ?? urlText;
   const unapplied = text !== appliedText;
   return (
-    <div className="@container mb-4">
+    // In print the input row is hidden, and with no filter the line with
+    // it, margin and all: a printout of the page changes only to say it is
+    // filtered (planning-filter.md §7).
+    <div className={cn("@container mb-4", printText === "" && "print:hidden")}>
       <form
         role="search"
         aria-label="Filter the planning page"
@@ -204,12 +211,18 @@ export const PlanningFilterLine: React.FC<{
           data-testid="planning-filter-spinner-slot"
           className="flex size-3.5 shrink-0 items-center justify-center"
         >
-          {busy && (
-            <Loader2
-              size={14}
-              className="animate-spin text-blue-600"
-              aria-hidden="true"
-            />
+          {busyAfter !== null && (
+            <span
+              data-testid="planning-filter-spinner"
+              className="planning-reveal flex"
+              style={{ animationDelay: `${busyAfter}ms` }}
+            >
+              <Loader2
+                size={14}
+                className="animate-spin text-blue-600"
+                aria-hidden="true"
+              />
+            </span>
           )}
         </span>
         <span

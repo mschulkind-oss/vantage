@@ -163,11 +163,14 @@ export const FILTER_FORMS_PATH =
  *
  * In `read`, `documents` are the kept documents, every path the index lists
  * that one of the text's `path:` terms keeps (all of them when it has none),
- * as `git check-ignore --no-index` answered for each term on 2026-10-05; and
- * `keeps` are the entries the filtered sections list under the default
- * roadmap, in page order, as `sectionEntryKeys` writes them. A later release
- * may move an entry from `notUnderstood` to `read`, and never edit or remove a
- * `read` entry.
+ * as `git check-ignore --no-index` answered for each term on 2026-10-05;
+ * `questions` are the index's questions it keeps, `<path>#<id>`, sorted: those
+ * in a kept document, and under an `is:` term only the open ones, as their
+ * markers say; and `keeps` are the entries the filtered sections list under
+ * the default roadmap, in page order, as `sectionEntryKeys` writes them. A
+ * later release may move an entry from `notUnderstood` to `read`, and never
+ * edit or remove a `read` entry, but for its `keeps`: those say where the
+ * derivation puts each entry, which is not the filter's to freeze.
  */
 export interface PlanningFilterForms {
   index: {
@@ -182,6 +185,8 @@ export interface PlanningFilterForms {
     text: string;
     canonical: string;
     documents: string[];
+    /** The index's questions it keeps, `<path>#<id>`, in any section or none. */
+    questions: string[];
     keeps: string[];
     /** The canonical texts of its `path:` terms that match no listed path. */
     unmatched: string[];
