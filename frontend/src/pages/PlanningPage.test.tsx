@@ -3201,7 +3201,7 @@ describe("each section's explanation, and Copy agent request", () => {
   // fixture of forms whose request is not empty. The CLI reads the fixture
   // from disk, its Too large file a real file over max-file-bytes, as an
   // agent's run does; the page reads it through its scanner.
-  it("copies, filtered, exactly what vantage-check index --request --filter prints, for every text of the fixture of forms", async (ctx) => {
+  it("copies, filtered, exactly what vantage-check index --request --filter prints, for every text of the fixture of forms", async () => {
     const forms = filterForms();
     const { files, skipped, stages, maxFileBytes } = forms.index;
     const root = realpathSync(
@@ -3232,14 +3232,6 @@ describe("each section's explanation, and Copy agent request", () => {
         const code = await run(["index", ...args], io);
         return { code, stdout: io.stdout, stderr: io.stderr };
       };
-      // A checker that predates --filter has nothing to compare with: the
-      // page is then held to the planning module's own request alone, and
-      // the test is marked skipped once it has been.
-      const probe = await cli("--request", "--filter", "is:open");
-      const cliReadsFilter = !/unknown option for index: --filter/.test(
-        probe.stderr,
-      );
-
       resetRepoRootsForTests();
       serveTree(files);
       setLoad(
@@ -3302,20 +3294,13 @@ describe("each section's explanation, and Copy agent request", () => {
             },
           ),
         );
-        if (cliReadsFilter) {
-          const printed = await cli(
-            "--request",
-            "--filter",
-            summary.requestText,
-          );
-          expect(printed.code, text).toBe(0);
-          expect(`${copied}\n`, text).toBe(printed.stdout);
-        }
+        const printed = await cli("--request", "--filter", summary.requestText);
+        expect(printed.code, text).toBe(0);
+        expect(`${copied}\n`, text).toBe(printed.stdout);
         compared++;
       }
       // Most of the fixture's texts keep an agent's entry.
       expect(compared).toBeGreaterThan(20);
-      if (!cliReadsFilter) ctx.skip("this checker does not read --filter");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
