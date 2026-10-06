@@ -163,8 +163,8 @@ export const FILTER_FORMS_PATH =
  *
  * In `read`, `documents` are the kept documents: every path the index lists
  * that one of the text's `path:` terms keeps (all of them when it has none)
- * and none of its `-path:` terms does, as `git check-ignore --no-index`
- * answered for each term; `questions` are the index's questions it keeps,
+ * and none of its `-path:` terms does, as a matcher written apart from the
+ * filter module answered for each term; `questions` are the index's questions it keeps,
  * `<path>#<id>`, sorted, in whatever section or none; `keeps` are the entries
  * the filtered sections list under the default roadmap, in page order, as
  * `sectionEntryKeys` writes them; and `unknownKeys` the words its notice says

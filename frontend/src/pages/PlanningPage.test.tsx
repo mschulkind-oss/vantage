@@ -4400,7 +4400,7 @@ describe("a comment on a question is its answer (§6.7)", () => {
  * The planning filter (docs/reference/planning-index.md §6.11)
  * ------------------------------------------------------------------ */
 
-describe("the planning filter (planning-filter.md)", () => {
+describe("the planning filter (planning-index.md §6.11)", () => {
   beforeEach(() => seed());
 
   /** A second roadmap, which routes plans/unrouted.md alone. */
@@ -5201,7 +5201,7 @@ describe("the planning filter (planning-filter.md)", () => {
     });
   });
 
-  describe("as the reader types (planning-filter.md §6.4, OQ-PF6)", () => {
+  describe("as the reader types (§6.16, OQ-PF6)", () => {
     // The idle pause, on a clock of the test's own: long, so that it passes
     // only when a test runs it out, and advancing with real time besides, so
     // the page's other waits pass as they do outside a test.
@@ -5948,7 +5948,7 @@ describe("the planning filter (planning-filter.md)", () => {
       expect(hint()).toBe(FILTER_HINT);
     });
 
-    it("never shows the page of a text typed past, though its inputs come in before the newer text's render commits (§6.4)", async () => {
+    it("never shows the page of a text typed past, though its inputs come in before the newer text's render commits (§6.16)", async () => {
       limits({ pageEntries: 1 });
       let held = false;
       let release: () => void = () => {};
@@ -5995,7 +5995,7 @@ describe("the planning filter (planning-filter.md)", () => {
       expect(noticeLines()[0]).toMatch(/^Filtered by oq-d:/);
     });
 
-    it("never shows the page of a text typed past, though its inputs came in while it was the newest, before React rendered them (§6.4)", async () => {
+    it("never shows the page of a text typed past, though its inputs came in while it was the newest, before React rendered them (§6.16)", async () => {
       limits({ pageEntries: 1 });
       let held = false;
       let release: () => void = () => {};
@@ -6039,7 +6039,7 @@ describe("the planning filter (planning-filter.md)", () => {
       expect(noticeLines()[0]).toMatch(/^Filtered by oq-d:/);
     });
 
-    it("shows the page of the text it applied last, when the next keeps no entry and that page comes in before React renders it (§6.4)", async () => {
+    it("shows the page of the text it applied last, when the next keeps no entry and that page comes in before React renders it (§6.16)", async () => {
       limits({ pageEntries: 1 });
       let held = false;
       let release: () => void = () => {};
@@ -6182,7 +6182,7 @@ describe("the planning filter (planning-filter.md)", () => {
       expect(spinning()).toBe(false);
     });
 
-    it("speaks a typed filter's notice once, after the reader stops, though the URL takes each text a slow typist pauses on (§7)", async () => {
+    it("speaks a typed filter's notice once, after the reader stops, though the URL takes each text a slow typist pauses on (§6.17)", async () => {
       limits({ filterIdleMs: 300, filterSpeechMs: 1000 });
       await renderPage();
       box().focus();
@@ -6222,7 +6222,7 @@ describe("the planning filter (planning-filter.md)", () => {
       ]);
     });
 
-    it("changes nothing for a text with the applied canonical text, such as one with a space added (§6.4)", async () => {
+    it("changes nothing for a text with the applied canonical text, such as one with a space added (§6.16)", async () => {
       await renderPage();
       box().focus();
       await typeKeys("oq-d");
@@ -6243,7 +6243,7 @@ describe("the planning filter (planning-filter.md)", () => {
       expect(router.keys).toHaveLength(keys + 1);
     });
 
-    it("applies a typed text the URL has not taken to an index update (§6.4)", async () => {
+    it("applies a typed text the URL has not taken to an index update (§6.16)", async () => {
       await renderPage();
       box().focus();
       await typeKeys("oq-d");
@@ -6311,7 +6311,7 @@ describe("the planning filter (planning-filter.md)", () => {
       ]);
     });
 
-    it("writes the URL as the reader types in the load error and the refusal, where there are no sections to filter (§7)", async () => {
+    it("writes the URL as the reader types in the load error and the refusal, where there are no sections to filter (§6.17)", async () => {
       setLoad({ status: "error", message: "Could not load: boom" });
       await renderPage();
       expect(screen.getByText(/Could not load: boom/)).toBeTruthy();
@@ -6760,7 +6760,7 @@ describe("the planning filter (planning-filter.md)", () => {
     });
   });
 
-  describe("Copy answers, and the visit's reviews (planning-filter.md §6.6)", () => {
+  describe("Copy answers, and the visit's reviews (§6.7)", () => {
     const copyButton = () =>
       screen.getByTestId("pending-answers").closest("button")!;
     const pendingCount = () =>

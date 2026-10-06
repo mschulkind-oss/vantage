@@ -442,7 +442,7 @@ describe("the line with several roadmaps (§7)", () => {
   });
 });
 
-describe("the link to the filtered planning page (planning-filter.md §7)", () => {
+describe("the link to the filtered planning page (§7.1)", () => {
   const ROADMAP = "# Roadmap\n\n## Building\n\n- [it](docs/design/target.md)\n";
   const DONE = { stages: { DONE: "done", DESIGN: "open" } };
   /** TARGET at `stage`, holding one open question. */

@@ -201,7 +201,7 @@ describe("needYouDocuments", () => {
   });
 });
 
-describe("under a planning filter (planning-filter.md §6.6)", () => {
+describe("under a planning filter (planning-index.md §6.7)", () => {
   /** The filter's keep predicate, as the page builds it. */
   const keepsOf = (text: string) => {
     const filter = understoodFilter(text)!;

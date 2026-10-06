@@ -51,7 +51,12 @@ sections ([§1.4](#14-principles-of-the-planning-filter),
 [§6.11](#611-the-planning-filter) to [§6.19](#619-across-releases),
 [§13.4](#134-vantage-check-index---filter) and
 [§13.5](#135-handing-the-human-a-filtered-page)), and every passage the filter
-changed elsewhere, were written from that commit's code. The rest was verified on
+changed elsewhere, were written from that commit's code. The fixes of `b5a0860`,
+the commit after it, were written in as this document landed: a `**` that is a
+whole folder name matching zero or more folders, a `path:` matcher that never
+backtracks ([§6.13](#613-path-patterns)), and a key that leaves a held text's
+canonical text as it was keeping its page on screen
+([§6.16](#616-typing-and-the-url)). The rest was verified on
 2026-09-30 against `0a872d9`, the commit that added this document, and amended
 since by each commit that changed what it describes, in that commit. Of the
 perimeter's other commits since, `06e8797`, `ffb1676`, `6b62ed1`, `db5c01f` and
@@ -67,11 +72,11 @@ in [its own piece of work](../design/planning-index-measurement.md).
 `5013844`'s code: T1 to T4 met on both trees in the one batch that began below a
 load average of 4, which rose to about 18 midway, so the verdict is a weak one
 ([§18](#18-scale-targets-and-what-has-been-measured)). UNMEASURED: T1 to T4 since
-the two rulings of 2026-10-06 and on a machine that stays quiet through a batch,
-at 20,000 questions, and while the index builds; D6's long tasks on a cold
-filtered load; what a 0.8.x viewer does with a planning link, which is read from
-its code and not run; and the filter line with assistive technology and with an
-input method composing.
+the two rulings of 2026-10-06 and `b5a0860`'s fixes, on a machine that stays quiet
+through a batch, at 20,000 questions, and while the index builds; D6's long tasks
+on a cold filtered load; what a 0.8.x viewer does with a planning link, which is
+read from its code and not run; and the filter line with assistive technology and
+with an input method composing.
 
 The **planning index** is Vantage's model of a repository's planning documents:
 their frontmatter, their open questions and the links between them. It is
@@ -294,7 +299,9 @@ git.
   results follow, swapped in whole, within the typing targets of
   [§18](#18-scale-targets-and-what-has-been-measured), and the newest text always
   wins. A text that keeps no entry at all waits for the idle pause instead, so the
-  page never empties under a half-typed word ([§6.16](#616-typing-and-the-url)).
+  page does not empty under a half-typed word while the keys keep coming. The pause
+  is 300 ms, and a gap that long between two keys is a pause too: the page then
+  empties until the next key ([§6.16](#616-typing-and-the-url)).
 
 ---
 
@@ -1603,9 +1610,10 @@ question; the row tests inside `applyPlanningFilter` for the rest):
 
 **A `path:` value is found anywhere in the path, case-insensitively; `*` stands for
 any characters within one folder or file name and `**` for any characters across
-folders; a leading `/` (or `./`) pins it to the start of the path.** A quoted value
-is the same with every character literal, `*` included, and spaces allowed. That is
-the `path:` qualifier of
+folders, except that a `**` that is a whole folder name, as in `docs/**/x.md` or a
+leading `**/`, stands for zero or more folders; a leading `/` (or `./`) pins it to
+the start of the path.** A quoted value is the same with every character literal,
+`*` included, and spaces allowed. That is the `path:` qualifier of
 [GitHub's code search](https://docs.github.com/en/search-github/github-code-search/understanding-github-code-search-syntax#path-qualifier),
 without its `?` and its regular expressions ([OQ-PF1](#why-its-this-way)).
 
@@ -1616,8 +1624,10 @@ without its `?` and its regular expressions ([OQ-PF1](#why-its-this-way)).
 | `path:/roadmap.md` | The root's `roadmap.md`, and any path that starts with that text, such as `roadmap.md.bak`; not `docs/roadmap.md`, which `path:roadmap.md` keeps too |
 | `path:/docs/design/x.md` | That file: what Vantage and the checker write for one document ([§6.14](#614-what-is-not-understood-and-canonical-text)) |
 | `path:*.md` | Every Markdown file |
-| `path:/docs/*.md` | The `.md` files directly in the root's `docs`: a `*` stays within one name |
+| `path:/docs/*.md` | The `.md` files directly in the root's `docs`: a `*` stays within one name. A value need not reach the path's end, so it also keeps `docs/a.md/inner.md`, under a folder named like a file |
 | `path:/docs/**.md` | Every `.md` under the root's `docs`, at any depth: `**` crosses folders |
+| `path:/docs/**/x.md` | `docs/x.md`, `docs/a/x.md` and `docs/a/b/x.md`: a `/**/` is zero or more folders |
+| `path:**/x.md` | The root's `x.md` and every `x.md` in a folder, and not `ax.md`: a leading `**/` is zero or more leading folders |
 | `path:DOCS/Design` | What `path:docs/design` keeps: case is folded on both sides |
 | `path:"docs/my notes.md"` | That text, the space included. Quoted, a `*` is a `*` |
 
@@ -1625,13 +1635,38 @@ without its `?` and its regular expressions ([OQ-PF1](#why-its-this-way)).
   with `toLowerCase`, as a text term and its fields are. Quoted, or with no `*`, the
   value must occur in the path, or start it when it has a leading `/`. Bare, each
   lone `*` matches any run of characters holding no `/`, each run of two or more `*`
-  any run at all, and the rest is literal, compiled into one regular expression with
-  every other character escaped.
+  any run at all, and the rest is literal, with one exception. A run of two or more
+  that is a whole folder name, between two `/` or leading the value with a `/` after
+  it, matches together with that `/` zero or more whole folders, each with its `/`;
+  leading the value, those folders lead the path, as a leading `/` would pin it.
+- **The match never backtracks** (`globSteps`, `globMatcher`). A bare value with a
+  `*` becomes a list of steps, one per UTF-16 code unit of its literal text and one
+  or three per run of `*`, and every step the path could have reached so far is
+  tracked at once, one code unit of the path at a time. So a match takes time in
+  proportion to the path's length times the value's, whatever the value holds, and
+  no short value can stall the page or the checker. A value of 2,041 code
+  points, about as long as the code-point limit lets a filter be, took 301 ms over
+  1,000 paths of 200 characters, in one run on a shared machine on 2026-10-06. Until
+  `b5a0860` the value was one regular expression, which backtracks, and a short one
+  such as `**a**a…**b` over one path of repeated letters took seconds.
 - **Nothing else is special.** `?`, `[`, `#`, `!`, `\` and `+` are themselves, and
   so are `//`, `.` and `..`. A `/` that does not lead is a character of the text:
   `path:docs/` keeps every path holding `docs/`, at any depth.
-- **`**/` needs a folder.** `**` is any characters, so `path:docs/**/x.md` keeps
-  `docs/a/x.md` and not `docs/x.md`, which `path:docs/**x.md` keeps too.
+- **A whole-folder `**` is zero or more folders,** as gitignore and GitHub's code
+  search read it. `path:docs/**/x.md` keeps `docs/x.md` as well as `docs/a/b/x.md`,
+  and not `docs/ax.md`; `path:**/x.md` keeps the root's `x.md` and not `ax.md`, nor
+  `docs/ax.md`. Beside other characters, or with no `/` after it, it is still any
+  characters: `path:docs/**x.md` keeps `docs/ax.md` and `docs/a/x.md`,
+  `path:de**/c.md` keeps `docs/design/sub/c.md`, and `path:docs/**` keeps what
+  `path:docs/` keeps. At its least a whole-folder `**` is none, so a trailing `/**/`
+  adds nothing (`path:docs/design/**/` keeps what `path:docs/design/` keeps), and
+  `path:**/` keeps every path. Until `b5a0860` a whole-folder `**` was any
+  characters too, so `path:docs/**/x.md` needed a folder between `docs` and `x.md`,
+  which neither gitignore nor GitHub asks for.
+- **A value has no end.** It only has to occur in the path, so a trailing `*` adds
+  nothing: `path:/docs/design/search*` keeps exactly what `path:/docs/design/search`
+  keeps, `docs/design/search/old.md` and `docs/design/searchlight/x.md` included. A
+  `*` stays within one name only where text follows it.
 - **A leading `/` pins, and one leading `./` reads as `/`,** as `roadmap=` reads it.
   A value pinned to the start still keeps a longer path: `path:/docs/x.md` keeps
   `docs/x.mdx` too.
@@ -1756,14 +1791,23 @@ handed the unfiltered sections for those facts, beside the filtered ones it list
   - **A text that keeps no entry at all waits for the idle pause.** Until the URL
     takes it, on the pause or at once on an Enter, ✕, paste or the focus leaving the
     box, the page goes on showing the filter it applied last (`lastApplied`). So
-    `-m`, which every `.md` path holds, or a half word that matches nothing, never
-    empties the page between two keystrokes, and *nothing matches* still shows as
-    soon as typing stops. The page judges it in the render the keystroke's
-    transition runs, through the same cache its sections come from, never in the
-    keystroke's own task (F7). A text whose only matches are questions on other
-    roadmaps keeps no entry, since those are counted and not listed.
-  - **A text with the applied canonical text,** such as one with a space added,
-    changes nothing.
+    `-m`, which every `.md` path holds, or a half word that matches nothing, does not
+    empty the page between two keystrokes less than 300 ms apart. A longer gap is the
+    pause, and the page then empties until the next key: at about 30 words a minute,
+    a key every 400 ms, it can at `pat` and `path` on the way to `path:`, where no
+    entry holds those words. Once typing stops, the notice says the filter keeps 0
+    entries, followed by *Nothing this filter keeps needs you*
+    ([§6.18](#618-the-filter-notice)). The page judges it in the render the
+    keystroke's transition runs, through the same cache its sections come from, never
+    in the keystroke's own task (F7). A text whose only matches are questions on
+    other roadmaps keeps no entry, since those are counted and not listed.
+  - **A text with the canonical text the box typed last,** such as one with a space
+    added, changes nothing, and the page inputs are not told of it: `followFilter`
+    runs only when a keystroke changes the canonical text. While a text is held back,
+    that is what keeps its page on screen. Until `b5a0860` such a key told the inputs
+    the held text was the newest, so the page of the filter applied last was turned
+    down when it came in, and the page went on showing the filter before that one,
+    with the spinner running.
   - **A not-understood text changes nothing on the page.** The results on screen
     stay, and the hint slot says the text is not applied
     ([§6.17](#617-the-filter-line)), so nothing snaps to every entry because a quote
@@ -1865,11 +1909,12 @@ cost what Back relies on:
 > keeps the shown set in a `useReducer`, which React runs only in the render, where
 > `useState` may run an update as it is dispatched. The reducer takes a set only
 > while that render's wanted set is its own and no newer text is ahead of it. The
-> page tells the hook each change's filter as it is made (`follow`), and a held
-> render calls it again with the filter it goes on applying, so a set of it turned
-> down meanwhile is offered again. Taken as it arrived instead, a set offered while
-> its text was the newest was shown by a render that ran after later keys, and the
-> page painted an earlier text's results for one frame.
+> page tells the hook each change's filter as it is made (`follow`), but only for a
+> change of canonical text, and a held render calls it again with the filter it goes
+> on applying, so a set of it turned down meanwhile is offered again. Taken as it
+> arrived instead, a set offered while its text was the newest was shown by a render
+> that ran after later keys, and the page painted an earlier text's results for one
+> frame.
 
 > [!WARNING]
 > **Do not key the sections' box by the filter.** A filter change used to mount the
@@ -2129,6 +2174,12 @@ things stay, for reasons of their own:
   reading of the four tests. The page's tests and the checker's both load it, which
   is what holds P7. Any entry may be edited, moved or removed when the language
   changes; nothing compares it with an earlier release's.
+- **The path rule, written a second way.** The page suite writes
+  [§6.13](#613-path-patterns)'s rules apart from the module, as one regular
+  expression per value, and holds `pathMatcher` to it over every value of up to five
+  characters from `a`, `/` and `*` and every path of up to five from `a`, `b` and
+  `/`. A second test holds four wildcard-heavy values, each of which took seconds as
+  a regular expression, to under 250 ms on one path.
 - **A written model of 0.8.x's URL handling,** `frontend/src/compat/planningLink.test.ts`,
   copies that release's page-parameter code and asserts that every link the checker
   prints for a `read` text passes 0.8.x's rewrite with `filter` untouched and holds
@@ -3815,7 +3866,8 @@ its verdict is a weak one. Times are in ms.
 - **Not read again since `63323e1`,** the two rulings of 2026-10-06: `path:` as a
   substring, and a typed text that keeps no entry waiting for the idle pause. The
   default query keeps entries at every keystroke on both trees, so no key of it is
-  held back.
+  held back. Nor since `b5a0860`, whose `path:` matcher replaced a regular
+  expression; the default query holds no `path:` term.
 - **In the browser on the end-to-end fixture,** `frontend/e2e/planning_filter.spec.ts`
   holds criteria 13 and 14 below, and that a cold filtered link and an Enter shift
   nothing painted and leave `history.length` as it was. It reports criterion 8's long
@@ -3981,7 +4033,7 @@ into the text above or are in git.
 | OQ-PF3 | No address is stored or printed, so there is no `VANTAGE_PLANNING_URL` and the server prints no ready-to-paste address: an address is a fact about a machine, with no right home, and one machine may open a repository at several. The checker prints a root-relative link, and pasting it into the Filter box, alone or with the lines around it, applies its filter ([§13.5](#135-handing-the-human-a-filtered-page), [§6.17](#617-the-filter-line)) | 2026-10-05 |
 | OQ-PF4 | Besides typing, `/` focuses the box, and a document's Referenced by line links to the page filtered to that document. No per-card *show only this document* toggle, which would add a control to every card and row ([§6.17](#617-the-filter-line), [§7.1](#71-referenced-by)) | 2026-10-05 |
 | OQ-PF5 | The filter line is always on the page: one fixed-height row in every state, from first paint. Behind a Filter button it would be a state of its own and a layout-shift case, and a filter a person operates has to be seen to be learned ([§6.17](#617-the-filter-line)) | 2026-10-05 |
-| OQ-PF6 | The page applies the filter as the reader types, basically instantly, ruled in conversation over applying it on Enter only. Typing never adds a history entry; the URL follows after the idle pause and at once on Enter, ✕ or a paste; the box is never rewritten while the reader types; a text not understood mid-typing keeps the results on screen; and "instant" is held to T1 to T4. Amended on 2026-10-06: a typed text that keeps no entry at all applies only once the idle pause ends, the last results staying until then, so `-m` or a half word never empties the page; Enter, ✕, a paste and leaving the box apply at once, empty or not. No debounce of the results otherwise: matching takes about a millisecond, so any wait would be the whole delay ([§6.16](#616-typing-and-the-url), [§18](#18-scale-targets-and-what-has-been-measured)) | 2026-10-05, 2026-10-06 |
+| OQ-PF6 | The page applies the filter as the reader types, basically instantly, ruled in conversation over applying it on Enter only. Typing never adds a history entry; the URL follows after the idle pause and at once on Enter, ✕ or a paste; the box is never rewritten while the reader types; a text not understood mid-typing keeps the results on screen; and "instant" is held to T1 to T4. Amended on 2026-10-06: a typed text that keeps no entry at all applies only once the idle pause ends, the last results staying until then, so `-m` or a half word does not empty the page between keys less than the pause apart; Enter, ✕, a paste and leaving the box apply at once, empty or not. No debounce of the results otherwise: matching takes about a millisecond, so any wait would be the whole delay ([§6.16](#616-typing-and-the-url), [§18](#18-scale-targets-and-what-has-been-measured)) | 2026-10-05, 2026-10-06 |
 | OQ-PF7 | No freeze across releases, ruled in conversation: a filter text may match differently in a later release, so nothing compares the fixture of forms with an earlier release's, and "not understood" keeps no form free for later. P0 still governs what lives in files or feeds scripts, roadmap order never changes, and the page and the checker agree within one release ([§6.19](#619-across-releases)) | 2026-10-05 |
 | Plan Q1 | Patterns keep the server's matcher, its quirks and RE2 dialect included; the checker ports it, and one shared fixture pins both readers ([§3.1](#31-candidates-and-planning-documents)) | 2026-09-28 |
 | Plan Q2 | A listed roadmap is read whenever it exists, even when `include` or `exclude` rules it out — per entry, since several roadmaps ([§4.1](#41-which-files-are-roadmaps)) | 2026-09-28 |
