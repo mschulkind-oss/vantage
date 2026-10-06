@@ -323,6 +323,7 @@ In daemon mode, endpoints are prefixed with `/api/r/{repo}/`:
 | `POST /api/perf/reset`      | Reset performance counters              |
 | `GET /api/themes`           | User color themes + the defaults       |
 | `GET /api/themes/{id}`      | One user color theme's stylesheet      |
+| `GET /api/spaces/{id}`      | Which served project holds a [space id](docs/reference/planning-index.md#136-the-space-id), the checkout id a planning link carries |
 | `GET /api/degraded`         | Projects too big for a limit (watches, walk timeout), for the viewer's banner |
 | `WS /ws`                    | WebSocket for live reload notifications |
 

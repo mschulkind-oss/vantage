@@ -1,5 +1,11 @@
 import { execFileSync } from "node:child_process";
-import { cpSync } from "node:fs";
+import {
+  cpSync,
+  readFileSync,
+  readdirSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { basename, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { run } from "../src/cli.js";
@@ -11,14 +17,19 @@ import { VERSION } from "../src/version.js";
 import {
   PLANNING_FILTER_PARAM,
   PLANNING_NOTICES,
+  PLANNING_SPACE_FILE,
+  PLANNING_SPACE_ID_PATTERN,
+  PLANNING_SPACE_PARAM,
   PLANNING_SECTION_GUIDE,
   applyPlanningFilter,
   buildPlanningIndex,
   codeSpan,
   derivePlanningSections,
   parsePlanningFilter,
+  parsePlanningSpaceFile,
   planningAgentRequest,
   planningSectionGuide,
+  readPastedPlanningLink,
   type PlanningFilterReason,
   type PlanningIndex,
   type PlanningSources,
@@ -1151,6 +1162,26 @@ const REASON_WORDS: Record<PlanningFilterReason, string> = {
 const PASTE_HINT =
   "  Press / on the planning page and paste this line, or put the scheme, host and port you open Vantage at in front of the link.";
 
+/** The hint under it when the link names the checkout it ran in (§13.6). */
+const SPACE_HINT =
+  "  space= is this checkout's id, kept in .vantage/space: with an address in front, the link opens this project's page even where one Vantage serves several.";
+
+/**
+ * The space id in `checkout`'s `.vantage/space`, which a run that printed a
+ * link made or kept there (§13.6). Read after the run, since it is random.
+ */
+function spaceOf(checkout: string): string {
+  const id = parsePlanningSpaceFile(
+    readFileSync(join(checkout, PLANNING_SPACE_FILE), "utf8"),
+  );
+  if (id === null) throw new Error(`no space id in ${checkout}`);
+  return id;
+}
+
+/** The link for `query` that a run in `checkout` prints, its space id last. */
+const linkIn = (checkout: string, query: string) =>
+  `/.vantage/planning?${query}&${PLANNING_SPACE_PARAM}=${spaceOf(checkout)}`;
+
 /** The three outputs, each of which a filter's exits hold for. */
 const OUTPUTS: string[][] = [[], ["--format", "json"], ["--request"]];
 
@@ -1290,7 +1321,7 @@ describe("index --filter, with words, phrases and exclusions", () => {
     expect(text.stdout.split("\n").slice(0, 3)).toEqual([
       "Filtered by `nothing-holds-this`: 0 of 13 entries, none of them open questions.",
       "Run without --filter to see the other 13.",
-      "Planning page: /.vantage/planning?filter=nothing-holds-this",
+      `Planning page: ${linkIn(root, "filter=nothing-holds-this")}`,
     ]);
 
     const { code, payload } = await indexJson(
@@ -1418,8 +1449,9 @@ describe("index --filter, as text", () => {
   // filtered sections, a --request line carrying the filter, and the roadmap
   // as it always is.
   it("prints the notice and the link first, then the filtered page", async () => {
+    const root = fullTree();
     const { code, stdout, stderr } = await index(
-      fullTree(),
+      root,
       "--filter",
       "path:docs/c.md path:./docs/e.md",
     );
@@ -1431,8 +1463,9 @@ describe("index --filter, as text", () => {
         "Filtered by `path:docs/c.md path:/docs/e.md`: 4 of 13 entries, in 2 of 10 paths, 1 of them an open question.",
         "docs/c.md waits on docs/a.md#OQ-A2, which this filter leaves out.",
         "Run without --filter to see the other 9.",
-        "Planning page: /.vantage/planning?filter=path:docs/c.md+path:/docs/e.md",
+        `Planning page: ${linkIn(root, "filter=path:docs/c.md+path:/docs/e.md")}`,
         PASTE_HINT,
+        SPACE_HINT,
         "",
         "Not on a roadmap (1)",
         "Open questions no roadmap links to. An agent proposes where each goes; you confirm.",
@@ -1472,8 +1505,9 @@ describe("index --filter, as text", () => {
   });
 
   it("counts the blocked questions is:open leaves out", async () => {
+    const root = fullTree();
     const { code, stdout } = await index(
-      fullTree(),
+      root,
       "--filter",
       "path:/docs/a.md is:open",
     );
@@ -1484,8 +1518,9 @@ describe("index --filter, as text", () => {
         "Filtered by `path:/docs/a.md is:open`: 2 of 13 entries, in 1 of 10 paths, 2 of them open questions.",
         "1 of its questions is blocked and will need you later.",
         "Run without --filter to see the other 11.",
-        "Planning page: /.vantage/planning?filter=path:/docs/a.md+is:open",
+        `Planning page: ${linkIn(root, "filter=path:/docs/a.md+is:open")}`,
         PASTE_HINT,
+        SPACE_HINT,
       ].join("\n"),
     );
     expect(stdout).toContain(
@@ -1495,19 +1530,17 @@ describe("index --filter, as text", () => {
 
   // §6.15: Nothing needs you in its filtered form, among the notices.
   it("says nothing it keeps needs you, and lists no section it empties", async () => {
-    const { code, stdout } = await index(
-      fullTree(),
-      "--filter",
-      "path:docs/d.md",
-    );
+    const root = fullTree();
+    const { code, stdout } = await index(root, "--filter", "path:docs/d.md");
 
     expect(code).toBe(EXIT_OK);
     expect(stdout.split("\n\n").slice(0, 3)).toEqual([
       [
         "Filtered by `path:docs/d.md`: 1 of 13 entries, in 1 of 10 paths, none of them open questions.",
         "Run without --filter to see the other 12.",
-        "Planning page: /.vantage/planning?filter=path:docs/d.md",
+        `Planning page: ${linkIn(root, "filter=path:docs/d.md")}`,
         PASTE_HINT,
+        SPACE_HINT,
       ].join("\n"),
       PLANNING_NOTICES.nothingFilteredNeedsYou,
       [
@@ -1553,8 +1586,9 @@ describe("index --filter, as text", () => {
         /^Filtered by `path:\/plans\/design\.md is:open`: 2 of \d+ entries, in 1 of \d+ paths, 2 of them open questions\.$/,
       ),
       expect.stringMatching(/^Run without --filter to see the other \d+\.$/),
-      "Planning page: /.vantage/planning?filter=path:/plans/design.md+is:open",
+      `Planning page: ${linkIn(root, "filter=path:/plans/design.md+is:open")}`,
       PASTE_HINT,
+      SPACE_HINT,
     ]);
     expect(needsYou).toBe(
       [
@@ -1578,7 +1612,7 @@ describe("index --filter, as text", () => {
 
     expect(code).toBe(EXIT_OK);
     expect(stdout).toContain(
-      `Planning page: /.vantage/planning?filter=path:it%27s.md\n`,
+      `Planning page: ${linkIn(root, "filter=path:it%27s.md")}\n`,
     );
     const pointer = stdout
       .split("\n")
@@ -1613,12 +1647,15 @@ describe("index --filter, as text", () => {
     const head = async (root: string) =>
       (await index(root, "--filter", "path:/a.md")).stdout.split("\n\n")[0];
 
+    // Its gitdir is nowhere, so there is no main checkout to name, and the
+    // space is the worktree's own.
     expect(await head(worktree)).toBe(
       [
         "Filtered by `path:/a.md`: 1 of 1 entry, 1 of them an open question.",
         "It hides no entry.",
-        "Planning page: /.vantage/planning?filter=path:/a.md",
+        `Planning page: ${linkIn(worktree, "filter=path:/a.md")}`,
         PASTE_HINT,
+        SPACE_HINT,
         `  \`${worktree}\` is a linked worktree: the page shows the checkout your Vantage serves, which may not hold these documents as they are here.`,
       ].join("\n"),
     );
@@ -1651,9 +1688,7 @@ describe("index --filter, as text", () => {
     expect(code).toBe(EXIT_OK);
     const head = stdout.split("\n\n")[0]?.split("\n") ?? [];
     expect(head.slice(-2)).toEqual(
-      caution === null
-        ? [expect.any(String), PASTE_HINT]
-        : [PASTE_HINT, caution],
+      caution === null ? [PASTE_HINT, SPACE_HINT] : [SPACE_HINT, caution],
     );
   });
 });
@@ -1850,11 +1885,8 @@ describe("index --filter, with several roadmaps", () => {
   // §13.5: the link names the chosen roadmap whenever two or more can be
   // chosen, so the human's Needs you follows the roadmap the agent checked.
   it("names the other roadmaps and recounts each, under the chosen one", async () => {
-    const { code, stdout } = await index(
-      makeTree(SEVERAL),
-      "--filter",
-      "path:docs/b.md",
-    );
+    const root = makeTree(SEVERAL);
+    const { code, stdout } = await index(root, "--filter", "path:docs/b.md");
 
     expect(code).toBe(EXIT_OK);
     expect(stdout).toBe(
@@ -1863,8 +1895,9 @@ describe("index --filter, with several roadmaps", () => {
         // matches, which says what they hold.
         "Filtered by `path:docs/b.md`: 0 of 3 entries, in 1 of 6 paths, none of them open questions.",
         "Run without --filter to see the other 3.",
-        "Planning page: /.vantage/planning?filter=path:docs/b.md&roadmap=roadmap.md",
+        `Planning page: ${linkIn(root, "filter=path:docs/b.md&roadmap=roadmap.md")}`,
         PASTE_HINT,
+        SPACE_HINT,
         "",
         "1 more question needs you on another roadmap. Choose one with --roadmap <path>.",
         "",
@@ -1891,24 +1924,26 @@ describe("index --filter, with several roadmaps", () => {
   });
 
   it("links the roadmap --roadmap names, and none where one roadmap can be chosen", async () => {
+    const several = makeTree(SEVERAL);
     const chosen = await indexJson(
-      makeTree(SEVERAL),
+      several,
       "--roadmap",
       "docs/plans/roadmap.md",
       "--filter",
       "path:docs/b.md",
     );
     expect(chosen.payload.filter.link).toBe(
-      "/.vantage/planning?filter=path:docs/b.md&roadmap=docs/plans/roadmap.md",
+      linkIn(several, "filter=path:docs/b.md&roadmap=docs/plans/roadmap.md"),
     );
     expect(chosen.payload.filter.otherRoadmaps).toEqual([]);
     expect(chosen.payload.filter.sections.needsYou).toEqual([
       expect.objectContaining({ path: "docs/b.md", id: "OQ-B1" }),
     ]);
 
-    const one = await indexJson(fullTree(), "--filter", "path:docs/b.md");
+    const single = fullTree();
+    const one = await indexJson(single, "--filter", "path:docs/b.md");
     expect(one.payload.filter.link).toBe(
-      "/.vantage/planning?filter=path:docs/b.md",
+      linkIn(single, "filter=path:docs/b.md"),
     );
   });
 });
@@ -1951,7 +1986,7 @@ describe("index --filter, as JSON", () => {
     expect(filter).toEqual({
       text: "path:/docs/a.md is:open",
       canonical: "path:/docs/a.md is:open",
-      link: "/.vantage/planning?filter=path:/docs/a.md+is:open",
+      link: linkIn(root, "filter=path:/docs/a.md+is:open"),
       documents: { kept: 1, of: 10 },
       entries: { shown: 2, of: 13 },
       openQuestions: 2,
@@ -2105,5 +2140,220 @@ describe("index --filter over the fixture of forms", () => {
     const request = await index(root, "--request", "--filter", entry.text);
     expect(request.code).toBe(EXIT_OK);
     expect(request.stdout).toBe(expected === null ? "" : `${expected}\n`);
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * The space id (docs/reference/planning-index.md §13.6)
+ * ------------------------------------------------------------------ */
+
+describe("index --filter, and the checkout's space id", () => {
+  /** A checkout with one open question, and its .git. */
+  const checkout = (extra: Record<string, string> = {}) =>
+    makeTree({
+      ".git/HEAD": "",
+      "a.md": doc("status: draft", questions("A", OPEN)),
+      ...extra,
+    });
+
+  /** What is in `.vantage`, by name, sorted; `null` when there is none. */
+  const vantageDir = (root: string): string[] | null => {
+    try {
+      return readdirSync(join(root, ".vantage")).sort();
+    } catch {
+      return null;
+    }
+  };
+
+  it("makes .vantage/space and its .gitignore on the first link, and reuses the id after", async () => {
+    const root = checkout();
+    const first = await index(root, "--filter", "path:/a.md");
+
+    expect(first.code).toBe(EXIT_OK);
+    expect(first.stderr).toBe("");
+    expect(vantageDir(root)).toEqual([".gitignore", "space"]);
+    const id = spaceOf(root);
+    expect(id).toMatch(PLANNING_SPACE_ID_PATTERN);
+    expect(readFileSync(join(root, ".vantage/space"), "utf8")).toBe(`${id}\n`);
+    expect(readFileSync(join(root, ".vantage/.gitignore"), "utf8")).toBe(
+      "# Made by vantage-check: nothing in .vantage is committed, so every clone keeps its own space id.\n*\n",
+    );
+    expect(first.stdout.split("\n\n")[0]?.split("\n").slice(-3)).toEqual([
+      `Planning page: /.vantage/planning?filter=path:/a.md&space=${id}`,
+      PASTE_HINT,
+      SPACE_HINT,
+    ]);
+
+    // Never rewritten: the same file, the same id, in text and JSON alike.
+    const before = statSync(join(root, ".vantage/space"));
+    const again = await index(root, "--filter", "is:open");
+    const json = await indexJson(root, "--filter", "path:/a.md");
+    expect(again.stdout).toContain(
+      `Planning page: /.vantage/planning?filter=is:open&space=${id}\n`,
+    );
+    expect(json.payload.filter.link).toBe(
+      `/.vantage/planning?filter=path:/a.md&space=${id}`,
+    );
+    const after = statSync(join(root, ".vantage/space"));
+    expect([after.ino, after.mtimeMs]).toEqual([before.ino, before.mtimeMs]);
+    expect(spaceOf(root)).toBe(id);
+  });
+
+  it("gives each checkout an id of its own", async () => {
+    const a = checkout();
+    const b = checkout();
+    await index(a, "--filter", "is:open");
+    await index(b, "--filter", "is:open");
+    expect(spaceOf(a)).not.toBe(spaceOf(b));
+  });
+
+  // The space is not a candidate, so the index it lists is the same before
+  // and after one is made, and so is every run without a filter.
+  it("changes nothing a run without --filter prints", async () => {
+    const root = fullTree();
+    const before = await index(root, "--format", "json");
+    const text = await index(root);
+    await index(root, "--filter", "path:docs/a.md");
+    expect(spaceOf(root)).toMatch(PLANNING_SPACE_ID_PATTERN);
+    expect((await index(root, "--format", "json")).stdout).toBe(before.stdout);
+    expect((await index(root)).stdout).toBe(text.stdout);
+  });
+
+  it("writes nothing for a run that prints no link", async () => {
+    const root = checkout();
+    // No filter; a request; a filter it cannot read; an unmatched term.
+    await index(root);
+    await indexJson(root);
+    await index(root, "--request", "--filter", "path:/a.md");
+    expect((await index(root, "--filter", '"open')).code).toBe(EXIT_USAGE);
+    expect((await index(root, "--filter", "path:/nowhere.md")).code).toBe(
+      EXIT_USAGE,
+    );
+    expect(vantageDir(root)).toBeNull();
+
+    // Past max-candidates, in every output.
+    const refused = refusedTree();
+    for (const output of OUTPUTS) {
+      const { code } = await index(refused, ...output, "--filter", "is:open");
+      expect(code).toBe(EXIT_ENVIRONMENT);
+    }
+    expect(vantageDir(refused)).toBeNull();
+  });
+
+  // A .vantage that was there, holding the review inbox, say, is the owner's:
+  // the id goes in, and its ignore state is left as it was.
+  it("writes no .gitignore into a .vantage that was already there", async () => {
+    const root = checkout({ ".vantage/inbox/.keep": "" });
+    await index(root, "--filter", "is:open");
+    expect(vantageDir(root)).toEqual(["inbox", "space"]);
+
+    const owned = checkout({ ".vantage/.gitignore": "inbox/\n" });
+    await index(owned, "--filter", "is:open");
+    expect(vantageDir(owned)).toEqual([".gitignore", "space"]);
+    expect(readFileSync(join(owned, ".vantage/.gitignore"), "utf8")).toBe(
+      "inbox/\n",
+    );
+    expect(spaceOf(owned)).toMatch(PLANNING_SPACE_ID_PATTERN);
+  });
+
+  it.each([
+    ["no id", "not an id\n"],
+    ["white space around the id", " abcdefghijklmnop\n"],
+    ["an id past its size", `abcdefghijklmnop${"\n".repeat(64)}`],
+  ])(
+    "leaves a file holding %s alone, and links without a space",
+    async (_, text) => {
+      const root = checkout({ ".vantage/space": text });
+      const { code, stdout, stderr } = await index(root, "--filter", "is:open");
+
+      expect(code).toBe(EXIT_OK);
+      expect(stderr).toBe(
+        `vantage-check: warning: ${join(root, ".vantage/space")} does not hold a space id, so the planning link names no checkout. Remove the file to have a new one made.\n`,
+      );
+      expect(stdout.split("\n\n")[0]?.split("\n").slice(-2)).toEqual([
+        "Planning page: /.vantage/planning?filter=is:open",
+        PASTE_HINT,
+      ]);
+      const json = await indexJson(root, "--filter", "is:open");
+      expect(json.payload.filter.link).toBe(
+        "/.vantage/planning?filter=is:open",
+      );
+      expect(readFileSync(join(root, ".vantage/space"), "utf8")).toBe(text);
+      expect(vantageDir(root)).toEqual(["space"]);
+    },
+  );
+
+  it("links without a space, and says why, when it cannot make one", async () => {
+    const root = checkout({ ".vantage": "a file, not a directory\n" });
+    const { code, stdout, stderr } = await index(root, "--filter", "is:open");
+
+    expect(code).toBe(EXIT_OK);
+    expect(stderr).toMatch(
+      new RegExp(
+        `^vantage-check: warning: could not make ${join(root, ".vantage/space").replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}, so the planning link names no checkout: .+\n$`,
+      ),
+    );
+    expect(stdout).toContain(
+      "Planning page: /.vantage/planning?filter=is:open\n",
+    );
+    expect(stdout).not.toContain("space=");
+  });
+
+  // The checkout a Vantage serves is the main one, so a link made in a linked
+  // worktree names the main checkout's space, and the worktree caution still
+  // says the page shows that checkout's documents.
+  it("uses the main checkout's id in a linked worktree, and says whose it is", async () => {
+    const main = checkout({
+      ".git/worktrees/wt/commondir": "../..\n",
+      ".vantage/space": "abcdefghijklmnop\n",
+    });
+    const worktree = makeTree({
+      "a.md": doc("status: draft", questions("A", OPEN)),
+    });
+    writeFileSync(
+      join(worktree, ".git"),
+      `gitdir: ${join(main, ".git/worktrees/wt")}\n`,
+    );
+
+    const { code, stdout, stderr } = await index(
+      worktree,
+      "--filter",
+      "path:/a.md",
+    );
+    expect(code).toBe(EXIT_OK);
+    expect(stderr).toBe("");
+    expect(stdout.split("\n\n")[0]?.split("\n").slice(-4)).toEqual([
+      "Planning page: /.vantage/planning?filter=path:/a.md&space=abcdefghijklmnop",
+      PASTE_HINT,
+      `  space= is the id of the main checkout ${codeSpan(main)}, kept in its .vantage/space: with an address in front, the link opens that project's page even where one Vantage serves several.`,
+      `  ${codeSpan(worktree)} is a linked worktree: the page shows the checkout your Vantage serves, which may not hold these documents as they are here.`,
+    ]);
+    expect(vantageDir(worktree)).toBeNull();
+
+    // With none there yet, it is made in the main checkout, with its ignore.
+    const fresh = checkout({ ".git/worktrees/wt/commondir": "../..\n" });
+    const wt = makeTree({ "a.md": doc("status: draft", questions("A", OPEN)) });
+    writeFileSync(
+      join(wt, ".git"),
+      `gitdir: ${join(fresh, ".git/worktrees/wt")}\n`,
+    );
+    const json = await indexJson(wt, "--filter", "path:/a.md");
+    expect(json.payload.filter.link).toBe(
+      `/.vantage/planning?filter=path:/a.md&space=${spaceOf(fresh)}`,
+    );
+    expect(vantageDir(fresh)).toEqual([".gitignore", "space"]);
+    expect(vantageDir(wt)).toBeNull();
+  });
+
+  // Pasted into the Filter box, the block reads as it did before the space:
+  // the paste reader takes the filter and the roadmap, and ignores space=.
+  it("prints a block the Filter box reads as its filter and roadmap", async () => {
+    const root = makeTree(SEVERAL);
+    const { stdout } = await index(root, "--filter", "path:docs/b.md");
+    expect(stdout).toContain(`&space=${spaceOf(root)}\n`);
+    expect(readPastedPlanningLink(stdout.split("\n\n")[0] ?? "")).toEqual({
+      filter: "path:docs/b.md",
+      roadmap: "roadmap.md",
+    });
   });
 });

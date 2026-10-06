@@ -1,0 +1,43 @@
+{
+  "description": [
+    "What a checkout's .vantage/space holds, as both of its readers read it: the server's spaceid.Parse and vantage-md's parsePlanningSpaceFile, which vantage-check reads the file with before it ever writes one.",
+    "`text` is the whole file; `id` is the space id it holds, or null when it holds none. A reader drops one trailing newline, and a carriage return before it, and takes what is left only when it is 16 characters of lowercase RFC 4648 base32 (a-z, 2-7).",
+    "`ids` are path segments as GET /api/spaces/{id} receives them: `valid` says whether the endpoint looks for that id at all, which it decides before it touches the filesystem."
+  ],
+  "files": [
+    { "text": "abcdefghijklmnop\n", "id": "abcdefghijklmnop" },
+    { "text": "abcdefghijklmnop", "id": "abcdefghijklmnop" },
+    { "text": "abcdefghijklmnop\r\n", "id": "abcdefghijklmnop" },
+    { "text": "2345672345672345\n", "id": "2345672345672345" },
+    { "text": "", "id": null },
+    { "text": "\n", "id": null },
+    { "text": "abcdefghijklmnop\n\n", "id": null },
+    { "text": "abcdefghijklmnop\r", "id": null },
+    { "text": " abcdefghijklmnop\n", "id": null },
+    { "text": "abcdefghijklmnop \n", "id": null },
+    { "text": "ABCDEFGHIJKLMNOP\n", "id": null },
+    { "text": "abcdefghijklmno\n", "id": null },
+    { "text": "abcdefghijklmnopq\n", "id": null },
+    { "text": "abcdefghijklmn01\n", "id": null },
+    { "text": "abcdefghijklmn89\n", "id": null },
+    { "text": "abcdefgh=\n", "id": null },
+    { "text": "abcdefghijklmnop\nabcdefghijklmnop\n", "id": null },
+    { "text": "\ufeffabcdefghijklmnop\n", "id": null }
+  ],
+  "ids": [
+    { "id": "abcdefghijklmnop", "valid": true },
+    { "id": "zzzzzzzzzzzzzzzz", "valid": true },
+    { "id": "2222222222222222", "valid": true },
+    { "id": "", "valid": false },
+    { "id": "abcdefghijklmno", "valid": false },
+    { "id": "abcdefghijklmnopq", "valid": false },
+    { "id": "Abcdefghijklmnop", "valid": false },
+    { "id": "abcdefghijklmn01", "valid": false },
+    { "id": "abcdefghijklmn8a", "valid": false },
+    { "id": "abcdefghijklmn.p", "valid": false },
+    { "id": "..", "valid": false },
+    { "id": "abcdefghijklmno\n", "valid": false },
+    { "id": "abcdefghijklmnop\n", "valid": false },
+    { "id": "abcdefghijklmn%2", "valid": false }
+  ]
+}

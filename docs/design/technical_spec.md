@@ -209,7 +209,10 @@ Routes are declared in a single table (`routes.go`) with a `Scope`:
   `/perf/diagnostics`, `/perf/reset`, `/starred` (GET/POST/DELETE), and
   `/themes` and `/themes/{id}` — a color theme is the reader's setting, not a
   repository's, so its stylesheet URL must not depend on which repository is
-  open ([color-themes.md](color-themes.md)).
+  open ([color-themes.md](color-themes.md)) — and `/spaces/{id}`, which answers
+  which served repository's `.vantage/space` holds a space id, since which
+  repository is the question
+  ([planning-index.md §13.6](../reference/planning-index.md#136-the-space-id)).
 - **`ScopeRepo`** routes mount twice, sharing one handler: the legacy form
   `/api{Pattern}` (single-repo; 404 in daemon mode) and the multi form
   `/api/r/{repo}{Pattern}`. The handler reads the resolved `RepoServices` from

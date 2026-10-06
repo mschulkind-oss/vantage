@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse as parseToml } from "smol-toml";
 import { run } from "../src/cli.js";
@@ -13,6 +15,7 @@ import {
 import { ruleMeta } from "../src/rules/registry.js";
 import { QUESTION_SHAPE } from "../../vantage-md/src/planning/leaning.js";
 import {
+  PLANNING_SPACE_FILE,
   isStageRole,
   parsePlanningFilter,
   scanPlanningDocument,
@@ -311,8 +314,10 @@ describe("the style guide's filtered planning page", () => {
       .replace("<plan>", "docs/e.md");
     const code = await run(["index", "--filter", named], io);
     expect(code).toBe(EXIT_OK);
+    // Ending with the checkout's space id, which the run made (§13.6).
+    const space = readFileSync(join(root, PLANNING_SPACE_FILE), "utf8").trim();
     expect(io.stdout).toContain(
-      "\nPlanning page: /.vantage/planning?filter=path:/docs/a.md+path:/docs/e.md+is:open\n",
+      `\nPlanning page: /.vantage/planning?filter=path:/docs/a.md+path:/docs/e.md+is:open&space=${space}\n`,
     );
   });
 });
