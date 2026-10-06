@@ -4450,15 +4450,41 @@ describe("the planning filter (planning-filter.md)", () => {
     await settle();
   }
 
-  /** What the checker prints for criterion 1, around its link. */
-  const CHECKER_BLOCK = [
-    "Filtered by `path:plans/design.md is:open`: 2 of 10 entries, in 1 of 9 paths, 2 of them open questions.",
-    "1 of its questions is blocked and will need you later.",
-    "Run without --filter to see the other 8.",
-    "Planning page: /.vantage/planning?filter=path:plans/design.md+is:open",
-    "  Press / on the planning page and paste this line, or put the scheme, host and port you open Vantage at in front of the link.",
-    "",
-  ].join("\n");
+  /**
+   * What the checker prints for criterion 1, around its link: the whole of
+   * `vantage-check index --filter 'path:/plans/design.md is:open'` over the
+   * tree on disk, so it is always what this release's checker prints.
+   */
+  async function checkerBlock(): Promise<string> {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), "vantage-block-")));
+    try {
+      const files: Record<string, string> = {
+        ...TREE,
+        ".git/HEAD": "ref: refs/heads/main\n",
+        ".vantage.toml": [
+          "[planning.stages]",
+          ...Object.entries(STAGES ?? {}).map(([w, r]) => `${w} = "${r}"`),
+          "",
+        ].join("\n"),
+      };
+      for (const [path, content] of Object.entries(files)) {
+        mkdirSync(dirname(join(root, path)), { recursive: true });
+        writeFileSync(join(root, path), content);
+      }
+      const io = bufferIo(root);
+      const code = await run(
+        ["index", "--filter", "path:/plans/design.md is:open"],
+        io,
+      );
+      expect(code).toBe(0);
+      expect(io.stdout).toContain(
+        "\nPlanning page: /.vantage/planning?filter=path:/plans/design.md+is:open\n",
+      );
+      return io.stdout;
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }
 
   describe("opened from a link", () => {
     it("draws the sections' box anew when its frame lands after the index builds, so the notice moves nothing painted", async () => {
@@ -6079,6 +6105,49 @@ describe("the planning filter (planning-filter.md)", () => {
       expect(spinning()).toBe(false);
     });
 
+    // A keystroke that leaves the held text's canonical text as it was, such
+    // as a space after it, types nothing newer: the page the box goes on
+    // applying is still the one to show when it comes in, and so it stays
+    // while the reader types on into a quote that is not understood.
+    it("shows the page of the text it applied last when it comes in after a key that keeps the held text as it was", async () => {
+      limits({ pageEntries: 1 });
+      let held = false;
+      let release: () => void = () => {};
+      serveTree(TREE, "/api", (inline) => ({
+        cards: (repo, want, options) =>
+          held
+            ? new Promise<CardAnswer[]>((resolve) => {
+                release = () => resolve(inline.cards(repo, want, options));
+              })
+            : inline.cards(repo, want, options),
+      }));
+      await renderPage();
+      box().focus();
+      held = true;
+      await type("oq-u");
+      await settle();
+      held = false;
+      await type("oq-uz");
+      await settle();
+      await type("oq-uz ");
+      await settle();
+      expect(cardsIn("Needs you")).toEqual([D1]);
+      release();
+      await settle();
+      expect(noticeLines()[0]).toMatch(/^Filtered by oq-u:/);
+      expect(cardsIn("Not on a roadmap")).toEqual(["OQ-U1: Question OQ-U1?"]);
+      expect(spinning()).toBe(false);
+      for (const text of ['oq-uz "', 'oq-uz "a', "oq-uz  "]) {
+        await type(text);
+        await settle();
+        expect(noticeLines()[0], text).toMatch(/^Filtered by oq-u:/);
+        expect(spinning(), text).toBe(false);
+      }
+      await idle();
+      expect(router.location).toBe("/.vantage/planning?filter=oq-uz");
+      expect(noticeLines()[0]).toMatch(/^Filtered by oq-uz: 0 of 10 entries/);
+    });
+
     it("shows the page of a text typed past and typed again, when its inputs came in between", async () => {
       limits({ pageEntries: 1 });
       let held = false;
@@ -6422,9 +6491,9 @@ describe("the planning filter (planning-filter.md)", () => {
 
     it("reads the checker's whole output around its link (criterion 11)", async () => {
       await renderPage();
-      await paste(CHECKER_BLOCK);
+      await paste(await checkerBlock());
       expect(router.location).toBe(
-        "/.vantage/planning?filter=path:plans/design.md+is:open",
+        "/.vantage/planning?filter=path:/plans/design.md+is:open",
       );
       expect(cardsIn("Needs you")).toEqual([
         "OQ-D1: Question OQ-D1?",
@@ -6624,9 +6693,9 @@ describe("the planning filter (planning-filter.md)", () => {
       serveTree(TREE, "/api/r/alpha");
       setLoad(readyOf(TREE), "alpha");
       await renderPage("/.vantage/planning/alpha");
-      await paste(CHECKER_BLOCK);
+      await paste(await checkerBlock());
       expect(router.location).toBe(
-        "/.vantage/planning/alpha?filter=path:plans/design.md+is:open",
+        "/.vantage/planning/alpha?filter=path:/plans/design.md+is:open",
       );
       expect(cardsIn("Needs you")).toEqual([
         "OQ-D1: Question OQ-D1?",
