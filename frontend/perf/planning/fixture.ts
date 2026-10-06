@@ -227,6 +227,8 @@ interface IndexJson {
     documents: { path: string; questions: unknown[] }[];
   };
   sections: Record<string, unknown>;
+  /** With `--filter`: what it kept, of the entries the page lists. */
+  filter?: { entries: { shown: number; of: number } };
 }
 
 /**
@@ -234,17 +236,16 @@ interface IndexJson {
  * under Bun, or the CLI `just cli` built when Bun is not on the PATH. It
  * derives the sections exactly as the planning page does (P7).
  */
-function indexOf(dir: string): IndexJson {
+function indexOf(dir: string, options: string[] = []): IndexJson {
   const source = path.join(REPO_ROOT, "packages/vantage-check/src/main.ts");
   const built = path.join(
     REPO_ROOT,
     "packages/vantage-check/dist/vantage-check",
   );
   const bun = spawnSync("bun", ["--version"], { encoding: "utf8" });
+  const index = ["index", "--format", "json", ...options];
   const [command, args] =
-    bun.status === 0
-      ? ["bun", [source, "index", "--format", "json"]]
-      : [built, ["index", "--format", "json"]];
+    bun.status === 0 ? ["bun", [source, ...index]] : [built, index];
   if (command === built && !existsSync(built)) {
     throw new Error(
       "checking the fixture needs Bun on the PATH (just setup), or the CLI `just cli` builds",
@@ -415,6 +416,22 @@ export function writeFixture(size: number, parent = tmpdir()): FixtureReport {
     sections,
     documents,
   };
+}
+
+/**
+ * The entries `filter` keeps on the planning page of the repository at
+ * `dir`, of all it lists, as `vantage-check index --filter` derives them.
+ * The typing flow asserts that its query narrows the page (T2).
+ */
+export function filterKeeps(
+  dir: string,
+  filter: string,
+): { shown: number; of: number } {
+  const entries = indexOf(dir, ["--filter", filter]).filter?.entries;
+  if (entries === undefined) {
+    throw new Error(`vantage-check printed no filter for ${filter}`);
+  }
+  return entries;
 }
 
 /** One line for a person: the size, its averages and its sections. */
