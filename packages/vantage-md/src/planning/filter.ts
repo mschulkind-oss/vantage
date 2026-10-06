@@ -690,6 +690,8 @@ export function applyPlanningFilter(
 
 /** The characters a planning link writes bare (§9.2). */
 const BARE_IN_QUERY = /^[A-Za-z0-9\-._~:/]$/;
+/** Those of them a pasted link's end drops (`TRAILING`, below). */
+const DROPPED_AT_END = /^[._~:]$/;
 
 /**
  * A value as a planning link writes it (§9.2): everything but `A–Z a–z 0–9
@@ -697,8 +699,12 @@ const BARE_IN_QUERY = /^[A-Za-z0-9\-._~:/]$/;
  * which Markdown and chat clients cannot read as emphasis; `#`, `&`, `+` and
  * `"` cannot cut the value short; and `:` and `/` stay readable.
  * `URLSearchParams` reads it back to exactly `value`.
+ *
+ * With `ends`, the value ends what is written, so a last `.`, `_`, `~` or `:`
+ * is escaped too: a pasted link loses those at its end, as a sentence's
+ * punctuation (`readPastedPlanningLink`), so the link must not end with one.
  */
-export function encodePlanningQueryValue(value: string): string {
+export function encodePlanningQueryValue(value: string, ends = false): string {
   let out = "";
   for (const c of value) {
     if (c === " ") out += "+";
@@ -716,29 +722,33 @@ export function encodePlanningQueryValue(value: string): string {
           : encoded;
     }
   }
-  return out;
+  const last = out.at(-1);
+  return ends && last !== undefined && DROPPED_AT_END.test(last)
+    ? `${out.slice(0, -1)}%${last.charCodeAt(0).toString(16).toUpperCase()}`
+    : out;
 }
 
 /**
  * A link to the planning page filtered by `canonical`: `path`, by default the
  * root-relative `/.vantage/planning`, then `?filter=<canonical>`, then
  * `&roadmap=<roadmap>` when one is given, each written by
- * `encodePlanningQueryValue`. An empty `canonical` is no filter, and gets no
- * parameter (§5.1).
+ * `encodePlanningQueryValue`, the last as the link's end. An empty
+ * `canonical` is no filter, and gets no parameter (§5.1).
  */
 export function planningLink(
   canonical: string,
   options: { roadmap?: string | null; path?: string } = {},
 ): string {
+  const roadmap = options.roadmap ?? null;
   const params: string[] = [];
   if (canonical !== "") {
     params.push(
-      `${PLANNING_FILTER_PARAM}=${encodePlanningQueryValue(canonical)}`,
+      `${PLANNING_FILTER_PARAM}=${encodePlanningQueryValue(canonical, roadmap === null)}`,
     );
   }
-  if (options.roadmap !== undefined && options.roadmap !== null) {
+  if (roadmap !== null) {
     params.push(
-      `${PLANNING_ROADMAP_PARAM}=${encodePlanningQueryValue(options.roadmap)}`,
+      `${PLANNING_ROADMAP_PARAM}=${encodePlanningQueryValue(roadmap, true)}`,
     );
   }
   const base = options.path ?? PLANNING_PAGE_PATH;
@@ -758,12 +768,24 @@ export function documentFilter(path: string): string | null {
 }
 
 /**
- * A planning link from its path on: what `encodePlanningQueryValue` leaves
- * bare, the percent escapes and `+` it writes, and the URL's own `? & = #`.
+ * A planning link's path from `/.vantage/planning` on, up to its query: its
+ * repository segment holds what the page's `planningPath`
+ * (`encodeURIComponent`, which leaves `! ' ( ) *` bare) and the server's
+ * startup tip (Go's `url.PathEscape`, which leaves `$ & + : = @` bare) write,
+ * which is RFC 3986's path characters and the escapes.
  */
-const LINK_RUN = /^[A-Za-z0-9\-._~:/%+?&=#]*/;
-/** Trailing punctuation GFM's extended autolinks leave out, of those a link can hold. */
-const TRAILING = /[?.,:_~]+$/;
+const LINK_PATH = /^[A-Za-z0-9\-._~%!$&'()*+,;=:@/]*/;
+/**
+ * Its query and fragment: what `encodePlanningQueryValue` leaves bare, the
+ * percent escapes and `+` it writes, the `*` that `URLSearchParams` leaves
+ * bare, and the URL's own `? & = #`.
+ */
+const LINK_QUERY = /^[A-Za-z0-9\-._~:/%+?&=#*]*/;
+/**
+ * The trailing punctuation GFM's extended autolinks leave out that a link can
+ * hold, but `*`, which is the link's own unless it closes emphasis.
+ */
+const TRAILING = /^[?.,:_~]$/;
 
 /** Where a planning link's path starts in a pasted run of text. */
 const PAGE_PATH_AT = new RegExp(
@@ -781,10 +803,14 @@ const PAGE_PATH_AT = new RegExp(
  *
  * The link ends where the run does, or earlier, at the first character a
  * planning link never holds unencoded, so the backtick or the parenthesis a
- * chat wraps it in is not read as part of it. Then the trailing punctuation
+ * chat wraps it in is not read as part of it: in its query, one outside what
+ * `encodePlanningQueryValue` and `URLSearchParams` write bare; in its
+ * repository segment, one outside a path's. Then the trailing punctuation
  * GitHub's autolinks leave out (`?`, `.`, `,`, `:`, `_` and `~`; GFM's
- * extended autolink rule) is dropped, so a sentence's period after it is too.
- * What counts as a pasted link may only widen (§10.3).
+ * extended autolink rule) is dropped, so a sentence's period after it is too,
+ * and so is a trailing `*` for each `*` before the link in its run, which
+ * opened emphasis around it. What counts as a pasted link may only widen
+ * (§10.3).
  */
 export function readPastedPlanningLink(
   text: string,
@@ -804,7 +830,19 @@ export function readPastedPlanningLink(
     const at = PAGE_PATH_AT.exec(candidate);
     if (at === null) continue;
     const tail = candidate.slice(at.index);
-    const link = (LINK_RUN.exec(tail)?.[0] ?? "").replace(TRAILING, "");
+    const path = LINK_PATH.exec(tail)?.[0] ?? "";
+    let link = path + (LINK_QUERY.exec(tail.slice(path.length))?.[0] ?? "");
+    // A `*` at its end is the link's own unless one opened emphasis before it.
+    let emphasis = [...candidate.slice(0, at.index)].filter(
+      (c) => c === "*",
+    ).length;
+    for (;;) {
+      const last = link.at(-1);
+      if (last === undefined) break;
+      if (last === "*" && emphasis > 0) emphasis -= 1;
+      else if (!TRAILING.test(last)) break;
+      link = link.slice(0, -1);
+    }
     let url: URL;
     try {
       url = new URL(link, "http://vantage.invalid");

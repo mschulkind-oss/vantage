@@ -1210,7 +1210,7 @@ export const PlanningPage: React.FC = () => {
 
   const ready = load.status === "ready" ? load : null;
   const index = ready?.index ?? null;
-  const [search, setSearch] = useSearchParams();
+  const [search] = useSearchParams();
 
   // The roadmap this browser remembers for the repository, read once per
   // visit (§6.8): another tab's pick never changes a page already on screen.
@@ -1307,15 +1307,16 @@ export const PlanningPage: React.FC = () => {
     page: number;
     target: string;
   } | null>(null);
-  const flip = useCallback<OnFlip>(
-    (id, page, place) => {
-      // The bottom pager brings its section's heading back into view, and
-      // the focus with it; the top one leaves both alone.
-      scrollToRef.current = place === "bottom" ? id : null;
-      jumpRef.current = null;
-      setSearch((prev) => withPage(prev, id, page), { replace: true });
+  // The page's own replace navigations, a flip, a pick and an outline jump,
+  // write the query as Enter does, `filter` in a planning link's encoding,
+  // so the address bar shows what an agent's link shows and a copy of it
+  // pasted into the box reads back whole (planning-filter.md §7, §9.2).
+  const replaceSearch = useCallback(
+    (next: URLSearchParams) => {
+      const query = planningQuery(next);
+      navigate({ search: query === "" ? "" : `?${query}` }, { replace: true });
     },
-    [setSearch],
+    [navigate],
   );
   // Picking a roadmap is a flip (§6.8): the URL's roadmap replaced with no
   // history entry, Needs you back on its first page, and the pick
@@ -1326,23 +1327,9 @@ export const PlanningPage: React.FC = () => {
       setRemembered({ repo: pageRepo, path });
       scrollToRef.current = null;
       jumpRef.current = null;
-      setSearch((prev) => withRoadmap(prev, path), { replace: true });
+      replaceSearch(withRoadmap(search, path));
     },
-    [pageRepo, setSearch],
-  );
-  // A pager the pointer or the focus reaches asks for the next page ahead.
-  const prefetch = useCallback<OnPrefetch>(
-    (id, page) => {
-      if (onThisRepo && repo !== null) {
-        prefetchPlanningPage(
-          repo,
-          requestWithPage(request, id, page),
-          chosenRoadmap,
-          appliedFilter,
-        );
-      }
-    },
-    [onThisRepo, repo, request, chosenRoadmap, appliedFilter],
+    [pageRepo, replaceSearch, search],
   );
 
   // The inputs of the pages shown (§6.5). The sections render only from a
@@ -1361,6 +1348,35 @@ export const PlanningPage: React.FC = () => {
     shown === null ||
     layout === null ||
     shown.inputs.layout.filter === layout.filter;
+  // A flip, and a pager's prefetch, go on from the URL's layout. While
+  // another filter's page is on its way, the pagers on screen are the old
+  // filter's, and the URL's sections are all on their first page (§6.4), so
+  // the old page's pagers flip and prefetch nothing until the new page is in.
+  const flip = useCallback<OnFlip>(
+    (id, page, place) => {
+      if (!askedIsFlip) return;
+      // The bottom pager brings its section's heading back into view, and
+      // the focus with it; the top one leaves both alone.
+      scrollToRef.current = place === "bottom" ? id : null;
+      jumpRef.current = null;
+      replaceSearch(withPage(search, id, page));
+    },
+    [replaceSearch, search, askedIsFlip],
+  );
+  // A pager the pointer or the focus reaches asks for the next page ahead.
+  const prefetch = useCallback<OnPrefetch>(
+    (id, page) => {
+      if (onThisRepo && repo !== null && askedIsFlip) {
+        prefetchPlanningPage(
+          repo,
+          requestWithPage(request, id, page),
+          chosenRoadmap,
+          appliedFilter,
+        );
+      }
+    },
+    [onThisRepo, repo, request, chosenRoadmap, appliedFilter, askedIsFlip],
+  );
   // The sections whose page is still on its way, once that is worth saying.
   const busy = useMemo(() => {
     if (!inputs.slow || shown === null || layout === null || !askedIsFlip) {
@@ -1534,13 +1550,22 @@ export const PlanningPage: React.FC = () => {
     [pendingGroups, linesOf],
   );
   const pendingCount = pending.reduce((n, g) => n + g.comments.length, 0);
-  // Exact only once every listed document's reviews are in (§6.7).
-  const countKnown = index !== null && reviews.known;
+  // Exact only once the reviews of every listed question's document are in
+  // (§6.7). The rows' documents, which the second request reads too, hold
+  // no listed question, so no answer, and the count never waits on them
+  // (planning-filter.md §6.6).
+  const countKnown = useMemo(
+    () =>
+      index !== null &&
+      listedQuestions.every((q) => reviews.byPath[q.path] !== undefined),
+    [index, listedQuestions, reviews.byPath],
+  );
   // The request for the listed documents no shown page holds failed after
-  // the sections painted. A line above them would move them, so it is said
-  // where nothing moves: the button's own icon and tooltip, and once to a
-  // screen reader. A failure before they painted has its line (§15).
-  const reviewsFailed = reviews.failed;
+  // the sections painted, and the count is unknown for it. A line above them
+  // would move them, so it is said where nothing moves: the button's own
+  // icon and tooltip, and once to a screen reader. A failure before they
+  // painted has its line (§15).
+  const reviewsFailed = reviews.failed && !countKnown;
   const restFailed = reviewsFailed && shown?.inputs.reviewsFailed !== true;
   const [copied, setCopied] = useState(false);
   const copyAnswers = useCallback(() => {
@@ -1857,14 +1882,15 @@ export const PlanningPage: React.FC = () => {
   // into view once the page is on screen — at once when it already is.
   const jumpToDocument = useCallback(
     (id: SectionId, document: OutlineDocument) => {
+      // The outline is the old filter's while another's page is on its way,
+      // and goes nowhere until it is in, as the pagers do (above).
+      if (!askedIsFlip) return;
       const target = outlineTargetId(id, document);
       const onScreen = shownLayout?.sections.find((s) => s.id === id)?.page;
       const asked = layout?.sections.find((s) => s.id === id)?.page;
       scrollToRef.current = null;
       if (asked !== document.page) {
-        setSearch((prev) => withPage(prev, id, document.page), {
-          replace: true,
-        });
+        replaceSearch(withPage(search, id, document.page));
       }
       if (onScreen === document.page) {
         jumpRef.current = null;
@@ -1873,13 +1899,13 @@ export const PlanningPage: React.FC = () => {
         jumpRef.current = { section: id, page: document.page, target };
       }
     },
-    [shownLayout, layout, setSearch],
+    [shownLayout, layout, replaceSearch, search, askedIsFlip],
   );
   // Its link, for a modified click and a new tab: the page it flips to, and
   // the entry it goes to as the fragment.
   const outlineHref = useCallback(
     (id: SectionId, document: OutlineDocument): string => {
-      const query = withPage(search, id, document.page).toString();
+      const query = planningQuery(withPage(search, id, document.page));
       return `${location.pathname}${query === "" ? "" : `?${query}`}#${outlineTargetId(id, document)}`;
     },
     [search, location.pathname],
@@ -1975,6 +2001,14 @@ export const PlanningPage: React.FC = () => {
     from: string;
   } | null>(null);
   const [announcement, setAnnouncement] = useState("");
+  // The filter a reader's Enter, ✕ or paste is bringing in, as the layout
+  // names it, until its page is on screen: the filter line's spinner is
+  // drawn in the commit of the reader's own change, and the browser shows
+  // it once `spinnerMs` have passed. The router commits the URL, and the
+  // page its new inputs, in transitions, and an update a timer makes while
+  // one renders commits only with it, so a spinner a timer asked for showed
+  // only once it was no longer needed (planning-filter.md §6.4).
+  const [applying, setApplying] = useState<string | null>(null);
   // Enter, ✕ or a pasted link (§6.4): one replace navigation, written with
   // the link encoding for `filter`, every section back on its first page,
   // `roadmap` and every unknown parameter kept, the fragment dropped. The
@@ -2005,6 +2039,8 @@ export const PlanningPage: React.FC = () => {
         return;
       }
       const query = planningQuery(next);
+      const parsed = parsePlanningFilter(readFilterRequest(next));
+      setApplying(parsed.kind === "understood" ? parsed.canonical : "");
       setAnnounceFor({ filter: readFilterRequest(next), from: location.key });
       // Emptied first, so that a notice the same as the last one said is
       // still a change, and is said.
@@ -2057,8 +2093,19 @@ export const PlanningPage: React.FC = () => {
       toSay = null;
       if (announceFor !== null) setAnnounceFor(null);
       if (announcement !== "") setAnnouncement("");
+      if (applying !== null) setApplying(null);
     }
   }
+  // Another filter's page is on its way: the reader's, from their own
+  // change, or the URL's, from its commit. Once the reader's is on screen,
+  // or there is no page to bring it to, it is forgotten.
+  const readerPending =
+    applying !== null &&
+    shown !== null &&
+    layout !== null &&
+    frameFilter !== applying;
+  if (applying !== null && !readerPending) setApplying(null);
+  const filterPending = readerPending || !askedIsFlip;
   if (toSay !== null) {
     if (!onThisRepo || load.status === "error" || index?.refused === true) {
       // No frame is coming, so no notice: nothing to say.
@@ -2288,7 +2335,13 @@ export const PlanningPage: React.FC = () => {
                 <PlanningFilterLine
                   urlText={filterText}
                   invalid={urlFilter.kind === "not-understood"}
-                  busy={filterSwapSlow}
+                  busyAfter={
+                    filterSwapSlow
+                      ? 0
+                      : filterPending
+                        ? planningLimits.spinnerMs
+                        : null
+                  }
                   onApply={applyFilter}
                   onLeave={leaveFilter}
                   inputRef={filterInputRef}
@@ -2424,7 +2477,14 @@ export const PlanningPage: React.FC = () => {
                       />
                     )}
                   </div>
-                  <React.Fragment key={frameFilterKey}>
+                  {/* Keyed so too, the notices and the sections' box: the
+                      spinner a cold open paints in that box sat under the
+                      progress line, and the notice the frame lands with
+                      above it moved it down (planning-filter.md §15,
+                      criterion 8). */}
+                  <React.Fragment
+                    key={`${frameReady && frameLayout !== null ? "frame" : "progress"}\n${frameFilterKey}`}
+                  >
                     {frameReady &&
                       frameSections !== null &&
                       frameConfig !== null && (

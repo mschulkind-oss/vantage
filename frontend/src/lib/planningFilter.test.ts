@@ -43,6 +43,7 @@ import {
   type UnderstoodPlanningFilter,
 } from "vantage-md/planning";
 import { pickPreviousRelease } from "../compat/previousRelease";
+import { planningPath } from "./planningRoute";
 import {
   FILTER_FORMS_PATH,
   filterForms,
@@ -130,6 +131,19 @@ describe("the fixture of forms (§10.4)", () => {
     expect(inner.state).toBe("answered");
     expect(inner.unitLine).toBeGreaterThan(outer.unitLine);
     expect(inner.unitEndLine).toBeLessThanOrEqual(outer.unitEndLine);
+    // Every open marker is:open reads (§5.3): 💬 🤷 on a routed path, and
+    // no marker on an unrouted one, so both Needs you and Not on a roadmap
+    // hold one.
+    expect(questions.find((q) => q.id === "OQ-A5")).toMatchObject({
+      marker: "\u{1F4AC} \u{1F937}",
+      state: "open",
+    });
+    expect(questions.find((q) => q.id === "OQ-N2")).toMatchObject({
+      marker: "",
+      state: "open",
+    });
+    expect(SECTIONS.needsYou.map((q) => q.id)).toContain("OQ-A5");
+    expect(SECTIONS.unrouted?.map((q) => q.id)).toContain("OQ-N2");
     // A routing roadmap, a question it does not route, and declared stages,
     // so the page's parity test has requests to compare.
     expect(SECTIONS.chosenRoadmap).toBe("roadmap.md");
@@ -166,6 +180,15 @@ describe("the fixture of forms (§10.4)", () => {
       const again = understood(entry.canonical);
       expect(again.canonical).toBe(entry.canonical);
       expect(again.terms).toEqual(filter.terms);
+    });
+
+    it("keeping the questions it reads as kept, wherever the sections put them", () => {
+      const kept = INDEX.documents
+        .flatMap((doc) => doc.questions)
+        .filter((q) => filterKeepsQuestion(filter, q))
+        .map((q) => `${q.path}#${q.id}`)
+        .sort();
+      expect(kept).toEqual(entry.questions);
     });
 
     it("keeping the documents git keeps, and the entries they hold", () => {
@@ -283,12 +306,19 @@ describe("the fixture of forms against the previous release", () => {
     it.skip(`skipped, because ${previous.reason}`, () => {});
     return;
   }
+  // Every field but `keeps`: which section an entry is in, and in what
+  // order, is the derivation's, which may change, never the filter's
+  // meaning, which `questions` and `documents` hold (planning-filter.md
+  // §10.3, §10.4).
+  const meaning = ({
+    keeps: _sections,
+    ...rest
+  }: PlanningFilterForms["read"][number]) => rest;
   it(`edits and removes no read entry of ${previous.tag}`, () => {
     for (const entry of previous.forms.read) {
-      expect(
-        FORMS.read.find((now) => now.text === entry.text),
-        entry.text,
-      ).toEqual(entry);
+      const now = FORMS.read.find((read) => read.text === entry.text);
+      expect(now, entry.text).toBeDefined();
+      expect(meaning(now!), entry.text).toEqual(meaning(entry));
     }
   });
   it(`removes no not-understood entry of ${previous.tag}, except by reading it`, () => {
@@ -715,9 +745,10 @@ describe("applying a filter to the sections (§6.1, §6.2)", () => {
       Object.fromEntries(
         sections.roadmaps.map((r) => [r.path, r.needsYouCount]),
       );
-    expect(counts(SECTIONS)).toEqual({ "roadmap.md": 3, "x/roadmap.md": 1 });
+    expect(counts(SECTIONS)).toEqual({ "roadmap.md": 4, "x/roadmap.md": 1 });
+    // The 💬 🤷 question is open; the nested ✅ one is not.
     expect(counts(apply("is:open").sections)).toEqual({
-      "roadmap.md": 2,
+      "roadmap.md": 3,
       "x/roadmap.md": 1,
     });
     expect(counts(apply("path:docs/design/sub").sections)).toEqual({
@@ -821,6 +852,7 @@ describe("applying a filter to the sections (§6.1, §6.2)", () => {
     expect(sections.onOtherRoadmaps.map((q) => q.id)).toEqual([
       "OQ-A1",
       "OQ-A3",
+      "OQ-A5",
     ]);
     expect(sections.nothingNeedsYou).toBe(false);
   });
@@ -869,22 +901,22 @@ describe("applying a filter to the sections (§6.1, §6.2)", () => {
 
   it("counts entries, kept documents and open questions", () => {
     const all = sectionEntryKeys(SECTIONS).length;
-    expect(all).toBe(18);
+    expect(all).toBe(20);
     expect(apply("path:docs/design/a.md is:open").summary).toMatchObject({
       canonical: "path:docs/design/a.md is:open",
-      entries: { shown: 2, of: all },
+      entries: { shown: 3, of: all },
       documents: { kept: 1, of: 19 },
-      openQuestions: 2,
+      openQuestions: 3,
     });
     // A ✅ question is an entry and not an open question.
     expect(apply("path:docs/design/a.md").summary).toMatchObject({
-      entries: { shown: 4, of: all },
-      openQuestions: 2,
+      entries: { shown: 5, of: all },
+      openQuestions: 3,
     });
     expect(apply("is:open").summary).toMatchObject({
-      entries: { shown: 8, of: all },
+      entries: { shown: 10, of: all },
       documents: { kept: 19, of: 19 },
-      openQuestions: 8,
+      openQuestions: 10,
     });
   });
 
@@ -1033,6 +1065,44 @@ describe("the link (§9.2)", () => {
     expect(PLANNING_ROADMAP_PARAM).toBe("roadmap");
   });
 
+  it("never ends with a character a pasted link's end drops (§7)", () => {
+    // `.`, `_`, `~` and `:` are written bare, and the paste reader drops them
+    // from a link's end as a sentence's punctuation, so the last one is
+    // escaped instead, which `URLSearchParams` reads back the same.
+    for (const canonical of [
+      "path:docs/x_",
+      "path:docs/v1.",
+      "path:d/_",
+      "is:open path:a_",
+      "path:docs/v1._",
+    ]) {
+      expect(understood(canonical).canonical).toBe(canonical);
+      for (const options of [{}, { path: planningPath(true, "repo.") }]) {
+        const link = planningLink(canonical, options);
+        expect(link).toMatch(/%(2E|5F)$/);
+        expect(queryOf(link).get(PLANNING_FILTER_PARAM)).toBe(canonical);
+        for (const pasted of [
+          link,
+          `${link}.`,
+          `Planning page: ${link}\n  Press / on the planning page`,
+          `(${link})`,
+        ]) {
+          expect(readPastedPlanningLink(pasted), pasted).toEqual({
+            filter: canonical,
+            roadmap: null,
+          });
+        }
+      }
+      // A roadmap after it ends the link instead, and the filter is bare.
+      expect(planningLink(canonical, { roadmap: "roadmap.md" })).toBe(
+        `/.vantage/planning?filter=${canonical.replace(" ", "+")}&roadmap=roadmap.md`,
+      );
+    }
+    expect(planningLink("path:a.md")).toBe(
+      "/.vantage/planning?filter=path:a.md",
+    );
+  });
+
   it("names one document as path:/<path>, in canonical text", () => {
     expect(documentFilter("roadmap.md")).toBe("path:/roadmap.md");
     expect(documentFilter("plans/design.md")).toBe("path:plans/design.md");
@@ -1136,6 +1206,79 @@ describe("a pasted link (§7)", () => {
     ).toEqual({ filter: "path:a", roadmap: null });
   });
 
+  it("reads the page's own form encoding, which writes `*` bare (§9.2)", () => {
+    // As a flip wrote the address before the page wrote one encoding, and
+    // as a reader may still type it: `URLSearchParams` leaves `*` bare.
+    for (const entry of FORMS.read) {
+      const form = new URLSearchParams([
+        [PLANNING_FILTER_PARAM, entry.canonical],
+      ]).toString();
+      for (const pasted of [
+        `http://localhost:8000${PLANNING_PAGE_PATH}?${form}&needs-you=2`,
+        `${PLANNING_PAGE_PATH}?needs-you=2&${form}#pq-docs%2Fx.md--OQ-1`,
+        `Open ${PLANNING_PAGE_PATH}?${form}&roadmap=roadmap.md.`,
+      ]) {
+        expect(readPastedPlanningLink(pasted), pasted).toEqual({
+          filter: entry.canonical,
+          roadmap: pasted.includes("roadmap=") ? "roadmap.md" : null,
+        });
+      }
+    }
+    expect(
+      readPastedPlanningLink(
+        "/.vantage/planning?filter=path%3Adocs%2Fdesign%2F*.md+is%3Aopen",
+      ),
+    ).toEqual({ filter: "path:docs/design/*.md is:open", roadmap: null });
+    expect(
+      readPastedPlanningLink("/.vantage/planning?filter=path:docs/color-*"),
+    ).toEqual({ filter: "path:docs/color-*", roadmap: null });
+  });
+
+  it("leaves out the `*` of emphasis a link is wrapped in", () => {
+    for (const pasted of [
+      `*${link}*`,
+      `**${link}**.`,
+      `See *http://localhost:8000${link}*, then answer.`,
+    ]) {
+      expect(readPastedPlanningLink(pasted), pasted).toEqual(read);
+    }
+    expect(
+      readPastedPlanningLink("*/.vantage/planning?filter=path:docs/a-**"),
+    ).toEqual({ filter: "path:docs/a-*", roadmap: null });
+  });
+
+  it("ignores a repository segment as the page and the server write it", () => {
+    const filter = "path:plans/x.md";
+    const segments = [
+      // `planningPath`, which leaves `! ' ( ) *` bare.
+      ...[
+        "notes (old)",
+        "matt's-repo",
+        "a!b",
+        "x*y",
+        "a#b?c",
+        "my repo",
+        "café",
+      ].map((repo) => planningPath(true, repo)),
+      // Go's `url.PathEscape`, the startup tip's, which leaves `$ & + : = @`
+      // bare.
+      "/.vantage/planning/a$b%2Cc%3Bd=e@f:g+h&i",
+    ];
+    for (const path of segments) {
+      const link = planningLink(filter, { path });
+      for (const pasted of [
+        `http://localhost:8000${link}`,
+        `(${link})`,
+        `${link}.`,
+      ]) {
+        expect(readPastedPlanningLink(pasted), pasted).toEqual({
+          filter,
+          roadmap: null,
+        });
+      }
+    }
+  });
+
   it("finds none where no run holds the page's path", () => {
     expect(readPastedPlanningLink("path:plans/design.md is:open")).toBeNull();
     expect(readPastedPlanningLink("/.vantage/planningx?filter=a")).toBeNull();
@@ -1156,33 +1299,33 @@ describe("the filter notice (§6.7)", () => {
     expect(first).toEqual([
       "Filtered by ",
       { code: "path:docs/design/a.md is:open" },
-      ": 2 of 18 entries, in 1 of 19 paths, 2 of them open questions.",
+      ": 3 of 20 entries, in 1 of 19 paths, 3 of them open questions.",
     ]);
     expect(checker(summary)).toEqual([
-      "Filtered by `path:docs/design/a.md is:open`: 2 of 18 entries, in 1 of 19 paths, 2 of them open questions.",
+      "Filtered by `path:docs/design/a.md is:open`: 3 of 20 entries, in 1 of 19 paths, 3 of them open questions.",
       "1 of its questions is blocked and will need you later.",
-      "Run without --filter to see the other 16.",
+      "Run without --filter to see the other 17.",
     ]);
-    expect(page(summary).at(-1)).toBe("Clear the filter to see the other 16.");
+    expect(page(summary).at(-1)).toBe("Clear the filter to see the other 17.");
   });
 
   it("names each unmatched term on a line of its own", () => {
     expect(
       checker(apply("path:docs/desing path:notes/e.md path:x/y").summary),
     ).toEqual([
-      "Filtered by `path:docs/desing path:notes/e.md path:x/y`: 1 of 18 entries, in 1 of 19 paths, none of them open questions.",
+      "Filtered by `path:docs/desing path:notes/e.md path:x/y`: 1 of 20 entries, in 1 of 19 paths, none of them open questions.",
       "`path:docs/desing` matches no path the index lists.",
       "`path:x/y` matches no path the index lists.",
-      "Run without --filter to see the other 17.",
+      "Run without --filter to see the other 19.",
     ]);
   });
 
   it("names the other roadmaps holding kept questions, in each reader's words", () => {
     const { summary } = apply("path:docs/design/sub/c.md is:open");
     expect(checker(summary)).toEqual([
-      "Filtered by `path:docs/design/sub/c.md is:open`: 1 of 18 entries, in 1 of 19 paths, 1 of them an open question.",
+      "Filtered by `path:docs/design/sub/c.md is:open`: 1 of 20 entries, in 1 of 19 paths, 1 of them an open question.",
       "1 more question it keeps is on another roadmap: `x/roadmap.md` (1). Rerun with --roadmap naming it.",
-      "Run without --filter to see the other 17.",
+      "Run without --filter to see the other 19.",
     ]);
     expect(page(summary)[1]).toBe(
       "1 more question it keeps is on another roadmap: `x/roadmap.md` (1). Choose that roadmap to see it; the filter stays.",
@@ -1215,10 +1358,10 @@ describe("the filter notice (§6.7)", () => {
     const { summary, sections } = apply("path:notes/b.md is:open");
     expect(sections.nothingNeedsYou).toBe(true);
     expect(checker(summary)).toEqual([
-      "Filtered by `path:notes/b.md is:open`: 0 of 18 entries, in 1 of 19 paths, none of them open questions.",
+      "Filtered by `path:notes/b.md is:open`: 0 of 20 entries, in 1 of 19 paths, none of them open questions.",
       "1 of its questions is blocked and will need you later.",
       "notes/b.md waits on docs/design/sub/c.md#OQ-C1, which this filter leaves out.",
-      "Run without --filter to see the other 18.",
+      "Run without --filter to see the other 20.",
     ]);
     expect(PLANNING_NOTICES.nothingFilteredNeedsYou).toBe(
       "Nothing this filter keeps needs you.",
