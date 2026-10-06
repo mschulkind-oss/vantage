@@ -8,7 +8,7 @@ The order is the one thing this file holds that no other document can. Each entr
 
 ## 📦 Up Next
 
-1. [A planning page filtered to one piece of work](docs/design/planning-filter.md), first, because its live search is being built now, and the design graduates into the planning reference once that lands.
+1. [A planning page filtered to one piece of work](docs/design/planning-filter.md), first, because it is built and graduates into the planning reference next.
 
 2. [Forward-compatible notation for 0.8.0](docs/design/checker-version-skew.md), next, because 0.8.0 is tagged next and the author's agent instructions outside this repository still teach the old question names until [their owner updates them](docs/design/checker-version-skew-plan.md#hand-off-agent-instructions-outside-this-repository). Once the tag is out, the design graduates into a reference.
 

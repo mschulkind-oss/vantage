@@ -285,11 +285,15 @@ the page's Filter box and its `filter=` parameter take, read by the same
 parser in `vantage-md`'s planning module, so a link an agent hands over is a
 filter the human could have typed
 ([`planning-filter.md`](../design/planning-filter.md), until it graduates into
-[`planning-index.md`](planning-index.md)). A text it does not understand exits
-`2` before the scan, and a `path:` term that matches no path exits `2` after
-it, with stdout empty. The flag is a flag on purpose: a checker that predates
-it exits `2` with *unknown option*, where one that ignored an environment
-variable would print the whole index to an agent that believes it filtered.
+[`planning-index.md`](planning-index.md)). Words and quoted phrases search the
+index's facts about each entry, `path:` and `is:open` narrow, and a leading `-`
+excludes. A text it does not understand exits `2` before the scan, and a
+`path:` term that matches no path, with or without its `-`, exits `2` after
+it, with stdout empty. A word that matches nothing exits `0`: a search that
+finds nothing is an answer. The flag is a flag on purpose: a checker that
+predates it exits `2` with *unknown option*, where one that ignored an
+environment variable would print the whole index to an agent that believes it
+filtered.
 
 **The link is root-relative, `/.vantage/planning?filter=…`, because of
 [P1](#11-principles).** Only the browser knows the address the human opens
