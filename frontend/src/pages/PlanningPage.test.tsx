@@ -449,10 +449,13 @@ const router: {
   location: string;
   hash: string;
   navigate: NavigateFunction | null;
+  /** Every location's key, in the order they came: one per navigation. */
+  keys: string[];
 } = {
   location: "",
   hash: "",
   navigate: null,
+  keys: [],
 };
 function RouterProbe() {
   const location = useLocation();
@@ -461,6 +464,7 @@ function RouterProbe() {
     router.location = `${location.pathname}${location.search}`;
     router.hash = location.hash;
     router.navigate = navigate;
+    if (router.keys.at(-1) !== location.key) router.keys.push(location.key);
   });
   return null;
 }
@@ -4734,6 +4738,56 @@ describe("the planning filter (planning-filter.md)", () => {
       expect(spinning()).toBe(false);
     });
 
+    it("leaves the old page's pagers as they were while the filter's page is on its way, with no spinner of theirs", async () => {
+      // A filter applied is no flip (planning-filter.md §6.4, §7): the old
+      // page stays up whole, its pagers included, and only the filter
+      // line's slot says it is on its way. Needs you is on page 2 of 3, and
+      // `path:plans/answered.md` keeps one entry, OQ-A1, whose block is not
+      // in hand.
+      setPlanningLimitsForTests({ pageEntries: 1, spinnerMs: 0 });
+      let hold = false;
+      let release: () => void = () => {};
+      serveTree(TREE, "/api", (inline) => ({
+        cards: (repo, want, options) =>
+          hold
+            ? new Promise<CardAnswer[]>((resolve) => {
+                release = () => resolve(inline.cards(repo, want, options));
+              })
+            : inline.cards(repo, want, options),
+      }));
+      await renderPage("/.vantage/planning?needs-you=2");
+      const pager = () =>
+        screen.getByRole("navigation", { name: "Needs you pages" });
+      const controls = () => ({
+        text: pager().textContent,
+        previous: within(pager())
+          .getByRole("button", { name: "‹ Previous" })
+          .getAttribute("aria-disabled"),
+        next: within(pager())
+          .getByRole("button", { name: "Next ›" })
+          .getAttribute("aria-disabled"),
+        loading: within(pager()).queryByLabelText("Loading the page") !== null,
+      });
+      const before = controls();
+      expect(before).toEqual({
+        text: "2–2 of 3·‹ Previous·Next ›",
+        previous: null,
+        next: null,
+        loading: false,
+      });
+      hold = true;
+      await enter("path:plans/answered.md");
+      expect(cardsIn("Needs you")).toEqual(["OQ-D3: Question OQ-D3?"]);
+      expect(spinning()).toBe(true);
+      expect(controls()).toEqual(before);
+      release();
+      await settle();
+      expect(cardsIn("Needs you")).toEqual(["OQ-A1: Question OQ-A1?"]);
+      expect(
+        screen.queryByRole("navigation", { name: "Needs you pages" }),
+      ).toBeNull();
+    });
+
     it("does nothing on Enter with the text already applied", async () => {
       setPlanningLimitsForTests({ pageEntries: 1 });
       await renderPage(
@@ -4851,10 +4905,15 @@ describe("the planning filter (planning-filter.md)", () => {
       expect(status()).toHaveTextContent(/^$/);
       expect(box()).toHaveAttribute("aria-describedby", notice()!.id);
       await enter("path:plans/deps.md");
-      expect(status()).toHaveTextContent(
-        "Filtered by path:plans/deps.md: 1 of 10 entries, in 1 of 9 paths, none of them open questions. plans/deps.md waits on plans/design.md#OQ-D1, which this filter leaves out. Clear the filter to see the other 9.",
+      // It keeps a Blocked row alone, so nothing it keeps needs you, which
+      // is said and describes the box too (planning-filter.md §6.7).
+      expect(status().textContent).toBe(
+        "Filtered by path:plans/deps.md: 1 of 10 entries, in 1 of 9 paths, none of them open questions. plans/deps.md waits on plans/design.md#OQ-D1, which this filter leaves out. Clear the filter to see the other 9. Nothing this filter keeps needs you.",
       );
-      expect(box()).toHaveAttribute("aria-describedby", notice()!.id);
+      expect(box()).toHaveAttribute(
+        "aria-describedby",
+        `${notice()!.id} ${screen.getByTestId("nothing-needs-you").id}`,
+      );
       await act(async () => {
         fireEvent.click(
           screen.getByRole("button", { name: "Clear the filter" }),
@@ -4886,6 +4945,70 @@ describe("the planning filter (planning-filter.md)", () => {
       });
       await settle();
       expect(said()).toHaveTextContent("Needs you, page 2 of 2");
+    });
+
+    it("says that nothing it keeps needs you, after the notice, and describes the box with it", async () => {
+      // The Applied, nothing kept form (planning-filter.md §6.7): the notice,
+      // then the filtered Nothing needs you, which is what §9.5's loop waits
+      // for.
+      await renderPage();
+      await enter("path:plans/answered.md is:open");
+      const nothing = screen.getByTestId("nothing-needs-you");
+      expect(nothing).toHaveTextContent("Nothing this filter keeps needs you.");
+      expect(status()).toHaveTextContent(
+        "Filtered by path:plans/answered.md is:open: 0 of 10 entries, in 1 of 9 paths, none of them open questions. Clear the filter to see the other 10. Nothing this filter keeps needs you.",
+      );
+      expect(box()).toHaveAttribute(
+        "aria-describedby",
+        `${notice()!.id} ${nothing.id}`,
+      );
+      // A filter that keeps something that needs you says nothing of it.
+      await enter("path:plans/design.md");
+      expect(screen.queryByTestId("nothing-needs-you")).toBeNull();
+      expect(status()).not.toHaveTextContent(/needs you\.$/);
+      expect(box()).toHaveAttribute("aria-describedby", notice()!.id);
+    });
+
+    it("says the notice of an Enter made while the index builds once the page is on screen", async () => {
+      setLoad({ status: "loading", warm: false, progress: null });
+      await renderPage();
+      await enter("path:plans/design.md");
+      expect(router.location).toBe(
+        "/.vantage/planning?filter=path:plans/design.md",
+      );
+      expect(status()).toHaveTextContent(/^$/);
+      setLoad(readyOf(TREE));
+      await settle();
+      expect(cardsIn("Needs you")).toEqual([
+        "OQ-D1: Question OQ-D1?",
+        "OQ-D3: Question OQ-D3?",
+      ]);
+      expect(status()).toHaveTextContent(
+        /^Filtered by path:plans\/design\.md: 3 of 10 entries/,
+      );
+    });
+
+    it("forgets what it said on a navigation it did not cause, so the same filter applied again is said again", async () => {
+      await renderPage();
+      await enter("path:plans/design.md is:open");
+      const said = status().textContent;
+      expect(said).toMatch(/^Filtered by path:plans\/design\.md is:open:/);
+      // g p opens the bare page, whose region says nothing of a filter.
+      act(() => scroller().focus());
+      await press("g");
+      await press("p");
+      expect(router.location).toBe("/.vantage/planning");
+      expect(status()).toHaveTextContent(/^$/);
+      await enter("path:plans/design.md is:open");
+      expect(status().textContent).toBe(said);
+      // Back, to the entry the first Enter replaced, is no Enter either.
+      act(() => router.navigate!(-1));
+      await settle();
+      expect(router.location).toBe(
+        "/.vantage/planning?filter=path:plans/design.md+is:open",
+      );
+      expect(notice()).not.toBeNull();
+      expect(status()).toHaveTextContent(/^$/);
     });
   });
 
@@ -5015,6 +5138,72 @@ describe("the planning filter (planning-filter.md)", () => {
       expect(localStorage.length).toBe(0);
     });
 
+    // A paste applies its link's filter as Enter does (planning-filter.md
+    // §7): in one replace navigation, with its roadmap written as the page's
+    // own rewrite would leave it, and its notice said once the page is in.
+    const navigations = async (paste: () => Promise<void>) => {
+      const before = router.keys.length;
+      await paste();
+      return router.keys.length - before;
+    };
+
+    it("writes a ./ roadmap as the page writes it, in one replace, and says the notice", async () => {
+      seed(TWO);
+      await renderPage();
+      expect(router.location).toBe("/.vantage/planning?roadmap=roadmap.md");
+      expect(
+        await navigations(() =>
+          paste(
+            `/.vantage/planning?filter=path:plans/unrouted.md&roadmap=./${NESTED}`,
+          ),
+        ),
+      ).toBe(1);
+      expect(router.location).toBe(
+        "/.vantage/planning?roadmap=docs%2Fplans%2Froadmap.md&filter=path:plans/unrouted.md",
+      );
+      expect(cardsIn("Needs you")).toEqual(["OQ-U1: Question OQ-U1?"]);
+      expect(status()).toHaveTextContent(
+        /^Filtered by path:plans\/unrouted\.md:/,
+      );
+    });
+
+    it("drops the roadmap of a link where fewer than two route, in one replace, and says the notice", async () => {
+      await renderPage();
+      expect(
+        await navigations(() =>
+          paste(
+            "/.vantage/planning?filter=path:plans/design.md&roadmap=roadmap.md",
+          ),
+        ),
+      ).toBe(1);
+      expect(router.location).toBe(
+        "/.vantage/planning?filter=path:plans/design.md",
+      );
+      expect(status()).toHaveTextContent(
+        /^Filtered by path:plans\/design\.md: 3 of 10 entries/,
+      );
+    });
+
+    it("chooses for a link's roadmap that does not route what the page would, in one replace, and says the notice", async () => {
+      seed(TWO);
+      await renderPage(`/.vantage/planning?roadmap=${NESTED}`);
+      expect(
+        await navigations(() =>
+          paste(
+            "/.vantage/planning?filter=path:plans/design.md&roadmap=docs/nowhere.md",
+          ),
+        ),
+      ).toBe(1);
+      // What `?roadmap=docs/nowhere.md` opens with nothing remembered: the
+      // default (planning-index.md §6.8).
+      expect(router.location).toBe(
+        "/.vantage/planning?roadmap=roadmap.md&filter=path:plans/design.md",
+      );
+      expect(status()).toHaveTextContent(
+        /^Filtered by path:plans\/design\.md:/,
+      );
+    });
+
     it("clears the filter with a link that has none", async () => {
       await renderPage("/.vantage/planning?filter=path:plans/design.md");
       await paste("Planning page: http://localhost:8000/.vantage/planning");
@@ -5031,6 +5220,54 @@ describe("the planning filter (planning-filter.md)", () => {
       expect(box().value).toBe("path:plans/design.md OR is:open");
       expect(box()).toHaveAttribute("aria-invalid", "true");
       expect(noticeLines()[0]).toMatch(/does not understand OR\./);
+    });
+
+    it("never says Enter to apply through a paste, a ✕ or an Enter, which apply what the box holds", async () => {
+      // The router commits a location in a transition, after the box shows
+      // what it applied: in between, nothing in the box is unapplied (§7).
+      await renderPage();
+      const shown: string[] = [];
+      const observer = new MutationObserver((records) => {
+        for (const record of records) {
+          for (const node of record.addedNodes) {
+            shown.push(node.textContent ?? "");
+          }
+        }
+      });
+      observer.observe(screen.getByTestId("planning-filter-hint"), {
+        childList: true,
+        characterData: true,
+        subtree: true,
+      });
+      try {
+        await paste("/.vantage/planning?filter=path:plans/design.md+is:open");
+        expect(router.location).toBe(
+          "/.vantage/planning?filter=path:plans/design.md+is:open",
+        );
+        await act(async () => {
+          fireEvent.click(
+            screen.getByRole("button", { name: "Clear the filter" }),
+          );
+        });
+        await settle();
+        expect(router.location).toBe("/.vantage/planning");
+        await act(async () => {});
+        expect(shown).toEqual([]);
+        // Typed, the text is unapplied, and the hint says so until Enter.
+        await type("path:./plans/design.md");
+        expect(hint()).toBe("Enter to apply");
+        await act(async () => {});
+        shown.length = 0;
+        await enter();
+        expect(router.location).toBe(
+          "/.vantage/planning?filter=path:plans/design.md",
+        );
+        await act(async () => {});
+      } finally {
+        observer.disconnect();
+      }
+      expect(shown).toEqual([]);
+      expect(hint()).toBe("");
     });
 
     it("takes any other paste as text, applied on Enter", async () => {

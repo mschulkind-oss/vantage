@@ -279,6 +279,43 @@ test.describe("the planning filter", () => {
     await expect(box(page)).toHaveAccessibleName("Filter");
   });
 
+  test("breaks a long path in the notice rather than scroll the page sideways at a phone's width", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 375, height: 800 });
+    // A browser breaks a path after a `/` or a `-` of its own accord, and
+    // nowhere in a name with neither: this one's 52 characters are past the
+    // 47 or so that a 343 px column holds on one line.
+    const term =
+      "path:docs/design/planning_filter_with_a_much_longer_name_than_fits.md";
+    await page.goto(`/.vantage/planning?filter=${term}`);
+    await expect(notice(page)).toContainText(
+      `${term} matches no path the index lists.`,
+    );
+    for (const el of [notice(page), page.locator("[data-content-scroll]")]) {
+      const { scrollWidth, clientWidth } = await el.evaluate((node) => ({
+        scrollWidth: node.scrollWidth,
+        clientWidth: node.clientWidth,
+      }));
+      expect(scrollWidth).toBeLessThanOrEqual(clientWidth);
+    }
+  });
+
+  test("closes the shortcuts help on /, and gives the box the focus in sight", async ({
+    page,
+  }) => {
+    await page.goto("/.vantage/planning");
+    await expect(cards(page, "Needs you").first()).toBeVisible();
+    await page.keyboard.press("?");
+    const help = page.getByRole("dialog", { name: "Keyboard shortcuts" });
+    await expect(help).toBeVisible();
+    await page.keyboard.press("/");
+    await expect(help).toBeHidden();
+    await expect(box(page)).toBeFocused();
+    await page.keyboard.type("abc");
+    await expect(box(page)).toHaveValue("abc");
+  });
+
   test("opens a document's own filter, as its Referenced by line links it, with the box holding it", async ({
     page,
   }) => {
