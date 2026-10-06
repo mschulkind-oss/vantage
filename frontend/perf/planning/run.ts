@@ -19,11 +19,13 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { cpus, loadavg, tmpdir } from "node:os";
 import path from "node:path";
 import { chromium, type Browser } from "@playwright/test";
+import { appliedBy, keepingNothing } from "./filterText.ts";
 import {
   FIXTURE_SIZES,
   REPO_ROOT,
   describeFixture,
   filterKeeps,
+  planningIndexOf,
   writeFixture,
   type FixtureReport,
 } from "./fixture.ts";
@@ -260,6 +262,12 @@ interface SubjectResult {
   burst: TypingRun[];
   /** The entries the typed query keeps, of all the page lists. */
   narrows: { shown: number; of: number } | null;
+  /**
+   * The texts the typed query makes that keep no entry here, which the page
+   * holds back while the reader types (planning-filter.md §6.4): T2 does not
+   * count the keys that make them.
+   */
+  held: string[];
   summary: Record<string, unknown>;
 }
 
@@ -475,6 +483,9 @@ function typingSummary(runs: TypingRun[]) {
       over100: counted.filter((k) => k.superseded || (k.resultsMs ?? 0) > 100)
         .length,
       superseded: counted.filter((k) => k.superseded).length,
+      // Keys whose text kept no entry, held back until the idle pause and
+      // not counted (planning-filter.md §6.4).
+      held: runs.flatMap((run) => run.keys).filter((k) => k.held).length,
       committed: spread(
         counted.flatMap((k) => (k.committedMs === null ? [] : [k.committedMs])),
       ),
@@ -640,6 +651,7 @@ async function main(): Promise<void> {
           typing: [],
           burst: [],
           narrows: null,
+          held: [],
           summary: {},
         },
         server,
@@ -659,6 +671,13 @@ async function main(): Promise<void> {
             `the typing query ${JSON.stringify(args.typing.query)} keeps ${keeps.shown} of ${keeps.of} entries in ${target}: it must narrow the page`,
           );
         }
+        const chars = [...args.typing.query];
+        prepared[prepared.length - 1].result.held = keepingNothing(
+          planningIndexOf(target) as Parameters<typeof keepingNothing>[0],
+          chars.flatMap(
+            (_, i) => appliedBy(chars.slice(0, i + 1).join("")) ?? [],
+          ),
+        );
       }
       await warmUp(chrome, served, flow);
     };
@@ -742,12 +761,12 @@ async function main(): Promise<void> {
         if (flows.typing) {
           process.stdout.write(" typing");
           result.typing.push(
-            await typingRun(chrome, served, flow, args.typing),
+            await typingRun(chrome, served, flow, args.typing, result.held),
           );
           if (args.burst !== null) {
             process.stdout.write(" burst");
             result.burst.push(
-              await typingRun(chrome, served, flow, args.burst),
+              await typingRun(chrome, served, flow, args.burst, result.held),
             );
           }
         }

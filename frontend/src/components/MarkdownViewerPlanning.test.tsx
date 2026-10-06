@@ -497,10 +497,10 @@ describe("Referenced by (§7)", () => {
       seedReady(indexOf(TREE));
       renderViewer(TARGET, "docs/design.md");
       const link = planningLink()!;
-      // `path:/docs/design.md` in canonical text, which drops the `/`.
+      // `path:/docs/design.md`, its `/` pinning it to the path's start.
       expect(link).toHaveAttribute(
         "href",
-        "/.vantage/planning?filter=path:docs/design.md",
+        "/.vantage/planning?filter=path:/docs/design.md",
       );
       expect(toggle()).not.toContainElement(link);
       expect(lineRow()).toHaveTextContent(
@@ -508,11 +508,11 @@ describe("Referenced by (§7)", () => {
       );
       fireEvent.click(link);
       expect(navigate).toHaveBeenCalledWith(
-        "/.vantage/planning?filter=path:docs/design.md",
+        "/.vantage/planning?filter=path:/docs/design.md",
       );
     });
 
-    it("keeps the `/` of a document at the root, and quotes a name a bare term cannot hold", () => {
+    it("keeps the `/` of a document at the root, and quotes a name holding a space", () => {
       const tree = {
         "roadmap.md":
           "# Roadmap\n\n## Now\n\n- [n](notes.md)\n- [s](my%20notes.md)\n",
@@ -552,7 +552,7 @@ describe("Referenced by (§7)", () => {
       renderViewer(TARGET, "docs/design.md");
       expect(planningLink()).toHaveAttribute(
         "href",
-        "/.vantage/planning/my%20repo%232?filter=path:docs/design.md",
+        "/.vantage/planning/my%20repo%232?filter=path:/docs/design.md",
       );
     });
 
@@ -616,7 +616,7 @@ describe("Referenced by (§7)", () => {
       expect(surface()?.querySelector("button")).toBeNull();
       expect(planningLink()).toHaveAttribute(
         "href",
-        "/.vantage/planning?filter=path:docs/alone.md",
+        "/.vantage/planning?filter=path:/docs/alone.md",
       );
     });
 

@@ -64,9 +64,10 @@ export const PlanningFilterLine: React.FC<{
    */
   urlText: string;
   /**
-   * The applied filter's text, which Esc puts back over a text that is not
-   * applied: the newest understood text the reader typed while the URL has
-   * not taken it, else the URL's text.
+   * The text Esc puts back over a text that is not applied: the newest
+   * understood text the reader typed while the URL has not taken it, which
+   * the page applies, or holds back until the URL takes it when it keeps no
+   * entry (§6.4); else the URL's text.
    */
   appliedText: string;
   /**

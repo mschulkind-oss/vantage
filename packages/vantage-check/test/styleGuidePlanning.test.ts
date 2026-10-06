@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { parse as parseToml } from "smol-toml";
 import { run } from "../src/cli.js";
-import { EXIT_OK } from "../src/exit.js";
+import { EXIT_OK, EXIT_USAGE } from "../src/exit.js";
 import { bufferIo } from "../src/io.js";
 import { STYLE_GUIDE } from "../../vantage-md/src/styleGuide.js";
 import { parseFrontmatter } from "../../vantage-md/src/frontmatter.js";
@@ -281,11 +281,15 @@ describe("the style guide's filtered planning page", () => {
     return command?.[1] ?? "";
   }
 
-  it("teaches a filter the checker understands once its documents are named", () => {
-    // A placeholder is no path, so the text as printed is not understood:
-    // the agent must name the documents, from the root, with a leading `/`.
+  it("teaches a filter the checker understands once its documents are named", async () => {
+    // A placeholder is no path: the text as printed matches none, so the
+    // checker exits 2 naming it, and the agent must name the documents, from
+    // the root, with a leading `/`.
     expect(taught()).toBe("path:/<design> path:/<plan> is:open");
-    expect(parsePlanningFilter(taught()).kind).toBe("not-understood");
+    const io = bufferIo(fullTree());
+    expect(await run(["index", "--filter", taught()], io)).toBe(EXIT_USAGE);
+    expect(io.stdout).toBe("");
+    expect(io.stderr).toContain("`path:/<design>` matches no path");
     const named = taught()
       .replace("<design>", "docs/design/search.md")
       .replace("<plan>", "docs/design/search-plan.md");
@@ -293,7 +297,7 @@ describe("the style guide's filtered planning page", () => {
       expect.objectContaining({
         kind: "understood",
         canonical:
-          "path:docs/design/search.md path:docs/design/search-plan.md is:open",
+          "path:/docs/design/search.md path:/docs/design/search-plan.md is:open",
       }),
     );
   });
@@ -308,7 +312,7 @@ describe("the style guide's filtered planning page", () => {
     const code = await run(["index", "--filter", named], io);
     expect(code).toBe(EXIT_OK);
     expect(io.stdout).toContain(
-      "\nPlanning page: /.vantage/planning?filter=path:docs/a.md+path:docs/e.md+is:open\n",
+      "\nPlanning page: /.vantage/planning?filter=path:/docs/a.md+path:/docs/e.md+is:open\n",
     );
   });
 });

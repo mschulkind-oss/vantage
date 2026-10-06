@@ -1427,10 +1427,10 @@ describe("index --filter, as text", () => {
     expect(stderr).toBe("");
     expect(stdout).toBe(
       [
-        "Filtered by `path:docs/c.md path:docs/e.md`: 4 of 13 entries, in 2 of 10 paths, 1 of them an open question.",
+        "Filtered by `path:docs/c.md path:/docs/e.md`: 4 of 13 entries, in 2 of 10 paths, 1 of them an open question.",
         "docs/c.md waits on docs/a.md#OQ-A2, which this filter leaves out.",
         "Run without --filter to see the other 9.",
-        "Planning page: /.vantage/planning?filter=path:docs/c.md+path:docs/e.md",
+        "Planning page: /.vantage/planning?filter=path:docs/c.md+path:/docs/e.md",
         PASTE_HINT,
         "",
         "Not on a roadmap (1)",
@@ -1449,7 +1449,7 @@ describe("index --filter, as text", () => {
         "The stage says ready or built, but questions are open. An agent finds which is wrong.",
         "  docs/e.md  [accepted · BUILT · 💬 1]",
         "",
-        "Agent requests: vantage-check index --request --filter 'path:docs/c.md path:docs/e.md'",
+        "Agent requests: vantage-check index --request --filter 'path:docs/c.md path:/docs/e.md'",
         "",
         "Roadmap: roadmap.md",
         "",
@@ -1480,15 +1480,15 @@ describe("index --filter, as text", () => {
     expect(code).toBe(EXIT_OK);
     expect(stdout.split("\n\n")[0]).toBe(
       [
-        "Filtered by `path:docs/a.md is:open`: 2 of 13 entries, in 1 of 10 paths, 2 of them open questions.",
+        "Filtered by `path:/docs/a.md is:open`: 2 of 13 entries, in 1 of 10 paths, 2 of them open questions.",
         "1 of its questions is blocked and will need you later.",
         "Run without --filter to see the other 11.",
-        "Planning page: /.vantage/planning?filter=path:docs/a.md+is:open",
+        "Planning page: /.vantage/planning?filter=path:/docs/a.md+is:open",
         PASTE_HINT,
       ].join("\n"),
     );
     expect(stdout).toContain(
-      "Agent requests: vantage-check index --request --filter 'path:docs/a.md is:open'",
+      "Agent requests: vantage-check index --request --filter 'path:/docs/a.md is:open'",
     );
   });
 
@@ -1541,10 +1541,10 @@ describe("index --filter, as text", () => {
     const [head, needsYou, next] = stdout.split("\n\n");
     expect(head?.split("\n")).toEqual([
       expect.stringMatching(
-        /^Filtered by `path:plans\/design\.md is:open`: 2 of \d+ entries, in 1 of \d+ paths, 2 of them open questions\.$/,
+        /^Filtered by `path:\/plans\/design\.md is:open`: 2 of \d+ entries, in 1 of \d+ paths, 2 of them open questions\.$/,
       ),
       expect.stringMatching(/^Run without --filter to see the other \d+\.$/),
-      "Planning page: /.vantage/planning?filter=path:plans/design.md+is:open",
+      "Planning page: /.vantage/planning?filter=path:/plans/design.md+is:open",
       PASTE_HINT,
     ]);
     expect(needsYou).toBe(
@@ -1569,13 +1569,13 @@ describe("index --filter, as text", () => {
 
     expect(code).toBe(EXIT_OK);
     expect(stdout).toContain(
-      `Planning page: /.vantage/planning?filter=path:%22it%27s.md%22\n`,
+      `Planning page: /.vantage/planning?filter=path:it%27s.md\n`,
     );
     const pointer = stdout
       .split("\n")
       .find((line) => line.startsWith("Agent requests: "));
     expect(pointer).toBe(
-      `Agent requests: vantage-check index --request --filter 'path:"it'\\''s.md"'`,
+      `Agent requests: vantage-check index --request --filter 'path:it'\\''s.md'`,
     );
     // A shell reads the word back to exactly the canonical text.
     const word = (pointer ?? "").slice(
@@ -1583,7 +1583,7 @@ describe("index --filter, as text", () => {
     );
     expect(
       execFileSync("sh", ["-c", `printf %s ${word}`], { encoding: "utf8" }),
-    ).toBe(`path:"it's.md"`);
+    ).toBe(`path:it's.md`);
   });
 
   // §9.2: the page shows the checkout the human's Vantage serves, so a link
@@ -1741,8 +1741,8 @@ describe("index --filter, as JSON", () => {
     ]);
     expect(filter).toEqual({
       text: "path:/docs/a.md is:open",
-      canonical: "path:docs/a.md is:open",
-      link: "/.vantage/planning?filter=path:docs/a.md+is:open",
+      canonical: "path:/docs/a.md is:open",
+      link: "/.vantage/planning?filter=path:/docs/a.md+is:open",
       documents: { kept: 1, of: 10 },
       entries: { shown: 2, of: 13 },
       openQuestions: 2,
@@ -1805,7 +1805,10 @@ describe("index --request --filter", () => {
       const expected = planningAgentRequest(built, applied.sections, {
         repository: root,
         ...(ids.length === 0 ? {} : { ids }),
-        filter: { text: "path:docs/c.md path:docs/e.md", unfiltered: sections },
+        filter: {
+          text: "path:docs/c.md path:/docs/e.md",
+          unfiltered: sections,
+        },
       });
 
       expect(code).toBe(EXIT_OK);
@@ -1813,7 +1816,7 @@ describe("index --request --filter", () => {
       expect(stdout).toBe(`${expected}\n`);
       expect(stdout.split("\n").slice(0, 2)).toEqual([
         `Repository: ${root}`,
-        "Filter: `path:docs/c.md path:docs/e.md`. Only the entries it keeps are listed.",
+        "Filter: `path:docs/c.md path:/docs/e.md`. Only the entries it keeps are listed.",
       ]);
     }
   });

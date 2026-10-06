@@ -13,9 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 **A planning page filtered to one piece of work.** The planning page has a new
 **Filter** box, and the page narrows as you type. A word, such as `generator`,
 finds the questions whose id, title, leaning or path holds it, in any case, and
-the documents whose path, stage or `next` does. `path:` and `is:open` narrow
-further, as in `path:docs/design/search.md is:open`, and a `-` before a term
-leaves out what it matches. The page keeps its order, a notice says what the
+the documents whose path, stage or `next` does. `path:`, which finds its text
+anywhere in a path as GitHub's code search does, and `is:open` narrow further,
+as in `path:docs/design/search.md is:open`, and a `-` before a term leaves out
+what it matches. The page keeps its order, a notice says what the
 filter hides, and **Copy answers** and **Copy agent request** cover only what
 it keeps. Press `/` to reach the box. The address follows the box without
 adding to your history. A document's Referenced by line now ends with *its

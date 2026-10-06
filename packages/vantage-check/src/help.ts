@@ -75,16 +75,17 @@ ${REQUEST_SECTION_LIST}
                                                        next; in any case
                                        "a phrase"      the same, for words
                                                        side by side
-                                       path:<pattern>  a document: a file, a
-                                                       folder, or a * or **
-                                                       pattern as in
-                                                       .gitignore. Start a
-                                                       root file's path with
-                                                       /. Put a path holding
-                                                       any character but
-                                                       A-Z a-z 0-9 . _ - / in
-                                                       "quotes", which match
-                                                       it as written
+                                       path:<pattern>  a document whose path
+                                                       holds the text, in any
+                                                       case. A * matches
+                                                       within a folder or
+                                                       file name, ** across
+                                                       folders, and a leading
+                                                       / pins it to the
+                                                       path's start. In
+                                                       "quotes", every
+                                                       character matches
+                                                       itself, a space too
                                        is:open         a question still open
                                        -<term>         leave out what the
                                                        term matches

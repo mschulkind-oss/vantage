@@ -26,7 +26,9 @@
  * whole index (F1, F2). The page follows the box as the reader types, and
  * the URL follows it in one replace navigation after an idle pause, or at
  * once on Enter, ✕, a paste or the focus leaving the box (§6.4); the filter
- * notice, first of the frame's notices, says what it hides. A filter this
+ * notice, first of the frame's notices, says what it hides. A typed text
+ * that keeps no entry at all waits for the URL to take it, so a half-typed
+ * word never empties the page between two keystrokes. A filter this
  * release does not understand is applied not at all: typed, it leaves the
  * page as it was, and entered, the notice names its term (F3).
  *
@@ -1300,6 +1302,10 @@ export const PlanningPage: React.FC = () => {
   const navigationType = useNavigationType();
   const [lead, setLead] = useState<string | null>(null);
   const [leadAt, setLeadAt] = useState(location.key);
+  const urlApplied = urlFilter.kind === "understood" ? urlFilter.canonical : "";
+  // The filter the page last applied, which a typed text held back (below)
+  // leaves on screen.
+  const [lastApplied, setLastApplied] = useState(urlApplied);
   let typed = lead;
   if (leadAt !== location.key) {
     setLeadAt(location.key);
@@ -1309,22 +1315,40 @@ export const PlanningPage: React.FC = () => {
     }
   }
   const boxLeads = typed !== null && typed !== urlValue;
-  // The applied filter (§2): the box's while it leads, else the URL's. Its
-  // pages are each section's first while the box leads, as the URL will
-  // hold them once it takes the text.
-  const appliedFilter = boxLeads
-    ? typed!
-    : urlFilter.kind === "understood"
-      ? urlFilter.canonical
-      : "";
+  // The applied filter (§2): the box's while it leads, else the URL's. A
+  // typed text that keeps no entry at all is held back until the URL takes
+  // it, on the idle pause, or at once on an Enter, ✕, paste or the focus
+  // leaving the box (§6.4): until then the page goes on showing the filter
+  // it last applied, so a half-typed word or a lone `-m` never empties the
+  // page between two keystrokes, and "nothing matches" still shows as soon
+  // as typing stops. The rest of the box's texts apply at once. Judged in
+  // the render, in the transition the keystroke set its text in, so the
+  // keystroke's own echo never waits on it (F7).
+  const wouldApply = boxLeads ? typed! : urlApplied;
+  const keepsNothing = useMemo(
+    () =>
+      boxLeads &&
+      index !== null &&
+      !index.refused &&
+      filterSummaryOf(index, chosenRoadmap, wouldApply)?.entries.shown === 0,
+    [boxLeads, index, chosenRoadmap, wouldApply],
+  );
+  const held = keepsNothing && wouldApply !== lastApplied;
+  const appliedFilter = held ? lastApplied : wouldApply;
+  if (appliedFilter !== lastApplied) setLastApplied(appliedFilter);
+  // Whether the page is laid out for a text the URL has not taken: the box
+  // leads, and what it applies is not the URL's own filter, as it is while
+  // a held text keeps the URL's page on screen. Its pages are then each
+  // section's first, as the URL will hold them once it takes the text.
+  const layoutLeads = boxLeads && appliedFilter !== urlApplied;
   const appliedSearch = useMemo(
-    () => (boxLeads ? withFilter(search, appliedFilter) : search),
-    [boxLeads, search, appliedFilter],
+    () => (layoutLeads ? withFilter(search, appliedFilter) : search),
+    [layoutLeads, search, appliedFilter],
   );
   // The applied filter as the frame reads it, for the Not filtered notice.
   const appliedParsed = useMemo(
-    () => (boxLeads ? parsePlanningFilter(appliedFilter) : urlFilter),
-    [boxLeads, appliedFilter, urlFilter],
+    () => (layoutLeads ? parsePlanningFilter(appliedFilter) : urlFilter),
+    [layoutLeads, appliedFilter, urlFilter],
   );
   // The whole index's sections under the chosen roadmap (F2), and what the
   // filter keeps of them.
@@ -1570,7 +1594,7 @@ export const PlanningPage: React.FC = () => {
     onThisRepo ? repo : null,
     ready,
     layout,
-    boxLeads,
+    layoutLeads,
   );
   const shown =
     inputs.shown !== null && ready !== null && inputs.shown.inputs.repo === repo
@@ -1584,6 +1608,13 @@ export const PlanningPage: React.FC = () => {
   useEffect(() => {
     if (navigationType !== "REPLACE") followFilter(null);
   }, [location.key, navigationType, followFilter]);
+  // A held text asks for no page of its own: the keystroke that typed it
+  // told the inputs it was the newest, before its render could know it
+  // keeps nothing, so the page the box goes on applying is the one asked
+  // for again, and a set of it turned down meanwhile is offered once more.
+  useLayoutEffect(() => {
+    if (held) followFilter(appliedFilter);
+  }, [held, typed, appliedFilter, followFilter]);
   // The layout the URL asks for is a flip of the one on screen while both
   // are laid out under one filter. Another filter's is no flip: the old page
   // stays up whole, its pagers included, until the new page's inputs are in,
@@ -2697,7 +2728,7 @@ export const PlanningPage: React.FC = () => {
               {filterLineShown && (
                 <PlanningFilterLine
                   urlText={filterText}
-                  appliedText={boxLeads ? appliedFilter : filterText}
+                  appliedText={boxLeads ? typed! : filterText}
                   leads={boxLeads}
                   invalid={!boxLeads && urlFilter.kind === "not-understood"}
                   busyAfter={
