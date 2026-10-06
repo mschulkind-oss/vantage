@@ -496,7 +496,10 @@ test.describe("several roadmaps", () => {
     );
     await expect(
       surface.getByRole("link", { name: "its questions on the planning page" }),
-    ).toHaveAttribute("href", "/.vantage/planning?filter=path:designs/gamma.md");
+    ).toHaveAttribute(
+      "href",
+      "/.vantage/planning?filter=path:/designs/gamma.md",
+    );
   });
 
   /** A comment typed on `id`'s title in `doc`, filed on the real server. */
@@ -569,7 +572,9 @@ test.describe("several roadmaps", () => {
       await fileOnTitle("designs/beta.md", "OQ-B1");
       await page.goto(`/.vantage/planning?roadmap=roadmap.md`);
       const a1 = page.getByRole("article", { name: /^OQ-A1:/ });
-      await expect(a1.getByText("Answered — waiting on the agent")).toBeVisible();
+      await expect(
+        a1.getByText("Answered — waiting on the agent"),
+      ).toBeVisible();
       // Still listed where it was.
       await cardsIn(page, "Needs you").toEqual([
         "OQ-A1: Which way does alpha go?",

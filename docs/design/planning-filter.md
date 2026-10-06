@@ -18,6 +18,8 @@ summary: "A planning filter is one line of text, such as generator path:docs/des
 - **A gap no target catches, now closed.** Typed at 30 ms a key on the scale fixture at 60 documents, the page painted an earlier text's results for one frame, 12 to 17 ms, before the last text's, in all 30 runs of the three batches, against [F7](#1-verdict-and-the-principles)'s *the newest text always wins*. The cause was not only slowness: a set offered while its text was the newest was shown by a render that ran after later keys. Since `8995acb` the shown set is taken only in the render that would show it, and only while no newer text is ahead of it. In one batch of 10 runs after the fix, which began at a load average of 10.8 and so is reported and not judged, no burst painted an earlier text after the last key on either tree, against 10 of 10 runs at 60 documents in the batch just before it. That batch's T2 p95 was 79.4 ms at 60 documents and 26.6 ms on this repository. The page still paints no results between the first key's and about 90 ms after the last key, and a profile puts about half of a slow keystroke at 60 documents in rendering the Markdown of cards that were not on screen before.
 - **UNMEASURED:** the rest of [§14](#14-costs-and-what-is-unmeasured)'s list.
 
+**Two rulings since, of 2026-10-06, landed together in the commit after `86165b2`.** `path:` finds its text anywhere in a path, case-insensitively, as GitHub's code search reads it ([§5.4](#54-path-patterns)): the gitignore-style whole-segment matching it replaced kept nothing while a path was typed ([§12](#12-alternatives-with-verdicts)). And while the reader types, a text that keeps no entry at all waits for the idle pause before it applies ([§6.4](#64-typing-and-the-url)), so `-m` or a half word no longer empties the page on each keystroke. T1 to T4 were not read again after them.
+
 > **In short.** The link an agent hands over and the text a person types are the same thing: one **planning filter** that the Filter box, `?filter=` and `vantage-check index --filter` read with one parser. It searches the index's facts as you type, the way a search box does, and only ever hides entries of sections derived from the whole index, never reordering them.
 
 **Why it matters.** You asked to be handed "all of the questions I need to answer" for one feature, and for a Filter box that searches as you type. In 0.8.1 the planning page shows every entry in the repository, nothing on it filters, and the checker cannot learn the address you open Vantage at ([§3](#3-what-exists-today)).
@@ -48,7 +50,7 @@ The principles below are numbered F1 to F7 *(coined here)* so later sections can
 - **F4. The filter's only state is its text.** Nothing is stored. Every control that changes the filter writes text into the box, the URL follows the box within an idle pause ([§6.4](#64-typing-and-the-url)), and the URL outranks anything remembered ([planning-index.md:205-207](../reference/planning-index.md#L205-L207)). The roadmap the page shows is its own choice, as it is today, and not part of the filter.
 - **F5. The page and the checker agree on what a text means, and the checker is stricter.** They agree within one release (planning-index P7), because they share the module and its fixture ([§10.4](#104-how-it-is-checked)). Where the page falls back and says why, the checker exits 2, as `--roadmap` does ([`commands/index.ts:192-207`](../../packages/vantage-check/src/commands/index.ts#L192-L207)): a not-understood filter shows every entry, and an unmatched term keeps nothing.
 - **F6. No address is guessed or kept.** The checker never contacts a server, and nothing stores the address the human opens Vantage at. Its link is always root-relative, and the page's Filter box applies it when it is pasted in ([§9](#9-handing-the-human-a-link)).
-- **F7. Typing never waits on the results.** The box shows a keystroke at once. The results follow, swapped in whole, within the targets of [§16](#16-typing-targets-and-how-they-are-read), and the newest text always wins.
+- **F7. Typing never waits on the results.** The box shows a keystroke at once. The results follow, swapped in whole, within the targets of [§16](#16-typing-targets-and-how-they-are-read), and the newest text always wins. A text that keeps no entry at all waits for the idle pause instead, so the page never empties under a half-typed word ([§6.4](#64-typing-and-the-url)).
 
 ## 2. Terms
 
@@ -70,8 +72,8 @@ Every row below is coined here. Terms this document uses without defining are th
 | **Not understood** (filter) | A filter holding at least one term the language cannot read ([§5.5](#55-what-is-not-understood)). It is not applied at all | An empty filter. Not a filter with an unmatched term, nor one whose text terms match nothing: both are applied. Not the page's refusal past `max-candidates` |
 | **Unmatched term** | A `path:` term, with or without its `-`, that matches no path the index lists | A text term that matches nothing, which is not reported. A term that keeps a document with no entries, such as a `CURRENT` reference |
 | **Canonical text** | The one spelling of a filter that the URL holds, Enter writes into the box and the checker echoes ([§5.6](#56-canonical-text)) | The text as typed, which the box keeps while the reader types |
-| **Applied filter** | The filter whose results the page shows, or is bringing in. While the reader types it is the box's newest understood text, and otherwise the URL's | The box's text, which may not be understood. Not the URL's either, which lags the box by up to the idle pause |
-| **Idle pause** | 300 ms in which the box's text does not change. After it the URL takes the applied filter ([§6.4](#64-typing-and-the-url)) | A wait before the page applies anything: the results never wait for it |
+| **Applied filter** | The filter whose results the page shows, or is bringing in. While the reader types it is the box's newest understood text, unless that text keeps no entry, which waits for the idle pause; otherwise it is the URL's | The box's text, which may not be understood. Not the URL's either, which lags the box by up to the idle pause |
+| **Idle pause** | 300 ms in which the box's text does not change. After it the URL takes the box's newest understood text, which then applies ([§6.4](#64-typing-and-the-url)) | A wait before the page applies a text, except one that keeps no entry: the results of every other text never wait for it |
 | **Filter line** | The fixed-height row at the top of the planning page that holds the Filter box ([§7](#7-the-filter-line)) | The frame, or the header |
 | **Filter notice** | The sentences, shared by the page and the checker, saying a page is filtered and what that hides ([§6.7](#67-the-filter-notice)) | The box |
 | **Planning link** | A URL to the planning page that carries a planning filter, as `--filter` prints it | The address bar after a flip, which may also hold page parameters |
@@ -147,8 +149,7 @@ value     = pattern / quoted               ; after "is:", only a bare "open"
 text      = word / quoted
 word      = 1*wchar
 wchar     = any code point except SP, HTAB, CR, LF, DQUOTE and the excluded code points
-pattern   = 1*pchar
-pchar     = ALPHA / DIGIT / "." / "_" / "-" / "/" / "*"
+pattern   = 1*wchar                        ; a "*" in it is a wildcard (§5.4)
 quoted    = DQUOTE 1*( qchar / "\" DQUOTE / "\" "\" ) DQUOTE
 qchar     = any code point except DQUOTE, "\" and the excluded code points
 ```
@@ -187,53 +188,35 @@ Text the grammar does not produce is not understood, and so is text it produces 
 - **An unknown key draws a hint.** A text term whose part before its first `:` is one or more lowercase ASCII letters, is not a key, and is not followed by a `/` gets a line in the notice saying that word is not a filter key ([§6.7](#67-the-filter-notice)). So `stage:ready` and `-title:x` draw one; `http://x`, `Note:` and `Path:x` do not, and neither does a quoted phrase.
 - **`is:open` keeps a question you answered with a comment.** The index reads no comments, so the card stays, under its section's *(N answered)* count ([`planning.md`, A comment on a question is your answer](../../userguide/guides/planning.md#a-comment-on-a-question-is-your-answer)). That collision is also why a value for ✅ questions would never be `answered`: the page already calls a question you commented on *answered*.
 - **`path:<doc> is:open` is "every question I need to answer"** for `<doc>`. It keeps the 💬 and 🤷 questions under *Needs you* and under *Not on a roadmap*. It counts those on other roadmaps, and the notice names each of those roadmaps ([§6.7](#67-the-filter-notice)). It leaves out ✅ questions, which are the agent's to compact, and 🔒 ones, which cannot be answered yet, and the notice says how many 🔒 it left out. Under `path:` alone the same link also lists the document's rows and its ✅ questions.
-- **A word is the quick way to a path.** `path:` matches whole segments, as git does, so `path:docs/des` matches nothing until `design` is complete; the text term `docs/des` matches every entry whose path holds it.
+- **`path:` searches the path alone.** `path:docs/des` keeps every entry whose path holds that text, and so does the word `docs/des`, which also matches a question's id, title or leaning and a row's `stage` or `next`. What `path:` adds is the path's start (a leading `/`), wildcards, and being a [kept document](#2-terms)'s test, which the unmatched rule and the notice's paths clause count.
 
 ### 5.4 Path patterns
 
-A pattern is a **strict subset of gitignore patterns**. Every bare form it accepts means what it means in git, except one leading `./`, which means the root, as `roadmap=` already reads it ([`planningPages.ts:445-450`](../../frontend/src/lib/planningPages.ts#L445-L450)). A bare pattern runs through the port Vantage already has ([`compileIgnorePatterns`, `patterns.ts:103`](../../packages/vantage-md/src/planning/patterns.ts#L103)). A quoted one cannot, and has a comparator of its own (below).
+**A `path:` value is found anywhere in the path, case-insensitively; `*` stands for any characters within one folder or file name and `**` for any characters across folders; a leading `/` (or `./`) pins it to the start of the path.** A quoted value is the same with every character literal, `*` included, and spaces allowed. That is the `path:` qualifier of [GitHub's code search](https://docs.github.com/en/search-github/github-code-search/understanding-github-code-search-syntax#path-qualifier), without its `?` and its regular expressions. It replaced, on 2026-10-06, gitignore-style matching of whole folder and file names, which kept nothing while a path was typed ([§12](#12-alternatives-with-verdicts)).
 
 | Form | Keeps |
 | :--- | :--- |
-| `path:docs/design/agent-bootstrap.md` | That file. A `/` before the last character anchors it to the root, as in git |
-| `path:color-themes.md`, `path:*themes*` | That name at any depth. With no inner `/`, it is unanchored, as in git |
-| `path:/roadmap.md` | Only the root's file: a leading `/` anchors. A file at the root is named this way, because `path:roadmap.md` also keeps `x/roadmap.md` |
-| `path:docs/design` or `path:docs/design/` | Everything under that folder |
-| `path:docs/design/checker-version-skew*` | Both the design and its `-plan.md`. A `*` stays within one segment |
-| `path:docs/**/*.md` | Any depth below `docs`. A `**` segment crosses segments |
-| `path:"docs/my notes.md"` | The same anchoring and folder rules, with every character literal: no wildcards, and spaces allowed |
+| `path:docs/des` | `docs/design/a.md`, `x/docs/design/a.md` and `docs/designx/d.md`: every path holding that text. So each keystroke of a path keeps what the finished path does, and more |
+| `path:filter` | Every path holding `filter`, in a folder's name or a file's |
+| `path:/roadmap.md` | The root's `roadmap.md`, and any path that starts with that text, such as `roadmap.md.bak`; not `docs/roadmap.md`, which `path:roadmap.md` keeps too |
+| `path:/docs/design/x.md` | That file: what Vantage and the checker write for one document ([§5.6](#56-canonical-text)) |
+| `path:*.md` | Every Markdown file |
+| `path:/docs/*.md` | The `.md` files directly in the root's `docs`: a `*` stays within one name |
+| `path:/docs/**.md` | Every `.md` under the root's `docs`, at any depth: `**` crosses folders |
+| `path:DOCS/Design` | What `path:docs/design` keeps: case is folded on both sides |
+| `path:"docs/my notes.md"` | That text, the space included. Quoted, a `*` is a `*` |
 
-- **How a bare pattern is evaluated.** An anchored pattern is given to the port with a leading `/` added, and an unanchored one as written. A `/` only at the end does not anchor, as in git: `path:docs/` keeps a `docs` folder at any depth, and `path:/docs/` only the root's. With the `/`, the port anchors exactly as git does. Probed on 2026-10-05:
-  - `/docs/design/agent-bootstrap.md` does not match `x/docs/design/agent-bootstrap.md`.
-  - `/docs/design` matches `docs/design/a.md`, and not `docs/designx/a.md`.
-  - `/docs/**/*.md` matches `docs/a.md`, and not `x/docs/a.md`.
-  - `/docs/design/*.md` does not match `docs/design/sub/a.md`.
-- **Where the subset stops, and why.** Past it the port would make a `path:` term mean something git does not (`patterns.ts:10-19`):
-  - `?` is literal.
-  - `[ ] ( ) { } + | ^ $` keep their RE2 meaning, so `docs/c++.md` cannot match itself (probed).
-  - A pattern with an inner slash is unanchored, so `docs/design/x.md` also matches `x/docs/design/x.md` (probed). The filter anchors it instead.
-  - A leading `#` is a comment, and a leading `!` negates.
-
-  Probing the port against `git check-ignore --no-index` found five more forms on which they disagree, each with the filter's leading `/`:
-  - **A `**` that is not a whole segment.** `/docs/**x` keeps `docsx`, outside `docs/`, and `/docs/***` keeps `docsfoo`. Git reads such a `**` as one `*`.
-  - **A trailing `/**`.** The port keeps the path before it as well, so `/docs/*/**` keeps `docs/a.md`, which git does not. A trailing `/` says "everything under" without the quirk.
-  - **Two `**` segments in a row.** `/**/**/a.md` misses a root `a.md` that git keeps.
-  - **A trailing `**/`.** Git reads `docs/design/**/` as every folder below `docs/design`, while the port matches nothing.
-  - **`/` alone.** The port keeps every path and git none.
-
-  None of these characters or forms is understood under `path:` ([§5.5](#55-what-is-not-understood)). With them out, a differential run on 2026-10-05 of 5,256 generated patterns over 19 paths found no disagreement between the port and git. A path holding any of those characters is written quoted.
-- **A quoted value is a literal, compared by a comparator in the filter module.** The port cannot match a literal: it trims spaces at both ends, reads a leading `#` or `!`, and gives `[ ( { + | ^ $ \` their RE2 meaning (probed: `" a.md"` matches `a.md`). So a quoted value is compared code point for code point, under the bare form's anchoring and folder rules, defined once:
-  - With a leading `/`, or a `/` before its last character, it keeps the path equal to it and every path under it.
-  - With neither, it keeps every path one of whose segments equals it.
-  - A trailing `/` keeps only paths under it.
-
-  Wherever [§5.6](#56-canonical-text) rule 3 writes a quoted value bare, the fixture pins that the comparator and the port agree.
-- **Compared as typed.** `path:` folds no case and normalizes nothing: an NFD spelling does not keep an NFC path. Matching is case-sensitive, as the index's paths and `[planning] include` are, and as git is with `core.ignorecase` off; macOS and Windows turn it on by default. A text term is the case-insensitive way to find a path.
-- **Held to git by the fixture.** The bare dialect shares its engine with `[planning] include`, which keeps the port in step with Go's library (`patterns.ts:21-22`). It does not promise to agree with `include`, because the filter anchors an inner-slash pattern and `include` does not. The fixture of [§10.4](#104-how-it-is-checked) lists every construct the subset accepts, each with paths that tell git's answer from a wrong one, so a change to the port that moves one of those answers fails the filter's tests as well as being wrong for `include`.
+- **How it is compared.** The value and the path are both lowercased with `toLowerCase`, as a text term and its fields are ([§5.3](#53-what-a-term-matches-and-how-terms-combine)). Quoted, or with no `*`, the value must occur in the path, or start it when it has a leading `/`. Bare, each lone `*` matches any run of characters holding no `/`, each run of two or more `*` any run at all, and the rest is literal.
+- **Nothing else is special.** `?`, `[`, `#`, `!`, `\` and `+` are themselves, and so are `//`, `.` and `..`. A `/` that does not lead is a character of the text: `path:docs/` keeps every path holding `docs/`, at any depth.
+- **`**/` needs a folder.** `**` is any characters, so `path:docs/**/x.md` keeps `docs/a/x.md` and not `docs/x.md`, which `path:docs/**x.md` keeps too.
+- **A leading `/` pins, and one leading `./` reads as `/`,** as `roadmap=` reads it ([`planningPages.ts:445-450`](../../frontend/src/lib/planningPages.ts#L445-L450)). A value pinned to the start still keeps a longer path: `path:/docs/x.md` keeps `docs/x.mdx` too.
+- **Only case is folded.** An NFD spelling does not keep an NFC path, and `ß` is not `ss`. Where a repository holds `Docs/x.md` beside `docs/x.md`, a value keeps both.
+- **An exclusion matches the same way.** `-path:<value>` drops exactly what `path:<value>` keeps.
+- **Matched in the filter module alone.** `[planning] include` and `exclude` stay gitignore patterns, read through the port of the server's matcher ([`compileIgnorePatterns`, `patterns.ts:103`](../../packages/vantage-md/src/planning/patterns.ts#L103)), which `path:` no longer uses: `include` decides what is indexed, and `path:` what is shown of it.
 
 ### 5.5 What is not understood
 
-Each of these makes the whole filter **not understood** ([F3](#1-verdict-and-the-principles)). They are text whose meaning the reader cannot have spelled clearly, or `path:` values the port would read differently from git; none is held back for a later release ([OQ-PF7](#decision-ledger)).
+Each of these makes the whole filter **not understood** ([F3](#1-verdict-and-the-principles)). They are text whose meaning the reader cannot have spelled clearly; none is held back for a later release ([OQ-PF7](#decision-ledger)).
 
 - **Quotes and escapes.**
   - An unclosed quote.
@@ -244,8 +227,8 @@ Each of these makes the whole filter **not understood** ([F3](#1-verdict-and-the
 - **A qualifier whose value the language cannot read.**
   - An empty value, `path:` or `is:`.
   - An `is:` value other than a bare `open`, such as `is:closed`, `is:Open` or `is:"open"`.
-  - In a bare `path:` pattern: any character outside `A–Z a–z 0–9 . _ - / *`; a `**` that is not a whole segment, which covers any run of three or more `*`; a trailing `/**` or `**/`, and two `**` segments in a row; and no character other than `/` and `*`, as in `/`, `*` or `/**`.
-  - In either form of a `path:` value: two `/` in a row, and a `.` or `..` segment other than one leading `./`. A quoted value that is only `/` is not understood either.
+
+  Any other `path:` value is understood, whatever it holds. Until 2026-10-06 a bare one was not when it held a character outside `A–Z a–z 0–9 . _ - / *`, one of five `**` forms, `//`, or a `.` or `..` segment: forms the port read differently from git, which `path:` no longer runs through ([§5.4](#54-path-patterns)).
 - **An excluded code point in any term**: a control or an invisible format character, or a lone surrogate. Tab, CR and LF outside quotes are white space, which separates terms ([§5.2](#52-grammar)), so only inside quotes do they count. They are listed as a fixed table in the filter module (U+0000 to U+001F, U+007F to U+009F, U+00AD, U+061C, U+180E, U+200B to U+200F, U+202A to U+202E, U+2060 to U+206F, U+FEFF), so a browser and the checker agree on every one. A word containing a zero-width space would otherwise match nothing, and say nothing about why.
 - **Too long:** more than 64 terms, or more than 2,048 code points. Both limits are constants in the filter module, and tests configure them down rather than building long inputs.
 
@@ -256,14 +239,14 @@ A not-understood filter is never rewritten, never partly applied and never read 
 The URL holds an understood filter in its canonical text, and the checker echoes the same text. The box shows it after an Enter, and never rewrites what the reader is typing ([§6.4](#64-typing-and-the-url)).
 
 1. Each term is written by the rules below. The terms are then joined by one space, in the order written, and a repeat of an earlier term is dropped.
-2. In a bare or quoted `path:` value, one leading `./` becomes `/`. A leading `/` is then dropped when what remains still has an inner `/`, since the meaning is the same: `./docs/x.md` and `/docs/x.md` become `docs/x.md`, and `./roadmap.md` becomes `/roadmap.md`.
-3. A quoted `path:` value is written bare when every character in it is a pattern character other than `*` and the bare form is understood.
+2. In a bare or quoted `path:` value, one leading `./` becomes `/`, which means the same. A leading `/` stays, since it pins the value to the path's start: `./docs/x.md` and `/docs/x.md` become `/docs/x.md`, and `docs/x.md` stays as it is. Its case stays too.
+3. A quoted `path:` value is written bare when bare it reads the same: it holds no white space, no `"`, and no `*`, which bare is a wildcard.
 4. A bare word is written as typed, in its own case. A quoted phrase is written bare when, bare, it reads as the same text term and draws no hint: it holds no white space, no `"` and no `:`, and does not start with `-`.
 5. An exclusion is a `-` followed by its term's canonical text.
 6. Inside quotes, only `"` and `\` are escaped.
 7. No terms means no parameter.
 
-A filter that Vantage or the checker generates names each document as `path:/<its path>`, so rule 2 keeps the `/` exactly where a bare name would otherwise match at any depth.
+A filter that Vantage or the checker generates names each document as `path:/<its path>`, quoted where the path holds a space, a `"` or a `*`. It keeps that document, and any path that starts with its text.
 
 The canonical text holds no control characters, so it can sit in any newline-joined cache key.
 
@@ -304,6 +287,7 @@ A text term does exactly that: `decided` keeps a row whose stage is `DECIDED` an
 - **Typing applies** ([OQ-PF6](#decision-ledger)). The page parses the box's text on every change to it.
   - **An understood text** whose canonical text is not the applied filter's becomes the applied filter. The page lays out its sections, every section on its first page and the roadmap kept, and asks for their page inputs. The old results stay on screen until those inputs are in, and then everything changes in one commit.
   - **An empty text** is no filter, and applies the same way.
+  - **A text that keeps no entry at all waits for the idle pause** (ruled 2026-10-06). Until the URL takes it, on the pause or at once on an Enter, ✕, paste or the focus leaving the box, the page goes on showing the filter it applied last. So `-m`, which every `.md` path holds, or a half word that matches nothing, never empties the page between two keystrokes, and *nothing matches* still shows as soon as typing stops. The page judges it in the render the keystroke's transition runs, never in the keystroke's own task ([F7](#1-verdict-and-the-principles)). A text whose only entries are questions on other roadmaps keeps no entry, since those are counted and not listed.
   - **A text with the applied canonical text,** such as one with a space added, changes nothing.
   - **A not-understood text changes nothing on the page.** The results on screen stay, and the hint slot says the text is not applied ([§7](#7-the-filter-line)). Nothing snaps to every entry because a quote was just opened.
 - **The URL follows the box.** One replace navigation writes the applied filter after the idle pause, 300 ms in which the box's text has not changed. It is written at once, instead, on Enter, on ✕, on a paste, and when the focus leaves the box. Every write does what Enter does:
@@ -350,7 +334,7 @@ A not-understood filter shows the same entries as no filter, so its identity is 
 **Copy agent request and Copy all agent requests follow the filter.** When a filter is applied, the text gains one line after `Repository:`:
 
 ```text
-Filter: `path:docs/design/x.md is:open`. Only the entries it keeps are listed.
+Filter: `path:/docs/design/x.md is:open`. Only the entries it keeps are listed.
 ```
 
 - **The line carries the canonical text with its unmatched terms left out.** An unmatched `path:` term keeps nothing, terms of one key are OR'd, and an unmatched `-path:` term excludes nothing, so leaving them out keeps the same entries, and the line stays a text `--filter` accepts. When every `path:` term without a `-` is unmatched, nothing is kept and there is no request.
@@ -377,7 +361,7 @@ The notice is the first of the frame's notices. It arrives with the section bar,
 
 | Form | Says |
 | :--- | :--- |
-| Applied | A first line: the canonical text, then entries shown of the unfiltered total, kept documents of the paths the index lists when its path terms leave a path out, and how many kept entries are open questions. For example: ``Filtered by `path:docs/design/x.md is:open`: 5 of 15 entries, in 1 of 20 paths, 5 of them open questions.`` Then one line per clause below that applies. Last, the page's "Clear the filter to see the other 10." or the checker's "Run without --filter to see the other 10." |
+| Applied | A first line: the canonical text, then entries shown of the unfiltered total, kept documents of the paths the index lists when its path terms leave a path out, and how many kept entries are open questions. For example: ``Filtered by `path:/docs/design/x.md is:open`: 5 of 15 entries, in 1 of 20 paths, 5 of them open questions.`` Then one line per clause below that applies. Last, the page's "Clear the filter to see the other 10." or the checker's "Run without --filter to see the other 10." |
 | Applied, nothing kept | The same, with none shown, followed by the filtered *Nothing this filter keeps needs you* |
 | Unmatched term | One line per term, under the first: `` `path:docs/desing` matches no path the index lists. `` |
 | Not understood | ``Not filtered: this Vantage cannot read `<term>`.`` Then what the language reads, with a real example, and ``Every entry is shown.`` Where there is no term to name, the reason stands in its place: an unclosed quote, or a filter past 64 terms or 2,048 code points |
@@ -414,13 +398,13 @@ The other rules:
 - **At narrow widths** the hint gives way first, to an icon in a slot of its own, always there, whose title holds the hint's words; then the visible label gives way, and stays the accessible name. The input keeps a minimum width, whose size is the implementer's, the ✕ and spinner keep their slots, and the row never wraps.
 - **Behavior.**
   - **On open,** the box holds the URL's text exactly. It never takes the focus ([`useShellPage.ts:152-158`](../../frontend/src/hooks/useShellPage.ts#L152-L158)). A not-understood filter marks the input `aria-invalid` and gives it an amber ring from first paint.
-  - **Typing applies** ([§6.4](#64-typing-and-the-url)). The box shows each keystroke at once, in the same frame, whatever the results are doing: their layout and their render never run ahead of the box's own update ([F7](#1-verdict-and-the-principles)).
+  - **Typing applies** ([§6.4](#64-typing-and-the-url)), and a text that keeps no entry once the idle pause has passed. The box shows each keystroke at once, in the same frame, whatever the results are doing: their layout and their render never run ahead of the box's own update ([F7](#1-verdict-and-the-principles)).
   - **While an input method composes,** between its composition's start and end, the box applies nothing. The composed text applies when the composition ends, so a reader writing in Japanese or Chinese never sees the page chase the unconverted letters.
   - **A text that is not applied** is a not-understood text the reader has not entered. While the box holds one, the hint slot says so, and that Enter says why; the words are the implementer's, within the slot's fixed width. The input's description names the hint while it shows, so a screen reader hears it at every width. While the page applies a text typed since, a not-understood text in the box is not applied even where the URL holds that same text. The amber ring and `aria-invalid` come only with an applied not-understood filter, from the URL or an Enter, so opening a quote does not flash the box.
   - **Enter applies at once** ([§6.4](#64-typing-and-the-url)), and the box then shows the canonical text. Besides ✕ and a pasted link, which put their own text in the box, it is the one way the reader's own action rewrites the box's text while it has the focus.
   - **The box follows every navigation it did not cause.** After `g p` or the sidebar entry on this page, and after Back or Forward, the box shows the new URL's filter and drops any text not yet written, even while it has the focus. The planning page is not remounted by those navigations (one `${PLANNING_ROUTE}/*` route, [`App.tsx:17-19`](../../frontend/src/App.tsx#L17-L19)), so this has to be a rule. The page's own replaces never rewrite the box while it has the focus. Without the focus, one rewrites it only when its text does not read as the URL's filter: so no write of the box's own filter touches it, and the open rewrite still shows a link written in a spelling of its own in canonical text.
   - **✕ clears and applies in one step.** The focus stays in the box. ✕ is a control a reader aims at, and the link the agent handed over still holds the filter.
-  - **Esc puts back the applied filter's text** when the box holds a text that is not applied. Otherwise it returns the focus to the pane. **Esc never clears:** it is pressed by reflex to leave a field, and a filter change replaces the history entry, so Back would not bring a cleared filter back.
+  - **Esc puts back the box's last understood text** when the box holds a text that is not applied: the one the page applies, or the idle pause is about to write, else the URL's. Otherwise it returns the focus to the pane. **Esc never clears:** it is pressed by reflex to leave a field, and a filter change replaces the history entry, so Back would not bring a cleared filter back.
   - **Leaving the box** writes the URL at once when the idle pause still owes a write, so an address copied right after typing holds the filter on screen. A text that is not applied stays in the box, with its hint.
   - **In the load error, the refusal, *Choose a project* and *Repository not found*,** the box still reads and writes the URL, typing included. There are simply no sections for it to filter.
   - **The page's shortcuts** turn off while the box has the focus, at no cost ([`useKeyboardShortcuts.ts:75-86`](../../frontend/src/hooks/useKeyboardShortcuts.ts#L75-L86)). The box is reachable by Tab and by click whether shortcuts are on or off, and by `/` while they are on.
@@ -481,9 +465,10 @@ The help's row, sketched (the wording is the implementer's; the forms are not):
                      page's Filter box does, and print a link to that page:
                        word, "a phrase"  text an entry's id, title, leaning,
                                         path, stage or next holds, in any case
-                       path:<pattern>   a document: a file, a folder, or a
-                                        gitignore-style * or ** pattern;
-                                        start a root file's path with /
+                       path:<pattern>   a document whose path holds the
+                                        text, in any case; * within a
+                                        name, ** across folders, and a
+                                        leading / pins it to the start
                        is:open          a question still open
                        -<term>          leave out what the term matches
                      Every word must match; path: terms keep any of their
@@ -508,7 +493,7 @@ So the checker never builds an origin. It never guesses a port or a repository n
 ### 9.2 The link it prints
 
 ```text
-Planning page: /.vantage/planning?filter=path:docs/design/x.md+is:open
+Planning page: /.vantage/planning?filter=path:/docs/design/x.md+is:open
   Press / on the planning page and paste this line, or put the scheme, host and port you open Vantage at in front of the link.
 ```
 
@@ -537,7 +522,7 @@ A root-relative link has no repository segment. In daemon mode, `/.vantage/plann
 ### 9.5 The loop, and what agents are taught
 
 1. **The human asks** for the questions one piece of work needs answered.
-2. **The agent lists that work's planning documents,** each by its path from the root with a leading `/`, because a bare name with no inner `/` matches at any depth: the design, its `-plan.md` if one exists, and every document a kept one names in `depends-on`. A `depends-on` entry naming one question by its `#` fragment brings in all of that question's document, since no key selects one question.
+2. **The agent lists that work's planning documents,** each by its path from the root with a leading `/`, because without it a value is found anywhere in a path, so `path:docs/x.md` keeps `y/docs/x.md` too: the design, its `-plan.md` if one exists, and every document a kept one names in `depends-on`. A `depends-on` entry naming one question by its `#` fragment brings in all of that question's document, since no key selects one question.
 3. **In the checkout the human's Vantage serves, it runs `vantage-check index --filter 'path:/<design> path:/<plan> is:open'`.** A link made in another checkout, such as a worktree, opens the served checkout's documents. A word narrows it further when the human asked about one part of the work.
    - Exit 2 names the bad term.
    - `unknown option for index: --filter` means the checker predates the filter, and `uvx vantage-check@latest` is the fix.
@@ -615,7 +600,7 @@ Nothing released reads a filter differently on the day this ships: the first bui
 ### 10.4 How it is checked
 
 - **A fixture of forms, within one release.** It lives in the planning module and holds `read: [{text, canonical, documents, questions, keeps, unmatched, unknownKeys}]` and `notUnderstood: [{text, term}]`, with `reason` in place of `term` where there is no term to name. They are checked against a small index the fixture also holds: `documents` are the paths it keeps, `questions` the index's questions it keeps, in whatever section or none, and `keeps` the entries the sections then list.
-  - That index holds a `🔒 ⏸` question, a ✅ question nested inside an open one, a `💬 🤷` question on a routed path and one with no marker on an unrouted one, a root `roadmap.md` beside an `x/roadmap.md`, a path with a space, a non-ASCII path in NFC, and paths that tell git's answer for each accepted construct of [§5.4](#54-path-patterns) from a wrong one. Those `documents` were taken from `git check-ignore --no-index`. `read` holds `path:Docs/design` and the NFD spelling of that path too, which match nothing.
+  - That index holds a `🔒 ⏸` question, a ✅ question nested inside an open one, a `💬 🤷` question on a routed path and one with no marker on an unrouted one, a root `roadmap.md` beside an `x/roadmap.md`, a path with a space, a non-ASCII path in NFC, and paths that tell each clause of [§5.4](#54-path-patterns)'s rule from a wrong reading of it: `x/docs/design/a.md`, which holds the whole of `docs/design/a.md`, and folders named like files elsewhere. Those `documents` came from a matcher written apart from the filter module, from [§5.4](#54-path-patterns)'s one sentence alone. `read` holds `path:Docs/design`, which keeps what `path:docs/design` does, and the NFD spelling of `docs/café.md`, which matches nothing.
   - For text terms it holds a question matched by each field alone (id, title, leaning, its path), a row matched by its `stage` and by its `next`, a Too large and an Unreadable path, a match that differs only in case, an NFC and an NFD spelling that do not match, a quoted phrase against the same words apart, an exclusion of each kind, and an unknown key's hint.
   - The page's tests and the checker's tests both load it, which is what holds P7.
   - Any entry may be edited, moved or removed when the language changes. Nothing compares the fixture with an earlier release's ([OQ-PF7](#decision-ledger)).
@@ -627,9 +612,9 @@ This illustrates this tree on 2026-10-05, with this document and its roadmap ent
 
 ```console
 $ vantage-check index --filter 'path:/docs/design/planning-filter.md is:open'
-Filtered by `path:docs/design/planning-filter.md is:open`: 5 of 15 entries, in 1 of 20 paths, 5 of them open questions.
+Filtered by `path:/docs/design/planning-filter.md is:open`: 5 of 15 entries, in 1 of 20 paths, 5 of them open questions.
 Run without --filter to see the other 10.
-Planning page: /.vantage/planning?filter=path:docs/design/planning-filter.md+is:open
+Planning page: /.vantage/planning?filter=path:/docs/design/planning-filter.md+is:open
   Press / on the planning page and paste this line, or put the scheme, host and port you open Vantage at in front of the link.
 
 Needs you (5) · for the human
@@ -644,21 +629,21 @@ Roadmap: roadmap.md
 …
 ```
 
-**What the human does with it.** On the planning page they already have open, they press `/` and paste the `Planning page:` line, and the page shows those five cards. With an address in front, such as `http://localhost:8000` for a plain `vantage serve`, the link opens the same page in one click. Typing `path:docs/design/planning-filter.md is:open` into the Filter box narrows the page as they type, and once they pause, the address holds the same `filter` value and the page the same five cards. So does *its questions on the planning page* in this document's Referenced by line, except that its filter, `path:docs/design/planning-filter.md`, also keeps the document's ✅ and 🔒 questions; here it has none.
+**What the human does with it.** On the planning page they already have open, they press `/` and paste the `Planning page:` line, and the page shows those five cards. With an address in front, such as `http://localhost:8000` for a plain `vantage serve`, the link opens the same page in one click. Typing `path:docs/design/planning-filter.md is:open` into the Filter box narrows the page as they type, and once they pause, the address holds the same `filter` value and the page the same five cards. So does *its questions on the planning page* in this document's Referenced by line, except that its filter, `path:/docs/design/planning-filter.md`, also keeps the document's ✅ and 🔒 questions; here it has none.
 
 Other filters, over the same tree:
 
 | Filter | Keeps |
 | :--- | :--- |
 | `path:docs/design/agent-bootstrap.md is:open` | [OQ-B1](agent-bootstrap.md#OQ-B1) to [OQ-B5](agent-bootstrap.md#OQ-B5), all under *Not on a roadmap*: open questions the human answers, in a section whose actor is the agent |
-| `path:color-themes.md` | [OQ-CT6](color-themes.md#OQ-CT6), under *Not on a roadmap*. A bare name matches at any depth |
+| `path:color-themes.md` | [OQ-CT6](color-themes.md#OQ-CT6), under *Not on a roadmap*. A value is found anywhere in a path |
 | `path:/roadmap.md` | 1 path and no entries: the roadmap holds no question |
 | `path:docs/design/checker-version-skew*` | 2 documents, the design and its sketch, and one entry: the design's *Ready to graduate* row |
 | `path:docs/design/checker-version-skew* is:open` | The same 2 documents and no entries: *Nothing this filter keeps needs you* |
 | `path:docs/reference` | 9 documents and no entries, because every one is `CURRENT`, a `done` role |
 | `path:docs/desing` | An unmatched term. The page applies it, keeps nothing and names it; the checker exits 2 |
 | `path:docs/design/*.md is:closed` | Not understood: `is:` reads only `open`. Once entered, the page shows all 15 entries under *Not filtered*; the checker exits 2 before scanning |
-| `path:docs/**` | Not understood: a trailing `/**`. `path:docs/` keeps the same paths |
+| `path:docs/des` | Every document under `docs/design`: each keystroke of a path keeps what the finished path does, and more |
 
 Text terms, over this tree at `519cd66`, whose other questions are the same:
 
@@ -681,7 +666,10 @@ Text terms, over this tree at `519cd66`, whose other questions are the same:
 | `VANTAGE_FILTER` instead of `--filter` | **Rejected.** An older checker would print the whole index as though it were filtered |
 | Filtering the index before deriving | **Rejected.** It breaks *Blocked* and routing ([§3](#3-what-exists-today)), and the reference forbids a trimmed index |
 | Applying only on Enter | **Rejected** ([OQ-PF6](#decision-ledger)). You asked for the page to follow the box basically instantly. The costs that once rejected typing, the churned caches and the half-typed path, are met in [§6.5](#65-identities-and-what-typing-must-not-churn) and by text terms |
-| Debouncing the results | **Rejected.** Matching takes about a millisecond at 20,000 questions ([§12.1](#121-the-search-libraries-measured)), so any wait would be the whole delay. Only the URL waits for the idle pause |
+| Debouncing the results | **Rejected.** Matching takes about a millisecond at 20,000 questions ([§12.1](#121-the-search-libraries-measured)), so any wait would be the whole delay. Only the URL waits for the idle pause, and with it a text that keeps no entry |
+| Applying a text that keeps no entry at once, as any other | **Replaced** on 2026-10-06. `-m`, every prefix of a word that is not there yet, and before the substring rule every prefix of a path emptied the page and refilled it at the next key: a browser run in the review of live search painted about 900 ms of empty page typing `path:docs/design` |
+| Holding back only a last term not yet followed by a space, or only `path:` values and exclusions | **Rejected** for the rule as ruled: any text that keeps no entry waits, and only while the reader types |
+| Matching a last `path:` value as a prefix while it is typed | **Rejected.** The page would read a text one way and the URL and the checker another ([F5](#1-verdict-and-the-principles)) |
 | Bare words not understood | **Rejected** ([OQ-PF1](#decision-ledger)). A search box that refuses words is no search box |
 | An unknown key, such as `stage:`, not understood | **Rejected.** A word with a colon would keep the old results with no answer; searched as text with a hint, it answers and says why |
 | Exit 2 for a text term that matches nothing | **Rejected.** A search that finds nothing is an answer, and the page shows it the same way |
@@ -697,8 +685,10 @@ Text terms, over this tree at `519cd66`, whose other questions are the same:
 | Orama 3.1.18 | **Rejected.** Not a strict AND even at `threshold: 0`, a 391 ms index build, and 22 KB gzipped |
 | fuzzysort 4.0.2 | **Rejected.** Subsequence matching keeps about three times what substring keeps for short queries, and its defaults cut results to ten |
 | The port's whole dialect for `path:` | **Rejected.** It gives `?`, RE2 meanings, unanchored inner slashes and five forms meanings git does not |
-| A glob matcher of our own, case-insensitive | **Rejected.** A second glob rule in one repository, and a case rule that disagrees with git. The quoted form's literal comparator is not a glob matcher, and a text term is the case-insensitive way in |
-| Non-ASCII characters in bare patterns | **Rejected.** Typographic quotes and invisible characters would become path characters; the quoted form carries any path |
+| Gitignore-style matching of whole folder and file names, a subset of the port's dialect that git agrees with | **Replaced** on 2026-10-06, after it was built. It was chosen so that a filtered link would keep the same entries in every later release, a freeze [OQ-PF7](#decision-ledger) dropped, and live search made its cost plain: `path:d` … `path:docs/desig` keep nothing while they are typed, so the commonest term emptied the page at each keystroke, and `path:roadmap.md` keeping every `roadmap.md` while `path:docs/x.md` kept only the root's took a rule of its own to explain. Its not-understood forms existed only to keep the port in step with git |
+| A substring glob matcher of our own, case-insensitive | **Chosen** on 2026-10-06 ([§5.4](#54-path-patterns)). It was first rejected as a second glob rule beside `[planning] include`'s, and a case rule that disagrees with git; the two rules never meet, since `include` decides what is indexed and `path:` what is shown, and GitHub's search folds case the same way |
+| GitHub's `?` and regular expressions in `path:` | **Rejected for now.** Each gives a character a path can hold a second meaning, and nobody has asked |
+| Bare `path:` values limited to `A–Z a–z 0–9 . _ - / *` | **Dropped** on 2026-10-06. The set kept the port from reading `[`, `+` or `?` as syntax. Matched in the module, every character is its own, and the invisible ones stay excluded ([§5.5](#55-what-is-not-understood)) |
 | Not understanding a leading `./` | **Rejected.** Agents write it, and `roadmap=` already reads it as the root |
 | `is:answered` for ✅ | **Rejected.** The page already calls a question you commented on *answered* |
 | More `is:` values now | **Rejected for now.** Nobody has asked; one can come in any release ([OQ-PF7](#decision-ledger)) |
@@ -759,7 +749,9 @@ Measured on 2026-10-05 on this machine: 32 threads, shared, with a load average 
 | :--- | :--- | :--- |
 | A keystroke's re-layout is slow on a large page | The box lags, or the results do | The box never waits on the results ([F7](#1-verdict-and-the-principles)), the results swap whole when ready, and [§16](#16-typing-targets-and-how-they-are-read) sets the targets they are measured against |
 | Typing cycles the caches | Back flashes the top of a page it had cached, or a third review request goes out | Superseded sets leave the cache, the other caches are bounded, and typing adds no review request ([§6.5](#65-identities-and-what-typing-must-not-churn)) |
-| A half-typed `path:` term matches nothing | The page empties while a path is typed, and the notice names an unmatched term | A word finds a path by any part of it ([§5.3](#53-what-a-term-matches-and-how-terms-combine)), and the page applies each keystroke, so the full path refills it |
+| A half-typed term matches nothing | The page empties between two keystrokes | `path:` finds its text anywhere in a path, so each keystroke of a path keeps what the path does and more ([§5.4](#54-path-patterns)); and a typed text that keeps no entry waits for the idle pause ([§6.4](#64-typing-and-the-url)) |
+| A typed text that keeps nothing waits for the pause | The old results stay up for 300 ms before *nothing matches* | The pause is the one that writes the URL, and Enter, leaving the box and a paste apply at once |
+| `path:` folds case | In a repository holding `Docs/x.md` beside `docs/x.md`, a value keeps both | The notice counts the kept paths; a planning tree that tells two paths apart by case alone is rare |
 | A short word matches far more than meant | `or` keeps every title holding *for* or *order* | The notice counts what it keeps; quoting a phrase or adding a word narrows it |
 | `Path:x` or `IS:open` is searched as text, with no hint | The page empties or barely narrows, without saying why | The notice's counts; the keys are lowercase everywhere they are taught |
 | The human's viewer and the agent's checker are different releases | They may disagree on what a text keeps, now that nothing freezes it | The page's notice states its own counts, and the agent hands over the counts it saw; a 0.8.x viewer shows every entry, as before |
@@ -773,7 +765,6 @@ Measured on 2026-10-05 on this machine: 32 threads, shared, with a load average 
 | The link is not clickable where it is handed over | The human has a line, not a link | *Press `/`, paste* is two keys on a page they already have open; the checker's hint line and the agent both say so |
 | Copy answers leaves pending answers out | An answer is not handed over | The tooltip counts what the filter leaves out, and clearing the filter copies everything |
 | A card whose diagram is not drawn yet comes into the results | That keystroke's results wait up to the Mermaid deadline, 1 s | No card on this repository or the scale fixture holds a diagram today; a diagram drawn later draws into its fixed frame |
-| A change to the port for `[planning] include` | A `path:` term's meaning moves with it | The fixture pins git's answer for every accepted construct |
 
 ## 14. Costs, and what is unmeasured
 
@@ -806,7 +797,7 @@ Measured on 2026-10-05 on this machine: 32 threads, shared, with a load average 
 - D6's no-long-task half of [criterion 8](#15-success-criteria): a cold dev-server load showed 2 to 5 long tasks of up to about 180 ms that no run could pin on the filter.
 - D6 and D12 on a large index.
 - 0.8.x's handling of a planning link. It is read from the code, not run.
-- The port's agreement with git beyond the generated patterns. The run covered 5,256 patterns over 19 paths, not every pattern.
+- T1 to T4 since the rulings of 2026-10-06. The default query keeps entries at every keystroke on both trees, so no key of it is held back.
 - How accurately agents write this grammar. No benchmark exists for any filter syntax.
 - The filter line with assistive technology, and with an input method composing.
 
@@ -814,7 +805,7 @@ Measured on 2026-10-05 on this machine: 32 threads, shared, with a load average 
 
 The tree is a copy of the e2e fixture [`frontend/e2e/fixtures/test_repo/`](../../frontend/e2e/fixtures/test_repo/), checked and served as its own root. Its roadmap routes `plans/design.md`'s two open questions, [OQ-E1](../../frontend/e2e/fixtures/test_repo/plans/design.md#OQ-E1) and [OQ-E2](../../frontend/e2e/fixtures/test_repo/plans/design.md#OQ-E2), and nothing in it depends on this design's own questions.
 
-1. `vantage-check index --filter 'path:/plans/design.md is:open'` exits 0. It prints the notice, the line `Planning page: /.vantage/planning?filter=path:plans/design.md+is:open` and its hint line, with exactly [OQ-E1](../../frontend/e2e/fixtures/test_repo/plans/design.md#OQ-E1) and [OQ-E2](../../frontend/e2e/fixtures/test_repo/plans/design.md#OQ-E2) under *Needs you*.
+1. `vantage-check index --filter 'path:/plans/design.md is:open'` exits 0. It prints the notice, the line `Planning page: /.vantage/planning?filter=path:/plans/design.md+is:open` and its hint line, with exactly [OQ-E1](../../frontend/e2e/fixtures/test_repo/plans/design.md#OQ-E1) and [OQ-E2](../../frontend/e2e/fixtures/test_repo/plans/design.md#OQ-E2) under *Needs you*.
 2. Opening that link shows those two cards and nothing else. The section bar counts them, the box holds the text, and the notice says what is hidden.
 3. Typing the same text into the box on the unfiltered page gives the same page without an Enter, and once the idle pause has passed, the same `filter` value and the same address.
 4. Copy agent request on a filtered page is byte-equal to `--request --filter` with its `Filter:` line's text, for every understood text in the fixture of forms whose request is not empty.
@@ -846,7 +837,7 @@ The targets are numbered T1 to T4 *(coined here)*. They are requirements, not me
 
 - **The harness** is the reference's: `just planning-perf`, the production bundle in headless Chromium at 1440×900, on this repository and on the scale fixture the reference defines. A typing flow of its own reads T1 to T4 ([`planning-filter-plan.md`, WP-8](planning-filter-plan.md#wp-8-harness-the-typing-flow)).
 - **The flow.** The planning page is open with its index ready, its first pages painted and the visit's second review request answered, with no filter. The harness presses `/`, then types `generator is:open` one key every 150 ms through the browser's own input pipeline, so Event Timing sees real key events. It waits a second, presses ✕, and the next run begins. 150 ms a key is 400 characters a minute, a fast typist's pace.
-- **Which keystrokes count.** All 17 count for T1. For T2, 12 change the applied filter: each letter of *generator*, the `i` and `s` of *is*, and the final `n`. The space changes nothing, and `:`, `o`, `p` and `e` make a text that is not understood, which keeps the page as it is.
+- **Which keystrokes count.** All 17 count for T1. For T2, 12 change the applied filter: each letter of *generator*, the `i` and `s` of *is*, and the final `n`. The space changes nothing, and `:`, `o`, `p` and `e` make a text that is not understood, which keeps the page as it is. A key whose text keeps no entry is held back until the idle pause ([§6.4](#64-typing-and-the-url)), so it changes nothing while the reader types, and T2 does not count it either, at any pace. On both trees every text the query makes keeps an entry, so none is held; the harness finds those a `--query` holds before its runs, and reports how many keys they were.
 - **Painted** means what the harness already means: an element present in an animation-frame callback is drawn in that frame. For T2 the sections carry the shown filter's canonical text where the harness can read it, and the moment is the first frame in which it is the keystroke's.
 - **T3** is read with Long Animation Frames, every task from the first keydown to the last results painted, attributed as D6's tasks are.
 - **Runs.** At least ten runs a cell, interleaved across the two trees as the harness orders them. The p95s are over the pooled keystrokes: 170 or more for T1, and 120 or more for T2.
@@ -857,10 +848,10 @@ The targets are numbered T1 to T4 *(coined here)*. They are requirements, not me
 
 | ID | Ruling / Decision | Date | Settled in | Built |
 | :--- | :--- | :--- | :--- | :--- |
-| OQ-PF1 | Overturned, in conversation: a word without a colon is free text, searched Google-style over index facts alone, in planning documents alone. A question matches by its id, title, leaning or its document's path; a document row by its path, stage or `next`; a Too large or Unreadable entry by its path. Every word must match, in any case and any order; a quoted phrase is one substring; a leading `-` excludes; a term is a qualifier only when the word before its first `:` is `path` or `is`, and an unknown lowercase word there is searched as text with a hint. `is:open` stays the one `is:` value | 2026-10-05 | [§5.2](#52-grammar), [§5.3](#53-what-a-term-matches-and-how-terms-combine), [§5.5](#55-what-is-not-understood) | ✅ words, phrases, exclusions and the colon rule in `parsePlanningFilter`, the searched fields in `filterKeepsQuestion` and `applyPlanningFilter` (`packages/vantage-md/src/planning/filter.ts`); the *Not a key* line in `PLANNING_NOTICES.filtered` (`sections.ts`); `unknownKeys` in the checker's JSON (`packages/vantage-check/src/commands/index.ts`) |
+| OQ-PF1 | Overturned, in conversation: a word without a colon is free text, searched Google-style over index facts alone, in planning documents alone. A question matches by its id, title, leaning or its document's path; a document row by its path, stage or `next`; a Too large or Unreadable entry by its path. Every word must match, in any case and any order; a quoted phrase is one substring; a leading `-` excludes; a term is a qualifier only when the word before its first `:` is `path` or `is`, and an unknown lowercase word there is searched as text with a hint. `is:open` stays the one `is:` value. Amended in conversation on 2026-10-06: a `path:` value is found anywhere in the path, case-insensitively, `*` within one name and `**` across folders, a leading `/` or `./` pinning it to the start; quoted, every character is literal; the not-understood forms that served only the gitignore port go | 2026-10-05, 2026-10-06 | [§5.2](#52-grammar), [§5.3](#53-what-a-term-matches-and-how-terms-combine), [§5.4](#54-path-patterns), [§5.5](#55-what-is-not-understood) | ✅ words, phrases, exclusions and the colon rule in `parsePlanningFilter`, the searched fields in `filterKeepsQuestion` and `applyPlanningFilter` (`packages/vantage-md/src/planning/filter.ts`); `path:` values in `readPathValue` and `pathMatcher` there; the *Not a key* line in `PLANNING_NOTICES.filtered` (`sections.ts`); `unknownKeys` in the checker's JSON (`packages/vantage-check/src/commands/index.ts`) |
 | OQ-PF2 | Copy answers follows the filter: its payload and count cover kept questions only, and its tooltip says how many pending answers the filter leaves out | 2026-10-05 | [§6.6](#66-copy-agent-request-and-copy-answers) | ✅ `pendingAnswers` in `frontend/src/lib/planningAnswers.ts`; the button's name and tooltip in `PlanningPage.tsx` |
 | OQ-PF3 | No address is stored or printed, so no `VANTAGE_PLANNING_URL`: it is a fact about a machine with no right home, and a machine may open one repository at several. The checker prints a root-relative link, and pasting it into the Filter box, alone or with the lines around it, applies its filter | 2026-10-05 | [§9.3](#93-no-address-is-kept), [§7](#7-the-filter-line) | ✅ `planningLink` and `readPastedPlanningLink` in `filter.ts`; the paste in `PlanningFilterLine.tsx`; no address read or kept anywhere |
 | OQ-PF4 | Besides typing, `/` focuses the box, and a document's Referenced by line links to the page filtered to that document. No per-card toggle | 2026-10-05 | [§7](#7-the-filter-line) | ✅ `/` in `useKeyboardShortcuts.ts`; the link in `ReferencedBy.tsx`; no toggle on a card |
 | OQ-PF5 | The filter line is always on the page: one fixed-height row in every state, from first paint | 2026-10-05 | [§7](#7-the-filter-line) | ✅ `PlanningFilterLine` drawn first in `PlanningPage.tsx`'s `<main>`, every state but a static export |
-| OQ-PF6 | Ruled in conversation: the page applies the filter as you type, basically instantly. Typing never adds a history entry; the URL follows after an idle pause and at once on Enter, ✕ or a paste; the box is never rewritten while the reader types; a text not understood mid-typing keeps the results on screen; and "instant" is measured against targets | 2026-10-05 | [§6.4](#64-typing-and-the-url), [§6.5](#65-identities-and-what-typing-must-not-churn), [§7](#7-the-filter-line), [§16](#16-typing-targets-and-how-they-are-read) | ✅ `onType` in `PlanningFilterLine.tsx`; the applied filter set in a transition, and written after `filterIdleMs` (`frontend/src/planningScan/limits.ts`), in `PlanningPage.tsx`, its notice spoken after `filterSpeechMs`; the typing slot, and the newest text's guard (`follow`, and the shown set's reducer), in `usePlanningPageInputs.ts`; T1 to T4 read by `just planning-perf --targets typing` (`frontend/perf/planning/`) |
+| OQ-PF6 | Ruled in conversation: the page applies the filter as you type, basically instantly. Typing never adds a history entry; the URL follows after an idle pause and at once on Enter, ✕ or a paste; the box is never rewritten while the reader types; a text not understood mid-typing keeps the results on screen; and "instant" is measured against targets. Amended in conversation on 2026-10-06: a typed text that keeps no entry at all applies only when the idle pause ends, the last results staying until then; Enter, ✕, a paste and leaving the box apply at once, empty or not | 2026-10-05, 2026-10-06 | [§6.4](#64-typing-and-the-url), [§6.5](#65-identities-and-what-typing-must-not-churn), [§7](#7-the-filter-line), [§16](#16-typing-targets-and-how-they-are-read) | ✅ `onType` in `PlanningFilterLine.tsx`; the applied filter set in a transition, held back while it keeps no entry (`held`), and written after `filterIdleMs` (`frontend/src/planningScan/limits.ts`), in `PlanningPage.tsx`, its notice spoken after `filterSpeechMs`; the typing slot, and the newest text's guard (`follow`, and the shown set's reducer), in `usePlanningPageInputs.ts`; T1 to T4 read by `just planning-perf --targets typing` (`frontend/perf/planning/`) |
 | OQ-PF7 | Ruled in conversation: no freeze across releases. A filter text may match differently in a later release, so the permanence rules, the fixture's append-only rule and its comparison with the previous release's tag go, and "not understood" no longer keeps forms free for later. P0 still governs what lives in files or feeds scripts, roadmap order never changes, and the page and the checker agree within one release | 2026-10-05 | [§10.3](#103-later-releases), [§10.4](#104-how-it-is-checked) | ✅ nothing compares `filterForms.json` with an earlier release's: the test is gone from `frontend/src/lib/planningFilter.test.ts`, and `filter.ts` states no freeze |

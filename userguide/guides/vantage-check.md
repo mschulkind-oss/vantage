@@ -844,8 +844,11 @@ spaces:
   entry, in any case: a question's id, title, leaning and path, a document
   row's path, `stage` and `next`, and a *Too large* or *Unreadable* path.
   Every word must match.
-- **`path:<pattern>`** keeps documents by their path, and **`is:open`** open
-  questions. `path:` terms keep any of their matches.
+- **`path:<pattern>`** keeps documents whose path holds the pattern, in any
+  case, and **`is:open`** open questions. A `*` in a pattern stands for any
+  characters within one folder or file name, `**` for any across folders, and
+  a leading `/` ties it to the start of the path. `path:` terms keep any of
+  their matches.
 - **A `-` before any term** leaves out what it matches, as in `-payload` or
   `-path:docs/archive`.
 
@@ -860,11 +863,11 @@ usual output over the filtered sections:
 
 ```console
 $ vantage-check index --filter 'path:/docs/design/search.md path:/docs/design/search-plan.md is:open'
-Filtered by `path:docs/design/search.md path:docs/design/search-plan.md is:open`: 3 of 7 entries, in 2 of 5 paths, 3 of them open questions.
+Filtered by `path:/docs/design/search.md path:/docs/design/search-plan.md is:open`: 3 of 7 entries, in 2 of 5 paths, 3 of them open questions.
 1 of its questions is blocked and will need you later.
 docs/design/search.md waits on docs/design/indexing.md, which this filter leaves out.
 Run without --filter to see the other 4.
-Planning page: /.vantage/planning?filter=path:docs/design/search.md+path:docs/design/search-plan.md+is:open
+Planning page: /.vantage/planning?filter=path:/docs/design/search.md+path:/docs/design/search-plan.md+is:open
   Press / on the planning page and paste this line, or put the scheme, host and port you open Vantage at in front of the link.
 
 Needs you (3) · for the human
@@ -875,9 +878,10 @@ Open or answered questions on this roadmap, in its order. Rule each open one, th
 ```
 
 - **The filter is echoed in its canonical text,** the one spelling the page
-  writes too: `path:/docs/design/search.md` reads
-  `path:docs/design/search.md`, since a pattern with a `/` inside is tied to
-  the root already.
+  writes too: `path:./docs/design/search.md` reads
+  `path:/docs/design/search.md`, and `path:"docs/x.md"` reads `path:docs/x.md`.
+  The leading `/` stays, since without it `path:docs/design/search.md` would
+  keep `old/docs/design/search.md` too.
 - **The link is root-relative.** It starts at `/.vantage/planning`, with no
   scheme, host or port, because the checker never asks a server, so it cannot
   know the address the human opens Vantage at: a port that moved on from a busy
@@ -907,8 +911,8 @@ sections emptied:
   "…": "…",
   "filter": {
     "text": "path:/docs/design/search.md is:open",
-    "canonical": "path:docs/design/search.md is:open",
-    "link": "/.vantage/planning?filter=path:docs/design/search.md+is:open",
+    "canonical": "path:/docs/design/search.md is:open",
+    "link": "/.vantage/planning?filter=path:/docs/design/search.md+is:open",
     "documents": { "kept": 1, "of": 5 },
     "entries": { "shown": 2, "of": 7 },
     "openQuestions": 2,
@@ -1030,7 +1034,8 @@ them the planning page filtered to that work. The loop:
 1. **List the work's planning documents,** each by its path from the
    repository root, with a leading `/`: the design, its `-plan.md` if one
    exists, and every document a kept one names in `depends-on`. The `/`
-   matters, because `path:search.md` keeps a `search.md` in every folder. A
+   matters, because a pattern is found anywhere in a path: `path:search.md`
+   keeps a `search.md` in every folder, and `research.md` too. A
    `depends-on` entry naming one question by its `#` fragment brings in that
    question's whole document, since no term selects a single question.
 2. **In the checkout the human's Vantage serves,** run
@@ -1062,9 +1067,9 @@ What you hand over can be as short as this:
 Four questions about search need your rulings. On your planning page, press /
 and paste this line:
 
-Planning page: /.vantage/planning?filter=path:docs/design/search.md+path:docs/design/search-plan.md+path:docs/design/indexing.md+is:open
+Planning page: /.vantage/planning?filter=path:/docs/design/search.md+path:/docs/design/search-plan.md+path:/docs/design/indexing.md+is:open
 
-It filters to `path:docs/design/search.md path:docs/design/search-plan.md path:docs/design/indexing.md is:open`:
+It filters to `path:/docs/design/search.md path:/docs/design/search-plan.md path:/docs/design/indexing.md is:open`:
 4 open questions in 3 documents. One more is blocked and will need you later.
 ```
 

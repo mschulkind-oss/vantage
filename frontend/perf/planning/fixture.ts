@@ -434,6 +434,15 @@ export function filterKeeps(
   return entries;
 }
 
+/**
+ * The planning index of the repository at `dir`, as `vantage-check index`
+ * builds it, and the page from the same files: the typing flow reads it for
+ * the texts its query makes that keep no entry (T2).
+ */
+export function planningIndexOf(dir: string): unknown {
+  return indexOf(dir).index;
+}
+
 /** One line for a person: the size, its averages and its sections. */
 export function describeFixture(report: FixtureReport): string {
   const sections = Object.entries(report.sections)

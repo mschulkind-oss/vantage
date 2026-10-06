@@ -551,9 +551,16 @@ export interface Keystroke {
   echoMs: number | null;
   /**
    * The canonical text this key makes the applied filter, or `null` when it
-   * changes nothing: the same canonical text, or a text not understood.
+   * changes nothing: the same canonical text, a text not understood, or one
+   * the page holds back (`held`).
    */
   applies: string | null;
+  /**
+   * Its text keeps no entry, so the page holds it back until the idle pause
+   * (planning-filter.md §6.4): typed on, it changes nothing, and T2 does not
+   * count it.
+   */
+  held: boolean;
   /** From the keydown to the sections being swapped for `applies`, in the DOM. */
   committedMs: number | null;
   /** T2: from the keydown to the frame that painted those sections. */
@@ -610,19 +617,22 @@ const KEY_EVENTS = ["keydown", "keypress", "beforeinput", "input", "keyup"];
  * first pages painted and the visit's review requests answered, then `/` and
  * `pass.query` into the Filter box one key at a time, every `pass.gapMs` ms,
  * and a wait of `settleMs` once the whole query's results have painted.
+ * `held` are the texts the query makes that keep no entry on the tree served
+ * (`keepingNothing`), which the page holds back while the reader types.
  */
 export async function typingRun(
   browser: Browser,
   served: Served,
   options: FlowOptions,
   pass: TypingPass,
+  held: readonly string[] = [],
 ): Promise<TypingRun> {
   const chars = [...pass.query];
   const texts = chars.map((_, i) => chars.slice(0, i + 1).join(""));
+  const makes = texts.map(appliedBy);
   let applied = "";
-  const applies = texts.map((text) => {
-    const made = appliedBy(text);
-    if (made === null || made === applied) return null;
+  const applies = makes.map((made) => {
+    if (made === null || made === applied || held.includes(made)) return null;
     applied = made;
     return made;
   });
@@ -702,7 +712,7 @@ export async function typingRun(
     const urlFilter = new URL(page.url()).searchParams.get("filter");
     return {
       ...pass,
-      ...readTyping(state, from, chars, texts, applies, final),
+      ...readTyping(state, from, chars, texts, applies, makes, held, final),
       historyAdded,
       urlFilter,
       reviews: reviews.sent,
@@ -719,6 +729,8 @@ function readTyping(
   chars: string[],
   texts: string[],
   applies: (string | null)[],
+  makes: (string | null)[],
+  held: readonly string[],
   final: string,
 ) {
   const downs = state.keys.filter((k) => k.at >= from);
@@ -730,8 +742,9 @@ function readTyping(
   const shown = state.shown
     .filter((s) => s.committed >= from)
     .sort((a, b) => a.committed - b.committed);
-  // The key whose text a painted filter is: the last that applied it.
-  const keyOf = (filter: string) => applies.lastIndexOf(filter);
+  // The key whose text a painted filter is: the last that made it, held
+  // back or not, since a held text the idle pause applies is painted too.
+  const keyOf = (filter: string) => makes.lastIndexOf(filter);
   const keys: Keystroke[] = downs.map((down, i) => {
     const at = down.at;
     const next = downs[i + 1]?.at ?? Number.POSITIVE_INFINITY;
@@ -776,6 +789,7 @@ function readTyping(
       events,
       echoMs: input?.painted == null ? null : round(input.painted - at),
       applies: wanted,
+      held: makes[i] !== null && held.includes(makes[i]),
       committedMs,
       resultsMs,
       superseded,

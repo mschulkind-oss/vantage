@@ -6,16 +6,12 @@
  *
  * Most of it is held to the fixture of forms,
  * `packages/vantage-md/src/planning/filterForms.json`, which the checker's
- * suite reads too. Its `documents` came from git, not from this code: for
- * each `path:` term, the scratch repository of the fixture's paths was asked
- *
- *   git -c core.excludesFile=/dev/null check-ignore --no-index -z --stdin
- *
- * with the term as the one line of `.git/info/exclude`: written with a
- * leading `/` when it anchors, as the filter gives it to the port, and with
- * every glob character escaped when it is a quoted literal. Nothing here runs
- * git. The fixture is one release's: nothing compares it with an earlier
- * release's, since a later release may read a text differently (§10.3).
+ * suite reads too. Its `documents` did not come from this code: a matcher
+ * written apart from it, from §5.4's one sentence and sharing nothing with
+ * the filter module, gave each `path:` term's answer over the fixture's
+ * paths, and the module was then held to those answers. The fixture is one
+ * release's: nothing compares it with an earlier release's, since a later
+ * release may read a text differently (§10.3).
  */
 import { describe, expect, it } from "vitest";
 import {
@@ -106,13 +102,17 @@ describe("the fixture of forms (§10.4)", () => {
     expect(paths).toContain("docs/my notes.md");
     // A trailing `/` (§5.4) is told from none only by a folder named like a
     // file elsewhere, and a quoted leading `/` only by a root path that needs
-    // quoting, as `documentFilter` writes it for Referenced by (§7).
+    // quoting, as `documentFilter` writes it for Referenced by (§7). A path
+    // that holds another's whole text tells a value found anywhere from one
+    // pinned to the start: `x/docs/design/a.md` and `docs/design/a.md`.
     expect(paths).toEqual(
       expect.arrayContaining([
         "a.md",
         "y/a.md/inner.md",
         "my notes.md",
         "y/my notes.md/inner.md",
+        "x/docs/design/a.md",
+        "docs/design/a.md",
       ]),
     );
     const canonicals = FORMS.read.map((entry) => entry.canonical);
@@ -242,7 +242,7 @@ describe("the fixture of forms (§10.4)", () => {
       expect(kept).toEqual(entry.questions);
     });
 
-    it("keeping the documents git keeps, and the entries they hold", () => {
+    it("keeping the documents §5.4 keeps, and the entries they hold", () => {
       expect(keptDocuments(filter)).toEqual(entry.documents);
       const { sections, summary } = applyPlanningFilter(
         INDEX,
@@ -281,7 +281,7 @@ describe("the fixture of forms (§10.4)", () => {
 
   // The keeps are only as right as the rule they were drawn with (§5.3), so
   // it is written here a second time, plainly: an entry is kept when its path
-  // is a kept document (git's answer, in `documents`), it passes the is: and
+  // is a kept document (§5.4's answer, in `documents`), it passes the is: and
   // -is: terms, every text term is a substring of one of its searched fields
   // whatever the case, and no -text term is.
   it("keeps exactly the questions and entries the four tests of §5.3 keep", () => {
@@ -359,14 +359,30 @@ describe("the grammar (§5.2, §5.5)", () => {
       0x2007, 0x2008, 0x2009, 0x200a, 0x2028, 0x2029, 0x202f, 0x205f, 0x3000,
       0x000b, 0x000c, 0x0085, 0xfeff,
     ];
+    // Any other is a character of the term it sits in, or an excluded code
+    // point, which no term may hold.
+    const excluded = [0x000b, 0x000c, 0x0085, 0xfeff];
     for (const cp of others) {
-      const text = `path:a.md${String.fromCodePoint(cp)}is:open`;
-      expect(parsePlanningFilter(text), cp.toString(16)).toEqual({
-        kind: "not-understood",
-        text,
-        term: text,
-        reason: null,
-      });
+      const c = String.fromCodePoint(cp);
+      const text = `path:a.md${c}is:open`;
+      if (excluded.includes(cp)) {
+        expect(parsePlanningFilter(text), cp.toString(16)).toEqual({
+          kind: "not-understood",
+          text,
+          term: text,
+          reason: null,
+        });
+        continue;
+      }
+      expect(understood(text).terms, cp.toString(16)).toEqual([
+        {
+          key: "path",
+          text,
+          value: `a.md${c}is:open`,
+          quoted: false,
+          exclude: false,
+        },
+      ]);
     }
   });
 
@@ -402,7 +418,13 @@ describe("the grammar (§5.2, §5.5)", () => {
       expect(keys(text), text).toEqual(["text"]);
     }
     // A key's term that does not read as one is not understood, never text.
-    for (const text of ["path:", "is:", "is:closed", "path:a?", "is:open:x"]) {
+    for (const text of [
+      "path:",
+      "is:",
+      "is:closed",
+      'path:a"b"',
+      "is:open:x",
+    ]) {
       expect(parsePlanningFilter(text).kind, text).toBe("not-understood");
     }
   });
@@ -682,17 +704,14 @@ describe("the grammar (§5.2, §5.5)", () => {
       }
     }
     expect(understood("a\u{1F4AC}b").canonical).toBe("a\u{1F4AC}b");
-    // A pair is one code point, and a path may hold it.
-    expect(understood('path:"a\u{1F4AC}b"').canonical).toBe(
-      'path:"a\u{1F4AC}b"',
-    );
+    // A pair is one code point, and a path may hold it, bare or quoted.
+    expect(understood('path:"a\u{1F4AC}b"').canonical).toBe("path:a\u{1F4AC}b");
   });
 
-  it("is case-sensitive, and does not normalize", () => {
-    expect(apply("path:Docs/design").summary.unmatched).toEqual([
-      "path:Docs/design",
-    ]);
-    const nfd = 'path:"docs/cafe\u0301.md"';
+  it("folds case, and does not normalize", () => {
+    expect(apply("path:Docs/design").summary.unmatched).toEqual([]);
+    expect(apply("path:DOCS/CAF\u00c9.MD").summary.documents.kept).toBe(1);
+    const nfd = "path:docs/cafe\u0301.md";
     expect(apply(nfd).summary.unmatched).toEqual([nfd]);
     expect(apply('path:"docs/caf\u00e9.md"').summary.unmatched).toEqual([]);
   });
@@ -712,28 +731,38 @@ describe("canonical text (§5.6)", () => {
     );
   });
 
-  it("2: reads one leading ./ as /, and drops a / that does not anchor", () => {
-    expect(understood("path:./docs/x.md").canonical).toBe("path:docs/x.md");
-    expect(understood("path:/docs/x.md").canonical).toBe("path:docs/x.md");
+  it("2: reads one leading ./ as /, and keeps a leading /, which pins the value to the start", () => {
+    expect(understood("path:./docs/x.md").canonical).toBe("path:/docs/x.md");
+    expect(understood("path:/docs/x.md").canonical).toBe("path:/docs/x.md");
+    expect(understood("path:docs/x.md").canonical).toBe("path:docs/x.md");
     expect(understood("path:./roadmap.md").canonical).toBe("path:/roadmap.md");
-    expect(understood("path:/docs/").canonical).toBe("path:/docs/");
     expect(understood("path:./docs/").canonical).toBe("path:/docs/");
+    expect(understood("path:./").canonical).toBe("path:/");
+    // Only one, and only leading: the rest is the value's own text.
+    expect(understood("path:././x.md").canonical).toBe("path:/./x.md");
+    expect(understood("path:docs/./x.md").canonical).toBe("path:docs/./x.md");
     expect(understood('path:"./my notes.md"').canonical).toBe(
       'path:"/my notes.md"',
     );
     expect(understood('path:"/docs/my notes.md"').canonical).toBe(
-      'path:"docs/my notes.md"',
+      'path:"/docs/my notes.md"',
     );
+    // In its own case, which matching folds.
+    expect(understood("path:Docs/X.md").canonical).toBe("path:Docs/X.md");
   });
 
-  it("3: writes a quoted value bare where it can", () => {
+  it("3: writes a quoted value bare where it reads the same so", () => {
     expect(understood('path:"docs/x.md"').canonical).toBe("path:docs/x.md");
-    // Not with a `*`, which bare would be a wildcard, nor with any other
-    // character a bare pattern may not hold.
-    expect(understood('path:"docs/*.md"').canonical).toBe('path:"docs/*.md"');
-    expect(understood('path:"docs/c++.md"').canonical).toBe(
-      'path:"docs/c++.md"',
+    expect(understood('path:"docs/c++.md"').canonical).toBe("path:docs/c++.md");
+    expect(understood('path:"a\\\\b.md"').canonical).toBe("path:a\\b.md");
+    expect(understood('path:"a\\\\b.md"').terms).toEqual(
+      understood("path:a\\b.md").terms,
     );
+    // Not with a `*`, which bare is a wildcard, a space, which bare would
+    // split it, or a `"`, which bare would open a quote.
+    expect(understood('path:"docs/*.md"').canonical).toBe('path:"docs/*.md"');
+    expect(understood('path:"my notes"').canonical).toBe('path:"my notes"');
+    expect(understood('path:"a\\"b"').canonical).toBe('path:"a\\"b"');
   });
 
   it("4: writes a word as typed, and a phrase bare where it reads the same so", () => {
@@ -756,7 +785,7 @@ describe("canonical text (§5.6)", () => {
 
   it("5: writes an exclusion as a - before its term's canonical text", () => {
     expect(understood('-path:"./docs/x.md" -"Word" -is:open').canonical).toBe(
-      "-path:docs/x.md -Word -is:open",
+      "-path:/docs/x.md -Word -is:open",
     );
     expect(understood('-path:"my notes.md" -"a b"').canonical).toBe(
       '-path:"my notes.md" -"a b"',
@@ -908,17 +937,124 @@ describe("matching (§5.3, §5.4)", () => {
     expect(keepsQuestion("--x", question({ title: "x" }))).toBe(true);
   });
 
-  it("anchors a pattern with an inner slash, as git does and the port does not", () => {
-    expect(keeps("path:docs/design/a.md", "x/docs/design/a.md")).toBe(false);
-    expect(keeps("path:a.md", "x/docs/design/a.md")).toBe(true);
-    expect(keeps("path:docs/", "x/docs/a.md")).toBe(true);
-    expect(keeps("path:/docs/", "x/docs/a.md")).toBe(false);
+  // §5.4's one sentence, a clause at a time.
+  it("finds a path: value anywhere in the path", () => {
+    expect(keeps("path:docs/des", "docs/design/a.md")).toBe(true);
+    expect(keeps("path:docs/des", "x/docs/design/a.md")).toBe(true);
+    expect(keeps("path:filter", "docs/design/planning-filter.md")).toBe(true);
+    expect(keeps("path:filter", "frontend/filters/x.md")).toBe(true);
+    expect(keeps("path:filter", "docs/design/a.md")).toBe(false);
+    expect(keeps("path:sign/a.m", "docs/design/a.md")).toBe(true);
+    // A path a value is a prefix of, as every keystroke of one is.
+    for (const typed of ["d", "do", "docs/", "docs/d", "docs/desig"]) {
+      expect(keeps(`path:${typed}`, "docs/design/a.md"), typed).toBe(true);
+    }
+    // Every character is its own: no `?`, class, comment or negation.
+    expect(keeps("path:c++", "docs/c++.md")).toBe(true);
+    expect(keeps("path:a?.md", "docs/a?.md")).toBe(true);
+    expect(keeps("path:a?.md", "docs/ab.md")).toBe(false);
+    expect(keeps("path:[ab].md", "docs/a.md")).toBe(false);
+    expect(keeps("path:#docs", "x/#docs/a.md")).toBe(true);
+    expect(keeps("path:!docs", "docs/a.md")).toBe(false);
+    expect(keeps("path:docs//a", "docs/a.md")).toBe(false);
   });
 
-  // §5.4: wherever rule 3 writes a quoted value bare, the literal comparator
-  // and the port must agree, or the canonical text would mean something
-  // other than what was typed.
-  it("gives a quoted value written bare the answers the literal comparator gives", () => {
+  it("folds case on both sides, as a text term does", () => {
+    expect(keeps("path:DOCS/Design", "docs/design/a.md")).toBe(true);
+    expect(keeps("path:docs/design", "Docs/DESIGN/A.md")).toBe(true);
+    expect(keeps('path:"MY NOTES"', "docs/my notes.md")).toBe(true);
+    expect(keeps("path:/ROADMAP.MD", "roadmap.md")).toBe(true);
+    expect(keeps("path:*.MD", "a.md")).toBe(true);
+    expect(keeps("path:CAF\u00c9", "docs/caf\u00e9.md")).toBe(true);
+    // Only case: an NFD spelling does not keep an NFC path.
+    expect(keeps("path:cafe\u0301", "docs/caf\u00e9.md")).toBe(false);
+  });
+
+  it("pins a value with a leading / or ./ to the start of the path", () => {
+    expect(keeps("path:/roadmap.md", "roadmap.md")).toBe(true);
+    expect(keeps("path:/roadmap.md", "x/roadmap.md")).toBe(false);
+    expect(keeps("path:roadmap.md", "x/roadmap.md")).toBe(true);
+    // Any path that starts with its text, a longer name included.
+    expect(keeps("path:/roadmap.md", "roadmap.md/x.md")).toBe(true);
+    expect(keeps("path:/roadmap", "roadmap-2.md")).toBe(true);
+    expect(keeps("path:./roadmap.md", "roadmap.md")).toBe(true);
+    expect(keeps("path:./roadmap.md", "x/roadmap.md")).toBe(false);
+    // An agent's exact link keeps its document, and not one a folder down.
+    expect(keeps("path:/docs/design/x.md", "docs/design/x.md")).toBe(true);
+    expect(keeps("path:/docs/design/x.md", "y/docs/design/x.md")).toBe(false);
+    // `/` alone pins nothing to the start, and keeps every path.
+    expect(keeps("path:/", "a.md")).toBe(true);
+    expect(keeps("path:/", "x/y.md")).toBe(true);
+  });
+
+  it("reads a * as any characters within one folder or file name, and ** as any across folders", () => {
+    expect(keeps("path:*.md", "a.md")).toBe(true);
+    expect(keeps("path:*.md", "docs/design/a.md")).toBe(true);
+    expect(keeps("path:*.md", "docs/a.txt")).toBe(false);
+    expect(keeps("path:docs/*.md", "docs/a.md")).toBe(true);
+    expect(keeps("path:docs/*.md", "x/docs/a.md")).toBe(true);
+    expect(keeps("path:docs/*.md", "docs/design/a.md")).toBe(false);
+    expect(keeps("path:/docs/*.md", "x/docs/a.md")).toBe(false);
+    expect(keeps("path:docs/*/a.md", "docs/design/a.md")).toBe(true);
+    expect(keeps("path:docs/*/a.md", "docs/design/sub/a.md")).toBe(false);
+    expect(keeps("path:a*", "docs/a-plan.md")).toBe(true);
+    // `*` may stand for no character at all.
+    expect(keeps("path:a*.md", "docs/a.md")).toBe(true);
+    expect(keeps("path:docs/**.md", "docs/design/sub/a.md")).toBe(true);
+    expect(keeps("path:/docs/**.md", "docs/a.md")).toBe(true);
+    expect(keeps("path:/docs/**.md", "x/docs/a.md")).toBe(false);
+    // `**/` is any characters, then a `/`: one folder at least.
+    expect(keeps("path:docs/**/a.md", "docs/design/sub/a.md")).toBe(true);
+    expect(keeps("path:docs/**/a.md", "docs/a.md")).toBe(false);
+    // Three or more are two.
+    expect(keeps("path:docs/***a.md", "docs/x/y/a.md")).toBe(true);
+  });
+
+  it("matches a quoted value with every character literal, * included, and spaces allowed", () => {
+    expect(keeps('path:"*.md"', "docs/a.md")).toBe(false);
+    expect(keeps('path:"*.md"', "docs/*.md")).toBe(true);
+    expect(keeps('path:"my notes"', "docs/my notes.md")).toBe(true);
+    expect(keeps('path:"/my notes.md"', "my notes.md")).toBe(true);
+    expect(keeps('path:"/my notes.md"', "y/my notes.md")).toBe(false);
+    expect(keeps('path:"./my notes.md"', "my notes.md")).toBe(true);
+    expect(keeps('path:"a\\"b"', 'x/a"b.md')).toBe(true);
+  });
+
+  it("drops with -path: what path: with the same value would keep", () => {
+    const keepsDoc = (text: string, path: string) =>
+      filterKeepsDocument(understood(text), path);
+    for (const path of [
+      "docs/design/a.md",
+      "x/docs/design/a.md",
+      "roadmap.md",
+      "Docs/My Notes.md",
+    ]) {
+      for (const value of [
+        "docs/des",
+        "/docs",
+        "*.md",
+        "/**/a.md",
+        '"my notes"',
+        "DESIGN",
+      ]) {
+        expect(keepsDoc(`-path:${value}`, path), `${value} ${path}`).toBe(
+          !keepsDoc(`path:${value}`, path),
+        );
+      }
+    }
+    expect(keepsDoc("path:docs -path:/docs/design", "docs/a.md")).toBe(true);
+    expect(keepsDoc("path:docs -path:/docs/design", "docs/design/a.md")).toBe(
+      false,
+    );
+    expect(keepsDoc("path:docs -path:/docs/design", "x/docs/design/a.md")).toBe(
+      true,
+    );
+  });
+
+  // §5.6 rule 3: wherever a quoted value is written bare, the bare form must
+  // keep what the quoted one does, or the canonical text would mean
+  // something other than what was typed.
+  it("gives a quoted value written bare the answers the quoted form gives", () => {
     const paths = [
       ...LISTED,
       "docs/design/a.md/inner.md",
@@ -952,9 +1088,9 @@ describe("matching (§5.3, §5.4)", () => {
     expect(compared).toBeGreaterThanOrEqual(4);
   });
 
-  // §5.4: the fixture tells git's answer for a trailing `/` from the answer
-  // without it, bare and quoted, anchored and not.
-  it("holds git's answers that a trailing / keeps only what is under it", () => {
+  // §5.4: a trailing `/` is a character of the value like any other, so it
+  // keeps only paths under a folder of that name, bare and quoted.
+  it("keeps only what is under a folder with a value's trailing /", () => {
     const documents = (text: string) =>
       FORMS.read.find((entry) => entry.text === text)?.documents;
     // With the `/`, what is kept; without it, a file it keeps as well.
@@ -980,8 +1116,7 @@ describe("matching (§5.3, §5.4)", () => {
     ]);
   });
 
-  it("compares a quoted value code point for code point", () => {
-    // The port would trim the spaces, and read `[ab]` as a class.
+  it("compares a quoted value character for character, spaces and brackets included", () => {
     expect(keeps('path:" a.md"', "a.md")).toBe(false);
     expect(keeps('path:" a.md"', "x/ a.md")).toBe(true);
     expect(keeps('path:"[ab].md"', "a.md")).toBe(false);
@@ -990,6 +1125,30 @@ describe("matching (§5.3, §5.4)", () => {
     expect(keeps('path:"docs/[ab]/"', "docs/[ab]/x.md")).toBe(true);
     expect(keeps('path:"my dir/"', "a/my dir/x.md")).toBe(true);
     expect(keeps('path:"my dir/"', "a/my dir")).toBe(false);
+  });
+
+  // Ruling 1's own examples, over the fixture.
+  it("keeps what the design's examples say, over the fixture's paths", () => {
+    const docs = (text: string) => keptDocuments(understood(text));
+    expect(docs("path:docs/des")).toEqual([
+      "docs/design/a-plan.md",
+      "docs/design/a.md",
+      "docs/design/sub/c.md",
+      "docs/designx/d.md",
+      "x/docs/design/a.md",
+    ]);
+    expect(docs("path:/roadmap.md")).toEqual(["roadmap.md"]);
+    expect(docs("path:*.md")).toEqual(LISTED);
+    expect(docs("path:notes")).toEqual([
+      "docs/my notes.md",
+      "my notes.md",
+      "notes/b.md",
+      "notes/broken.md",
+      "notes/e.md",
+      "notes/f.md",
+      "y/my notes.md/inner.md",
+    ]);
+    expect(docs("path:/docs/design/a.md")).toEqual(["docs/design/a.md"]);
   });
 });
 
@@ -1262,14 +1421,20 @@ describe("applying a filter to the sections (§6.1, §6.2)", () => {
   it("counts entries, kept documents and open questions", () => {
     const all = sectionEntryKeys(SECTIONS).length;
     expect(all).toBe(20);
-    expect(apply("path:docs/design/a.md is:open").summary).toMatchObject({
-      canonical: "path:docs/design/a.md is:open",
+    expect(apply("path:/docs/design/a.md is:open").summary).toMatchObject({
+      canonical: "path:/docs/design/a.md is:open",
       entries: { shown: 3, of: all },
       documents: { kept: 1, of: 19 },
       openQuestions: 3,
     });
+    // Not pinned to the start, the same value keeps x/docs/design/a.md too.
+    expect(apply("path:docs/design/a.md is:open").summary).toMatchObject({
+      entries: { shown: 4, of: all },
+      documents: { kept: 2, of: 19 },
+      openQuestions: 4,
+    });
     // A ✅ question is an entry and not an open question.
-    expect(apply("path:docs/design/a.md").summary).toMatchObject({
+    expect(apply("path:/docs/design/a.md").summary).toMatchObject({
       entries: { shown: 5, of: all },
       openQuestions: 3,
     });
@@ -1355,19 +1520,19 @@ describe("the agent request under a filter (§6.3, §6.6)", () => {
   });
 
   it("lists only the entries the filter keeps", () => {
-    const { sections, summary } = apply("path:notes");
+    const { sections, summary } = apply("path:/notes");
     const request = planningAgentRequest(INDEX, sections, {
       repository,
       filter: { text: summary.requestText!, unfiltered: SECTIONS },
     })!;
     expect(request).toContain(
-      "Filter: `path:notes`. Only the entries it keeps are listed.",
+      "Filter: `path:/notes`. Only the entries it keeps are listed.",
     );
     expect(request).toContain("- notes/f.md:");
     expect(request).not.toMatch(/^- docs\//m);
     expect(request).not.toMatch(/^- x\//m);
     // Nothing to ask for: no request.
-    const nothing = apply("path:docs/design/a.md");
+    const nothing = apply("path:/docs/design/a.md");
     expect(
       planningAgentRequest(INDEX, nothing.sections, {
         repository,
@@ -1377,7 +1542,7 @@ describe("the agent request under a filter (§6.3, §6.6)", () => {
   });
 
   it("fences a filter text holding a backtick", () => {
-    const text = 'path:"a`b.md" path:notes';
+    const text = 'path:"a`b.md" path:/notes';
     const { sections } = apply(text);
     expect(
       planningAgentRequest(INDEX, sections, {
@@ -1385,7 +1550,7 @@ describe("the agent request under a filter (§6.3, §6.6)", () => {
         filter: { text, unfiltered: SECTIONS },
       }),
     ).toContain(
-      'Filter: ``path:"a`b.md" path:notes``. Only the entries it keeps are listed.',
+      'Filter: ``path:"a`b.md" path:/notes``. Only the entries it keeps are listed.',
     );
   });
 
@@ -1507,20 +1672,25 @@ describe("the link (§9.2)", () => {
 
   it("names one document as path:/<path>, in canonical text", () => {
     expect(documentFilter("roadmap.md")).toBe("path:/roadmap.md");
-    expect(documentFilter("plans/design.md")).toBe("path:plans/design.md");
-    expect(documentFilter("docs/my notes.md")).toBe('path:"docs/my notes.md"');
+    expect(documentFilter("plans/design.md")).toBe("path:/plans/design.md");
+    expect(documentFilter("docs/my notes.md")).toBe('path:"/docs/my notes.md"');
     expect(documentFilter("my notes.md")).toBe('path:"/my notes.md"');
-    expect(documentFilter("docs/*.md")).toBe('path:"docs/*.md"');
-    expect(documentFilter('docs/a"b\\.md')).toBe('path:"docs/a\\"b\\\\.md"');
-    expect(documentFilter("docs/caf\u00e9.md")).toBe(
-      'path:"docs/caf\u00e9.md"',
-    );
+    expect(documentFilter("docs/*.md")).toBe('path:"/docs/*.md"');
+    expect(documentFilter('docs/a"b\\.md')).toBe('path:"/docs/a\\"b\\\\.md"');
+    expect(documentFilter("docs/c++.md")).toBe("path:/docs/c++.md");
+    expect(documentFilter("docs/caf\u00e9.md")).toBe("path:/docs/caf\u00e9.md");
     expect(documentFilter("docs/a\u0007.md")).toBeNull();
-    // Each keeps its document and nothing else the index lists.
+    // Each keeps its document and nothing else the index lists: no path of
+    // the fixture starts with another's whole text.
     for (const path of LISTED) {
       const filter = understood(documentFilter(path)!);
       expect(keptDocuments(filter), path).toEqual([path]);
     }
+    // Pinned to the start, it keeps every path that starts with its text.
+    const filter = understood(documentFilter("docs/x.md")!);
+    expect(filterKeepsDocument(filter, "docs/x.md")).toBe(true);
+    expect(filterKeepsDocument(filter, "docs/x.mdx")).toBe(true);
+    expect(filterKeepsDocument(filter, "y/docs/x.md")).toBe(false);
   });
 });
 
@@ -1696,15 +1866,15 @@ describe("the filter notice (§6.7)", () => {
     PLANNING_NOTICES.filtered(summary, "page").map(noticeText);
 
   it("opens with the canonical text as code, then the counts", () => {
-    const { summary } = apply("path:/docs/design/a.md is:open");
+    const { summary } = apply("path:./docs/design/a.md is:open");
     const [first] = PLANNING_NOTICES.filtered(summary, "page");
     expect(first).toEqual([
       "Filtered by ",
-      { code: "path:docs/design/a.md is:open" },
+      { code: "path:/docs/design/a.md is:open" },
       ": 3 of 20 entries, in 1 of 19 paths, 3 of them open questions.",
     ]);
     expect(checker(summary)).toEqual([
-      "Filtered by `path:docs/design/a.md is:open`: 3 of 20 entries, in 1 of 19 paths, 3 of them open questions.",
+      "Filtered by `path:/docs/design/a.md is:open`: 3 of 20 entries, in 1 of 19 paths, 3 of them open questions.",
       "1 of its questions is blocked and will need you later.",
       "Run without --filter to see the other 17.",
     ]);
@@ -1858,8 +2028,8 @@ describe("the filter notice (§6.7)", () => {
   });
 
   it("fences a canonical text holding a backtick", () => {
-    expect(checker(apply('path:"a`b.md"').summary)[0]).toMatch(
-      /^Filtered by ``path:"a`b\.md"``: /,
+    expect(checker(apply("path:a`b.md").summary)[0]).toMatch(
+      /^Filtered by ``path:a`b\.md``: /,
     );
   });
 
