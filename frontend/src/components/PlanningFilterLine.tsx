@@ -83,6 +83,11 @@ export const PlanningFilterLine: React.FC<{
   const location = useLocation();
   const navigationType = useNavigationType();
   const [text, setText] = useState(urlText);
+  // What the box's own Enter, ✕ or paste just applied, as the URL will hold
+  // it, until the next location: the router commits a location in a
+  // transition, and until it does the URL still holds the old text, which
+  // the box neither disagrees with nor puts back on Esc (§7).
+  const [applied, setApplied] = useState<string | null>(null);
 
   // Reset from the URL on every navigation the box did not cause, before it
   // paints: a push or a pop always, a replace only while the box lacks the
@@ -91,6 +96,7 @@ export const PlanningFilterLine: React.FC<{
   useLayoutEffect(() => {
     if (seenKey.current === location.key) return;
     seenKey.current = location.key;
+    setApplied(null);
     const focused =
       inputRef.current !== null && inputRef.current === document.activeElement;
     if (navigationType !== "REPLACE" || !focused) setText(urlText);
@@ -98,11 +104,15 @@ export const PlanningFilterLine: React.FC<{
 
   /** Apply `next`, showing it in the box as the URL will hold it. */
   const apply = (next: string, roadmap: string | null = null) => {
-    setText(filterValue(next));
+    const value = filterValue(next);
+    setText(value);
+    setApplied(value);
     onApply(next, roadmap);
   };
 
-  const unapplied = text !== urlText;
+  // The text the page shows, or is switching to.
+  const appliedText = applied ?? urlText;
+  const unapplied = text !== appliedText;
   return (
     <div className="@container mb-4">
       <form
@@ -147,7 +157,7 @@ export const PlanningFilterLine: React.FC<{
             onKeyDown={(e) => {
               if (e.key !== "Escape") return;
               e.preventDefault();
-              if (unapplied) setText(urlText);
+              if (unapplied) setText(appliedText);
               else onLeave();
             }}
             onPaste={(e) => {
@@ -214,7 +224,7 @@ export const PlanningFilterLine: React.FC<{
       {printText !== "" && (
         <p
           data-testid="planning-filter-print"
-          className="hidden text-sm text-slate-700 print:block dark:text-slate-200"
+          className="hidden text-sm text-slate-700 [overflow-wrap:anywhere] print:block dark:text-slate-200"
         >
           Filter: <code>{printText}</code>
         </p>

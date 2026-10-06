@@ -219,6 +219,20 @@ describe("useKeyboardShortcuts", () => {
     expect(onFocusFilter).toHaveBeenCalledTimes(1);
   });
 
+  it("closes the shortcuts help before focusing the filter box on /, so the focus is never behind it", () => {
+    // The help lists `/` on the planning page, and is a modal over it: what
+    // the reader typed next went into a box they could not see.
+    const onFocusFilter = vi.fn();
+    const { result } = renderHook(() =>
+      useKeyboardShortcuts({ ...mockCallbacks, onFocusFilter }),
+    );
+    fireKey("?");
+    expect(result.current.shortcutsOpen).toBe(true);
+    expect(slash().defaultPrevented).toBe(true);
+    expect(result.current.shortcutsOpen).toBe(false);
+    expect(onFocusFilter).toHaveBeenCalledTimes(1);
+  });
+
   it("leaves / to the browser on a page with no filter box", () => {
     renderHook(() => useKeyboardShortcuts(mockCallbacks));
     expect(slash().defaultPrevented).toBe(false);
