@@ -87,6 +87,14 @@ export interface PlanningLimits {
    * applied, in ms. The results never wait for it.
    */
   filterIdleMs: number;
+  /**
+   * How long the Filter box's text must stay as it is before the live region
+   * speaks the notice of what the idle pause wrote (`planning-filter.md` §7),
+   * in ms, counted from the same keystroke as `filterIdleMs`. Longer than the
+   * pause, so a slow typist hears the notice once they stop rather than
+   * after every key. The design names no number, so this one is coined here.
+   */
+  filterSpeechMs: number;
   /** How long the sections wait for their documents' reviews, in ms. */
   reviewsDeadlineMs: number;
   /** How long the sections wait for their Mermaid diagrams, in ms. */
@@ -136,6 +144,7 @@ export const DEFAULT_PLANNING_LIMITS: Readonly<PlanningLimits> = Object.freeze({
   commitMarkdownChars: 96 * 1024,
   spinnerMs: 150,
   filterIdleMs: 300,
+  filterSpeechMs: 1000,
   reviewsDeadlineMs: 1000,
   mermaidDeadlineMs: 1000,
   mermaidFramePx: 240,

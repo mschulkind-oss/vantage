@@ -85,6 +85,21 @@ describe("PlanningFilterLine, as the reader types", () => {
     expect(box).not.toHaveAttribute("aria-invalid");
   });
 
+  it("names the hint in the box's description while it shows, and draws its icon for a narrow width, where the words give way", () => {
+    const { box } = renderLine("");
+    const icon = () => screen.getByTestId("planning-filter-hint-icon");
+    expect(box).not.toHaveAttribute("aria-describedby");
+    expect(icon().querySelector("svg")).toBeNull();
+    fireEvent.change(box, { target: { value: 'generator "is' } });
+    expect(box).toHaveAccessibleDescription(FILTER_HINT);
+    expect(icon().querySelector("svg")).not.toBeNull();
+    expect(icon()).toHaveAttribute("title", FILTER_HINT);
+    fireEvent.change(box, { target: { value: 'generator "is"' } });
+    expect(box).not.toHaveAttribute("aria-describedby");
+    expect(icon().querySelector("svg")).toBeNull();
+    expect(icon()).not.toHaveAttribute("title");
+  });
+
   it("says nothing of a text it cannot read that the URL holds, which is applied", () => {
     const { box, hint } = renderLine('a"');
     expect(box.value).toBe('a"');
