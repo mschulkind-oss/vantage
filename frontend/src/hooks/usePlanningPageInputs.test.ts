@@ -9,6 +9,7 @@ import axios from "axios";
 import { buildPlanningIndex, type PlanningConfig } from "vantage-md/planning";
 import {
   blockKey,
+  heldPlanningPageInputs,
   loadPageInputs,
   prefetchPlanningPage,
   resetPlanningPageInputs,
@@ -372,6 +373,132 @@ describe("the cache of sets", () => {
     await inputsOf(edited);
     expect(asked).toHaveLength(2);
     expect(asked[1]?.map((w) => w.path)).toEqual(["plans/b.md"]);
+  });
+});
+
+// planning-filter.md §6.5: typing lays out a page per keystroke, and none of
+// that may cost what Back relies on.
+describe("the sets of a filter being typed", () => {
+  const typedLayout = (
+    ready: Extract<PlanningLoad, { status: "ready" }>,
+    filter: string,
+  ) =>
+    layoutPlanningPage(
+      ready.index,
+      sectionsOf(ready.index, null, filter),
+      {},
+      filter,
+    );
+  /**
+   * Three history entries' sets: Needs you's two pages, and the first page
+   * of an index that came before.
+   */
+  const historyOf = async (
+    ready: Extract<PlanningLoad, { status: "ready" }>,
+  ): Promise<string[]> => {
+    const earlier = readyOf();
+    const keys: string[] = [];
+    for (const [load, request] of [
+      [earlier, {}],
+      [ready, {}],
+      [ready, { "needs-you": "2" }],
+    ] as const) {
+      const entry = loadPageInputs("", load, layoutOf(load, request));
+      keys.push((await entry.promise)!.key);
+    }
+    return keys;
+  };
+  /** Twelve texts, as typed one key at a time. */
+  const TYPED = "oq-a1 oq-b1".split("").map((_, i, all) =>
+    all
+      .slice(0, i + 1)
+      .join("")
+      .trim(),
+  );
+
+  it("evicts, typing past a dozen texts, no set another history entry was shown with, and holds two in the typing slot", async () => {
+    setPlanningLimitsForTests({ pageEntries: 1, pageInputsKept: 4 });
+    serve();
+    const ready = readyOf();
+    // Three history entries' sets: Needs you's pages 1 to 3.
+    const history = await historyOf(ready);
+    expect(heldPlanningPageInputs().cached).toEqual(history);
+    let shown = history[1]!;
+    const texts = [...new Set(TYPED)].filter((text) => text !== "");
+    expect(texts.length).toBeGreaterThanOrEqual(10);
+    for (const text of texts) {
+      const entry = loadPageInputs("", ready, typedLayout(ready, text), {
+        typed: true,
+        shown,
+      });
+      // Every other keystroke's set is in before the next key.
+      if (texts.indexOf(text) % 2 === 0) shown = (await entry.promise)!.key;
+      const held = heldPlanningPageInputs();
+      expect(held.cached).toEqual(history);
+      expect(held.typing.length).toBeLessThanOrEqual(2);
+    }
+  });
+
+  it("moves a typed set into the cache once the URL takes its text, and the visit's earlier one out", async () => {
+    setPlanningLimitsForTests({ pageEntries: 1, pageInputsKept: 4 });
+    serve();
+    const ready = readyOf();
+    const history = await historyOf(ready);
+    const visit = Symbol("visit");
+    const write = async (text: string) => {
+      const layout = typedLayout(ready, text);
+      const typed = loadPageInputs("", ready, layout, { typed: true });
+      const key = (await typed.promise)!.key;
+      // The URL takes it: the same set, and no new request for it.
+      expect(loadPageInputs("", ready, layout, { visit })).toBe(typed);
+      return key;
+    };
+    const first = await write("oq-a");
+    expect(heldPlanningPageInputs()).toEqual({
+      cached: [...history, first],
+      typing: [],
+    });
+    // The same visit types on and pauses again: its first write's set
+    // leaves, since the entry it was shown with holds the newer filter.
+    const second = await write("oq-a1");
+    expect(heldPlanningPageInputs()).toEqual({
+      cached: [...history, second],
+      typing: [],
+    });
+    // Another visit's typing is another entry's: it costs a place, as an
+    // Enter would.
+    const layout = typedLayout(ready, "oq-b");
+    await loadPageInputs("", ready, layout, { typed: true }).promise;
+    loadPageInputs("", ready, layout, { visit: Symbol("another") });
+    expect(heldPlanningPageInputs().cached).toEqual([
+      ...history.slice(1),
+      second,
+      expect.stringContaining("\noq-b\n"),
+    ]);
+  });
+
+  it("takes a typed set the cache holds from the cache, and reuses the blocks the typing slot holds", async () => {
+    const asked = serve();
+    const ready = readyOf();
+    const cached = loadPageInputs("", ready, layoutOf(ready));
+    await cached.promise;
+    expect(loadPageInputs("", ready, layoutOf(ready), { typed: true })).toBe(
+      cached,
+    );
+    expect(heldPlanningPageInputs().typing).toEqual([]);
+    expect(asked).toHaveLength(1);
+    // With nothing cached, a typed set's blocks serve the next one's cards,
+    // as a cached set's do.
+    resetPlanningPageInputs();
+    await loadPageInputs("", ready, typedLayout(ready, "oq-a"), {
+      typed: true,
+    }).promise;
+    expect(heldPlanningPageInputs().cached).toEqual([]);
+    expect(asked).toHaveLength(2);
+    await loadPageInputs("", ready, typedLayout(ready, "oq-a1"), {
+      typed: true,
+    }).promise;
+    expect(asked).toHaveLength(2);
   });
 });
 

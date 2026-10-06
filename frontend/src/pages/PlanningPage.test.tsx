@@ -34,6 +34,7 @@ import {
   Routes,
   useLocation,
   useNavigate,
+  useNavigationType,
   type NavigateFunction,
 } from "react-router-dom";
 import axios from "axios";
@@ -51,12 +52,14 @@ import { filterSummaryOf, sectionsOf } from "../lib/planningPages";
 import { VIEWER_RELEASE } from "../lib/viewerRelease";
 import { PlanningPage } from "./PlanningPage";
 import { AppShell } from "../components/AppShell";
+import { FILTER_HINT } from "../components/PlanningFilterLine";
 import {
   fetchPlanningReviews,
   resetPlanningReviews,
 } from "../hooks/usePlanningReviews";
 import { resetRepoRootsForTests } from "../hooks/useRepoRoot";
 import {
+  heldPlanningPageInputs,
   prefetchPlanningPage,
   resetPlanningPageInputs,
 } from "../hooks/usePlanningPageInputs";
@@ -451,20 +454,27 @@ const router: {
   navigate: NavigateFunction | null;
   /** Every location's key, in the order they came: one per navigation. */
   keys: string[];
+  /** How each of them came: `PUSH`, `REPLACE` or `POP`. */
+  types: string[];
 } = {
   location: "",
   hash: "",
   navigate: null,
   keys: [],
+  types: [],
 };
 function RouterProbe() {
   const location = useLocation();
   const navigate = useNavigate();
+  const navigationType = useNavigationType();
   useLayoutEffect(() => {
     router.location = `${location.pathname}${location.search}`;
     router.hash = location.hash;
     router.navigate = navigate;
-    if (router.keys.at(-1) !== location.key) router.keys.push(location.key);
+    if (router.keys.at(-1) !== location.key) {
+      router.keys.push(location.key);
+      router.types.push(navigationType);
+    }
   });
   return null;
 }
@@ -5024,58 +5034,21 @@ describe("the planning filter (planning-filter.md)", () => {
       ).toBeNull();
     });
 
-    it("puts the applied text back on Esc, then gives the pane the focus, and never clears", async () => {
+    it("is reset by a replace it did not cause while it holds the URL's own text, and never while it has the focus", async () => {
+      // A replace from elsewhere, with the box untouched and unfocused: it
+      // follows the URL, as the open rewrite shows a link's canonical text.
       await renderPage("/.vantage/planning?filter=path:plans/design.md");
-      box().focus();
-      await type("path:plans/unrouted.md");
-      expect(hint()).toBe("Enter to apply");
-      await press("Escape", box());
-      expect(box().value).toBe("path:plans/design.md");
-      expect(hint()).toBe("");
-      expect(document.activeElement).toBe(box());
-      await press("Escape", box());
-      expect(document.activeElement).toBe(scroller());
-      expect(box().value).toBe("path:plans/design.md");
-      expect(router.location).toBe(
-        "/.vantage/planning?filter=path:plans/design.md",
+      act(() =>
+        router.navigate!(
+          { search: "?filter=path:plans/unrouted.md" },
+          { replace: true },
+        ),
       );
-    });
-
-    it("applies nothing when the focus leaves it, and says Enter applies the text it holds", async () => {
-      await renderPage();
-      box().focus();
-      expect(hint()).toBe("");
-      await type("path:plans/design.md");
-      act(() => scroller().focus());
       await settle();
-      expect(router.location).toBe("/.vantage/planning");
-      expect(box().value).toBe("path:plans/design.md");
-      expect(hint()).toBe("Enter to apply");
-      expect(cardsIn("Needs you")).toHaveLength(3);
-    });
-
-    it("is reset by the page's own replace while it lacks the focus, and not while it has it", async () => {
-      setPlanningLimitsForTests({ pageEntries: 1 });
-      await renderPage("/.vantage/planning?filter=path:plans/design.md");
-      await type("unapplied");
-      // A flip, with the focus on the pager: the box follows the URL.
-      await act(async () => {
-        fireEvent.click(
-          within(
-            screen.getByRole("navigation", { name: "Needs you pages" }),
-          ).getByRole("button", { name: "Next ›" }),
-        );
-      });
-      await settle();
-      // A flip writes the filter as Enter does, and asks for no rewrite
-      // (planning-filter.md §6.4).
-      expect(router.location).toBe(
-        "/.vantage/planning?filter=path:plans/design.md&needs-you=2",
-      );
-      expect(box().value).toBe("path:plans/design.md");
-      // The same replace with the focus in the box leaves its text alone.
+      expect(box().value).toBe("path:plans/unrouted.md");
+      // With the focus in the box, the same replace leaves its text alone.
       box().focus();
-      await type("still typing");
+      await type('still "typing');
       act(() =>
         router.navigate!(
           { search: "?filter=path:plans/design.md" },
@@ -5083,7 +5056,8 @@ describe("the planning filter (planning-filter.md)", () => {
         ),
       );
       await settle();
-      expect(box().value).toBe("still typing");
+      expect(box().value).toBe('still "typing');
+      expect(hint()).toBe(FILTER_HINT);
     });
 
     it("says the notice in a polite live region after Enter or ✕, never as the page opens", async () => {
@@ -5198,6 +5172,477 @@ describe("the planning filter (planning-filter.md)", () => {
       );
       expect(notice()).not.toBeNull();
       expect(status()).toHaveTextContent(/^$/);
+    });
+  });
+
+  describe("as the reader types (planning-filter.md §6.4, OQ-PF6)", () => {
+    // The idle pause, on a clock of the test's own: long, so that it passes
+    // only when a test runs it out, and advancing with real time besides, so
+    // the page's other waits pass as they do outside a test.
+    const IDLE = 60_000;
+    const limits = (more: Parameters<typeof setPlanningLimitsForTests>[0]) =>
+      setPlanningLimitsForTests({ filterIdleMs: IDLE, ...more });
+    beforeEach(() => {
+      vi.useFakeTimers({
+        toFake: ["setTimeout", "clearTimeout"],
+        shouldAdvanceTime: true,
+        advanceTimeDelta: 1,
+      });
+      limits({});
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+    /** Run the idle pause's clock on by `ms`. */
+    async function idle(ms = IDLE): Promise<void> {
+      await act(async () => {
+        vi.advanceTimersByTime(ms);
+      });
+      await settle();
+    }
+    /** Type `text` one key at a time, each change handed over and settled. */
+    async function typeKeys(text: string, from = ""): Promise<void> {
+      for (let i = from.length + 1; i <= text.length; i++) {
+        await type(text.slice(0, i));
+        await settle();
+      }
+    }
+    const D1 = "OQ-D1: Question OQ-D1?";
+    const D3 = "OQ-D3: Question OQ-D3?";
+    const A1 = "OQ-A1: Question OQ-A1?";
+    const filterOf = () =>
+      new URLSearchParams(router.location.split("?")[1] ?? "").get("filter");
+
+    it("narrows the page at each keystroke with no Enter, adds no history entry, and lets the URL take the text once, after the idle pause (criterion 13)", async () => {
+      await renderPage("/.vantage/planning", ["/plans/roadmap.md"]);
+      const from = router.types.length;
+      box().focus();
+      const seen: string[][] = [];
+      for (const text of ["o", "oq", "oq-", "oq-d", "oq-d3"]) {
+        await type(text);
+        await settle();
+        seen.push(cardsIn("Needs you"));
+      }
+      expect(seen).toEqual([
+        [D1, D3, A1],
+        [D1, D3, A1],
+        [D1, D3, A1],
+        [D1, D3],
+        [D3],
+      ]);
+      // Rows hold no id, so a word only an id holds leaves them out.
+      expect(querySection("Ready to build")).toBeNull();
+      expect(noticeLines()[0]).toMatch(/^Filtered by oq-d3: 1 of 10 entries,/);
+      expect(router.location).toBe("/.vantage/planning");
+      // Halfway through the pause, nothing is written yet; after it, once.
+      await idle(IDLE / 2);
+      expect(router.location).toBe("/.vantage/planning");
+      await idle(IDLE / 2);
+      expect(router.location).toBe("/.vantage/planning?filter=oq-d3");
+      // One replace, and no history entry.
+      expect(router.types.slice(from)).toEqual(["REPLACE"]);
+      expect(box().value).toBe("oq-d3");
+      expect(document.activeElement).toBe(box());
+      act(() => router.navigate!(-1));
+      await settle();
+      expect(router.location).toBe("/plans/roadmap.md");
+    });
+
+    it("keeps the page of the last text it read while the text is not understood, and Enter then shows every entry under Not filtered (criterion 14)", async () => {
+      await renderPage();
+      box().focus();
+      await typeKeys('path:plans/design.md "is');
+      expect(cardsIn("Needs you")).toEqual([D1, D3]);
+      expect(noticeLines()[0]).toMatch(/^Filtered by path:plans\/design\.md:/);
+      expect(hint()).toBe(FILTER_HINT);
+      // Not applied is not invalid: the amber ring is an applied filter's.
+      expect(box()).not.toHaveAttribute("aria-invalid");
+      // The URL takes what is applied, and the box keeps what it holds.
+      await idle();
+      expect(filterOf()).toBe("path:plans/design.md");
+      expect(box().value).toBe('path:plans/design.md "is');
+      expect(hint()).toBe(FILTER_HINT);
+      await enter();
+      expect(filterOf()).toBe('path:plans/design.md "is');
+      expect(cardsIn("Needs you")).toEqual([D1, D3, A1]);
+      expect(noticeLines()[0]).toMatch(
+        /^Not filtered: this Vantage cannot read an unclosed quote\./,
+      );
+      expect(box()).toHaveAttribute("aria-invalid", "true");
+      expect(hint()).toBe("");
+    });
+
+    it("keeps every entry while a qualifier is half typed, and the page of each term it can read", async () => {
+      await renderPage();
+      box().focus();
+      const seen: (string | null)[] = [];
+      for (const text of ["is", "is:", "is:o", "is:open"]) {
+        await type(text);
+        await settle();
+        seen.push(noticeLines()[0]?.split(": ")[0] ?? null);
+      }
+      // `is` is a word, which only the paths holding "plans/disagrees.md"
+      // hold; `is:` and `is:o` are not understood, so they leave that page
+      // as it is, until `is:open` is read.
+      expect(seen).toEqual([
+        "Filtered by is",
+        "Filtered by is",
+        "Filtered by is",
+        "Filtered by is:open",
+      ]);
+      expect(cardsIn("Needs you")).toEqual([D1, D3]);
+    });
+
+    it("writes at once when the focus leaves the box, and owes nothing after", async () => {
+      await renderPage();
+      box().focus();
+      await typeKeys("oq-d");
+      act(() => scroller().focus());
+      await settle();
+      expect(router.location).toBe("/.vantage/planning?filter=oq-d");
+      const keys = router.keys.length;
+      await idle();
+      expect(router.keys).toHaveLength(keys);
+    });
+
+    it("writes at once on Enter, and on ✕, and owes nothing after either", async () => {
+      await renderPage();
+      box().focus();
+      await typeKeys("oq-d");
+      await enter();
+      expect(router.location).toBe("/.vantage/planning?filter=oq-d");
+      await typeKeys("oq-d3", "oq-d");
+      expect(cardsIn("Needs you")).toEqual([D3]);
+      let keys = router.keys.length;
+      await act(async () => {
+        fireEvent.click(
+          screen.getByRole("button", { name: "Clear the filter" }),
+        );
+      });
+      await settle();
+      expect(router.location).toBe("/.vantage/planning");
+      expect(router.keys).toHaveLength(keys + 1);
+      expect(cardsIn("Needs you")).toEqual([D1, D3, A1]);
+      keys = router.keys.length;
+      await idle();
+      expect(router.keys).toHaveLength(keys);
+      expect(router.location).toBe("/.vantage/planning");
+    });
+
+    it("never rewrites the box while the URL takes its text, caret and selection included, and Enter shows the canonical text", async () => {
+      await renderPage();
+      box().focus();
+      await type("path:./plans/design.md");
+      await settle();
+      box().setSelectionRange(5, 9);
+      await idle();
+      expect(router.location).toBe(
+        "/.vantage/planning?filter=path:plans/design.md",
+      );
+      expect(box().value).toBe("path:./plans/design.md");
+      expect([box().selectionStart, box().selectionEnd]).toEqual([5, 9]);
+      // Nor as the focus leaves it, which writes at once.
+      await type("path:./plans/answered.md");
+      await settle();
+      act(() => scroller().focus());
+      await settle();
+      expect(router.location).toBe(
+        "/.vantage/planning?filter=path:plans/answered.md",
+      );
+      expect(box().value).toBe("path:./plans/answered.md");
+      expect(cardsIn("Needs you")).toEqual([A1]);
+      box().focus();
+      await enter();
+      expect(box().value).toBe("path:plans/answered.md");
+    });
+
+    it("drops a write still owed on a pop, which the box and the page both follow", async () => {
+      await renderPage("/.vantage/planning", [
+        "/.vantage/planning?filter=path:plans/design.md",
+      ]);
+      box().focus();
+      await typeKeys("oq-a");
+      expect(cardsIn("Needs you")).toEqual([A1]);
+      act(() => router.navigate!(-1));
+      await settle();
+      expect(router.location).toBe(
+        "/.vantage/planning?filter=path:plans/design.md",
+      );
+      expect(box().value).toBe("path:plans/design.md");
+      expect(cardsIn("Needs you")).toEqual([D1, D3]);
+      await idle();
+      expect(router.location).toBe(
+        "/.vantage/planning?filter=path:plans/design.md",
+      );
+      // The entry typed in holds what it held.
+      act(() => router.navigate!(1));
+      await settle();
+      expect(router.location).toBe("/.vantage/planning");
+      expect(box().value).toBe("");
+      expect(cardsIn("Needs you")).toEqual([D1, D3, A1]);
+    });
+
+    it("drops a write still owed on a push", async () => {
+      await renderPage();
+      box().focus();
+      await typeKeys("oq-a");
+      act(() => router.navigate!("/.vantage/planning?x=1"));
+      await settle();
+      expect(router.location).toBe("/.vantage/planning?x=1");
+      expect(box().value).toBe("");
+      await idle();
+      expect(router.location).toBe("/.vantage/planning?x=1");
+      expect(cardsIn("Needs you")).toEqual([D1, D3, A1]);
+    });
+
+    it("speaks the notice once the URL takes the text, never per keystroke", async () => {
+      await renderPage();
+      box().focus();
+      for (const text of ["o", "oq", "oq-", "oq-d"]) {
+        await type(text);
+        await settle();
+        expect(status()).toHaveTextContent(/^$/);
+      }
+      await idle();
+      expect(status().textContent).toMatch(
+        /^Filtered by oq-d: 3 of 10 entries/,
+      );
+      await typeKeys("oq-d3", "oq-d");
+      expect(status().textContent).toMatch(/^Filtered by oq-d: /);
+      await idle();
+      expect(status().textContent).toMatch(
+        /^Filtered by oq-d3: 1 of 10 entries/,
+      );
+    });
+
+    it("carries a filter still owed into a flip, in one replace, and owes nothing after", async () => {
+      limits({ pageEntries: 1 });
+      await renderPage();
+      box().focus();
+      await typeKeys("oq-d");
+      expect(cardsIn("Needs you")).toEqual([D1]);
+      expect(router.location).toBe("/.vantage/planning");
+      const keys = router.keys.length;
+      await act(async () => {
+        fireEvent.click(
+          within(
+            screen.getByRole("navigation", { name: "Needs you pages" }),
+          ).getByRole("button", { name: "Next ›" }),
+        );
+      });
+      await settle();
+      expect(router.location).toBe(
+        "/.vantage/planning?filter=oq-d&needs-you=2",
+      );
+      expect(router.keys).toHaveLength(keys + 1);
+      expect(cardsIn("Needs you")).toEqual([D3]);
+      await idle();
+      expect(router.keys).toHaveLength(keys + 1);
+    });
+
+    it("carries a filter still owed into a roadmap pick", async () => {
+      const NESTED = "docs/plans/roadmap.md";
+      seed({
+        ...TREE,
+        [NESTED]: "# Plans\n\n1. [The unrouted one](../../plans/unrouted.md)\n",
+      });
+      await renderPage();
+      box().focus();
+      await typeKeys("oq-u");
+      await act(async () => {
+        fireEvent.change(screen.getByRole("combobox", { name: "Roadmap" }), {
+          target: { value: NESTED },
+        });
+      });
+      await settle();
+      expect(filterOf()).toBe("oq-u");
+      expect(
+        new URLSearchParams(router.location.split("?")[1]).get("roadmap"),
+      ).toBe(NESTED);
+      expect(cardsIn("Needs you")).toEqual(["OQ-U1: Question OQ-U1?"]);
+      const keys = router.keys.length;
+      await idle();
+      expect(router.keys).toHaveLength(keys);
+    });
+
+    it("keeps the old page up while a typed text's page is on its way, with the spinner drawn for past spinnerMs", async () => {
+      // OQ-U1 is on Not on a roadmap's second page, so its block is not in
+      // hand.
+      limits({ spinnerMs: 150, pageEntries: 1 });
+      let hold = false;
+      serveTree(TREE, "/api", (inline) => ({
+        cards: (repo, want, options) =>
+          hold
+            ? new Promise<CardAnswer[]>(() => {})
+            : inline.cards(repo, want, options),
+      }));
+      await renderPage();
+      hold = true;
+      box().focus();
+      await type("oq-u");
+      await settle();
+      expect(cardsIn("Needs you")).toEqual([D1]);
+      expect(notice()).toBeNull();
+      const spinner = screen.getByTestId("planning-filter-spinner");
+      expect(spinner).toHaveClass("planning-reveal");
+      expect(spinner.style.animationDelay).toBe("150ms");
+      expect(box().value).toBe("oq-u");
+    });
+
+    it("keeps every card a keystroke still shows mounted, rendering none of them again, and puts the sections' box back where it stands", async () => {
+      await renderPage();
+      const sections = document.querySelector("[data-planning-sections]")!;
+      const d3 = cardFor("OQ-D3");
+      const placed: Node[] = [];
+      const observer = new MutationObserver((records) => {
+        for (const record of records) placed.push(...record.addedNodes);
+      });
+      observer.observe(sections.parentNode!, { childList: true });
+      viewerRenders.clear();
+      box().focus();
+      await typeKeys("oq-d");
+      await typeKeys("oq-d3", "oq-d");
+      observer.disconnect();
+      expect(cardsIn("Needs you")).toEqual([D3]);
+      expect(cardFor("OQ-D3")).toBe(d3);
+      expect(document.querySelector("[data-planning-sections]")).toBe(sections);
+      // Every card on screen was on screen before: no body rendered again.
+      expect([...viewerRenders.values()].reduce((a, b) => a + b, 0)).toBe(0);
+      // Each filter the page showed put the box back once, in place.
+      expect(placed.filter((node) => node === sections)).toHaveLength(5);
+      expect(sections.getAttribute("data-planning-filter")).toBe("oq-d3");
+    });
+
+    it("sends the visit's second review request when the reader types before the sections paint, and makes no third", async () => {
+      const reviewRequests = () =>
+        vi
+          .mocked(axios.post)
+          .mock.calls.filter(([url]) =>
+            String(url).endsWith("/planning/reviews"),
+          )
+          .map(([, body]) => (body as { paths: string[] }).paths);
+      // Rows past the first page of Ready to build: the first request holds
+      // the first pages' documents and those needing the human, and leaves
+      // these for the second.
+      const ROWS: Record<string, string> = { ...TREE };
+      for (let i = 0; i < 3; i++) {
+        ROWS[`plans/r${i}.md`] = doc(
+          "status: accepted\nstage: DECIDED",
+          "Decided.",
+        );
+      }
+      seed(ROWS);
+      limits({ pageRows: 1 });
+      let hold = true;
+      const releases: (() => void)[] = [];
+      serveTree(ROWS, "/api", (inline) => ({
+        cards: (repo, want, options) =>
+          hold
+            ? new Promise<CardAnswer[]>((resolve) => {
+                releases.push(() => resolve(inline.cards(repo, want, options)));
+              })
+            : inline.cards(repo, want, options),
+      }));
+      await renderPage();
+      expect(querySection("Needs you")).toBeNull();
+      expect(reviewRequests()).toHaveLength(1);
+      box().focus();
+      await type("oq-u");
+      // Sent at once, ahead of the typed text's own inputs.
+      expect(reviewRequests()).toHaveLength(2);
+      hold = false;
+      for (const release of releases) release();
+      await settle();
+      expect(cardsIn("Not on a roadmap")).toEqual(["OQ-U1: Question OQ-U1?"]);
+      expect(reviewRequests()[1]).toEqual(
+        expect.arrayContaining(["plans/r1.md", "plans/r2.md"]),
+      );
+      await typeKeys("oq-x1", "oq-");
+      await type("");
+      await settle();
+      await idle();
+      expect(documentsIn("Ready to build")).toEqual(["plans/r0.md"]);
+      expect(reviewRequests()).toHaveLength(2);
+      expect(reviewGets()).toEqual([]);
+    });
+
+    it("evicts, typing a dozen texts, no set another history entry was shown with, and Back finds it", async () => {
+      limits({ pageInputsKept: 2 });
+      await renderPage("/.vantage/planning?filter=path:plans/design.md");
+      act(() => router.navigate!("/.vantage/planning"));
+      await settle();
+      expect(cardsIn("Needs you")).toEqual([D1, D3, A1]);
+      const held = () => heldPlanningPageInputs().cached.join("|");
+      expect(held()).toContain("\npath:plans/design.md\n");
+      box().focus();
+      await typeKeys("oq-a1 oq-d3 x");
+      expect(held()).toContain("\npath:plans/design.md\n");
+      expect(heldPlanningPageInputs().typing.length).toBeLessThanOrEqual(2);
+      act(() => router.navigate!(-1));
+      await settle();
+      expect(cardsIn("Needs you")).toEqual([D1, D3]);
+    });
+
+    it("writes the URL as the reader types where there are no sections to filter: Choose a project", async () => {
+      useRepoStore.setState({
+        isMultiRepo: true,
+        currentRepo: null,
+        repos: [{ name: "alpha" }] as never,
+      });
+      await renderPage("/.vantage/planning");
+      expect(screen.getByText(/Choose a project/)).toBeTruthy();
+      box().focus();
+      await typeKeys("oq-d");
+      expect(router.location).toBe("/.vantage/planning");
+      await idle();
+      expect(router.location).toBe("/.vantage/planning?filter=oq-d");
+      expect(
+        within(screen.getByTestId("planning-projects"))
+          .getByRole("link", { name: "alpha" })
+          .getAttribute("href"),
+      ).toBe("/.vantage/planning/alpha?filter=oq-d");
+    });
+
+    it("puts the applied text back on Esc over a text it cannot read, then gives the pane the focus, and never clears", async () => {
+      await renderPage("/.vantage/planning?filter=path:plans/design.md");
+      box().focus();
+      await typeKeys("path:plans/unrouted.md");
+      expect(cardsIn("Not on a roadmap")).toEqual(["OQ-U1: Question OQ-U1?"]);
+      expect(hint()).toBe("");
+      await type('path:plans/unrouted.md "x');
+      expect(hint()).toBe(FILTER_HINT);
+      await press("Escape", box());
+      expect(box().value).toBe("path:plans/unrouted.md");
+      expect(hint()).toBe("");
+      expect(document.activeElement).toBe(box());
+      await press("Escape", box());
+      expect(document.activeElement).toBe(scroller());
+      expect(box().value).toBe("path:plans/unrouted.md");
+      // Leaving the box wrote what it applied.
+      expect(router.location).toBe(
+        "/.vantage/planning?filter=path:plans/unrouted.md",
+      );
+    });
+
+    it("leaves a text it cannot read in the box with its hint when the focus leaves, and the URL holds what is applied", async () => {
+      setPlanningLimitsForTests({ pageEntries: 1, filterIdleMs: IDLE });
+      await renderPage("/.vantage/planning?filter=path:plans/design.md");
+      await type('x"');
+      // A flip, a replace the box did not cause, with the focus elsewhere.
+      await act(async () => {
+        fireEvent.click(
+          within(
+            screen.getByRole("navigation", { name: "Needs you pages" }),
+          ).getByRole("button", { name: "Next ›" }),
+        );
+      });
+      await settle();
+      expect(router.location).toBe(
+        "/.vantage/planning?filter=path:plans/design.md&needs-you=2",
+      );
+      expect(box().value).toBe('x"');
+      expect(hint()).toBe(FILTER_HINT);
+      expect(cardsIn("Needs you")).toEqual([D3]);
     });
   });
 
@@ -5467,7 +5912,7 @@ describe("the planning filter (planning-filter.md)", () => {
       expect(noticeLines()[0]).toMatch(/cannot read is:closed\./);
     });
 
-    it("never says Enter to apply through a paste, a ✕ or an Enter, which apply what the box holds", async () => {
+    it("never says a text is not applied through a paste, a ✕ or an Enter, which apply what the box holds", async () => {
       // The router commits a location in a transition, after the box shows
       // what it applied: in between, nothing in the box is unapplied (§7).
       await renderPage();
@@ -5498,15 +5943,27 @@ describe("the planning filter (planning-filter.md)", () => {
         expect(router.location).toBe("/.vantage/planning");
         await act(async () => {});
         expect(shown).toEqual([]);
-        // Typed, the text is unapplied, and the hint says so until Enter.
+        // Typed, a text it can read is applied as it is typed, and Enter
+        // writes it: neither is "not applied".
         await type("path:./plans/design.md");
-        expect(hint()).toBe("Enter to apply");
-        await act(async () => {});
-        shown.length = 0;
+        await settle();
+        expect(hint()).toBe("");
         await enter();
         expect(router.location).toBe(
           "/.vantage/planning?filter=path:plans/design.md",
         );
+        await act(async () => {});
+        expect(shown).toEqual([]);
+        // One it cannot read is not applied, and the hint says so until
+        // Enter, which applies it as written.
+        await type('path:plans/design.md "is');
+        expect(hint()).toBe(FILTER_HINT);
+        await act(async () => {});
+        shown.length = 0;
+        await enter();
+        expect(
+          new URLSearchParams(router.location.split("?")[1]).get("filter"),
+        ).toBe('path:plans/design.md "is');
         await act(async () => {});
       } finally {
         observer.disconnect();
@@ -5515,10 +5972,24 @@ describe("the planning filter (planning-filter.md)", () => {
       expect(hint()).toBe("");
     });
 
-    it("takes any other paste as text, applied on Enter", async () => {
+    it("takes any other paste as typing, written at once", async () => {
       await renderPage();
-      await paste("path:plans/design.md");
-      expect(router.location).toBe("/.vantage/planning");
+      box().focus();
+      await act(async () => {
+        fireEvent.paste(box(), {
+          clipboardData: { getData: () => "path:plans/design.md" },
+        });
+        // jsdom inserts nothing on a paste: the browser's own input follows.
+        fireEvent.change(box(), { target: { value: "path:plans/design.md" } });
+      });
+      await settle();
+      expect(router.location).toBe(
+        "/.vantage/planning?filter=path:plans/design.md",
+      );
+      expect(cardsIn("Needs you")).toEqual([
+        "OQ-D1: Question OQ-D1?",
+        "OQ-D3: Question OQ-D3?",
+      ]);
     });
 
     it("applies to the repository on screen in daemon mode (criterion 11)", async () => {
