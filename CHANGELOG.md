@@ -6,6 +6,46 @@ are summarized one section per minor line; the commit log has the rest.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.1] - 2026-10-06
+
+### Changed
+
+**A planning link from `vantage-check` opens its own project when one Vantage
+serves several.** The `Planning page:` link that `vantage-check index --filter`
+prints now ends with `&space=`, an id naming the checkout it ran in, and so
+does `filter.link` under `--format json`. Put your Vantage's address in front
+of the link and open it. In daemon mode, the page asks Vantage which project
+holds that id and opens that project's planning page with the filter, with no
+list of projects on the way. In 0.9.0 it listed every project's planning page
+for you to pick from. A link made in a checkout your Vantage does not serve
+says so, and in daemon mode only then shows that list. Pasting the line into
+the Filter box works as before. See
+[Filtered links](userguide/guides/planning.md#filtered-links).
+
+**`index --filter` now writes `.vantage/space`.** The first run that prints a
+link makes the file at the project root, holding the id, and later runs reuse
+it. The checker keeps the id out of git, so that every clone gets its own.
+When it makes `.vantage` itself, it also writes a `.vantage/.gitignore` that
+ignores the whole directory. A `.vantage` that is already there with no
+`.gitignore`, as the review inbox can leave one, gets one that ignores only the
+id. A `.vantage/.gitignore` you already have is left alone, so make sure it
+ignores `space`. A linked worktree gets an id of its own. A checkout copied
+whole, `.vantage` included, shares the original's id, so a link from either
+opens neither and the page lists both: remove `.vantage/space` in the copy. See
+[What `--filter` writes](userguide/guides/vantage-check.md#what---filter-writes).
+
+The checker and the viewer both need 0.9.1. Vantage 0.9.0 ignores `space=`
+and lists each project's planning page as before, and a link from
+`vantage-check` 0.9.0 has no `space=`.
+
+### Fixed
+
+- Moving between pages, such as from a document to the planning page with
+  `g p`, no longer flashes the *Disconnected from backend* banner.
+- A planning link written in a document, such as a `Planning page:` line in an
+  agent's handoff note, opened as a path inside that document's project. It now
+  opens the planning page.
+
 ## [0.9.0] - 2026-10-06
 
 ### Added
