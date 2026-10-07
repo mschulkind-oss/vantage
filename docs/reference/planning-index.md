@@ -811,7 +811,8 @@ to the planning page and back replaces the main column and nothing else: the
 sidebar is not drawn again, its tree keeps its expanded folders and scroll
 position, and nothing it shows is asked for again. The header is the viewer's,
 fitted by the same yield steps: the sidebar button, the contents-column and
-full-width toggles, the breadcrumb with the page's name, and **Copy answers**.
+full-width toggles, the breadcrumb with the page's name, and **Review answers**
+and **Copy answers**.
 
 - A document's controls (Raw, Path, history, review) have no meaning here and are
   not drawn, and the keys that act on a document do nothing, so the shortcuts
@@ -1251,6 +1252,24 @@ is the block that document's own Copy produces, and one set of responding
 instructions closes the payload; a one-document payload is byte-identical to that
 document's own Copy. The button is disabled when nothing is pending. Other
 comments in the same documents are not included.
+
+**Review answers** beside Copy answers explains that count without copying a
+payload. `PlanningPendingAnswers` consumes the same pending groups, never a
+second placement or reviews request. Its portaled menu groups comments by source
+path, shows original text and the latest reviewer follow-up, and provides real
+document links using the recorded source line when available. The line is a
+historical location, not proof the block has not moved. Inspection changes no
+review state; normal navigation saves the planning scroll position, and modified
+clicks remain the browser's to open in another tab.
+
+The menu bounds mounted previews with its own pagination; its current size is in
+[Current values](#current-values). It uses `AnchoredMenu` for viewport placement
+and keyboard navigation. In a folded toolbar it anchors to the persistent
+Toolbar actions button, since entering a portaled panel closes that toolbar's
+disclosure. Review answers is disabled while the pending count is unknown or
+empty, but does not wait for the scanner's quote text needed by Copy answers.
+Its list follows the same filter and reports excluded answers without listing
+them as included. No read state, dismissal, or agent delivery is added.
 
 Which comments belong to which listed question is decided two ways, never both for
 one card:
@@ -4325,6 +4344,7 @@ is the only place most of the numbers are stated.
 | Late Mermaid frame | 240 px tall | `mermaidFramePx` |
 | Page-input sets kept | 8 | `pageInputsKept` |
 | Pending count slot | 4 digits | `pendingCountDigits` |
+| Review answers previews per page | 20 comments | `ANSWERS_PER_PAGE` in [PlanningPendingAnswers](../../frontend/src/components/PlanningPendingAnswers.tsx) |
 | Quote context | 2 lines either side | `quoteContextLines` |
 | Documents per section in the outline | 50 | `outlineDocuments` |
 | The hold | 150 ms after the content arrives; for a space's answer, after the repositories arrive, or the page mounts | `holdMs`; `usePlanningSpaceHold` in `frontend/src/lib/planningSpace.ts` |
