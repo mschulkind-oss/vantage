@@ -2241,11 +2241,17 @@ describe("index --filter, and the checkout's space id", () => {
   });
 
   // A .vantage that was there, holding the review inbox, say, is the owner's:
-  // the id goes in, and its ignore state is left as it was.
-  it("writes no .gitignore into a .vantage that was already there", async () => {
+  // the id goes in, and with no .gitignore there it gets one that ignores
+  // the id alone, so the inbox's ignore state is as it was and a `git add
+  // -A` cannot commit the id for every clone to inherit. A .gitignore that is
+  // there is left as it is.
+  it("ignores only the id in a .vantage that was already there", async () => {
     const root = checkout({ ".vantage/inbox/.keep": "" });
     await index(root, "--filter", "is:open");
-    expect(vantageDir(root)).toEqual(["inbox", "space"]);
+    expect(vantageDir(root)).toEqual([".gitignore", "inbox", "space"]);
+    expect(readFileSync(join(root, ".vantage/.gitignore"), "utf8")).toBe(
+      "# Made by vantage-check: this clone's space id is its own, so it is never committed.\n/space\n/space.*.tmp\n/.gitignore\n",
+    );
 
     const owned = checkout({ ".vantage/.gitignore": "inbox/\n" });
     await index(owned, "--filter", "is:open");
@@ -2254,6 +2260,39 @@ describe("index --filter, and the checkout's space id", () => {
       "inbox/\n",
     );
     expect(spaceOf(owned)).toMatch(PLANNING_SPACE_ID_PATTERN);
+  });
+
+  // What git sees, with no ignore rule of the user's own in play: the id
+  // never shows as a file to add, in a .vantage the checker made or in one
+  // that held the inbox.
+  it("leaves git nothing to add", async () => {
+    const git = (cwd: string, ...args: string[]) =>
+      execFileSync("git", ["-c", "core.excludesFile=/dev/null", ...args], {
+        cwd,
+        encoding: "utf8",
+        env: { ...process.env, GIT_CONFIG_NOSYSTEM: "1" },
+      });
+    const extras: Record<string, string>[] = [
+      {},
+      { ".vantage/inbox/.keep": "" },
+    ];
+    for (const extra of extras) {
+      const root = makeTree({
+        "a.md": doc("status: draft", questions("A", OPEN)),
+        ...extra,
+      });
+      git(root, "init", "-q");
+      await index(root, "--filter", "is:open");
+      expect(spaceOf(root)).toMatch(PLANNING_SPACE_ID_PATTERN);
+      const status = git(
+        root,
+        "status",
+        "--porcelain",
+        "--untracked-files=all",
+      );
+      expect(status).not.toContain(".vantage/space");
+      expect(status).not.toContain(".vantage/.gitignore");
+    }
   });
 
   it.each([
@@ -2299,10 +2338,13 @@ describe("index --filter, and the checkout's space id", () => {
     expect(stdout).not.toContain("space=");
   });
 
-  // The checkout a Vantage serves is the main one, so a link made in a linked
-  // worktree names the main checkout's space, and the worktree caution still
-  // says the page shows that checkout's documents.
-  it("uses the main checkout's id in a linked worktree, and says whose it is", async () => {
+  // A link made in a linked worktree names the worktree, whose own
+  // .vantage/space holds the id: a Vantage serving the worktree opens it,
+  // and one serving only the main checkout finds the id through the main
+  // checkout's .git/worktrees and opens that. The hint says both, and the
+  // worktree caution still says the page shows the served checkout's
+  // documents.
+  it("makes a linked worktree's id in the worktree, and says where the link opens", async () => {
     const main = checkout({
       ".git/worktrees/wt/commondir": "../..\n",
       ".vantage/space": "abcdefghijklmnop\n",
@@ -2322,27 +2364,42 @@ describe("index --filter, and the checkout's space id", () => {
     );
     expect(code).toBe(EXIT_OK);
     expect(stderr).toBe("");
+    const id = spaceOf(worktree);
+    expect(id).toMatch(PLANNING_SPACE_ID_PATTERN);
+    expect(id).not.toBe("abcdefghijklmnop");
     expect(stdout.split("\n\n")[0]?.split("\n").slice(-4)).toEqual([
-      "Planning page: /.vantage/planning?filter=path:/a.md&space=abcdefghijklmnop",
+      `Planning page: /.vantage/planning?filter=path:/a.md&space=${id}`,
       PASTE_HINT,
-      `  space= is the id of the main checkout ${codeSpan(main)}, kept in its .vantage/space: with an address in front, the link opens that project's page even where one Vantage serves several.`,
+      `  space= is this worktree's id, kept in its own .vantage/space: with an address in front, the link opens this worktree's page even where one Vantage serves several, or the page of its main checkout ${codeSpan(main)} where only that is served.`,
       `  ${codeSpan(worktree)} is a linked worktree: the page shows the checkout your Vantage serves, which may not hold these documents as they are here.`,
     ]);
-    expect(vantageDir(worktree)).toBeNull();
-
-    // With none there yet, it is made in the main checkout, with its ignore.
-    const fresh = checkout({ ".git/worktrees/wt/commondir": "../..\n" });
-    const wt = makeTree({ "a.md": doc("status: draft", questions("A", OPEN)) });
-    writeFileSync(
-      join(wt, ".git"),
-      `gitdir: ${join(fresh, ".git/worktrees/wt")}\n`,
-    );
-    const json = await indexJson(wt, "--filter", "path:/a.md");
+    expect(vantageDir(worktree)).toEqual([".gitignore", "space"]);
+    expect(spaceOf(main)).toBe("abcdefghijklmnop");
+    const json = await indexJson(worktree, "--filter", "path:/a.md");
     expect(json.payload.filter.link).toBe(
-      `/.vantage/planning?filter=path:/a.md&space=${spaceOf(fresh)}`,
+      `/.vantage/planning?filter=path:/a.md&space=${id}`,
     );
-    expect(vantageDir(fresh)).toEqual([".gitignore", "space"]);
-    expect(vantageDir(wt)).toBeNull();
+  });
+
+  // `git clone --bare url proj/.git`, worktrees under proj: proj is no
+  // checkout, so the hint names no main checkout and nothing is made there.
+  it("names no main checkout for a worktree of a bare repository kept as a folder's .git", async () => {
+    const proj = makeTree({
+      ".git/HEAD": "",
+      ".git/config": "[core]\n\tbare = true\n",
+      ".git/worktrees/main/commondir": "../..\n",
+      "main/a.md": doc("status: draft", questions("A", OPEN)),
+    });
+    const worktree = join(proj, "main");
+    writeFileSync(
+      join(worktree, ".git"),
+      `gitdir: ${join(proj, ".git/worktrees/main")}\n`,
+    );
+    const { stdout } = await index(worktree, "--filter", "path:/a.md");
+    expect(stdout).toContain(`\n${SPACE_HINT}\n`);
+    expect(stdout).not.toContain("main checkout");
+    expect(vantageDir(worktree)).toEqual([".gitignore", "space"]);
+    expect(vantageDir(proj)).toBeNull();
   });
 
   // Pasted into the Filter box, the block reads as it did before the space:

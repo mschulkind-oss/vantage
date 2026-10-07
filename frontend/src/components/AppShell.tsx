@@ -580,6 +580,21 @@ const ShellFrame: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                     <span className="font-medium">{currentRepo}</span>
                   </AppLink>
                 )}
+                {/* The project row's room, unpainted, where daemon mode draws
+                    the sidebar before a project is open: the planning page
+                    does, while it asks which project a link's space is
+                    (planning-index.md §13.6), so the row the answer brings
+                    moves nothing below it. */}
+                {isMultiRepo && !currentRepo && (
+                  <div
+                    aria-hidden="true"
+                    data-testid="sidebar-project-room"
+                    className="invisible flex items-center py-2 px-2 mb-2 text-xs border-b"
+                  >
+                    <Database size={12} className="mr-1" />
+                    <span className="font-medium">&nbsp;</span>
+                  </div>
+                )}
                 <StarredSection />
                 <FileTree nodes={fileTree} />
               </>

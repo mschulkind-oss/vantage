@@ -1014,14 +1014,22 @@ review answers.
 - **It is never committed.** When the checker makes `.vantage` itself, it
   writes `.vantage/.gitignore` beside the id, holding `*` under a one-line
   comment, so every clone makes an id of its own. A `.vantage` that was
-  already there, which may hold the review inbox, keeps whatever ignore rules
-  it had.
+  already there with no `.gitignore`, as one holding the review inbox often
+  is, gets one that ignores only the id (`/space`, its scratch names and
+  `/.gitignore`), so `git add -A` cannot commit it and the inbox keeps
+  whatever rules it had. A `.vantage/.gitignore` that is there is left alone.
+- **A copied checkout keeps the original's id.** Copy a checkout whole,
+  `.vantage` and all, and both hold one id: a link from either opens neither,
+  and the page says how many projects hold it. Remove `.vantage/space` in the
+  copy, and its next link makes an id of its own.
 - **A file that holds no id is left alone.** The link is printed without
   `&space=`, and stderr says so: remove the file and rerun to have a new one
   made. So too when the file cannot be made, with the reason.
-- **In a linked worktree, the id is the main checkout's.** Vantage serves the
-  main checkout, so the id lives in its `.vantage/`, and the hint line names
-  that checkout. The worktree caution still follows it.
+- **In a linked worktree, the id is the worktree's own.** A Vantage serving the
+  worktree, as plain `vantage` run inside it does, opens the worktree's page;
+  one serving only the main checkout finds the id through the main checkout's
+  `.git/worktrees` and opens that. The hint line says both and names the main
+  checkout, and the worktree caution still follows it.
 
 Older viewers ignore `space=`: the link opens as it did before.
 
@@ -1110,9 +1118,9 @@ them the planning page filtered to that work. The loop:
    question's whole document, since no term selects a single question.
 2. **In the checkout the human's Vantage serves,** run
    `vantage-check index --filter 'path:/docs/design/search.md path:/docs/design/search-plan.md is:open'`.
-   A link made in another checkout, such as a worktree, opens the documents of
-   the checkout Vantage serves, which may not hold the questions as they are
-   where you ran it. When the human asked about one part of the work, a word
+   A link made in a linked worktree opens the worktree's documents where
+   Vantage serves the worktree, and otherwise the main checkout's, which may
+   not hold the questions as they are where you ran it. When the human asked about one part of the work, a word
    narrows it further, as in `'indexing path:/docs/design/search.md is:open'`.
    - Exit `2` names the term to fix.
    - `unknown option for index: --filter` means the checker predates the

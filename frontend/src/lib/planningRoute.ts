@@ -35,3 +35,16 @@ export function planningPath(
     ? `${PLANNING_ROUTE}/${encodeURIComponent(repo)}`
     : PLANNING_ROUTE;
 }
+
+/**
+ * Whether `href`, as a link in a document writes it, is the planning page's
+ * route: `/.vantage/planning`, with or without a project segment, a query or
+ * a fragment. It is an app route rather than a path in the repository, so a
+ * document's link to it, such as the checker's `Planning page:` line in a
+ * handoff note (`docs/reference/planning-index.md` §13.6), opens it as
+ * written, in daemon mode too.
+ */
+export function isPlanningRouteHref(href: string): boolean {
+  const path = href.split(/[?#]/, 1)[0] ?? "";
+  return path === PLANNING_ROUTE || path.startsWith(`${PLANNING_ROUTE}/`);
+}

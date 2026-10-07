@@ -41,7 +41,7 @@ import {
   planningLink,
   referenceSummary,
 } from "vantage-md/planning";
-import { planningPath } from "../lib/planningRoute";
+import { isPlanningRouteHref, planningPath } from "../lib/planningRoute";
 import { usePlanningIndex } from "../stores/usePlanningStore";
 import { PLANNING_BADGE_ATTR } from "./PlanningBadge";
 import { ReferencedBy, summaryLine } from "./ReferencedBy";
@@ -264,6 +264,13 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
       // of it is on the document's own page (see `resolveHref`).
       if (href.startsWith("#")) {
         navigate(buildPath(currentPath) + href);
+        return;
+      }
+
+      // The planning page is an app route, not a path in the repository, so
+      // it opens as written, as `resolveHref` renders it.
+      if (isPlanningRouteHref(href)) {
+        navigate(href);
         return;
       }
 
