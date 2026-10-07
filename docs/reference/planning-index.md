@@ -3070,7 +3070,7 @@ by number.
 | The filter line | planning page | drawn at first paint from the URL alone, one fixed-height row above every state of the route; its ✕, hint and spinner have slots of their own; its notice is the frame's ([§6.17](#617-the-filter-line)) |
 | A typed filter's results | planning page | the next render the reader causes: the old results stay until the new set's inputs are in, then change in one commit, the sections' box put back in place before the paint; the roadmap line's counts keep the unfiltered sections' room ([§6.16](#616-typing-and-the-url)) |
 | *Nothing matches* | planning page | the sections' box, in the commit that would have drawn the sections; the section bar's row leaves in that commit, keyed by the filter, so nothing painted moves ([§6.18](#618-the-filter-notice-and-nothing-matches)) |
-| Which project a link's space id names | planning page, daemon mode | on a first load, the app shell's loading state, held for the answer at most the hold's deadline after the repositories are in, so the project's page is the first paint; past it, or followed inside the app, the frame and the filter line alone until the answer, then the project's page or the page saying no project here holds it, below them ([§13.6](#136-the-space-id)) |
+| Which project a link's space id names | planning page, daemon mode | on a first load, the app shell's loading state, held for the answer at most the hold's deadline after the repositories are in, so the project's page is the first paint; past it, or followed inside the app, the sidebar's column, the header's buttons and the filter line until the answer, which keeps them all where they are: the project's page, or the page saying no project here holds it, or that several do, below them ([§13.6](#136-the-space-id)) |
 | The other-checkout notice | planning page, single-project mode | ready at the frame's first paint, which waits for the answer at most the hold's deadline; an answer after that is not drawn ([§13.6](#136-the-space-id)) |
 | Comments filed before the visit | cards | ready at first paint, through the gate |
 | Comments past the reviews deadline | cards | a fixed-width *N comments* count in the card's control row, which is always there, expanding on click; nothing inline |
@@ -3473,8 +3473,9 @@ Planning page: /.vantage/planning?filter=path:/docs/design/x.md+is:open&space=q4
   sets the root off as code and says it is a linked worktree, whose page shows the
   checkout the human's Vantage serves, which may not hold these documents as they
   are here. The checker cannot tell which checkout a server serves, but it can tell
-  when its own is not a repository's main one, and its link names the main
-  checkout's space id ([§13.6](#136-the-space-id)). A submodule's `.git` is a file too,
+  when its own is not a repository's main one. Its link names the worktree's own
+  space id, which a Vantage serving only the main checkout finds through it
+  ([§13.6](#136-the-space-id)). A submodule's `.git` is a file too,
   so the caution names a submodule a linked worktree as well; a root found by its
   `.vantage.toml` alone gets none.
 - **An older viewer.** When `.vantage.toml`'s `target` names a release before the
@@ -3535,8 +3536,9 @@ needs no click at all.
    naming one question by its `#` fragment brings in all of that question's
    document, since no key selects one question.
 3. **In the checkout the human's Vantage serves, it runs `vantage-check index
-   --filter 'path:/<design> path:/<plan> is:open'`.** A link made in another
-   checkout, such as a worktree, opens the served checkout's documents. A word
+   --filter 'path:/<design> path:/<plan> is:open'`.** A link made in a linked
+   worktree opens the worktree's documents where the human's Vantage serves the
+   worktree, and the main checkout's where it serves only that one. A word
    narrows it further when the human asked about one part of the work. Exit `2`
    names the bad term; `unknown option for index: --filter` means the checker
    predates the filter, and a current one is the fix. If the notice, or the line
@@ -3597,26 +3599,40 @@ server ([`agent-cli.md` P1](agent-cli.md#11-principles)).
 
 - **No file:** it makes one. When `.vantage` is not there either, it makes the
   directory with a `.gitignore` holding `*` after a one-line comment, so nothing in
-  it is committed and every clone makes an id of its own. A `.vantage` that is there
-  keeps the ignore state its owner gave it, since it may hold the review inbox.
+  it is committed and every clone makes an id of its own.
+- **A `.vantage` that is there with no `.gitignore`**, as an agent leaves it after
+  delivering into the review inbox, gets one holding `/space`, `/space.*.tmp` (the
+  scratch names below) and `/.gitignore`, after a one-line comment. So a `git add
+  -A` cannot commit the id for every clone to inherit, and whatever else the
+  directory holds keeps the ignore state it had. A `.gitignore` that is there is
+  its owner's and is left as it is. A missing one is made on every run that prints
+  a link, so a run stopped between making `.vantage` and writing its `.gitignore`
+  leaves nothing to commit either.
 - **A file holding an id:** reused, and never rewritten, since every link already
   handed over names it.
 - **A file holding none:** left as it is, and the link is printed without `space=`,
   with a warning on stderr. So it is when the file cannot be made.
 - **Two runs at once** never overwrite or half-read each other's id: it is written to
   a scratch name and hard-linked into place, which fails where a file already is.
-- **In a linked worktree**, whose `.git` is a file naming a gitdir that has a
-  `commondir`, the id is the main checkout's, the parent of git's common directory,
-  because that is the checkout a Vantage serves; the worktree caution still prints,
-  and the hint line names the main checkout. A submodule, whose gitdir has no
-  `commondir`, and a worktree of a bare repository are checkouts of their own.
+- **In a linked worktree** the id is the worktree's own, in its own
+  `.vantage/space`, so the link names the checkout it was made in: a Vantage
+  serving the worktree opens it, and one serving only the main checkout finds the
+  id through the main checkout's `.git/worktrees` (below) and opens that. Both are
+  normal: plain `vantage` run inside a worktree serves it. The hint line says so
+  and names the main checkout, the parent of git's common directory when the
+  worktree's gitdir has a `commondir`; the worktree caution still prints. A
+  submodule, whose gitdir has no `commondir`, and a worktree of a bare repository,
+  kept elsewhere or as a folder's `.git` (`git clone --bare url proj/.git`, whose
+  `core.bare` is true), have no main checkout to name.
 
 **The link** ends with `space=<id>`, after `roadmap=` when there is one. The id is
 then the link's last value, so it is the one whose end
 [the encoding](#135-handing-the-human-a-filtered-page) would escape, and an id
 never needs it. The hint line under `Planning page:` says what it does, and in a
-linked worktree it names the main checkout: *space= is the id of the main checkout
-`/…`, kept in its .vantage/space: …*. The JSON's `filter.link` carries it too. The
+linked worktree it names the main checkout too: *space= is this worktree's id, kept
+in its own .vantage/space: with an address in front, the link opens this worktree's
+page even where one Vantage serves several, or the page of its main checkout `/…`
+where only that is served.* The JSON's `filter.link` carries it too. The
 paste reader ignores it: pasted into a project's Filter box, the link applies its
 filter there.
 
@@ -3626,15 +3642,29 @@ filter there.
 | Request | Answer |
 | :--- | :--- |
 | `{id}` is not an id | `400` `{"error": "Not a space id"}`, before any file is looked at |
-| A served project's `.vantage/space` holds it | `200` `{"repo": "<name>"}`; in single-project mode `{"repo": ""}`, the single-repo sentinel |
+| One served project holds it | `200` `{"repo": "<name>"}`; in single-project mode `{"repo": ""}`, the single-repo sentinel |
+| Two or more do | `200` `{"repo": null, "repos": ["<name>", …]}`, in registration order: a reader that knows only `repo` reads it as none |
 | None does | `200` `{"repo": null}` |
 
-Every answer but the `400` is sent `no-store`. Each served root's file is
-stat'ed on every lookup and read again only when its size, modification time or
-inode changed, so a file a checker made a moment ago is found and one that was
-removed is not. Two projects holding one id, a checkout copied whole, answer the
-first in registration order, and the log names the other. It parses no Markdown
-and writes nothing.
+**A served project holds an id** in its own `.vantage/space`, or, when its root is
+a main checkout, through a linked worktree of it. For that the server lists
+`<root>/.git/worktrees/*/gitdir`, each naming a worktree's `.git` file, and counts a
+worktree only when that file names the same directory back: a main checkout copied
+whole, whose `.git/worktrees` still name the original's worktrees, answers for none
+of them, and a root whose `.git` is bare (`core.bare`, read as git reads it) for
+none at all. A project's own file beats a worktree's, so a worktree served beside
+its main checkout opens for its own links, whichever is registered first. The
+same `internal/spaceid/testdata/space-files.json` holds the server's and the
+checker's reading of `core.bare` to one answer.
+
+Every answer but the `400` is sent `no-store`. Each file is stat'ed on every
+lookup and read again only when its size, modification time or inode changed, and
+the worktrees are listed again each time, so a file a checker made a moment ago is
+found and one that was removed is not. Two or more projects holding one id, at the
+same level, is a checkout copied whole with its `.vantage`, or an id committed and
+cloned: nothing in the request can choose, so all are named, and the log says so
+once for each set of projects, not on every lookup. It parses no Markdown and
+writes nothing.
 
 **The page** (`frontend/src/lib/planningSpace.ts`, read by `PlanningPage` and
 `AppShell`) asks the endpoint when its URL's `space=` holds an id and, in daemon
@@ -3644,7 +3674,8 @@ nothing.
 | Where | The answer | What the page does |
 | :--- | :--- | :--- |
 | Daemon mode, no project segment | a project's name | It is that project's page from its first render, its sidebar drawn, and one replace navigation makes the URL `/.vantage/planning/<encoded name>?<the same query>`, `space=` dropped, every other parameter and the fragment kept, the query written as the page writes its own. No history entry; nothing stored |
-| the same | `null` | *This link was made in a checkout this Vantage does not serve: no project here holds its space id.* The box keeps the filter, and only then come each project's planning pages with the query, `space=` dropped. The URL stays as it is |
+| the same | `null` | *This link was made in a checkout this Vantage does not serve: no project here holds its space id.* The box keeps the filter, and only then come each project's planning pages with the query, `space=` dropped. The URL stays as it is, and the page asks again whenever the server's projects change, opening the project once one holds the id |
+| the same | two or more names | *N projects here hold this link's space id, so it names none of them: a checkout copied whole keeps the original's. Remove .vantage/space in the copy, and its next link gets an id of its own.* Then only those projects' planning pages, with the query, `space=` dropped |
 | the same | the request fails | *This Vantage could not say which project holds this link's space id*, then the same list |
 | the same | `space=` holds no id | No request; *This link's space= is not a space id, so it names no project*, then the same list |
 | Daemon mode, a project segment | not asked | `space=` is ignored, and the in-place rewrite drops it |
@@ -3652,26 +3683,46 @@ nothing.
 | Single-project mode | `null` | One notice line after the filter notice: *This link was made in another checkout: this page shows the checkout this Vantage serves.* `space=` stays, so the address still says where the link was made |
 | Single-project mode | the request fails, or `space=` holds no id | Nothing is said, and `space=` is left as written, as an unknown parameter is |
 
-**No chooser paints while the page asks.** On a first load the app shell asks
-beside `/api/repos`, and in daemon mode its loading state holds the first paint for
-the answer too, at most the hold's deadline after the repositories are in
-([§12.3](#123-the-hold)): the page then opens on the project's page, sidebar and
-all, and nothing painted moves under it. Past that deadline, or for a link followed
-inside the app, the page draws its header and the filter line alone until the
-answer, with the sidebar as the shell had it. In single-project mode the frame
-waits the same way, so the notice paints with it, and an answer that comes later
-says nothing (L1).
+**No chooser paints while the page asks, and the answer moves nothing painted.**
+On a first load the app shell asks beside `/api/repos`, and in daemon mode its
+loading state holds the first paint for the answer too, at most the hold's deadline
+after the repositories are in ([§12.3](#123-the-hold)): the page then opens on the
+project's page, sidebar and all. Past that deadline, or for a link followed inside
+the app, the page draws the sidebar's column, the header's buttons and the filter
+line until the answer, and paints the crumbs and the toolbar only with it, since
+the crumbs name the project and the toolbar's box starts where they end. Every
+answer keeps that column: the project's sidebar fills it, and an answer that opens
+no project leaves it as it was, the shell's project's sidebar or, with none open, a
+sidebar whose project row's room is kept unpainted. So the page for a link naming a
+space has the sidebar's column on every outcome, even one that opens no project:
+a sidebar that is not the link's project's is the price of nothing moving under the
+reader. The e2e holds the
+answer 900 ms and records no layout shift outside the sidebar; with the column
+dropped on the wait, the main column moved by 0.225. In single-project mode the frame waits the same way, so the notice paints with it, and
+an answer that comes later says nothing (L1).
 
-**Answers are kept for the tab's session,** at most 16 ids, the oldest out first:
-a checkout's id never changes, and the checker makes the file before it prints the
-link, so an answer holds until the server's projects change, which a reload sees.
-A request in flight is shared, so the shell and the page ask once. A failed request
-is kept by nobody, and the next visit asks again.
+**Answers are kept for the tab's session,** at most 16 ids, the oldest out first.
+One that names the project holds: a checkout's id never changes, and the checker
+makes the file before it prints the link. One that names none, or several, is kept
+so a page opened again paints it at once, but only until the server's projects
+change: a daemon finds a new clone seconds after the agent in it printed its link,
+so every change of the repository list after the first load marks such an answer
+to be asked again, and the page showing it, or the next one to open it, follows the
+new answer, painting the old one until it comes. A request in flight is shared, so
+the shell and the page ask once. A failed request is kept by nobody, and the next
+visit asks again.
 
-`frontend/e2e/planning_space.spec.ts` serves two clones in daemon mode, each with
-its own `.vantage/space`, and opens a link with no project segment carrying the
-second one's id: it lands on that project's filtered page, with no layout shift, no
-chooser ever inserted, one request and no history entry.
+**A planning link in a document** opens as written when clicked, in daemon mode
+too: `/.vantage/planning…` is an app route rather than a path in the repository, so
+the viewer does not read it under the document's project, and the click goes where
+the link's `href`, its hover and *Copy link* already say.
+
+`frontend/e2e/planning_space.spec.ts` serves four clones in daemon mode, two of
+them holding one id, and opens links with no project segment: one carrying a
+clone's own id lands on that project's filtered page, with no layout shift, no
+chooser ever inserted, one request and no history entry; one held by two names
+both and opens neither; one whose answer is held 900 ms past the hold, and links
+clicked in a document, found or not, move nothing painted outside the sidebar.
 
 **Older viewers** ignore `space=`: 0.9.0 keeps it in the URL and reads no meaning
 into it, so the link opens as a 0.9.0 link does.
@@ -3793,7 +3844,8 @@ declares its stage vocabulary; and runs `planning/unrouted` as a warning.
 | A filter past `max-candidates` | No sections, so nothing is applied: the page shows its refusal, with the filter line still reading and writing the URL, and `index --filter` exits `3`, never holding a term to the tree |
 | A 0.8.x viewer opens a planning link | It keeps `filter=`, ignores it and shows every entry, with no notice; its Copy agent request has no `Filter:` line ([§6.19](#619-across-releases)) |
 | A 0.8.x checker is given `--filter` | `unknown option for index: --filter`, exit `2` |
-| A link's `space=` is held by no project the server serves (made in a checkout it does not serve) | Daemon mode, no project segment: the page says so, keeps the filter in the box, and lists each project's planning page with it, `space=` dropped; single-project mode: one notice line says the page shows the checkout this Vantage serves ([§13.6](#136-the-space-id)) |
+| A link's `space=` is held by no project the server serves (made in a checkout it does not serve) | Daemon mode, no project segment: the page says so, keeps the filter in the box, and lists each project's planning page with it, `space=` dropped, and asks again whenever the server's projects change, so a clone the daemon finds a moment later opens; single-project mode: one notice line says the page shows the checkout this Vantage serves ([§13.6](#136-the-space-id)) |
+| A link's `space=` is held by two or more served projects (a checkout copied whole, `.vantage` included) | Daemon mode, no project segment: the page opens none of them, says how many hold it and that the copy's `.vantage/space` should go, and lists only their planning pages with the filter; the server logs it once for each set of projects ([§13.6](#136-the-space-id)) |
 | The space request fails (a server error, or a server without `/api/spaces`) | Daemon mode, no project segment: *This Vantage could not say which project holds this link's space id*, then the same list; single-project mode: nothing is said. No answer is kept, so the next visit asks again |
 | A 0.9.0 viewer opens a link with `space=` | It keeps `space=` and reads nothing into it: in daemon mode, *Choose a project*, which keeps the filter |
 | A static export | No filter line and no Referenced by link to a filtered page, since there is no planning page |

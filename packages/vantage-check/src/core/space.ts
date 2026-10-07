@@ -23,7 +23,8 @@ import {
  * the link was made in.
  *
  * `index --filter` is its one writer: it makes the file the first time it
- * prints a planning link and reuses it after. It never rewrites an id that is
+ * prints a planning link in a checkout, a linked worktree included, and
+ * reuses it after. It never rewrites an id that is
  * there, since every link already handed over names it, and it leaves a file
  * it cannot read as one alone. The filesystem stays the only channel
  * (`docs/reference/agent-cli.md` P1): nothing here asks a server anything.
@@ -41,11 +42,21 @@ const MAX_FILE_BYTES = 64;
 /**
  * What `.vantage/.gitignore` holds when the checker made `.vantage` itself:
  * everything in the directory, the file itself included, is ignored, so no
- * clone is handed another's id. A `.vantage` that was already there keeps the
- * ignore state its owner gave it, since it may hold the review inbox.
+ * clone is handed another's id.
  */
 export const SPACE_GITIGNORE =
   "# Made by vantage-check: nothing in .vantage is committed, so every clone keeps its own space id.\n*\n";
+
+/**
+ * What `.vantage/.gitignore` holds when the checker found `.vantage` there
+ * with no `.gitignore`, as an agent leaves it after delivering into the
+ * review inbox: the id, its scratch names (`publish`) and the file itself, and
+ * nothing else, so whatever the directory holds keeps the ignore state it had,
+ * and a `git add -A` cannot commit the id for every clone to inherit. A
+ * `.gitignore` that is there is its owner's, and is left as it is.
+ */
+export const SPACE_GITIGNORE_BESIDE =
+  "# Made by vantage-check: this clone's space id is its own, so it is never committed.\n/space\n/space.*.tmp\n/.gitignore\n";
 
 /** The checkout's space, as `ensureSpace` found or made it. */
 export type Space =
@@ -56,14 +67,13 @@ export type Space =
   | {
       kind: "made" | "kept";
       id: string;
-      checkout: string;
       file: string;
       madeDirectory: boolean;
     }
   /** The file is there and holds no space id; it is left as it is. */
-  | { kind: "malformed"; checkout: string; file: string }
+  | { kind: "malformed"; file: string }
   /** No file, and none could be made, for `reason`. */
-  | { kind: "unwritable"; checkout: string; file: string; reason: string };
+  | { kind: "unwritable"; file: string; reason: string };
 
 /** The id `space` gives a link, or `null` when it has none to give. */
 export function spaceIdOf(space: Space | null): string | null {
@@ -90,27 +100,84 @@ export function newSpaceId(
 }
 
 /**
- * The checkout whose `.vantage/space` names `root`: the main checkout when
- * `root` is a linked worktree, since that is the checkout a Vantage serves,
- * and `root` itself otherwise.
+ * Whether a git config's whole text says its repository is bare, as git reads
+ * `core.bare`: the last value wins, a key with no value is true, and `true`,
+ * `yes`, `on` and `1` are true whatever their case. Sections are matched by
+ * name alone, so `[core "x"]` is not `core`. The server reads it the same way
+ * (`internal/spaceid`), and `internal/spaceid/testdata/space-files.json` holds
+ * the two to one answer.
+ */
+export function isBareGitConfig(text: string): boolean {
+  let section = "";
+  let bare = false;
+  for (const raw of text.split("\n")) {
+    let line = raw.trim();
+    if (line.startsWith("[")) {
+      const end = line.indexOf("]");
+      if (end < 0) {
+        section = "";
+        continue;
+      }
+      section = line.slice(1, end).trim().toLowerCase();
+      line = line.slice(end + 1).trim();
+    }
+    if (section !== "core" || line === "" || /^[#;]/.test(line)) continue;
+    const eq = line.indexOf("=");
+    const key = (eq < 0 ? line : line.slice(0, eq)).trim();
+    if (key.toLowerCase() !== "bare") continue;
+    if (eq < 0) {
+      bare = true;
+      continue;
+    }
+    const value = line
+      .slice(eq + 1)
+      .replace(/[#;].*$/, "")
+      .trim()
+      .replace(/^"+|"+$/g, "")
+      .toLowerCase();
+    bare = ["true", "yes", "on", "1"].includes(value);
+  }
+  return bare;
+}
+
+/** Past this many bytes a git config is not read for `core.bare`. */
+const MAX_CONFIG_BYTES = 1 << 20;
+
+/** Whether the git directory `gitDir` is a bare repository (`isBareGitConfig`). */
+function isBareGitDir(gitDir: string): boolean {
+  try {
+    const config = join(gitDir, "config");
+    if (statSync(config).size > MAX_CONFIG_BYTES) return false;
+    return isBareGitConfig(readFileSync(config, "utf8"));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The main checkout of `root` when `root` is a linked worktree, and `null`
+ * otherwise. The id is the worktree's own either way (`ensureSpace`): this
+ * names the checkout a Vantage opens for its links when it serves only that
+ * one, which the server finds through its `.git/worktrees`.
  *
  * A linked worktree's `.git` is a file naming its gitdir, and that gitdir's
  * `commondir` names the repository's own git directory, whose parent is the
  * main checkout. A submodule's `.git` is a file too, but its gitdir has no
- * `commondir`, so it is a checkout of its own; so is a worktree of a bare
- * repository, whose common directory is no checkout's `.git`. Anything that
- * cannot be read as one of these is `root` itself.
+ * `commondir`, so it has none; nor has a worktree of a bare repository, whose
+ * common directory is no checkout's `.git`, or is a `.git` that is bare
+ * (`git clone --bare url proj/.git`). Anything that cannot be read as one of
+ * these has none.
  */
-export function spaceCheckout(root: string): string {
+export function mainCheckoutOf(root: string): string | null {
   const dotGit = join(root, ".git");
   let gitdir: string;
   try {
-    if (!lstatSync(dotGit).isFile()) return root;
+    if (!lstatSync(dotGit).isFile()) return null;
     const line = readFileSync(dotGit, "utf8").trim();
-    if (!line.startsWith("gitdir:")) return root;
+    if (!line.startsWith("gitdir:")) return null;
     gitdir = resolve(root, line.slice("gitdir:".length).trim());
   } catch {
-    return root;
+    return null;
   }
   let common: string;
   try {
@@ -119,14 +186,14 @@ export function spaceCheckout(root: string): string {
       readFileSync(join(gitdir, "commondir"), "utf8").trim(),
     );
   } catch {
-    return root;
+    return null;
   }
-  if (basename(common) !== ".git") return root;
+  if (basename(common) !== ".git" || isBareGitDir(common)) return null;
   const main = dirname(common);
   try {
-    return statSync(main).isDirectory() ? main : root;
+    return statSync(main).isDirectory() ? main : null;
   } catch {
-    return root;
+    return null;
   }
 }
 
@@ -190,27 +257,52 @@ function publish(file: string, text: string): boolean {
 }
 
 /**
- * The space of the checkout `root` is in (`spaceCheckout`), made when it has
- * none. When `.vantage` is not there it is made, with `SPACE_GITIGNORE` as its
- * `.gitignore`, before the id is written; a `.vantage` that is there is
- * written into as it is.
+ * Give `dir`, the `.vantage` the id is in, a `.gitignore` when it has none:
+ * `SPACE_GITIGNORE` when this run made the directory, `SPACE_GITIGNORE_BESIDE`
+ * when it was there. Asked on every run that prints a link, so one stopped
+ * between making the directory and writing the file, or a file removed since,
+ * gets it back. An exclusive create, so one that is there, or that another run
+ * wrote a moment ago, is never touched.
+ */
+function ensureIgnore(dir: string, madeDirectory: boolean): void {
+  try {
+    writeFileSync(
+      join(dir, ".gitignore"),
+      madeDirectory ? SPACE_GITIGNORE : SPACE_GITIGNORE_BESIDE,
+      { flag: "wx" },
+    );
+  } catch (error) {
+    if (codeOf(error) !== "EEXIST") throw error;
+  }
+}
+
+/**
+ * The space of the checkout `root`, made when it has none: a linked worktree
+ * is a checkout of its own, so the id names the checkout the link was made
+ * in. When `.vantage` is not there it is made, with `SPACE_GITIGNORE` as its
+ * `.gitignore`, before the id is written; a `.vantage` that is there with no
+ * `.gitignore` gets `SPACE_GITIGNORE_BESIDE` (`ensureIgnore`).
  */
 export function ensureSpace(root: string): Space {
-  const checkout = spaceCheckout(root);
-  const file = join(checkout, PLANNING_SPACE_FILE);
+  const file = join(root, PLANNING_SPACE_FILE);
   const dir = dirname(file);
   const fail = (reason: string): Space => ({
     kind: "unwritable",
-    checkout,
     file,
     reason,
   });
 
   try {
     const found = readSpaceFile(file);
-    if (found === "malformed") return { kind: "malformed", checkout, file };
+    if (found === "malformed") return { kind: "malformed", file };
     if (found !== "absent") {
-      return { kind: "kept", id: found, checkout, file, madeDirectory: false };
+      try {
+        ensureIgnore(dir, false);
+      } catch {
+        // The id is there and the link names it; an ignore file that cannot
+        // be written now is written by a later run that can.
+      }
+      return { kind: "kept", id: found, file, madeDirectory: false };
     }
   } catch (error) {
     return fail(reasonOf(error));
@@ -222,25 +314,24 @@ export function ensureSpace(root: string): Space {
     madeDirectory = true;
   } catch (error) {
     // There already: another run made it a moment ago, or it was always
-    // there. Either way its ignore state is not this run's to set.
+    // there. Either way it gets only the narrow ignore, and only if it has
+    // no .gitignore at all.
     if (codeOf(error) !== "EEXIST") return fail(reasonOf(error));
   }
   try {
     if (!statSync(dir).isDirectory()) {
       return fail(`${dir} is not a directory`);
     }
-    if (madeDirectory) {
-      writeFileSync(join(dir, ".gitignore"), SPACE_GITIGNORE, { flag: "wx" });
-    }
+    ensureIgnore(dir, madeDirectory);
     const id = newSpaceId();
     if (publish(file, planningSpaceFileText(id))) {
-      return { kind: "made", id, checkout, file, madeDirectory };
+      return { kind: "made", id, file, madeDirectory };
     }
     // Another run made it first: use what it wrote.
     const found = readSpaceFile(file);
-    if (found === "malformed") return { kind: "malformed", checkout, file };
+    if (found === "malformed") return { kind: "malformed", file };
     if (found === "absent") return fail(`${file} vanished as it was made`);
-    return { kind: "kept", id: found, checkout, file, madeDirectory };
+    return { kind: "kept", id: found, file, madeDirectory };
   } catch (error) {
     return fail(reasonOf(error));
   }

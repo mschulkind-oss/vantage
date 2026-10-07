@@ -28,6 +28,11 @@ const ALPHA = "alphaspace234567";
 const BETA = "betaspace2345677";
 /** A space id neither clone holds: a link made in a checkout not served. */
 const ELSEWHERE = "elsewhere2345677";
+/**
+ * The id gamma and its whole copy, gamma-copy, both hold: a checkout copied
+ * with its .vantage keeps the original's id.
+ */
+const COPIED = "gammaspace234567";
 
 const FILTER = "path:/designs/beta.md is:open";
 const QUERY = "filter=path:/designs/beta.md+is:open";
@@ -66,6 +71,15 @@ function cloneFiles(name: string): Record<string, string> {
       "",
       `1. [${name}](designs/${name}.md) comes first.`,
       "2. [Its sequel](designs/sequel.md) comes next.",
+      "",
+    ].join("\n"),
+    // A handoff note holding the checker's planning links, as an agent
+    // leaves one for the human to click.
+    "handoff.md": [
+      "# Handoff",
+      "",
+      `- [Beta's questions](/.vantage/planning?${QUERY}&space=${BETA})`,
+      `- [Elsewhere's questions](/.vantage/planning?${QUERY}&space=${ELSEWHERE})`,
       "",
     ].join("\n"),
     [`designs/${name}.md`]: design(
@@ -132,8 +146,14 @@ async function watchPaint(page: Page): Promise<void> {
     new PerformanceObserver((list) => {
       for (const entry of list.getEntries() as (PerformanceEntry & {
         value: number;
-        sources?: { node?: Node | null }[];
+        sources?: {
+          node?: Node | null;
+          previousRect: DOMRectReadOnly;
+          currentRect: DOMRectReadOnly;
+        }[];
       })[]) {
+        const rect = (r: DOMRectReadOnly) =>
+          `${Math.round(r.x)},${Math.round(r.y)} ${Math.round(r.width)}x${Math.round(r.height)}`;
         const sources = (entry.sources ?? []).map((source) => {
           const node = source.node ?? null;
           const el =
@@ -143,7 +163,7 @@ async function watchPaint(page: Page): Promise<void> {
             : "";
           return node === null
             ? "?"
-            : `${where}${node.nodeName}.${String((node as Element).className ?? "").slice(0, 60)} "${(el?.textContent ?? "").slice(0, 40)}"`;
+            : `${where}${node.nodeName}.${String((node as Element).className ?? "").slice(0, 60)} "${(el?.textContent ?? "").slice(0, 40)}" ${rect(source.previousRect)} -> ${rect(source.currentRect)} at ${Math.round(entry.startTime)}`;
         });
         if (
           sources.length > 0 &&
@@ -210,6 +230,8 @@ test.describe("a planning link naming a space, in daemon mode", () => {
     const clones = path.join(scratch, "clones");
     makeClone(path.join(clones, "alpha"), cloneFiles("alpha"), ALPHA);
     makeClone(path.join(clones, "beta"), cloneFiles("beta"), BETA);
+    makeClone(path.join(clones, "gamma"), cloneFiles("gamma"), COPIED);
+    makeClone(path.join(clones, "gamma-copy"), cloneFiles("gamma"), COPIED);
     // Its own home, as playwright.config.ts gives the suite's server, so the
     // review store it may write goes nowhere the developer keeps anything.
     const home = path.join(scratch, "home");
@@ -254,7 +276,7 @@ test.describe("a planning link naming a space, in daemon mode", () => {
         },
         { timeout: 60_000 },
       )
-      .toEqual(["alpha", "beta"]);
+      .toEqual(["alpha", "beta", "gamma", "gamma-copy"]);
   });
 
   test.afterAll(() => {
@@ -341,7 +363,7 @@ test.describe("a planning link naming a space, in daemon mode", () => {
       "This link was made in a checkout this Vantage does not serve",
     );
     const links = page.getByTestId("planning-projects").getByRole("link");
-    await expect(links).toHaveCount(2);
+    await expect(links).toHaveCount(4);
     expect(
       await links.evaluateAll((all) =>
         all.map((a) => [a.textContent, a.getAttribute("href")]),
@@ -349,6 +371,8 @@ test.describe("a planning link naming a space, in daemon mode", () => {
     ).toEqual([
       ["alpha", `/.vantage/planning/alpha?${QUERY}`],
       ["beta", `/.vantage/planning/beta?${QUERY}`],
+      ["gamma", `/.vantage/planning/gamma?${QUERY}`],
+      ["gamma-copy", `/.vantage/planning/gamma-copy?${QUERY}`],
     ]);
     await expect(page.getByRole("textbox", { name: "Filter" })).toHaveValue(
       FILTER,
@@ -358,4 +382,113 @@ test.describe("a planning link naming a space, in daemon mode", () => {
       new RegExp(`space=${ELSEWHERE}$`),
     );
   });
+
+  // A checkout copied whole keeps the original's id, so two projects hold
+  // it: the page opens neither, says so, and lists only those two.
+  test("names both projects holding one space id, and opens neither", async ({
+    page,
+  }) => {
+    await page.goto(`/.vantage/planning?${QUERY}&space=${COPIED}`);
+    await expect(page.getByTestId("space-not-found")).toContainText(
+      "2 projects here hold this link's space id",
+    );
+    const links = page.getByTestId("planning-projects").getByRole("link");
+    expect(
+      await links.evaluateAll((all) => all.map((a) => a.textContent)),
+    ).toEqual(["gamma", "gamma-copy"]);
+    await expect(page).toHaveURL(new RegExp(`space=${COPIED}$`));
+  });
+
+  // An answer slower than the hold paints the frame first: the sidebar's
+  // column, the header's buttons and the filter line are drawn as the
+  // answer will leave them, so nothing painted outside the sidebar moves
+  // when it comes.
+  test("moves nothing painted when the answer comes after the frame", async ({
+    page,
+  }) => {
+    await page.route(
+      (url) => url.pathname.startsWith("/api/spaces/"),
+      async (route) => {
+        const url = new URL(route.request().url());
+        await new Promise((done) => setTimeout(done, 900));
+        const response = await route.fetch({
+          url: `${backend}${url.pathname}${url.search}`,
+        });
+        await route.fulfill({ response });
+      },
+    );
+    await watchPaint(page);
+    await page.goto(`/.vantage/planning?${QUERY}&space=${BETA}`);
+    // The frame is painted while the answer is out.
+    await expect(page.getByRole("textbox", { name: "Filter" })).toHaveValue(
+      FILTER,
+    );
+    await expect(page).toHaveURL(/space=/);
+    await expect(page).toHaveURL(
+      new RegExp(`/\\.vantage/planning/beta\\?${QUERY.replace(/[.+?]/g, "\\$&")}$`),
+      { timeout: 10_000 },
+    );
+    await expect(
+      page.getByRole("region", { name: /^Needs you/ }).getByRole("article"),
+    ).toHaveCount(2);
+    const seen = (await recorded(page)) as {
+      shifts: unknown[];
+      chooser: string[];
+    };
+    expect(seen.chooser).toEqual([]);
+    expect(seen.shifts, JSON.stringify(seen.shifts)).toEqual([]);
+  });
+
+  // A planning link a document holds, the checker's line in a handoff note,
+  // opens as written when clicked, rather than as a path in the note's
+  // project, and its answer moves nothing painted: found or not, the
+  // sidebar's column the page had is kept.
+  for (const [what, name, lands] of [
+    ["the project holding it", "Beta's questions", "beta"],
+    ["no project", "Elsewhere's questions", null],
+  ] as const) {
+    test(`a document's planning link naming ${what} opens it in place`, async ({
+      page,
+    }) => {
+      await page.route(
+        (url) => url.pathname.startsWith("/api/spaces/"),
+        async (route) => {
+          const url = new URL(route.request().url());
+          await new Promise((done) => setTimeout(done, 400));
+          const response = await route.fetch({
+            url: `${backend}${url.pathname}${url.search}`,
+          });
+          await route.fulfill({ response });
+        },
+      );
+      await watchPaint(page);
+      await page.goto("/alpha/handoff.md");
+      const link = page.getByRole("link", { name });
+      await expect(link).toBeVisible();
+      await page.evaluate(() => {
+        const w = window as unknown as { __shifts: unknown[] };
+        w.__shifts.length = 0;
+      });
+      await link.click();
+      if (lands === null) {
+        await expect(page.getByTestId("space-not-found")).toContainText(
+          "This link was made in a checkout this Vantage does not serve",
+        );
+        await expect(page).toHaveURL(new RegExp(`space=${ELSEWHERE}$`));
+      } else {
+        await expect(page).toHaveURL(
+          new RegExp(`/\\.vantage/planning/${lands}\\?${QUERY.replace(/[.+?]/g, "\\$&")}$`),
+        );
+        await expect(
+          page.getByRole("region", { name: /^Needs you/ }).getByRole("article"),
+        ).toHaveCount(2);
+      }
+      await expect(page.getByTestId("sidebar")).toBeVisible();
+      const seen = (await recorded(page)) as {
+        shifts: unknown[];
+        chooser: string[];
+      };
+      expect(seen.shifts, JSON.stringify(seen.shifts)).toEqual([]);
+    });
+  }
 });

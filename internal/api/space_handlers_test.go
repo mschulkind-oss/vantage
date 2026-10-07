@@ -58,9 +58,9 @@ func TestSpaceRouteIsGlobal(t *testing.T) {
 func TestSpaceRefusesWhatIsNoSpaceIDBeforeLookingAnywhere(t *testing.T) {
 	var asked []string
 	e := newTestEnv(t, false)
-	e.h.deps.SpaceRepo = func(id string) (string, bool) {
+	e.h.deps.SpaceRepo = func(id string) []string {
 		asked = append(asked, id)
-		return "alpha", true
+		return []string{"alpha"}
 	}
 	var valid []string
 	for _, tc := range spaceIDs(t) {
@@ -78,11 +78,12 @@ func TestSpaceRefusesWhatIsNoSpaceIDBeforeLookingAnywhere(t *testing.T) {
 
 func TestSpaceAnswersTheRepositoryThatHoldsTheID(t *testing.T) {
 	e := newTestEnv(t, false)
-	held := map[string]string{"abcdefghijklmnop": "alpha", "qrstuvwxyz234567": ""}
-	e.h.deps.SpaceRepo = func(id string) (string, bool) {
-		repo, ok := held[id]
-		return repo, ok
+	held := map[string][]string{
+		"abcdefghijklmnop": {"alpha"},
+		"qrstuvwxyz234567": {""},
+		"3333333333333333": {"alpha", "alpha-copy"},
 	}
+	e.h.deps.SpaceRepo = func(id string) []string { return held[id] }
 
 	w := getSpace(e.h, "abcdefghijklmnop")
 	require.Equal(t, http.StatusOK, w.Code)
@@ -98,6 +99,13 @@ func TestSpaceAnswersTheRepositoryThatHoldsTheID(t *testing.T) {
 	w = getSpace(e.h, "2222222222222222")
 	require.Equal(t, http.StatusOK, w.Code)
 	require.JSONEq(t, `{"repo":null}`, w.Body.String())
+	require.Equal(t, "no-store", w.Header().Get("Cache-Control"))
+
+	// Several do, a checkout copied whole: none is named as the one, and
+	// every one is listed, under a key a reader that knows only repo ignores.
+	w = getSpace(e.h, "3333333333333333")
+	require.Equal(t, http.StatusOK, w.Code)
+	require.JSONEq(t, `{"repo":null,"repos":["alpha","alpha-copy"]}`, w.Body.String())
 	require.Equal(t, "no-store", w.Header().Get("Cache-Control"))
 }
 

@@ -315,10 +315,12 @@ reuses after, and that the server reads for every project it serves. P1 holds,
 since the file is the channel: the checker asks no server, and the server
 answers `GET /api/spaces/{id}` from the files alone. When the checker makes
 `.vantage` itself, it writes `.vantage/.gitignore` holding `*` beside the id,
-so no clone inherits another's; a `.vantage` that was there, which may hold
-the review inbox, is left as it was. A file that holds no id is left alone and
-the link printed without one, and in a linked worktree the id is the main
-checkout's
+so no clone inherits another's; a `.vantage` that was there with no
+`.gitignore`, as the review inbox leaves it, gets one ignoring only the id and
+its scratch names, and one with a `.gitignore` is left as it was. A file that
+holds no id is left alone and the link printed without one. A linked worktree
+keeps an id of its own, which a server serving only the main checkout finds
+through the main checkout's `.git/worktrees`
 ([`planning-index.md` §13.6](planning-index.md#136-the-space-id)).
 
 `version` names the release a binary was stamped with, or says

@@ -9,9 +9,13 @@ import (
 // spaceAnswer is GET /spaces/{id}'s body. Repo is the served project whose
 // .vantage/space holds the id: its name in multi-project mode, "" (the
 // single-repo sentinel every repo-keyed answer uses) in single-project mode,
-// and null when no project this server serves holds it.
+// and null when no project this server serves holds it, or when several do.
+// Repos is there only for several, and names them, in registration order: a
+// key a reader that knows only Repo ignores, which then reads null, as for a
+// link it cannot open.
 type spaceAnswer struct {
-	Repo *string `json:"repo"`
+	Repo  *string  `json:"repo"`
+	Repos []string `json:"repos,omitempty"`
 }
 
 // Space handles GET /spaces/{id}: which project this server serves holds the
@@ -25,9 +29,10 @@ type spaceAnswer struct {
 // before any file is looked at. Otherwise the answer is a 200 whether or not a
 // project holds it, since "none here" is an answer the page acts on rather than
 // a failure: `{"repo": "<name>"}`, `{"repo": ""}` for the one project of a
-// single-project server, or `{"repo": null}`. It is sent `no-store`, because
-// the answer changes the moment a checker makes the file. The handler parses no
-// Markdown and writes nothing.
+// single-project server, `{"repo": null}`, or, when two or more projects hold
+// it, `{"repo": null, "repos": ["<name>", …]}`. It is sent `no-store`, because
+// the answer changes the moment a checker makes the file. The handler parses
+// no Markdown and writes nothing.
 //
 // Global, not repo-scoped: the question is which repository, so no repository
 // can be resolved before it is answered. The server answers it through
@@ -41,8 +46,12 @@ func (h *Handlers) Space(w http.ResponseWriter, r *http.Request) {
 	}
 	answer := spaceAnswer{}
 	if h.deps.SpaceRepo != nil {
-		if repo, ok := h.deps.SpaceRepo(id); ok {
-			answer.Repo = &repo
+		switch holders := h.deps.SpaceRepo(id); len(holders) {
+		case 0:
+		case 1:
+			answer.Repo = &holders[0]
+		default:
+			answer.Repos = holders
 		}
 	}
 	w.Header().Set("Cache-Control", "no-store")

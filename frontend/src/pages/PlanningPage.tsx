@@ -1270,6 +1270,10 @@ const RoadmapLine: React.FC<{
 
 const NO_SECTIONS: ReadonlySet<SectionId> = new Set();
 
+/** The served projects' names, in the order the server lists them. */
+const repoNames = (repos: readonly { name: string }[]): string[] =>
+  repos.map((r) => r.name);
+
 export const PlanningPage: React.FC = () => {
   const { "*": pathParam } = useParams();
   const location = useLocation();
@@ -1319,16 +1323,25 @@ export const PlanningPage: React.FC = () => {
   // and never *Choose a project*, which the answer will most often skip.
   const spacePending = findsProject && spaceId !== null && space === null;
   // What stands where *Choose a project* would, once no project can be
-  // opened for the space: why, before the projects' pages as the way on.
-  const spaceMissed = !findsProject
-    ? null
-    : spaceId === null
-      ? PLANNING_SPACE_MESSAGES.notAnId
-      : space === null || spaceRepo !== null
-        ? null
-        : space.kind === "failed"
-          ? PLANNING_SPACE_MESSAGES.failed
-          : PLANNING_SPACE_MESSAGES.notServed;
+  // opened for the space: why, before the projects' pages as the way on,
+  // which are every project's, or only those holding the id when several do.
+  const spaceMissed: { message: string; names: readonly string[] } | null =
+    !findsProject || spaceRepo !== null || (spaceId !== null && space === null)
+      ? null
+      : spaceId === null
+        ? { message: PLANNING_SPACE_MESSAGES.notAnId, names: repoNames(repos) }
+        : space?.kind === "several"
+          ? {
+              message: PLANNING_SPACE_MESSAGES.several(space.repos.length),
+              names: space.repos,
+            }
+          : {
+              message:
+                space?.kind === "failed"
+                  ? PLANNING_SPACE_MESSAGES.failed
+                  : PLANNING_SPACE_MESSAGES.notServed,
+              names: repoNames(repos),
+            };
   const repoName = isMultiRepo ? urlRepo || (spaceRepo ?? "") : "";
   // Whether the in-place rewrite drops `space=` (§13.6): wherever a project
   // segment says which project the page is, and in single-project mode once
@@ -1338,11 +1351,14 @@ export const PlanningPage: React.FC = () => {
   const repoExists = !isMultiRepo || repos.some((r) => r.name === repoName);
   // The sidebar is the repository's, so it is drawn wherever the URL names
   // one that is served, as the viewer draws it, and not over a page asking
-  // for a project or naming one that is not there. While the server is
-  // asked which project a space is, it stays as the shell has it.
-  const showSidebar = spacePending
-    ? !(isMultiRepo && !currentRepo)
-    : !isMultiRepo || (repoName !== "" && repoExists);
+  // for a project or naming one that is not there. A link naming a space
+  // keeps its column through the wait and after every answer (§13.6): the
+  // answer most often opens a project, whose sidebar then fills the column,
+  // and one that opens none leaves the column as it was, the shell's
+  // project's or none's, so an answer that comes after the frame painted
+  // moves nothing painted.
+  const showSidebar =
+    findsProject || !isMultiRepo || (repoName !== "" && repoExists);
 
   // The viewer's own two reading preferences, and the same ones: a reader who
   // keeps the contents column open, or reads at full width, does so here too,
@@ -2856,7 +2872,18 @@ export const PlanningPage: React.FC = () => {
       <div className="hdr-lead flex items-center gap-2">
         {showSidebar && <OpenSidebarButton shell={shell} />}
         <ViewToggles contents={contentsToggle} fullWidth={fullWidthToggle} />
-        <nav className="hdr-crumbs flex items-center text-sm gap-1 min-w-0 overflow-hidden">
+        {/* Not painted while the server is asked which project a space is
+            (§13.6), nor is the toolbar: the answer names the crumb's
+            project, and a crumb painted as Projects and then renamed would
+            move the page's name after it, and the toolbar's box, which
+            starts where the crumbs end. */}
+        <nav
+          aria-hidden={spacePending || undefined}
+          className={cn(
+            "hdr-crumbs flex items-center text-sm gap-1 min-w-0 overflow-hidden",
+            spacePending && "invisible",
+          )}
+        >
           <AppLink
             to={crumbRoot.href}
             className="hdr-repo text-slate-500 dark:text-slate-400 hover:text-blue-600 font-medium transition-colors shrink-0 no-underline"
@@ -2884,7 +2911,13 @@ export const PlanningPage: React.FC = () => {
           </h1>
         </nav>
       </div>
-      <div className="hdr-tools flex items-center gap-2">
+      <div
+        aria-hidden={spacePending || undefined}
+        className={cn(
+          "hdr-tools flex items-center gap-2",
+          spacePending && "invisible",
+        )}
+      >
         <HeaderOverflow
           extra={
             <ViewTogglesPanel
@@ -3032,9 +3065,11 @@ export const PlanningPage: React.FC = () => {
               )}
               {spacePending ? null : spaceMissed !== null ? (
                 <>
-                  <Notice testId="space-not-found">{spaceMissed}</Notice>
+                  <Notice testId="space-not-found">
+                    {spaceMissed.message}
+                  </Notice>
                   <ProjectPlanningLinks
-                    names={repos.map((r) => r.name)}
+                    names={spaceMissed.names}
                     search={projectsSearch}
                   />
                 </>
@@ -3050,7 +3085,7 @@ export const PlanningPage: React.FC = () => {
                     </AppLink>
                   </Notice>
                   <ProjectPlanningLinks
-                    names={repos.map((r) => r.name)}
+                    names={repoNames(repos)}
                     search={projectsSearch}
                   />
                 </>
@@ -3058,7 +3093,7 @@ export const PlanningPage: React.FC = () => {
                 <>
                   <Notice>Repository not found: {repoName}</Notice>
                   <ProjectPlanningLinks
-                    names={repos.map((r) => r.name)}
+                    names={repoNames(repos)}
                     search={projectsSearch}
                   />
                 </>

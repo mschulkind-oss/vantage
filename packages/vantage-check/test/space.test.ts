@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
@@ -12,9 +12,11 @@ import {
 } from "../../vantage-md/src/planning/index.js";
 import {
   SPACE_GITIGNORE,
+  SPACE_GITIGNORE_BESIDE,
   ensureSpace,
+  isBareGitConfig,
+  mainCheckoutOf,
   newSpaceId,
-  spaceCheckout,
 } from "../src/core/space.js";
 import { makeTree } from "./helpers.js";
 
@@ -35,6 +37,7 @@ const FIXTURE = JSON.parse(
 ) as {
   files: { text: string; id: string | null }[];
   ids: { id: string; valid: boolean }[];
+  configs: { text: string; bare: boolean }[];
 };
 
 /**
@@ -81,6 +84,15 @@ describe("the space id's names and file", () => {
   it.each(FIXTURE.ids)("takes $id as an id: $valid", ({ id, valid }) => {
     expect(isPlanningSpaceId(id)).toBe(valid);
   });
+
+  // Whether a main checkout's worktrees are its own: the server answers for
+  // their ids only when it is not bare, and the hint names it only then.
+  it.each(FIXTURE.configs)(
+    "reads the git config $text as bare: $bare, as the server does",
+    ({ text, bare }) => {
+      expect(isBareGitConfig(text)).toBe(bare);
+    },
+  );
 });
 
 describe("newSpaceId", () => {
@@ -106,29 +118,29 @@ describe("newSpaceId", () => {
   });
 });
 
-describe("spaceCheckout", () => {
-  it("is the root itself for a main checkout, or a root with no .git", () => {
+describe("mainCheckoutOf", () => {
+  it("is null for a main checkout, or a root with no .git", () => {
     const main = makeTree({ ".git/HEAD": "" });
     const plain = makeTree({ "a.md": "# A\n" });
-    expect(spaceCheckout(main)).toBe(main);
-    expect(spaceCheckout(plain)).toBe(plain);
+    expect(mainCheckoutOf(main)).toBeNull();
+    expect(mainCheckoutOf(plain)).toBeNull();
   });
 
   it("is the main checkout for a linked worktree", () => {
     const { main, worktree } = worktreePair();
-    expect(spaceCheckout(worktree)).toBe(main);
+    expect(mainCheckoutOf(worktree)).toBe(main);
   });
 
-  it("is the root for a gitdir it cannot follow, a submodule, or a bare repository's worktree", () => {
+  it("is null for a gitdir it cannot follow, a submodule, or a bare repository's worktree", () => {
     // A gitdir that is not there.
     const lost = makeTree({ ".git": "gitdir: /elsewhere/.git/worktrees/a\n" });
-    expect(spaceCheckout(lost)).toBe(lost);
+    expect(mainCheckoutOf(lost)).toBeNull();
     // A submodule: its gitdir has no commondir, so it is its own checkout.
     const outer = makeTree({ ".git/modules/sub/HEAD": "" });
     const sub = join(outer, "sub");
     writeFileSync(join(outer, ".git/modules/sub/config"), "");
     makeTreeAt(sub, { ".git": `gitdir: ../.git/modules/sub\n` });
-    expect(spaceCheckout(sub)).toBe(sub);
+    expect(mainCheckoutOf(sub)).toBeNull();
     // A worktree of a bare repository: the common directory is no .git.
     const bare = makeTree({
       "repo.git/HEAD": "",
@@ -137,10 +149,28 @@ describe("spaceCheckout", () => {
     const wt = makeTree({
       ".git": `gitdir: ${join(bare, "repo.git/worktrees/wt")}\n`,
     });
-    expect(spaceCheckout(wt)).toBe(wt);
+    expect(mainCheckoutOf(wt)).toBeNull();
     // Not a gitdir line at all.
     const odd = makeTree({ ".git": "something else\n" });
-    expect(spaceCheckout(odd)).toBe(odd);
+    expect(mainCheckoutOf(odd)).toBeNull();
+  });
+
+  // `git clone --bare url proj/.git`, then worktrees under proj: the common
+  // directory is named .git, but it is a bare repository, and the folder
+  // holding it is no checkout.
+  it("is null for a worktree of a bare repository kept as a folder's .git", () => {
+    const proj = makeTree({
+      ".git/HEAD": "",
+      ".git/config": "[core]\n\trepositoryformatversion = 0\n\tbare = true\n",
+      ".git/worktrees/main/commondir": "../..\n",
+    });
+    const main = join(proj, "main");
+    makeTreeAt(main, {
+      ".git": `gitdir: ${join(proj, ".git/worktrees/main")}\n`,
+    });
+    expect(mainCheckoutOf(main)).toBeNull();
+    writeFileSync(join(proj, ".git/config"), "[core]\n\tbare = false\n");
+    expect(mainCheckoutOf(main)).toBe(proj);
   });
 });
 
@@ -159,7 +189,6 @@ describe("ensureSpace", () => {
     const made = ensureSpace(root);
     expect(made).toMatchObject({
       kind: "made",
-      checkout: root,
       file: join(root, ".vantage/space"),
       madeDirectory: true,
     });
@@ -176,10 +205,65 @@ describe("ensureSpace", () => {
     expect(ensureSpace(root)).toEqual({
       kind: "kept",
       id,
-      checkout: root,
       file: join(root, ".vantage/space"),
       madeDirectory: false,
     });
+  });
+
+  // vantage-check makes the id in the checkout it runs in, so the link names
+  // the worktree: a Vantage serving it opens it, and one serving only the
+  // main checkout finds the id through the main checkout's .git/worktrees.
+  it("makes a linked worktree's id in the worktree, and none in its main checkout", () => {
+    const { main, worktree } = worktreePair();
+    expect(ensureSpace(worktree)).toMatchObject({
+      kind: "made",
+      file: join(worktree, ".vantage/space"),
+      madeDirectory: true,
+    });
+    expect(readFileSync(join(worktree, ".vantage/.gitignore"), "utf8")).toBe(
+      SPACE_GITIGNORE,
+    );
+    expect(() => readFileSync(join(main, ".vantage/space"))).toThrow();
+  });
+
+  // A .vantage that is there with no .gitignore, which an agent made for the
+  // review inbox, say, gets one ignoring only the id and its own scratch
+  // names, so a `git add -A` cannot commit the id and the inbox's ignore
+  // state is as it was. One that has a .gitignore keeps it untouched.
+  it("ignores the id in a .vantage that was there with no .gitignore, and nothing else", () => {
+    const root = makeTree({ ".git/HEAD": "", ".vantage/inbox/.keep": "" });
+    expect(ensureSpace(root)).toMatchObject({
+      kind: "made",
+      madeDirectory: false,
+    });
+    expect(readFileSync(join(root, ".vantage/.gitignore"), "utf8")).toBe(
+      SPACE_GITIGNORE_BESIDE,
+    );
+    expect(SPACE_GITIGNORE_BESIDE.split("\n")).toEqual([
+      expect.stringMatching(/^# /),
+      "/space",
+      "/space.*.tmp",
+      "/.gitignore",
+      "",
+    ]);
+
+    // Made again when it is missing, as after a run stopped between making
+    // .vantage and writing its .gitignore, and kept as it is when it is not.
+    const stopped = makeTree({ ".git/HEAD": "", ".vantage/.keep": "" });
+    ensureSpace(stopped);
+    rmSync(join(stopped, ".vantage/.gitignore"));
+    expect(ensureSpace(stopped)).toMatchObject({ kind: "kept" });
+    expect(readFileSync(join(stopped, ".vantage/.gitignore"), "utf8")).toBe(
+      SPACE_GITIGNORE_BESIDE,
+    );
+    const owned = makeTree({
+      ".git/HEAD": "",
+      ".vantage/.gitignore": "inbox/\n",
+    });
+    ensureSpace(owned);
+    expect(readFileSync(join(owned, ".vantage/.gitignore"), "utf8")).toBe(
+      "inbox/\n",
+    );
   });
 
   it("says why when it cannot make one", () => {
