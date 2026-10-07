@@ -123,6 +123,7 @@ import { HeaderOverflow } from "../components/HeaderOverflow";
 import { PlanningBadgeChip } from "../components/PlanningBadge";
 import { PlanningFilterLine } from "../components/PlanningFilterLine";
 import { PlanningOutline } from "../components/PlanningOutline";
+import { PlanningPendingAnswers } from "../components/PlanningPendingAnswers";
 import { PlanningPager, type PagerPlace } from "../components/PlanningPager";
 import {
   PlanningQuestionCard,
@@ -2862,7 +2863,7 @@ export const PlanningPage: React.FC = () => {
   // The header is the viewer's, fitted by the same yield steps
   // (`lib/headerFit.ts`): the ways to the sidebar and the view toggles, the
   // breadcrumb with the page's name last to give up room, and the page's
-  // one action, Copy answers, which folds into the "⋯" with the toggles.
+  // actions, Review answers and Copy answers, which fold into the "⋯" with the toggles.
   const header = (
     <div
       ref={headerRef}
@@ -2926,6 +2927,14 @@ export const PlanningPage: React.FC = () => {
             />
           }
         >
+          <PlanningPendingAnswers
+            key={repo}
+            groups={pendingGroups}
+            known={countKnown}
+            leftOut={pendingLeftOut}
+            hrefOf={buildPath}
+            onOpenDocument={saveScroll}
+          />
           <button
             type="button"
             onClick={copyAnswers}

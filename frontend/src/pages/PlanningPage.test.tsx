@@ -2357,6 +2357,19 @@ describe("several roadmaps (§6.8)", () => {
     await renderPage();
     expect(screen.queryByRole("article", { name: /OQ-U1/ })).toBeNull();
     expect(screen.getByTestId("pending-answers")).toHaveTextContent("1");
+    fireEvent.click(screen.getByRole("button", { name: "Review answers" }));
+    const pendingMenu = screen.getByRole("menu", {
+      name: "Answers waiting on the agent",
+    });
+    expect(
+      within(pendingMenu).getByText("Ruled on the other roadmap"),
+    ).toBeTruthy();
+    expect(
+      within(pendingMenu).getByRole("menuitem", {
+        name: `Open plans/unrouted.md at line ${line}`,
+      }),
+    ).toHaveAttribute("href", `/plans/unrouted.md#L${line}`);
+    fireEvent.keyDown(document, { key: "Escape" });
     await pick(NESTED);
     expect(cardFor("OQ-U1")).toBeTruthy();
     expect(screen.getByTestId("pending-answers")).toHaveTextContent("1");
@@ -2680,6 +2693,29 @@ describe("Copy answers across pages (planning-index.md §6.7)", () => {
     readyOf(tree)
       .index.documents.flatMap((d) => d.questions)
       .find((x) => x.id === id)!.line;
+
+  it("lets the reader find an off-page answer's document without copying it", async () => {
+    setPlanningLimitsForTests({ pageEntries: 2 });
+    seed();
+    const line = lineOf(TREE, "OQ-A1");
+    reviews["plans/answered.md"] = [
+      pendingAt("placed-0001", "Ruled on page two", line),
+    ];
+    await renderPage();
+    expect(screen.queryByRole("article", { name: /OQ-A1/ })).toBeNull();
+    expect(pendingCount()).toBe("1");
+    fireEvent.click(screen.getByRole("button", { name: "Review answers" }));
+    const answers = screen.getByRole("menu", {
+      name: "Answers waiting on the agent",
+    });
+    expect(within(answers).getByText("Ruled on page two")).toBeTruthy();
+    expect(
+      within(answers).getByRole("menuitem", {
+        name: `Open plans/answered.md at line ${line}`,
+      }),
+    ).toHaveAttribute("href", `/plans/answered.md#L${line}`);
+    expect(writeText).not.toHaveBeenCalled();
+  });
 
   it("counts and copies a pending comment on a question no page shows", async () => {
     setPlanningLimitsForTests({ pageEntries: 2 });
@@ -7595,6 +7631,16 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       ];
       await renderPage("/.vantage/planning?filter=path:plans/design.md");
       expect(pendingCount()).toBe("1");
+      fireEvent.click(screen.getByRole("button", { name: "Review answers" }));
+      const pendingMenu = screen.getByRole("menu", {
+        name: "Answers waiting on the agent",
+      });
+      expect(within(pendingMenu).getByText("Answer kept-0001")).toBeTruthy();
+      expect(within(pendingMenu).queryByText("Answer left-0001")).toBeNull();
+      expect(
+        within(pendingMenu).getByText(/The filter leaves out 2 answers/),
+      ).toBeTruthy();
+      fireEvent.keyDown(document, { key: "Escape" });
       expect(copyButton()).toHaveAccessibleName(
         "Copy answers 1, not counting 2 answers the filter leaves out",
       );
