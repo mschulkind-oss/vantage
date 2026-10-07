@@ -102,9 +102,9 @@ type repoServices struct {
 	// discovered repository without a config.
 	cfg *repoconfig.Config
 	// space reads this repository's .vantage/space, the space id a planning
-	// link names it by (see [spaceid]). Attached in newRepoServices for the
-	// reason cfg is.
-	space *spaceid.File
+	// link names it by, and its linked worktrees' (see [spaceid.Checkout]).
+	// Attached in newRepoServices for the reason cfg is.
+	space *spaceid.Checkout
 }
 
 // Server is the assembled application. Construct it with [NewServer]; expose its
@@ -164,6 +164,11 @@ type Server struct {
 	// from their own goroutines; GET /api/degraded reads it.
 	degradedMu sync.Mutex
 	degraded   map[string]map[string]model.Degradation
+
+	// spaceClashMu guards spaceClashes: for each space id two or more served
+	// repositories hold, the set last logged ([Server.noteSpaceClash]).
+	spaceClashMu sync.Mutex
+	spaceClashes map[string]string
 	// timedOutWalks holds, by repository name, the walks whose latest run hit
 	// walk_timeout — each by its directory and its gitignored setting (see
 	// [git.WalkReport]). A repository's walk_timeout degradation lasts while
@@ -352,7 +357,7 @@ func (s *Server) newRepoServices(rc config.RepoConfig) *repoServices {
 		root:  fsSvc.RootPath(),
 		loose: rc.Loose,
 		cfg:   repoconfig.New(fsSvc.RootPath()),
-		space: spaceid.New(fsSvc.RootPath()),
+		space: spaceid.NewCheckout(fsSvc.RootPath()),
 	}
 }
 
@@ -405,32 +410,61 @@ func (s *Server) promoted() []starred.Listed {
 	return starred.MergeListed(s.userPromoted(), repoRows)
 }
 
-// spaceRepo answers GET /api/spaces/{id}: the name of the first repository, in
-// registration order, whose .vantage/space holds id ("" in single-repo mode),
-// and false when none does. Wired to api.Deps.SpaceRepo, which hands it only an
-// id [spaceid.Valid] accepts.
+// spaceRepo answers GET /api/spaces/{id}: the names of the repositories
+// holding id ("" in single-repo mode), in registration order. Wired to
+// api.Deps.SpaceRepo, which hands it only an id [spaceid.Valid] accepts.
 //
-// Each repository's file is stat'ed on every call and re-read only when it
-// changed ([spaceid.File]), so a file a checker made a moment ago is found, and
-// one removed or rewritten is not held to its old id. Two repositories holding
-// one id is a checkout copied whole, .vantage included; the first one wins and
-// the copy is named in the log, since nothing in the request can choose.
-func (s *Server) spaceRepo(id string) (string, bool) {
-	found := ""
-	ok := false
+// A repository holds the id in its own .vantage/space, or, as a main
+// checkout, through one of its linked worktrees ([spaceid.Checkout]); the
+// first beats the second, so a worktree served beside its main checkout opens
+// for its own links. Each file is stat'ed on every call and re-read only when
+// it changed, so a file a checker made a moment ago is found, and one removed
+// or rewritten is not held to its old id.
+//
+// More than one name is a checkout copied whole, .vantage included, or an id
+// committed and cloned: nothing in the request can choose between them, so
+// all are named, for the page to say so rather than open one that may be the
+// wrong one, and the log says it once for each set of names.
+func (s *Server) spaceRepo(id string) []string {
+	var own, through []string
 	for _, rs := range s.repoList() {
-		held, has := rs.space.ID()
-		if !has || held != id {
-			continue
+		switch rs.space.Holds(id) {
+		case spaceid.Own:
+			own = append(own, rs.name)
+		case spaceid.ThroughWorktree:
+			through = append(through, rs.name)
 		}
-		if ok {
-			s.logger.Warn("server: two projects hold one space id; planning links name the first",
-				"first", found, "also", rs.name, "file", rs.space.Path())
-			continue
-		}
-		found, ok = rs.name, true
 	}
-	return found, ok
+	holders := own
+	if len(holders) == 0 {
+		holders = through
+	}
+	s.noteSpaceClash(id, holders)
+	return holders
+}
+
+// noteSpaceClash logs holders when two or more repositories hold id, once for
+// each set of them: a lookup is one per planning link opened, and the same
+// link opened again is not news. The set is forgotten once fewer hold it, so
+// a clash made again is said again. Only ids that two served repositories
+// hold are kept, so there are never more than the repositories served.
+func (s *Server) noteSpaceClash(id string, holders []string) {
+	s.spaceClashMu.Lock()
+	defer s.spaceClashMu.Unlock()
+	if len(holders) < 2 {
+		delete(s.spaceClashes, id)
+		return
+	}
+	key := strings.Join(holders, "\x00")
+	if s.spaceClashes[id] == key {
+		return
+	}
+	if s.spaceClashes == nil {
+		s.spaceClashes = make(map[string]string)
+	}
+	s.spaceClashes[id] = key
+	s.logger.Warn("server: projects hold one space id, so a planning link naming it opens none of them; remove .vantage/space in the copy",
+		"projects", holders)
 }
 
 // themeDefaults collects the color theme each repository offers, keyed the way

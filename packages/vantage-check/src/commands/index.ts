@@ -54,7 +54,12 @@ import {
   type DeclaredTarget,
 } from "../core/target.js";
 import { repositoryRoot } from "../core/projectRoot.js";
-import { ensureSpace, spaceIdOf, type Space } from "../core/space.js";
+import {
+  ensureSpace,
+  mainCheckoutOf,
+  spaceIdOf,
+  type Space,
+} from "../core/space.js";
 import { oneLine } from "../core/text.js";
 import { EXIT_ENVIRONMENT, EXIT_OK, EXIT_USAGE } from "../exit.js";
 import type { Io } from "../io.js";
@@ -415,14 +420,16 @@ const PASTE_HINT =
 /**
  * The hint line under it when the link carries a space id (§13.6), which says
  * what `space=` does: with an address in front, a Vantage serving several
- * projects opens the one whose `.vantage/space` holds it, which is the main
- * checkout's for a linked worktree.
+ * projects opens the one whose `.vantage/space` holds it. In a linked
+ * worktree the id is the worktree's own, and a Vantage that serves only its
+ * main checkout opens that one, so the line names it.
  */
 function spaceHint(root: string, space: Space): string | null {
   if (spaceIdOf(space) === null) return null;
-  return space.checkout === root
+  const main = mainCheckoutOf(root);
+  return main === null
     ? "space= is this checkout's id, kept in .vantage/space: with an address in front, the link opens this project's page even where one Vantage serves several."
-    : `space= is the id of the main checkout ${codeSpan(space.checkout)}, kept in its .vantage/space: with an address in front, the link opens that project's page even where one Vantage serves several.`;
+    : `space= is this worktree's id, kept in its own .vantage/space: with an address in front, the link opens this worktree's page even where one Vantage serves several, or the page of its main checkout ${codeSpan(main)} where only that is served.`;
 }
 
 /**

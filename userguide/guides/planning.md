@@ -1087,13 +1087,23 @@ A filtered page is usually reached by a link:
   with an address in front, the page asks Vantage which repository holds that
   id, and opens that repository's planning page with the filter. Its address
   replaces the one you opened rather than adding a step for Back, and no list
-  of repositories shows on the way. Pasted into a repository's Filter box, the link applies its filter
-  there, whichever repository made it.
+  of repositories shows on the way, nor does anything already on screen move
+  when the answer comes. The same happens when you click such a link in a
+  document, a handoff note, say. Pasted into a repository's Filter box, the
+  link applies its filter there, whichever repository made it.
 - **A link made in a checkout Vantage does not serve,** such as a clone
   elsewhere on the machine, says so, and then lists each repository's planning
-  page with the filter, one click away. In single-repository mode the page
-  shows the checkout it serves, under a line saying the link was made in
-  another one.
+  page with the filter, one click away. If Vantage finds that clone a moment
+  later, as daemon mode does a new clone in a source directory, the page opens
+  its planning page by itself. In single-repository mode the page shows the
+  checkout it serves, under a line saying the link was made in another one.
+- **A link made in a linked worktree** opens the worktree's planning page when
+  Vantage serves the worktree, and its main checkout's when Vantage serves
+  only that.
+- **A link whose checkout was copied whole,** `.vantage` included, names two
+  repositories at once, so the page opens neither: it says how many hold the
+  id and lists just those. Remove `.vantage/space` in the copy, and the next
+  link made there names the copy alone.
 
 A filtered link is for handing over, not for keeping. A later Vantage may keep
 other entries for the same text, so an agent runs `vantage-check index

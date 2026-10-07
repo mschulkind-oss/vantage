@@ -117,6 +117,57 @@ describe("MarkdownViewer", () => {
     expect(mockNavigate).toHaveBeenCalledWith("/folder/other.md");
   });
 
+  // The planning page is an app route, not a path in the repository: a
+  // planning link a document holds, such as the checker's `Planning page:`
+  // line in a handoff note, opens it as written, in daemon mode too, where a
+  // repository-relative path would be read under the document's project
+  // (docs/reference/planning-index.md §13.6). The href it renders with says
+  // the same, so hover and Copy link agree with the click.
+  it.each([
+    [false, null],
+    [true, "gamma"],
+  ])(
+    "opens a planning link as written, daemon mode: %s",
+    (isMultiRepo, currentRepo) => {
+      useRepoStore.setState({
+        isMultiRepo,
+        currentRepo,
+        repos: isMultiRepo
+          ? [
+              { name: "gamma", last_activity: null },
+              { name: "beta", last_activity: null },
+            ]
+          : [],
+      });
+      try {
+        const links = [
+          "/.vantage/planning?filter=path:/docs/design/x.md+is:open&space=fyt3tqketfwxjmwt",
+          "/.vantage/planning/beta?filter=is:open#needs-you",
+          "/.vantage/planning",
+        ];
+        renderWithRouter(
+          <MarkdownViewer
+            content={links.map((href, i) => `[Link ${i}](${href})`).join(" ")}
+            currentPath="notes/handoff.md"
+          />,
+        );
+        links.forEach((href, i) => {
+          const link = screen.getByText(`Link ${i}`).closest("a")!;
+          expect(link).toHaveAttribute("href", href);
+          mockNavigate.mockReset();
+          fireEvent.click(link);
+          expect(mockNavigate).toHaveBeenCalledWith(href);
+        });
+      } finally {
+        useRepoStore.setState({
+          isMultiRepo: false,
+          currentRepo: null,
+          repos: [],
+        });
+      }
+    },
+  );
+
   it("does not intercept external links", () => {
     const content = "[External Link](http://example.com)";
     renderWithRouter(

@@ -6,7 +6,11 @@
 import { matchRoutes } from "react-router-dom";
 import { describe, expect, it } from "vitest";
 import { PLANNING_PAGE_PATH } from "vantage-md/planning";
-import { PLANNING_ROUTE, planningPath } from "./planningRoute";
+import {
+  PLANNING_ROUTE,
+  isPlanningRouteHref,
+  planningPath,
+} from "./planningRoute";
 
 /**
  * The repository a planning URL names, read as the page reads it: the first
@@ -69,5 +73,34 @@ describe("planningPath", () => {
     const tip = `${PLANNING_ROUTE}/a+b=c@d:e$f&g%20%28h%29%21%2A%27`;
     expect(planningPath(true, name)).not.toBe(tip);
     expect(repositoryOf(tip)).toBe(name);
+  });
+});
+
+describe("isPlanningRouteHref", () => {
+  it("is the planning route, with a project segment, a query or a fragment", () => {
+    for (const href of [
+      "/.vantage/planning",
+      "/.vantage/planning/",
+      "/.vantage/planning?filter=is:open&space=abcdefghijklmnop",
+      "/.vantage/planning#needs-you",
+      "/.vantage/planning/beta?filter=is:open",
+      "/.vantage/planning/my%20repo",
+    ]) {
+      expect(isPlanningRouteHref(href), href).toBe(true);
+    }
+  });
+
+  it("is no other path, nor one that only starts like it", () => {
+    for (const href of [
+      "/.vantage/planningx",
+      "/.vantage/plan",
+      ".vantage/planning",
+      "/docs/.vantage/planning",
+      "/gamma/.vantage/planning",
+      "planning.md",
+      "#planning",
+    ]) {
+      expect(isPlanningRouteHref(href), href).toBe(false);
+    }
   });
 });

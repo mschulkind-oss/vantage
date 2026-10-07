@@ -7,7 +7,9 @@
 // docs/reference/planning-index.md §13.6.
 //
 // The server only ever reads the file. It never makes one, never rewrites one,
-// and parses nothing in the checkout but this one line.
+// and parses nothing in the checkout but this one line, and, to find a main
+// checkout's linked worktrees ([Checkout]), git's own one-line pointers and
+// core.bare.
 //
 // The id's pattern and the file's reading are vantage-md's too
 // (packages/vantage-md/src/planning/space.ts), and testdata/space-files.json
@@ -121,7 +123,11 @@ var read = readSmall
 // readSmall reads path when it is still a regular file once opened, and no
 // more of it than one byte past [maxFileBytes]: the Lstat and the open are two
 // calls, and the file can have been replaced between them.
-func readSmall(path string) ([]byte, error) {
+func readSmall(path string) ([]byte, error) { return readCapped(path, maxFileBytes) }
+
+// readCapped reads path when it is a regular file once opened, and refuses it
+// when it holds more than limit bytes, reading no more than one byte past.
+func readCapped(path string, limit int64) ([]byte, error) {
 	fh, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -134,12 +140,12 @@ func readSmall(path string) ([]byte, error) {
 	if !info.Mode().IsRegular() {
 		return nil, errors.New("spaceid: not a regular file")
 	}
-	data, err := io.ReadAll(io.LimitReader(fh, maxFileBytes+1))
+	data, err := io.ReadAll(io.LimitReader(fh, limit+1))
 	if err != nil {
 		return nil, err
 	}
-	if len(data) > maxFileBytes {
-		return nil, errors.New("spaceid: larger than any space id")
+	if int64(len(data)) > limit {
+		return nil, errors.New("spaceid: larger than the file can be")
 	}
 	return data, nil
 }

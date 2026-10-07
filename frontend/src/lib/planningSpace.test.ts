@@ -7,6 +7,7 @@ import { act, renderHook } from "@testing-library/react";
 import axios from "axios";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setPlanningLimitsForTests } from "../planningScan/limits";
+import { useRepoStore } from "../stores/useRepoStore";
 import {
   askPlanningSpace,
   projectlessSpace,
@@ -31,7 +32,18 @@ beforeEach(() => {
 afterEach(() => {
   setPlanningLimitsForTests(null);
   delete window.__VANTAGE_STATIC__;
+  useRepoStore.setState({ repos: [], reposLoaded: false, isMultiRepo: false });
 });
+
+/** The server's projects, as a `repos_changed` push leaves the store. */
+const served = (...names: string[]) =>
+  act(() =>
+    useRepoStore.setState({
+      reposLoaded: true,
+      isMultiRepo: true,
+      repos: names.map((name) => ({ name, last_activity: null })),
+    }),
+  );
 
 describe("reading a planning URL's space", () => {
   it("reads the first space= as written, and none for an empty one", () => {
@@ -106,6 +118,27 @@ describe("asking the server", () => {
     });
   });
 
+  // A checkout copied whole keeps the original's id, so two projects hold
+  // it: the answer names both, and opens neither.
+  it("reads several projects holding one id, and none for a list it cannot read", async () => {
+    vi.mocked(axios.get).mockResolvedValueOnce({
+      data: { repo: null, repos: ["alpha", "alpha-copy"] },
+    });
+    expect(await askPlanningSpace("aaaaaaaaaaaaaaaa")).toEqual({
+      kind: "several",
+      repos: ["alpha", "alpha-copy"],
+    });
+    for (const repos of [["alpha"], [], ["alpha", 7], "alpha"]) {
+      resetPlanningSpacesForTests();
+      vi.mocked(axios.get).mockResolvedValueOnce({
+        data: { repo: null, repos },
+      });
+      expect(await askPlanningSpace("aaaaaaaaaaaaaaaa")).toEqual({
+        kind: "none",
+      });
+    }
+  });
+
   it("keeps no answer for a request that failed or a body it cannot read, so the next visit asks again", async () => {
     vi.mocked(axios.get).mockRejectedValueOnce(new Error("offline"));
     expect(await askPlanningSpace(ID)).toEqual({ kind: "failed" });
@@ -152,6 +185,74 @@ describe("asking the server", () => {
     expect(result.current).toEqual({ kind: "none" });
     rerender({ id: null });
     expect(result.current).toBeNull();
+  });
+});
+
+// A link opened before the daemon has found its checkout is answered none,
+// and the daemon finds it seconds later: the answer must follow, without a
+// reload, and a found one must not be asked for again.
+describe("an answer that no project holds the id", () => {
+  it("is asked again when the server's projects change, painted as it was until the new answer", async () => {
+    await served("alpha");
+    vi.mocked(axios.get)
+      .mockResolvedValueOnce({ data: { repo: null } })
+      .mockResolvedValueOnce({ data: { repo: null } })
+      .mockResolvedValueOnce({ data: { repo: "epsilon" } });
+    const { result } = renderHook(() => usePlanningSpace(ID));
+    await act(async () => {});
+    expect(result.current).toEqual({ kind: "none" });
+    expect(gets()).toHaveLength(1);
+
+    // Another push, for a project that does not hold it: asked, still none.
+    await served("alpha", "gamma");
+    await act(async () => {});
+    expect(result.current).toEqual({ kind: "none" });
+    expect(gets()).toHaveLength(2);
+
+    let answer!: (value: unknown) => void;
+    vi.mocked(axios.get).mockReset();
+    vi.mocked(axios.get).mockReturnValueOnce(
+      new Promise((resolve) => {
+        answer = resolve;
+      }) as never,
+    );
+    await served("alpha", "gamma", "epsilon");
+    // While it is asked, the kept answer stays on screen: nothing flashes.
+    expect(result.current).toEqual({ kind: "none" });
+    await act(async () => answer({ data: { repo: "epsilon" } }));
+    expect(result.current).toEqual({ kind: "found", repo: "epsilon" });
+
+    // Found is kept for the session: a later push asks nothing.
+    await served("alpha", "gamma", "epsilon", "zeta");
+    await act(async () => {});
+    expect(gets()).toHaveLength(1);
+  });
+
+  it("is asked again by a page opened after the projects changed, which paints it meanwhile", async () => {
+    await served("alpha");
+    vi.mocked(axios.get).mockResolvedValueOnce({ data: { repo: null } });
+    expect(await askPlanningSpace(ID)).toEqual({ kind: "none" });
+    // The reader is on another page as the daemon finds the checkout.
+    await served("alpha", "epsilon");
+    vi.mocked(axios.get).mockResolvedValueOnce({ data: { repo: "epsilon" } });
+    const { result } = renderHook(() => usePlanningSpace(ID));
+    expect(result.current).toEqual({ kind: "none" });
+    await act(async () => {});
+    expect(result.current).toEqual({ kind: "found", repo: "epsilon" });
+    expect(gets()).toHaveLength(2);
+  });
+
+  it("is not asked again while the projects stay as they were", async () => {
+    await served("alpha");
+    vi.mocked(axios.get).mockResolvedValue({ data: { repo: null } });
+    expect(await askPlanningSpace(ID)).toEqual({ kind: "none" });
+    const { result, unmount } = renderHook(() => usePlanningSpace(ID));
+    await act(async () => {});
+    unmount();
+    renderHook(() => usePlanningSpace(ID));
+    await act(async () => {});
+    expect(result.current).toEqual({ kind: "none" });
+    expect(gets()).toHaveLength(1);
   });
 });
 

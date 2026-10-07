@@ -2,7 +2,8 @@
   "description": [
     "What a checkout's .vantage/space holds, as both of its readers read it: the server's spaceid.Parse and vantage-md's parsePlanningSpaceFile, which vantage-check reads the file with before it ever writes one.",
     "`text` is the whole file; `id` is the space id it holds, or null when it holds none. A reader drops one trailing newline, and a carriage return before it, and takes what is left only when it is 16 characters of lowercase RFC 4648 base32 (a-z, 2-7).",
-    "`ids` are path segments as GET /api/spaces/{id} receives them: `valid` says whether the endpoint looks for that id at all, which it decides before it touches the filesystem."
+    "`ids` are path segments as GET /api/spaces/{id} receives them: `valid` says whether the endpoint looks for that id at all, which it decides before it touches the filesystem.",
+    "`configs` are a repository's .git/config, whole: `bare` says whether both readers take it for a bare repository, as git reads core.bare (last value wins; a key with no value is true; true, yes, on and 1 are true, case aside). A main checkout's linked worktrees are its own only when it is not bare: the server then answers for their ids, and the checker's hint names it."
   ],
   "files": [
     { "text": "abcdefghijklmnop\n", "id": "abcdefghijklmnop" },
@@ -39,5 +40,27 @@
     { "id": "abcdefghijklmno\n", "valid": false },
     { "id": "abcdefghijklmnop\n", "valid": false },
     { "id": "abcdefghijklmn%2", "valid": false }
+  ],
+  "configs": [
+    { "text": "", "bare": false },
+    { "text": "[core]\n\tbare = false\n", "bare": false },
+    { "text": "[core]\n\tbare = true\n", "bare": true },
+    { "text": "[core]\n\trepositoryformatversion = 0\n\tfilemode = true\n\tbare = true\n", "bare": true },
+    { "text": "[core]\n\tbare\n", "bare": true },
+    { "text": "[core]\n\tbare = yes\n", "bare": true },
+    { "text": "[core]\n\tbare = on\n", "bare": true },
+    { "text": "[core]\n\tbare = 1\n", "bare": true },
+    { "text": "[core]\n\tbare = 0\n", "bare": false },
+    { "text": "[Core]\n\tBARE = True\n", "bare": true },
+    { "text": "[core]\n\tbare = true ; a comment\n", "bare": true },
+    { "text": "[core]\n\tbare = \"true\"\n", "bare": true },
+    { "text": "[core]\n\tbare = true\n\tbare = false\n", "bare": false },
+    { "text": "[core]\n\tbare = false\n[core]\n\tbare = true\n", "bare": true },
+    { "text": "[remote \"origin\"]\n\tbare = true\n", "bare": false },
+    { "text": "[core \"sub\"]\n\tbare = true\n", "bare": false },
+    { "text": "[corebare]\n\tbare = true\n", "bare": false },
+    { "text": "# [core]\n# bare = true\n", "bare": false },
+    { "text": "[core]\n\t# bare = true\n", "bare": false },
+    { "text": "[core]\n\tbarely = true\n", "bare": false }
   ]
 }

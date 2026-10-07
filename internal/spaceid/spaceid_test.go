@@ -21,6 +21,10 @@ type spaceFiles struct {
 		ID    string `json:"id"`
 		Valid bool   `json:"valid"`
 	} `json:"ids"`
+	Configs []struct {
+		Text string `json:"text"`
+		Bare bool   `json:"bare"`
+	} `json:"configs"`
 }
 
 func loadSpaceFiles(t *testing.T) spaceFiles {
@@ -31,6 +35,7 @@ func loadSpaceFiles(t *testing.T) spaceFiles {
 	require.NoError(t, json.Unmarshal(data, &fixture))
 	require.NotEmpty(t, fixture.Files)
 	require.NotEmpty(t, fixture.IDs)
+	require.NotEmpty(t, fixture.Configs)
 	return fixture
 }
 

@@ -7316,6 +7316,145 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       expect(screen.queryByText(/Choose a project/)).toBeNull();
     });
 
+    // A checkout copied whole keeps the original's id, so two projects hold
+    // it: the page opens neither, says why and what to do, and lists only
+    // those two, each with the filter.
+    it("says two projects hold the space and lists only theirs when a checkout was copied whole", async () => {
+      useRepoStore.setState({
+        repos: [
+          { name: "alpha" },
+          { name: "beta" },
+          { name: "gamma" },
+        ] as never,
+      });
+      serveSpaces(async () => ({ repo: null, repos: ["alpha", "gamma"] }));
+      await renderPage(`/.vantage/planning?${FILTERED}&space=${BETA}`);
+      expect(screen.getByTestId("space-not-found")).toHaveTextContent(
+        PLANNING_SPACE_MESSAGES.several(2),
+      );
+      expect(projectLinks()).toEqual([
+        ["alpha", `/.vantage/planning/alpha?${FILTERED}`],
+        ["gamma", `/.vantage/planning/gamma?${FILTERED}`],
+      ]);
+      expect(screen.queryByText(/Choose a project/)).toBeNull();
+      expect(router.location).toBe(
+        `/.vantage/planning?${FILTERED}&space=${BETA}`,
+      );
+      expect(useRepoStore.getState().currentRepo).toBeNull();
+    });
+
+    // The daemon finds a new clone seconds after the agent in it printed the
+    // link, so a link opened at once is answered none: the page asks again
+    // as the projects change, and opens the project once it is found.
+    it("opens the project once the daemon finds it, after saying no project held the space", async () => {
+      useRepoStore.setState({ repos: [{ name: "alpha" }] as never });
+      let found = false;
+      serveSpaces(async () => ({ repo: found ? "beta" : null }));
+      serveTree(TREE, "/api/r/beta");
+      setLoad(readyOf(TREE), "beta");
+      await renderPage(`/.vantage/planning?${FILTERED}&space=${BETA}`);
+      expect(screen.getByTestId("space-not-found")).toHaveTextContent(
+        PLANNING_SPACE_MESSAGES.notServed,
+      );
+      found = true;
+      await act(async () => {
+        useRepoStore.setState({
+          repos: [{ name: "alpha" }, { name: "beta" }] as never,
+        });
+      });
+      await settle();
+      expect(router.location).toBe(`/.vantage/planning/beta?${FILTERED}`);
+      expect(screen.queryByTestId("space-not-found")).toBeNull();
+      expect(cardsIn("Needs you")).toHaveLength(2);
+      expect(spaceGets()).toHaveLength(2);
+    });
+
+    // An answer that comes after the frame painted moves nothing painted
+    // (planning-index.md §13.6): the sidebar's column and the header's
+    // buttons are drawn while the page asks, whatever the answer turns out
+    // to be, and kept by every answer, the ones that open no project too.
+    describe("keeps what is painted where it is, whatever the answer", () => {
+      /**
+       * What decides where the main column and the header's crumbs sit: the
+       * sidebar's column and the buttons before the crumbs.
+       */
+      const layoutNow = () => ({
+        sidebar: screen.queryByTestId("sidebar") !== null,
+        lead: Array.from(
+          screen
+            .getByTestId("planning-header")
+            .querySelectorAll(".hdr-lead button"),
+        )
+          .filter((b) => b.closest(".hdr-crumbs") === null)
+          .map((b) => b.getAttribute("aria-label")),
+      });
+      /**
+       * Whether the crumbs, which name the project the answer gives, and the
+       * toolbar, whose box starts where they end, are painted: not until it
+       * is in, so a crumb renamed moves nothing painted.
+       */
+      const crumbsPainted = () =>
+        [".hdr-crumbs", ".hdr-tools"].map(
+          (part) =>
+            !screen
+              .getByTestId("planning-header")
+              .querySelector(part)!
+              .classList.contains("invisible"),
+        );
+
+      it.each([
+        ["opens a project", { repo: "beta" }],
+        ["no project holds it", { repo: null }],
+        ["two do", { repo: null, repos: ["alpha", "beta"] }],
+      ])("on a first load past the hold, when %s", async (_, reply) => {
+        setPlanningLimitsForTests({ holdMs: 0 });
+        const answer = deferred();
+        serveSpaces(() => answer.promise);
+        serveTree(TREE, "/api/r/beta");
+        setLoad(readyOf(TREE), "beta");
+        await renderPage(`/.vantage/planning?${FILTERED}&space=${BETA}`);
+        const before = layoutNow();
+        expect(before.sidebar).toBe(true);
+        expect(crumbsPainted()).toEqual([false, false]);
+        // No project is open yet, so the sidebar keeps its project row's
+        // room unpainted, for the row the answer may bring.
+        expect(screen.getByTestId("sidebar-project-room")).toBeTruthy();
+        await act(async () => answer.resolve(reply));
+        await settle();
+        expect(layoutNow()).toEqual(before);
+        expect(crumbsPainted()).toEqual([true, true]);
+        expect(screen.queryByTestId("sidebar-project-room") === null).toBe(
+          reply.repo === "beta",
+        );
+      });
+
+      it.each([
+        ["opens a project", { repo: "beta" }],
+        ["no project holds it", { repo: null }],
+      ])(
+        "on a link followed from a project's page, when %s",
+        async (_, reply) => {
+          const answer = deferred();
+          serveSpaces(() => answer.promise);
+          serveTree(TREE, "/api/r/beta");
+          setLoad(readyOf(TREE), "beta");
+          useRepoStore.setState({ currentRepo: "alpha" });
+          await renderPage("/alpha/notes.md");
+          await act(async () => {
+            router.navigate!(`/.vantage/planning?${FILTERED}&space=${BETA}`);
+          });
+          await settle();
+          const before = layoutNow();
+          expect(before.sidebar).toBe(true);
+          expect(crumbsPainted()).toEqual([false, false]);
+          await act(async () => answer.resolve(reply));
+          await settle();
+          expect(layoutNow()).toEqual(before);
+          expect(crumbsPainted()).toEqual([true, true]);
+        },
+      );
+    });
+
     it("asks nothing for a space= that is not a space id, and says so", async () => {
       serveSpaces(async () => ({ repo: "beta" }));
       await renderPage(`/.vantage/planning?${FILTERED}&space=Not-An-Id`);
