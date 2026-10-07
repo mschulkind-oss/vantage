@@ -11,6 +11,7 @@ import {
 } from "../lib/preferences";
 import { isStaticMode } from "../lib/staticMode";
 import { VIEWER_RELEASE } from "../lib/viewerRelease";
+import { ANSWER_PROCESSING_GUIDE } from "vantage-md";
 import type {
   CommentAnchor,
   CommentReaction,
@@ -1256,6 +1257,8 @@ function respondingInstructions(
     "## Responding to Comments",
     "",
     ...followUpNote,
+    ANSWER_PROCESSING_GUIDE,
+    "",
     // The pointer to the checker rides here rather than in anyone's AGENTS.md:
     // this block is copied into the agent's context on every single review
     // turn, so it reaches whatever environment the agent has, needs no setup

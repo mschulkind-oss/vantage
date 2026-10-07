@@ -16,6 +16,21 @@
  * actually cares about — if a line is neither, it does not belong.
  */
 
+/**
+ * Shared by the style guide and every review clipboard payload. These are
+ * authoring instructions, not a claim that the checker measures agent latency.
+ */
+export const ANSWER_PROCESSING_GUIDE = `### Record rulings before downstream work
+
+Vantage derives planning state from saved Markdown. Pending review comments can show an answer waiting on the agent, but an agent reply does not settle the question in the document; replying first can make it need the human again.
+
+- **Record a clear ruling first**, in the checkout Vantage serves, before launching or continuing downstream work based on it. Do not wait for a larger rewrite, implementation, independent review, a full test suite, or a commit. A saved edit in another worktree does not update this interface.
+- **Finish a small, coherent document update.** Fold the ruling into the body it governs, then compact the settled question into a Decision Ledger row retaining its exact ID, decision, date, and a link to the governing section. Remove the question's directive only with that compaction; repair inbound Markdown links to its former anchor in the same update. Keep question-specific \`depends-on\` fragments when the ledger retains their IDs. Preserve the decision, not the discarded options and leaning.
+- **Keep unfinished work visible.** A decision is not evidence that it has been implemented. Update \`status\`, \`stage\`, \`next\`, and dependencies only as warranted; do not claim \`accepted\` while any question remains unanswered, including blocked ones, or use a \`done\` stage to hide work. A clarification request is not a ruling: reply without closing the question. For a partial answer, record the settled part and retain a narrower open question with its directive.
+- **Save each coherent update promptly**, rather than waiting for every document in the batch. The coordinator records rulings before handing those documents to a writer. Do not overwrite another writer's changes; if the served checkout is unavailable or the edit conflicts, report that obstacle explicitly instead of claiming the interface has updated.
+- **Then check the affected documents and deliver the comment responses.** Deliver responses for recorded rulings promptly, without waiting for downstream work or the rest of the batch. A response says what was recorded and what remains unbuilt. Do not claim the question is settled while its document is still open. Missing checker tooling does not justify postponing the saved update. Vantage cannot verify from prose alone that a ruling was incorporated correctly or enforce this ordering on an external agent.
+`;
+
 export const STYLE_GUIDE = `## Markdown style guide (for Vantage viewer)
 
 When writing or updating markdown documents that will be viewed in Vantage, follow these conventions:
@@ -223,6 +238,7 @@ A question a document leaves for a human to rule on is an *Open Question*, writt
 - **Write a question as a list item.** Outside a list, a question runs from the block its directive lands on through the blocks after it, up to the next heading (for a question written as a heading, the next one of its level or higher), the next rule or the next question, so whatever prose follows it before then is read as part of it. There the directive goes above the question's title, since every viewer reads the question's marker from the block it lands on: a directive below the bold title lands on the block after it, which carries no marker, so every viewer reads the question as open. \`vantage-check\` reports that as \`vantage/question-name\`.
 - **\`oq\` is the name \`question\` replaces.** Vantage keeps reading \`<!-- vantage: oq id=OQ-9 leaning="…" -->\` as it always has, and \`vantage-check\` warns on it (\`vantage/oq-deprecated\`) with the \`question\` to write instead, keys unchanged. Vantage before 0.8 drops \`question\` whole, so a reader still on 0.7 gets no one-click answer and no anchor on a question written with it, and misreads nothing. So keep an \`oq\` on an open question unless you know every reader of the repository is on 0.8 or later. A repository whose readers are still on 0.7 says so with a \`target\` before 0.8, such as \`target = "0.7"\`: there an open question takes \`oq\`, new ones included, and \`vantage-check\` asks for \`oq\` rather than \`question\` on one. **Never put \`oq\` on a \u{1F512} or \u2705 question**: every Vantage before 0.8 offers the one-click button on every \`oq\`, whatever its marker says, and on a question with no leaning it files the literal text "Take the stated leaning." \`vantage-check\` reports that as an error (\`vantage/question-name\`).
 
+${ANSWER_PROCESSING_GUIDE}
 ### Tables, task lists, and math
 - **Tables**: Use standard markdown tables for structured comparisons and schemas.
 - **Task lists**: Use \`- [ ]\` and \`- [x]\` for actionable checklists and status tracking.

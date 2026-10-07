@@ -32,9 +32,34 @@ nothing has to be inferred from content.
 
 ## What the agent writes
 
-When you copy comments to an agent, the clipboard payload tells it to save the
-document first, then deliver **one file per response**, carrying one JSON line
-per comment it acted on. Before delivering, it is also told to **check the
+When you copy comments to an agent, the clipboard payload tells it to record
+clear rulings **before downstream work**, in the checkout Vantage serves. The
+same instructions appear in the in-app **Style Guide for Agents** and
+`vantage-check style-guide`; no personal agent skills are required.
+
+Recording a ruling is a small, coherent document update: incorporate the decision
+into the body, compact its settled question into a Decision Ledger retaining the
+ID, and repair links to the removed question anchor. Save each affected document
+promptly, rather than waiting for a larger rewrite, implementation, independent
+review, the full test suite, a commit, or every document in a batch. An edit in
+another worktree does not update the served checkout. A coordinator records the
+rulings before handing the documents to a writer, without overwriting another
+writer's changes.
+
+A clarification request does not settle a question. A partial answer settles only
+its decided part; the remaining question stays open. Recording a decision does
+not mean implementing it, so document metadata must still describe unfinished
+work honestly. Vantage cannot enforce an external agent's execution order or
+verify that prose faithfully incorporates a ruling.
+
+The payload then tells the agent to save the document first and deliver **one
+file per response**, carrying one JSON line per comment it acted on. Delivering
+an acknowledgment before recording the ruling can make the planning question
+need you again: a reply ends its comment-based *waiting on the agent* state,
+while its saved Markdown still says it is open. See
+[how a comment becomes an answer](planning.md#a-comment-on-a-question-is-your-answer).
+
+Before delivering, it is also told to **check the
 document with [`vantage-check`](vantage-check.md)** (`uvx vantage-check
 <document>`, run from the repo root) and fix what it reports — the payload
 notes that this is a quality gate, not a delivery dependency: if the command
