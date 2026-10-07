@@ -697,6 +697,26 @@ question** and **Open document**. Show question renders the whole card in
 place, and it then offers Take this leaning and Answer… as any card does:
 both need the rendered question to anchor the comment to.
 
+### Review answers
+
+**Review answers**, beside Copy answers in the header (or under **Toolbar
+actions** on a narrow screen), shows the comments waiting on the agent, grouped
+by their source document. Each entry shows the comment, its selected text when
+available, and the latest reviewer follow-up. Open its document link to inspect
+the original question and review thread; you do not need to copy the payload or
+send it to an agent to find the source.
+
+It shows the same answers Copy answers includes: across every page and roadmap,
+and only those the current filter keeps. When the filter leaves answers out,
+the panel says how many; clear the filter to inspect those too. A large set is
+paged with **Next answers** and **Previous answers**. The action waits until the
+pending count is known and is disabled when there are no included answers.
+Opening the panel sends nothing and marks nothing answered or dismissed.
+
+Document links use the comment's recorded line when available. If the document
+has changed since you commented, the text may have moved; inspect its Review
+panel rather than assuming the recorded line still identifies the question.
+
 ### Copy answers
 
 **Copy answers**, in the page's header, hands every answer given on the page

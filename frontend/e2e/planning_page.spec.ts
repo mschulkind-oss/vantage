@@ -10,7 +10,7 @@ import { planningIndexReady } from "./planningIndex";
 // unrouted.md's one, or oversized.md's, whose card is past the size a card
 // renders unasked.
 test.describe("the planning page", () => {
-  // Two tests file a comment on the same document and delete it afterwards.
+  // Tests file comments on the same document and delete them afterwards.
   test.describe.configure({ mode: "serial" });
 
   const UNROUTED = "plans/unrouted.md";
@@ -32,6 +32,50 @@ test.describe("the planning page", () => {
   // this tab; Open document opens a new one.
   const nameLink = (page: Page, title: string, path: string) =>
     card(page, title).getByRole("link", { name: path, exact: true });
+
+  for (const width of [1280, 375]) {
+    test(`reviews pending sources without copying at ${width}px`, async ({
+      page,
+    }) => {
+      await page.goto("/.vantage/planning");
+      await card(page, "OQ-U1: Is anyone tracking this?")
+        .getByRole("button", { name: "Take this leaning" })
+        .click();
+      await expect(page.getByTestId("pending-answers")).toHaveText("1");
+      await page.setViewportSize({ width, height: 900 });
+      const review = page.getByRole("button", {
+        name: "Review answers",
+        exact: true,
+      });
+      if (!(await review.isVisible())) {
+        await page
+          .getByRole("button", { name: "Toolbar actions", exact: true })
+          .click();
+      }
+      await review.click();
+      const answers = page.getByRole("menu", {
+        name: "Answers waiting on the agent",
+      });
+      await expect(answers).toBeVisible();
+      await expect(answers.getByText(UNROUTED, { exact: true })).toBeVisible();
+      const source = answers.getByRole("menuitem", {
+        name: /^Open plans\/unrouted\.md at line/,
+      });
+      await expect(source).toBeFocused();
+      const box = await answers.boundingBox();
+      expect(box).not.toBeNull();
+      expect(box!.x).toBeGreaterThanOrEqual(0);
+      expect(box!.x + box!.width).toBeLessThanOrEqual(width);
+      await page.screenshot({
+        path: test.info().outputPath(`review-answers-${width}.png`),
+      });
+      await source.click();
+      await expect(page).toHaveURL(/\/plans\/unrouted\.md#L\d+$/);
+      await expect(
+        page.locator("[data-content-scroll] .prose h1"),
+      ).toBeVisible();
+    });
+  }
 
   test("loads by its URL, listing the fixture's unrouted question under Not on a roadmap", async ({
     page,
