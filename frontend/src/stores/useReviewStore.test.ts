@@ -1296,6 +1296,49 @@ describe("useReviewStore", () => {
       );
     });
 
+    it("prioritizes recording rulings in the served checkout on every Copy surface", async () => {
+      seedNested();
+      const all = await copiedPayload();
+      await useReviewStore.getState().copyCommentToClipboard("abcdef12-0000");
+      const one = writeText.mock.calls[1][0] as string;
+      const planning = answersPayload([
+        {
+          path: "docs/design/guide.md",
+          comments: useReviewStore.getState().comments,
+          lines: linesOfText("line one\nline two\n"),
+        },
+        {
+          path: "docs/other.md",
+          comments: [mkThreadComment("12345678-0000", "use option A", [])],
+          lines: linesOfText("other\n"),
+        },
+      ])!;
+      for (const payload of [all, one, planning]) {
+        const recording = payload.indexOf(
+          "### Record rulings before downstream work",
+        );
+        expect(recording).toBeGreaterThanOrEqual(0);
+        expect(recording).toBeLessThan(
+          payload.indexOf("**Before delivering, check"),
+        );
+        expect(payload).toContain("the checkout Vantage serves");
+        expect(payload).toContain(
+          "before launching or continuing downstream work",
+        );
+        expect(payload).toContain(
+          "Do not wait for a larger rewrite, implementation, independent review, a full test suite, or a commit",
+        );
+        expect(payload).toContain("A clarification request is not a ruling");
+        expect(payload).toContain(
+          "A decision is not evidence that it has been implemented",
+        );
+        expect(payload).toContain("Do not overwrite another writer's changes");
+        expect(payload).toContain(
+          "Do not claim the question is settled while its document is still open",
+        );
+      }
+    });
+
     it("instructs saving the document before delivering", async () => {
       seedNested();
       const payload = await copiedPayload();

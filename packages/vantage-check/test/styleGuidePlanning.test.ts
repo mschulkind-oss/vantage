@@ -5,7 +5,10 @@ import { parse as parseToml } from "smol-toml";
 import { run } from "../src/cli.js";
 import { EXIT_OK, EXIT_USAGE } from "../src/exit.js";
 import { bufferIo } from "../src/io.js";
-import { STYLE_GUIDE } from "../../vantage-md/src/styleGuide.js";
+import {
+  STYLE_GUIDE,
+  ANSWER_PROCESSING_GUIDE,
+} from "../../vantage-md/src/styleGuide.js";
 import { parseFrontmatter } from "../../vantage-md/src/frontmatter.js";
 import { parseMarkdown } from "../src/core/document.js";
 import {
@@ -45,6 +48,29 @@ function exampleQuestions(): PlanningQuestion[] {
     return result.kind === "planning" ? result.document.questions : [];
   });
 }
+
+describe("the style guide's answer-processing instructions", () => {
+  it("reaches agents through the CLI command", async () => {
+    const io = bufferIo(fullTree());
+    expect(await run(["style-guide"], io)).toBe(EXIT_OK);
+    expect(io.stdout).toContain(ANSWER_PROCESSING_GUIDE);
+  });
+
+  it("includes the same protocol as review payloads, without claiming mechanical enforcement", () => {
+    expect(STYLE_GUIDE).toContain(ANSWER_PROCESSING_GUIDE);
+    expect(ANSWER_PROCESSING_GUIDE).toContain(
+      "before launching or continuing downstream work",
+    );
+    expect(ANSWER_PROCESSING_GUIDE).toContain("the checkout Vantage serves");
+    expect(ANSWER_PROCESSING_GUIDE).toContain("repair inbound Markdown links");
+    expect(ANSWER_PROCESSING_GUIDE).toContain(
+      "Keep question-specific `depends-on` fragments",
+    );
+    expect(ANSWER_PROCESSING_GUIDE).toContain(
+      "Vantage cannot verify from prose alone",
+    );
+  });
+});
 
 describe("the style guide's roadmaps", () => {
   it("says a roadmap.md the index does not read is no roadmap", () => {
