@@ -308,7 +308,13 @@ matches nothing beside it is left alone — it may be a file in another repo, a
 config key, or a name in passing, and the checker cannot tell which. An
 absolute path is left alone too: `/etc/resolv.conf` is not a reference to
 anything a document can link to, however real the file is on the machine
-running the check.
+running the check. A filename git ignores is left alone as well: it is a
+private, untracked file that exists on this machine and for no other reader,
+so a committed document has to read the same with and without it, and a link
+demanded for it would break for everyone else. This is the one check that asks
+git; with no repository, or no git installed, the filename is treated as it was
+before. A link to a file is checked either way — the exemption is only for the
+demand that a bare name become one.
 
 Definition sites are never findings: a question's own bold title, and the ID
 column of a Decision Ledger, are where the id is *declared*. Nor is a
