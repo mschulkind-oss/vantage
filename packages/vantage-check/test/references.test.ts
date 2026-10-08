@@ -1,7 +1,35 @@
+import { execFileSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { checkTree, makeTree, ruleIds } from "./helpers.js";
+
+/**
+ * A tree that is a git repository, so ignore rules apply to it.
+ *
+ * `ref/unlinked-file` asks git which files it excludes, so these tests need a
+ * real repository. The global and system config are neutralized for the whole
+ * file in `beforeEach`, and here for the setup commands too, so the only
+ * exclude rule in play is the one a test wrote — a developer's own global
+ * excludes must not decide the expectation.
+ */
+function gitTree(files: Record<string, string>): string {
+  const root = makeTree(files);
+  execFileSync("git", ["-c", "core.excludesFile=/dev/null", "init", "-q"], {
+    cwd: root,
+    env: { ...process.env, GIT_CONFIG_NOSYSTEM: "1" },
+  });
+  return root;
+}
+
+beforeEach(() => {
+  vi.stubEnv("GIT_CONFIG_GLOBAL", "/dev/null");
+  vi.stubEnv("GIT_CONFIG_NOSYSTEM", "1");
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 const OQ = '<!-- vantage: question id=OQ-4 leaning="Yes." -->';
 
@@ -343,5 +371,58 @@ describe("ref/unlinked-file", () => {
     const report = await checkTree(root);
 
     expect(ruleIds(report)).toEqual([]);
+  });
+
+  // A file git ignores is private to the machine holding it, so a committed
+  // document that names it in passing must read the same whether or not the
+  // file is there. Before the checker asked git, creating `settings.local.md`
+  // turned a clean document into a finding that demanded a link no other
+  // reader could follow — the report that a committed `CHANGELOG.md` naming
+  // `yolo-jail.local.jsonc` failed on a machine that had the file and passed
+  // in a clean worktree.
+  it("reads the same before and after an ignored local file appears", async () => {
+    const root = gitTree({
+      "docs/index.md": "Local overrides live in `settings.local.md`.\n",
+      ".gitignore": "settings.local.md\n",
+    });
+
+    const before = await checkTree(root);
+    writeFileSync(join(root, "docs/settings.local.md"), "# private\n");
+    const after = await checkTree(root);
+
+    expect(ruleIds(before)).toEqual([]);
+    expect(ruleIds(after)).toEqual(ruleIds(before));
+  });
+
+  // The exemption is for files git excludes, not for every file that is merely
+  // untracked: a file the repository has not committed and does not ignore is
+  // still one a document should link to.
+  it("still fires on an untracked file git does not ignore", async () => {
+    const root = gitTree({
+      "docs/index.md": "The pipeline lives in `design.md`.\n",
+      ".gitignore": "unrelated.md\n",
+    });
+    writeFileSync(join(root, "docs/design.md"), "# Design\n");
+
+    const report = await checkTree(root);
+
+    expect(ruleIds(report)).toEqual(["ref/unlinked-file"]);
+  });
+
+  // An explicit link is a claim the document makes and has to resolve; only
+  // the demand for a link is dropped when the file is private. A token that
+  // names one file and links to another is still reported.
+  it("still checks a link naming an ignored file but opening another", async () => {
+    const root = gitTree({
+      "docs/index.md": "See [`settings.local.md`](./other.md).\n",
+      ".gitignore": "settings.local.md\n",
+      "docs/other.md": "# Other\n",
+    });
+    writeFileSync(join(root, "docs/settings.local.md"), "# private\n");
+
+    const report = await checkTree(root);
+
+    expect(ruleIds(report)).toEqual(["ref/unlinked-file"]);
+    expect(report.findings[0]?.message).toContain("a different file");
   });
 });

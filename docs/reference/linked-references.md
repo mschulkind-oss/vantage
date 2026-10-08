@@ -418,6 +418,13 @@ the document's own directory**, outside a link or linked to a different file.
   absolute path escapes doc-relative resolution entirely — it would be answered
   against the checker's own filesystem — and naming system files is a runbook's
   whole job. The link form of the same mistake is `link/leading-slash`'s.
+- **Skipped when git ignores the file.** A bare token naming a file git excludes
+  — a private, untracked file that exists on this machine and for no other
+  reader — gets no finding. The document must read the same with and without
+  that file, and a link demanded for it would break for everybody else. This is
+  the one answer in the family that depends on git: with no repository, or no
+  git on `PATH`, the demand comes back. An explicit link is unaffected; it is
+  still checked against the file it opens.
 - **Silent:** a token that resolves to nothing beside the document (a file in
   another repository, a configuration key, a name in passing — the checker
   cannot tell which), to a directory, or to the document itself.
@@ -577,5 +584,6 @@ ruling of its own, so cite them with this document's path.
 | OQ-4 | A compacted question has no question anchor; a reference to it links to the Decision Ledger, and the rule requires only that the link carry a fragment. Nothing reintroduces a per-row anchor ([`ref/unlinked-oq`](#refunlinked-oq)) | 2026-09-04 |
 | — | `ref/unlinked-file` resolves against the document's directory, never the repository root. Measured on this repository when the rule was built, root resolution turned every passing mention of a manifest in a deeply nested document into a demand to link one specific manifest out of the four in the workspace | 2026-09-04 |
 | — | A token starting with a slash is skipped before it is looked up: it was answered against the checker's filesystem, told a runbook its system files existed beside it, and offered a link that resolved nowhere ([`ref/unlinked-file`](#refunlinked-file)) | 2026-09-11 |
+| — | A **bare** token naming a file git ignores gets no finding. It is private to the machine holding it, so a committed document must read the same with and without it, and the demanded link would break for every other reader. An explicit link is still checked, and when git cannot answer the demand comes back ([`ref/unlinked-file`](#refunlinked-file)) | 2026-10-08 |
 | — | A question's title is recognized by its shape, a bold id and a colon, not by the ids the document declares. Keying off declared ids excused every mention of a locally declared id, including the references the rule exists to catch ([`ref/unlinked-oq`](#refunlinked-oq)) | 2026-09-04 |
 | — | The renderer stamps a malformed id rather than dropping it, and leaves refusing it to the sanitizer: dropping it would hide the mistake that naming is `vantage/oq-id-format`'s job ([The question anchor](#the-question-anchor)) | 2026-09-04 |

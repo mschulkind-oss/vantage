@@ -333,10 +333,25 @@ export function checkSectionReferences(collector: Collector): void {
  * filesystem, and a fix that resolves nowhere. Absolute paths are also not
  * linkable by design: naming `/etc/…` is a runbook's whole job. The link form
  * of the same mistake is `link/leading-slash`, which already reports it.
+ *
+ * A bare token naming a file git ignores is skipped too. That file is private
+ * to the machine holding it: a committed document that names it would be told
+ * to link something no other reader has, and the finding would come and go
+ * with the file's presence on whoever's disk ran the check. An explicit link
+ * to an ignored file is still checked — a link is a claim the document makes,
+ * and it has to resolve for everyone
+ * (docs/reference/linked-references.md, `ref/unlinked-file`). Nothing is
+ * skipped when git cannot answer.
  */
 export function checkFileReferences(collector: Collector): void {
   if (!collector.enabled("ref/unlinked-file")) return;
   const documentDir = dirname(collector.doc.path);
+
+  // Bare tokens are collected rather than reported as they are walked, so the
+  // whole document's filenames go to one git probe. A finding's order in the
+  // report is the report's business (it sorts); the number of subprocesses is
+  // not.
+  const unlinked: { text: string; at: FilePosition; target: string }[] = [];
 
   walkText(collector.doc.mdast, undefined, (node, link) => {
     const value = (node as { value?: string }).value;
@@ -365,13 +380,7 @@ export function checkFileReferences(collector: Collector): void {
       const at = positionIn(collector, node, value, offset);
 
       if (link === undefined) {
-        collector.report(
-          "ref/unlinked-file",
-          at,
-          `\`${text}\` names a file that exists beside this document but is ` +
-            `not a link. Write [\`${text}\`](${text.startsWith(".") ? text : `./${text}`}) ` +
-            "so a reader can open it and a move cannot go unnoticed.",
-        );
+        unlinked.push({ text, at, target });
         continue;
       }
 
@@ -387,6 +396,22 @@ export function checkFileReferences(collector: Collector): void {
       );
     }
   });
+
+  const ignored = collector.workspace.ignoredPaths(
+    unlinked.map((candidate) => candidate.target),
+    documentDir,
+  );
+
+  for (const { text, at, target } of unlinked) {
+    if (ignored.has(target)) continue;
+    collector.report(
+      "ref/unlinked-file",
+      at,
+      `\`${text}\` names a file that exists beside this document but is ` +
+        `not a link. Write [\`${text}\`](${text.startsWith(".") ? text : `./${text}`}) ` +
+        "so a reader can open it and a move cannot go unnoticed.",
+    );
+  }
 }
 
 /** Every `ref/*` rule, in the order their findings read best. */
