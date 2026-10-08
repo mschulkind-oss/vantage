@@ -1097,6 +1097,9 @@ describe("the project index scans", () => {
     expect(paths(payload)).toEqual(["docs/a.md"]);
   });
 
+  // The vitest default is 5s, and this test scans this repository's whole
+  // `docs/` tree. The pre-commit gate runs this suite beside the self-check, so
+  // on a busy machine it needs headroom it does not need alone.
   it("reads this repository's own planning documents", async () => {
     const repo = join(import.meta.dirname, "..", "..", "..");
     const { code, payload } = await indexJson(join(repo, "docs"));
@@ -1105,14 +1108,24 @@ describe("the project index scans", () => {
     expect(payload.root).toBe(repo);
     expect(paths(payload)).toContain("docs/reference/planning-index.md");
     expect(paths(payload)).toContain("roadmap.md");
-    // Found by name: this repository sets no roadmap, and its exclude rules
-    // out the end-to-end fixture's plans/roadmap.md (§14).
+    // Found by name: this repository sets no roadmap.
     expect(payload.index.config.roadmaps).toBeNull();
-    expect(payload.sections.roadmaps).toEqual([
+    // The repository's own roadmap is listed and chosen. The list is not pinned
+    // to exactly one entry: the index walks the tree and keeps gitignored and
+    // untracked files, so any scratch directory may hold a `roadmap.md` of its
+    // own — as this workspace's ignored `swarf/` does — without this failing.
+    expect(payload.sections.roadmaps).toContainEqual(
       expect.objectContaining({ path: "roadmap.md", state: "routes" }),
-    ]);
+    );
     expect(payload.sections.chosenRoadmap).toBe("roadmap.md");
-  });
+    // The exclude rules out every end-to-end fixture's roadmap, so none of
+    // those is listed however many `roadmap.md` files the tree holds.
+    expect(
+      payload.sections.roadmaps.filter((roadmap: { path: string }) =>
+        roadmap.path.startsWith("frontend/e2e/fixtures/"),
+      ),
+    ).toEqual([]);
+  }, 15_000);
 });
 
 /* ------------------------------------------------------------------ *

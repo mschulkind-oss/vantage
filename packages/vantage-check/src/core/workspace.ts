@@ -3,6 +3,7 @@ import { extname } from "node:path";
 import { indexDocument, type DocumentIndex } from "./slugs.js";
 import { parseMarkdown, type Document } from "./document.js";
 import { parseFrontmatter } from "../../../vantage-md/src/frontmatter.js";
+import { gitIgnoredPaths } from "./gitIgnore.js";
 
 /** What a link can point at. */
 export type TargetKind = "file" | "directory" | "missing";
@@ -21,6 +22,10 @@ export class Workspace {
   private readonly kinds = new Map<string, TargetKind>();
   private readonly lineCounts = new Map<string, number | null>();
   private readonly indexes = new Map<string, DocumentIndex | null>();
+  // Keyed by the target's absolute path, which names one location and therefore
+  // one repository, so one answer is right for the whole run however many
+  // documents name it.
+  private readonly ignored = new Map<string, boolean>();
 
   kind(path: string): TargetKind {
     const cached = this.kinds.get(path);
@@ -39,6 +44,37 @@ export class Workspace {
 
   exists(path: string): boolean {
     return this.kind(path) !== "missing";
+  }
+
+  /**
+   * Which of `paths` git ignores, asked once per path per run. `from` is a
+   * directory inside the repository to resolve it from — the document's own
+   * directory for `ref/unlinked-file`.
+   *
+   * A file git ignores is private to this machine, so the mention rules must
+   * not demand a link to it. The probe and its fallbacks are `gitIgnore.ts`'s;
+   * this is only the cache, which matters because a set of documents can name
+   * the same file many times and each answer is a subprocess.
+   */
+  ignoredPaths(paths: readonly string[], from: string): Set<string> {
+    const result = new Set<string>();
+    const unknown: string[] = [];
+    for (const path of new Set(paths)) {
+      const cached = this.ignored.get(path);
+      if (cached === undefined) unknown.push(path);
+      else if (cached) result.add(path);
+    }
+
+    if (unknown.length > 0) {
+      const ignored = gitIgnoredPaths(unknown, from);
+      for (const path of unknown) {
+        const isIgnored = ignored.has(path);
+        this.ignored.set(path, isIgnored);
+        if (isIgnored) result.add(path);
+      }
+    }
+
+    return result;
   }
 
   /**

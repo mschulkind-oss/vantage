@@ -93,6 +93,9 @@ describe("vantage/* on documents that are right", () => {
     expect(await check(markdown)).toEqual([]);
   });
 
+  // The vitest default is 5s, and this test runs the whole checker over a real
+  // reference document. The pre-commit gate runs this suite beside the
+  // self-check, so on a busy machine it needs headroom it does not need alone.
   it("is silent on the reference doc it was written from", async () => {
     // Coupled on purpose: `just _self-check` runs the built binary over `docs/`,
     // so a rule that fires on a fenced example turns the gate red. This catches
@@ -104,7 +107,7 @@ describe("vantage/* on documents that are right", () => {
     expect(
       report.findings.filter((finding) => finding.rule.startsWith("vantage/")),
     ).toEqual([]);
-  });
+  }, 15_000);
 
   it("is silent on the directive examples the style guide tells agents to write", async () => {
     // The checker and the guide are one contract: an example an agent is told to
