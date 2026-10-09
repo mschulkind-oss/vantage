@@ -9,21 +9,7 @@ import { loadDocument } from "../src/core/document.js";
 import { Settings } from "../src/core/settings.js";
 import type { RunReport } from "../src/core/types.js";
 import { Workspace } from "../src/core/workspace.js";
-
-/**
- * The variables git consults to find a repository, as
- * `internal/gitenv`'s `locationVars` lists them for the Go tests.
- */
-const GIT_LOCATION_VARS = [
-  "GIT_DIR",
-  "GIT_WORK_TREE",
-  "GIT_INDEX_FILE",
-  "GIT_OBJECT_DIRECTORY",
-  "GIT_ALTERNATE_OBJECT_DIRECTORIES",
-  "GIT_COMMON_DIR",
-  "GIT_PREFIX",
-  "GIT_NAMESPACE",
-];
+import { GIT_LOCATION_ENV } from "../src/core/gitIgnore.js";
 
 /**
  * This process's environment without the variables that locate a repository,
@@ -37,7 +23,7 @@ export function gitEnvScrubbed(
   env: NodeJS.ProcessEnv = process.env,
 ): NodeJS.ProcessEnv {
   const scrubbed = { ...env };
-  for (const name of GIT_LOCATION_VARS) delete scrubbed[name];
+  for (const name of GIT_LOCATION_ENV) delete scrubbed[name];
   return scrubbed;
 }
 
