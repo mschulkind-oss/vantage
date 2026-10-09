@@ -2,7 +2,7 @@
 title: "The planning page as a to-do list: implementation sketch"
 status: draft
 stage: SKETCH
-next: "Complete against the tree once the design's questions are ruled"
+next: "Complete against the tree into the implementation plan: every ruling is in"
 depends-on: [planning-to-do-list.md#OQ-TD13]
 ---
 
