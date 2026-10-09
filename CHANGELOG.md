@@ -6,6 +6,54 @@ are summarized one section per minor line; the commit log has the rest.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0] - 2026-10-09
+
+The planning page becomes a to-do list of what needs you, every comment box
+saves as you type, and `vantage-check` can ask an agent to fold answered
+questions into their ledgers.
+
+### Changed
+
+**The planning page shows what needs you, and counts the rest.** *Needs you*
+now holds only the questions waiting on your reply: 10 cards at a time, or 20,
+30 or 50 if you choose, with no pages. Questions you have answered gather as
+one-line rows at the top, and ✅ questions leave it. Answering a card shrinks
+it to a row where it stands, and the next question joins the end. *Blocked*
+and a new *Maintenance* group, which holds *Not on a roadmap*, *Ready to
+build*, *Ready to graduate*, *Stage conflict* and the ✅ questions, are folded
+until you open them. The section bar is gone, and the contents column is now
+titled *On this page*. See [Needs you](userguide/guides/planning.md#needs-you).
+
+**Nothing moves while you read.** An agent's reply, an answer you gave in
+another tab or an edited document now marks what it concerns, such as **New
+reply**, and is counted in the header as *3 updates · Refresh*. Press
+**Refresh** to lay the page out again. See
+[Late changes and Refresh](userguide/guides/planning.md#late-changes-and-refresh).
+
+**Copy answers + maintenance** replaces Copy all agent requests. It copies
+what Copy answers copies, then the agent requests for the kinds of maintenance
+you check in its panel, which opens on hover or from its ▾. *Ready to build*
+starts unchecked, so a copy never asks an agent to build something by accident.
+See [Copy answers + maintenance](userguide/guides/planning.md#copy-answers--maintenance).
+
+**The filter line says *18 match · 379 hidden*** in place of the notice that
+repeated the filter. Press *379 hidden*, or ✕, to clear the filter, and Back
+brings it back. Enter in the box now takes you to the results. See
+[What the filter line says](userguide/guides/planning.md#what-the-filter-line-says).
+
+**Every comment box saves as you type.** There is no Save and no Cancel, only
+**Close**, and Esc or a click outside the box keeps your text instead of
+throwing it away. A save that fails keeps retrying, and leaving the tab with
+anything unsaved asks first. See
+[Comment boxes save as you type](userguide/features.md#comment-boxes-save-as-you-type).
+
+### Added
+
+**`vantage-check index --request compact`** lists the ✅ questions and asks an
+agent to fold each into its document's Decision Ledger. `--request` with no
+name now prints all five requests. See
+[`vantage-check index`](userguide/guides/vantage-check.md#vantage-check-index).
+
 ## [0.9.2] - 2026-10-08
 
 ### Fixed
