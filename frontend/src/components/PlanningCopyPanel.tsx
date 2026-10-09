@@ -62,6 +62,12 @@ export const PlanningCopyPanel: React.FC<{
   answers: number;
   /** Whether that count is known yet: `–` and greyed out until it is. */
   known: boolean;
+  /**
+   * Whether what it copies can be copied now: not while Copy answers' quoted
+   * lines are on their way, when Copy answers is disabled. Greyed out
+   * meanwhile.
+   */
+  ready?: boolean;
   /** Each kind's items, live and filtered as the page's groups count them. */
   counts: ReadonlyMap<string, number>;
   /**
@@ -69,14 +75,14 @@ export const PlanningCopyPanel: React.FC<{
    * copied.
    */
   onCopy: (kinds: readonly PlanningRequestId[]) => Promise<boolean>;
-}> = ({ answers, known, counts, onCopy }) => {
+}> = ({ answers, known, ready = true, counts, onCopy }) => {
   const [leftOut, setLeftOut] = usePersistentValue(
     LEFT_OUT_KEY,
     parseLeftOut,
     serializeLeftOut,
   );
   const total = copyTotal(answers, counts, leftOut);
-  const greyed = !known || copyGreyed(total, leftOut);
+  const greyed = !known || !ready || copyGreyed(total, leftOut);
 
   // How the panel is open: `hover`, which closes as the pointer leaves, or
   // `asked`, by the ▾, which stays until Esc or a press elsewhere.
@@ -111,13 +117,21 @@ export const PlanningCopyPanel: React.FC<{
   }, [open]);
 
   // Opened from the keyboard: the focus goes into the panel.
+  // Set only by a key that opens it, and forgotten whenever it closes, so a
+  // later hover never takes the focus.
   const focusPanel = useRef(false);
-  useEffect(() => {
-    if (open === null || !focusPanel.current) return;
-    focusPanel.current = false;
+  const focusFirst = () =>
     panelRef.current
       ?.querySelector<HTMLElement>("button, input")
       ?.focus({ preventScroll: true });
+  useEffect(() => {
+    if (open === null) {
+      focusPanel.current = false;
+      return;
+    }
+    if (!focusPanel.current) return;
+    focusPanel.current = false;
+    focusFirst();
   }, [open]);
 
   const onPointerEnter = (e: React.PointerEvent) => {
@@ -176,11 +190,13 @@ export const PlanningCopyPanel: React.FC<{
   const shown = known ? count(total) : "–";
   const title = !known
     ? "The answers waiting on the agent are still being counted"
-    : checkedKinds(leftOut).length === 0
-      ? "No kind of maintenance is checked, so this copies nothing Copy answers does not: choose one with ▾"
-      : total === 0
-        ? "Nothing to copy: no answers are waiting on the agent, and the kinds checked hold nothing"
-        : "Copy your answers, the same as Copy answers, then the agent requests for the maintenance checked under ▾";
+    : !ready
+      ? "The answers' quoted lines are still on their way"
+      : checkedKinds(leftOut).length === 0
+        ? "No kind of maintenance is checked, so this copies nothing Copy answers does not: choose one with ▾"
+        : total === 0
+          ? "Nothing to copy: no answers are waiting on the agent, and the kinds checked hold nothing"
+          : "Copy your answers, the same as Copy answers, then the agent requests for the maintenance checked under ▾";
 
   return (
     <div
@@ -243,14 +259,20 @@ export const PlanningCopyPanel: React.FC<{
         aria-controls={panelId}
         data-planning-copy-toggle
         onClick={(e) => {
-          // From the keyboard, Enter and Space click: the focus goes in.
-          if (e.detail === 0) focusPanel.current = true;
+          // From the keyboard, Enter and Space click: opening, the focus
+          // goes in.
+          focusPanel.current = e.detail === 0 && open !== "asked";
           pressToggle();
         }}
         onKeyDown={(e) => {
           if (e.key !== "ArrowDown") return;
           e.preventDefault();
           clearTimers();
+          if (open !== null) {
+            setOpen("asked");
+            focusFirst();
+            return;
+          }
           focusPanel.current = true;
           setOpen("asked");
         }}

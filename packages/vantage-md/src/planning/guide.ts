@@ -4,8 +4,8 @@
  * (`docs/reference/planning-index.md` §6.2, §13.2).
  *
  * The one copy of every section's title, explanation line and actor, and of
- * the request templates: the page's headings, its section bar, its outline and
- * its Copy agent request buttons, and `vantage-check index`'s headings, its
+ * the request templates: the page's headings, its groups' kinds and their
+ * Copy agent request buttons, and Copy answers + maintenance, and `vantage-check index`'s headings, its
  * JSON `sectionGuide` and its `--request`, all read them here, so the page and
  * the CLI cannot word a section two ways (P7). A request is generated from the
  * index at the moment it is asked for, never stored, so it always names what

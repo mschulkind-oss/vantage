@@ -410,6 +410,18 @@ describe("held updates (§4.3)", () => {
     ).toBe(0);
   });
 
+  it("counts nothing for a card the reader's own box shrank before its save landed", () => {
+    // Closed within the save pause: the card is a row, and the review data
+    // does not hold the answer yet.
+    const needsYou = layoutNeedsYou(layout.needsYou, new Set(), 2);
+    const inPlace = shrinkCard(
+      NOTHING_IN_PLACE,
+      needsYou,
+      keyOf(before, "OQ-T1"),
+    );
+    expect(updatesTotal(updates(before, { inPlace, own: ["OQ-T1"] }))).toBe(0);
+  });
+
   it("counts nothing for the reader's own Undo, nor for the card that joined before it", () => {
     const needsYou = layoutNeedsYou(layout.needsYou, new Set(), 2);
     const key = keyOf(before, "OQ-T1");

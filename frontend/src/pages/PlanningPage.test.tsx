@@ -3202,6 +3202,34 @@ describe("Copy answers (§6.7)", () => {
     expect(copyButton()).toBeDisabled();
   });
 
+  it("greys Copy answers + maintenance out while the quoted lines are on their way, and its panel still opens", async () => {
+    serveTree(ROUTED, "/api", () => ({
+      quotes: () => new Promise(() => {}),
+    }));
+    await renderPage();
+    await take("OQ-U1");
+    const maintenance = screen.getByRole("button", {
+      name: /^Copy answers \+ maintenance /,
+    });
+    expect(maintenance).toHaveAttribute("aria-disabled", "true");
+    expect(maintenance).not.toBeDisabled();
+    await act(async () => {
+      fireEvent.click(maintenance);
+    });
+    expect(writeText).not.toHaveBeenCalled();
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Choose what Copy answers + maintenance copies",
+      }),
+      { detail: 1 },
+    );
+    expect(
+      screen.getByRole("group", {
+        name: "What Copy answers + maintenance copies",
+      }),
+    ).toBeTruthy();
+  });
+
   it("leaves out a comment on the same document that is not on a listed question", async () => {
     // A comment on the design's title paragraph, filed in the document itself.
     reviews["plans/design.md"] = [
@@ -6025,6 +6053,48 @@ describe("the planning filter (planning-index.md §6.11)", () => {
     const A1 = "OQ-A1: Question OQ-A1?";
     const filterOf = () =>
       new URLSearchParams(router.location.split("?")[1] ?? "").get("filter");
+
+    it("clears with ✕ inside the idle pause as a history entry holding the typed filter, which Back brings back (OQ-TD13)", async () => {
+      await renderPage("/.vantage/planning", ["/plans/roadmap.md"]);
+      box().focus();
+      await typeKeys("oq-d3");
+      // Typed, applied, and not yet written.
+      expect(filterOf()).toBeNull();
+      expect(cardsIn("Needs you")).toEqual([D3]);
+      await act(async () => {
+        fireEvent.click(clearX());
+      });
+      await settle();
+      expect(router.location).toBe("/.vantage/planning");
+      expect(router.types.at(-1)).toBe("PUSH");
+      expect(status()).toHaveTextContent(
+        "The filter is cleared. Every entry is shown.",
+      );
+      act(() => router.navigate!(-1));
+      await settle();
+      expect(filterOf()).toBe("oq-d3");
+      expect(box().value).toBe("oq-d3");
+      expect(cardsIn("Needs you")).toEqual([D3]);
+      act(() => router.navigate!(-1));
+      expect(router.location).toBe("/plans/roadmap.md");
+    });
+
+    it("clears with hidden inside the idle pause after a filter was written, and Back brings back the one typed since", async () => {
+      await renderPage("/.vantage/planning?filter=oq-d", ["/plans/roadmap.md"]);
+      box().focus();
+      await typeKeys("oq-d3", "oq-d");
+      expect(filterOf()).toBe("oq-d");
+      await act(async () => {
+        fireEvent.click(screen.getByTestId("planning-filter-hidden"));
+      });
+      await settle();
+      expect(router.location).toBe("/.vantage/planning");
+      expect(router.types.at(-1)).toBe("PUSH");
+      act(() => router.navigate!(-1));
+      await settle();
+      expect(filterOf()).toBe("oq-d3");
+      expect(box().value).toBe("oq-d3");
+    });
 
     it("narrows the page at each keystroke with no Enter, adds no history entry, and lets the URL take the text once, after the idle pause (criterion 13)", async () => {
       await renderPage("/.vantage/planning", ["/plans/roadmap.md"]);

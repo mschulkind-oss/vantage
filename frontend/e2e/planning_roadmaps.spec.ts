@@ -222,8 +222,8 @@ test.describe("several roadmaps", () => {
 
   // Late data never moves painted content (planning-index.md §12):
   // the roadmap line arrives with the index, above the box that held the
-  // progress line, so a section bar drawn in that box was pushed down on
-  // every cold load, at every width.
+  // progress line, so anything drawn in that box was pushed down on every
+  // cold load, at every width.
   for (const width of [1280, 375]) {
     test(`fills the frame on a cold load with no layout shift, at ${width} px`, async ({
       page,
