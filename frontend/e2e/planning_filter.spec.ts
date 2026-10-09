@@ -32,8 +32,12 @@ const box = (page: Page) => page.getByRole("textbox", { name: "Filter" });
 const filterLine = (page: Page) =>
   page.getByRole("search", { name: "Filter the planning page" });
 const notice = (page: Page) => page.getByTestId("filter-notice");
-const sectionBar = (page: Page) =>
-  page.getByRole("navigation", { name: "Sections" });
+/**
+ * The filter line's counts, *N match · M hidden*, which replaced the notice's
+ * first line (planning-to-do-list.md §3.2).
+ */
+const counts = (page: Page) => page.getByTestId("planning-filter-counts");
+const needYou = (page: Page) => page.getByTestId("needs-you-count");
 
 /**
  * Record every layout shift and every long task from the first paint, with
@@ -145,12 +149,10 @@ test.describe("the planning filter", () => {
         all.map((a) => a.getAttribute("aria-label")),
       ),
     ).toEqual(KEPT);
-    await expect(sectionBar(page)).toHaveText(/^Needs you 2$/);
+    await expect(needYou(page)).toHaveText("2");
     await expect(box(page)).toHaveValue(FILTER);
-    await expect(notice(page)).toContainText(`Filtered by ${FILTER}: 2 of `);
-    await expect(notice(page)).toContainText(
-      "Clear the filter to see the other",
-    );
+    await expect(counts(page)).toHaveText(/^2 match · \d+ hidden$/);
+    await expect(notice(page)).toHaveCount(0);
     expect(new URL(page.url()).search).toBe(
       "?filter=path:/plans/design.md+is:open",
     );
@@ -159,7 +161,8 @@ test.describe("the planning filter", () => {
     expect(await page.evaluate(() => history.length)).toBe(entries);
     await reportLongTasks(page, "cold filtered link");
 
-    // Cleared: every listed document's reviews are already in hand.
+    // Cleared: every listed document's reviews are already in hand. ✕
+    // adds a history entry (OQ-TD13).
     await page.getByRole("button", { name: "Clear the filter" }).click();
     await expect(page).toHaveURL(/\/\.vantage\/planning$/);
     await expect(cards(page, "Needs you")).toHaveCount(10);
@@ -169,7 +172,60 @@ test.describe("the planning filter", () => {
       2,
     );
     expect(reads.filter((read) => read.startsWith("GET"))).toEqual([]);
-    expect(await page.evaluate(() => history.length)).toBe(entries);
+    expect(await page.evaluate(() => history.length)).toBe(entries + 1);
+  });
+
+  // planning-to-do-list.md §3.2, OQ-TD6, OQ-TD13: pressing *hidden* clears
+  // the filter as a new history entry, so Back brings it back; neither the
+  // counts arriving nor the clear moves anything painted.
+  test("clears the filter on hidden, as a history entry Back undoes, moving nothing painted", async ({
+    page,
+  }) => {
+    await watchPaint(page);
+    await page.goto(FILTERED);
+    await expect(cards(page, "Needs you")).toHaveCount(2);
+    const entries = await page.evaluate(() => history.length);
+    const hidden = page.getByTestId("planning-filter-hidden");
+    await expect(hidden).toHaveText(/^\d+ hidden$/);
+    await hidden.click();
+    await expect(page).toHaveURL(/\/\.vantage\/planning$/);
+    await expect(cards(page, "Needs you")).toHaveCount(10);
+    await expect(counts(page)).toHaveCount(0);
+    await expect(box(page)).toHaveValue("");
+    await expect(box(page)).toBeFocused();
+    expect(await page.evaluate(() => history.length)).toBe(entries + 1);
+    let shifts = await shiftsOf(page);
+    expect(shifts, JSON.stringify(shifts)).toEqual([]);
+    await page.goBack();
+    await expect(page).toHaveURL(/\?filter=path:\/plans\/design\.md\+is:open$/);
+    await expect(box(page)).toHaveValue(FILTER);
+    await expect(cards(page, "Needs you")).toHaveCount(2);
+    await expect(counts(page)).toHaveText(/^2 match · \d+ hidden$/);
+    shifts = await shiftsOf(page);
+    expect(shifts, JSON.stringify(shifts)).toEqual([]);
+    // Esc never clears.
+    await box(page).focus();
+    await page.keyboard.press("Escape");
+    await expect(page).toHaveURL(/\?filter=path:\/plans\/design\.md\+is:open$/);
+  });
+
+  test("shows only hidden at a phone's width, which still clears the filter", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 375, height: 800 });
+    await page.goto(FILTERED);
+    await expect(cards(page, "Needs you")).toHaveCount(2);
+    await expect(counts(page)).toBeHidden();
+    const narrow = page.getByTestId("planning-filter-hidden-narrow");
+    await expect(narrow).toBeVisible();
+    await expect(narrow).toHaveText(/^\d+ hidden$/);
+    const fit = await narrow.evaluate((node) => ({
+      scrollWidth: node.parentElement!.scrollWidth,
+      clientWidth: node.parentElement!.clientWidth,
+    }));
+    expect(fit.scrollWidth).toBeLessThanOrEqual(fit.clientWidth);
+    await narrow.click();
+    await expect(page).toHaveURL(/\/\.vantage\/planning$/);
   });
 
   test("rewrites a link to its canonical text in place", async ({ page }) => {
@@ -208,7 +264,7 @@ test.describe("the planning filter", () => {
       (window as unknown as { __longTasks: number[] }).__longTasks.length = 0;
     });
     const sections = page.locator("[data-planning-sections]");
-    const counts: string[] = [];
+    const counted: string[] = [];
     for (const [at, key] of [..."oq-e"].entries()) {
       await page.keyboard.type(key);
       // Each key's own results are painted, before the next key and with
@@ -217,7 +273,7 @@ test.describe("the planning filter", () => {
         "data-planning-filter",
         "oq-e".slice(0, at + 1),
       );
-      counts.push((await sectionBar(page).textContent()) ?? "");
+      counted.push((await needYou(page).textContent()) ?? "");
     }
     expect(
       await cards(page, "Needs you").evaluateAll((all) =>
@@ -225,9 +281,9 @@ test.describe("the planning filter", () => {
       ),
     ).toEqual(KEPT);
     expect(before).not.toEqual(KEPT);
-    await expect(sectionBar(page)).toHaveText(/^Needs you 2$/);
-    expect(counts.at(-1)).toBe("Needs you 2");
-    await expect(notice(page)).toContainText("Filtered by oq-e: 2 of ");
+    await expect(needYou(page)).toHaveText("2");
+    expect(counted.at(-1)).toBe("2");
+    await expect(counts(page)).toHaveText(/^2 match · \d+ hidden$/);
     // The caret stays where the reader typed.
     expect(
       await box(page).evaluate((input: HTMLInputElement) => [
@@ -239,7 +295,7 @@ test.describe("the planning filter", () => {
     // The address takes it once the idle pause has passed, in place.
     await expect(page).toHaveURL(/\/\.vantage\/planning\?filter=oq-e$/);
     await expect(page.getByTestId("planning-filter-status")).toContainText(
-      "Filtered by oq-e",
+      /^2 match, \d+ hidden\./,
     );
     await expect(box(page)).toHaveValue("oq-e");
     await expect(box(page)).toBeFocused();
@@ -269,8 +325,9 @@ test.describe("the planning filter", () => {
     }));
     expect(fit.scrollWidth).toBeLessThanOrEqual(fit.clientWidth);
     await expect(cards(page, "Needs you")).toHaveCount(2);
-    await expect(notice(page)).toContainText(
-      "Filtered by path:plans/design.md: 2 of ",
+    await expect(page.locator("[data-planning-sections]")).toHaveAttribute(
+      "data-planning-filter",
+      "path:plans/design.md",
     );
     await expect(box(page)).not.toHaveAttribute("aria-invalid");
     await page.keyboard.press("Enter");
@@ -295,7 +352,9 @@ test.describe("the planning filter", () => {
     await box(page).fill("path:/plans/design.md is:open");
     // Applied with no Enter, and never said to be otherwise.
     await expect(cards(page, "Needs you")).toHaveCount(2);
-    await expect(page.getByTestId("planning-filter-hint")).toHaveText("");
+    await expect(page.getByTestId("planning-filter-hint")).not.toContainText(
+      "Not applied",
+    );
     // The long tasks of the filter change alone, not of the page's load.
     await page.evaluate(() => {
       (window as unknown as { __longTasks: number[] }).__longTasks.length = 0;
@@ -307,9 +366,11 @@ test.describe("the planning filter", () => {
     await expect(cards(page, "Needs you")).toHaveCount(2);
     await expect(box(page)).toHaveValue(FILTER);
     await expect(page.locator("[data-content-scroll]")).toBeFocused();
-    await expect(page.getByTestId("planning-filter-hint")).toHaveText("");
+    await expect(page.getByTestId("planning-filter-hint")).not.toContainText(
+      "Not applied",
+    );
     await expect(page.getByTestId("planning-filter-status")).toContainText(
-      `Filtered by ${FILTER}`,
+      /^2 match, \d+ hidden\./,
     );
     const shifts = await shiftsOf(page);
     expect(shifts, JSON.stringify(shifts)).toEqual([]);
@@ -329,7 +390,7 @@ test.describe("the planning filter", () => {
     const top = () => pane.evaluate((node) => node.scrollTop);
     await box(page).click();
     await page.keyboard.type("is:open");
-    await expect(notice(page)).toContainText("Filtered by is:open:");
+    await expect(counts(page)).toBeVisible();
     // Scrolled down the results with the focus still in the box.
     await pane.evaluate((node) => {
       node.scrollTop = 600;
@@ -376,7 +437,7 @@ test.describe("the planning filter", () => {
     await box(page).click();
     await page.keyboard.type("-m");
     await expect(page).toHaveURL(/\?filter=-m$/);
-    await expect(notice(page)).toContainText("Filtered by -m: 0 of ");
+    await expect(counts(page)).toHaveText(/^0 match · \d+ hidden$/);
     await expect(cards(page, "Needs you")).toHaveCount(0);
     const shown = await page.evaluate(
       () =>
@@ -415,15 +476,13 @@ test.describe("the planning filter", () => {
     await expect(empty).toContainText(
       "Words and quoted phrases are matched only against a question's id, title and leaning, and a document's path, stage and next step.",
     );
-    await expect(notice(page)).toContainText("Filtered by zqxj: 0 of ");
-    // Clear the filter is the button below, so the notice does not say it.
-    await expect(notice(page)).not.toContainText("Clear the filter");
-    // No empty section bar, nor its row's room between the box and the
-    // notice, which read as something that failed to load.
-    await expect(sectionBar(page)).toHaveCount(0);
+    await expect(counts(page)).toHaveText(/^0 match · \d+ hidden$/);
+    // No notice line repeats the box, and no row's room stands between the
+    // box and Nothing matches, which read as something that failed to load.
+    await expect(notice(page)).toHaveCount(0);
     const lineBox = (await filterLine(page).boundingBox())!;
-    const noticeBox = (await notice(page).boundingBox())!;
-    expect(noticeBox.y - (lineBox.y + lineBox.height)).toBeLessThan(28);
+    const emptyBox = (await empty.boundingBox())!;
+    expect(emptyBox.y - (lineBox.y + lineBox.height)).toBeLessThan(28);
     await expect(cards(page, "Needs you")).toHaveCount(0);
     await expect(page.getByTestId("nothing-needs-you")).toHaveCount(0);
     await expect(page.getByTestId("planning-filter-status")).toContainText(
@@ -437,7 +496,8 @@ test.describe("the planning filter", () => {
     await expect(box(page)).toBeFocused();
     const shifts = await shiftsOf(page);
     expect(shifts, JSON.stringify(shifts)).toEqual([]);
-    expect(await page.evaluate(() => history.length)).toBe(entries);
+    // Clear the filter does what ✕ does: a history entry of its own.
+    expect(await page.evaluate(() => history.length)).toBe(entries + 1);
   });
 
   test("shows the page of criterion 2 after / and a paste of the checker's output (criterion 11)", async ({
@@ -499,14 +559,20 @@ test.describe("the planning filter", () => {
         narrow.y + narrow.height,
       );
     }
-    // The hint gives way first, then the visible label, which stays the
-    // box's accessible name.
+    // The hint gives way first, to the narrow slot that holds only *hidden*,
+    // then the visible label, which stays the box's accessible name.
     await expect(page.getByTestId("planning-filter-hint")).toBeHidden();
+    const narrowSlot = (await page
+      .getByTestId("planning-filter-hint-icon")
+      .boundingBox())!;
+    expect(narrowSlot.y + narrowSlot.height).toBeLessThanOrEqual(
+      narrow.y + narrow.height,
+    );
     expect((await label().boundingBox())!.width).toBeLessThanOrEqual(1);
     await expect(box(page)).toHaveAccessibleName("Filter");
   });
 
-  test("breaks a long path in the notice rather than scroll the page sideways at a phone's width", async ({
+  test("breaks a long path under Nothing matches rather than scroll the page sideways at a phone's width", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 375, height: 800 });
@@ -516,18 +582,13 @@ test.describe("the planning filter", () => {
     const term =
       "path:docs/design/planning_filter_with_a_much_longer_name_than_fits.md";
     await page.goto(`/.vantage/planning?filter=${term}`);
-    await expect(notice(page)).toContainText(`Filtered by ${term}: 0 of `);
     // It keeps nothing, so the term is named under Nothing matches, as the
     // reason, and its headline holds the term too.
     const empty = page.getByTestId("nothing-matches");
     await expect(empty).toContainText(
       `${term} matches no path the index lists.`,
     );
-    for (const el of [
-      notice(page),
-      empty,
-      page.locator("[data-content-scroll]"),
-    ]) {
+    for (const el of [empty, page.locator("[data-content-scroll]")]) {
       const { scrollWidth, clientWidth } = await el.evaluate((node) => ({
         scrollWidth: node.scrollWidth,
         clientWidth: node.clientWidth,
@@ -559,15 +620,13 @@ test.describe("the planning filter", () => {
     await page.emulateMedia({ media: "print" });
     const line = filterLine(page).locator("..");
     await expect(line).toBeHidden();
-    // The section bar's row is the first thing printed, as it was before
-    // the filter line was on the page.
+    // The sections are the first thing printed, as they were before the
+    // filter line was on the page.
     const gap = await page.evaluate(() => {
       const main = document.querySelector("main")!;
-      const row = document.querySelector(
-        'nav[aria-label="Sections"]',
-      )!.parentElement!;
+      const first = document.querySelector("[data-planning-sections]")!;
       return Math.round(
-        row.getBoundingClientRect().top - main.getBoundingClientRect().top,
+        first.getBoundingClientRect().top - main.getBoundingClientRect().top,
       );
     });
     expect(gap).toBe(0);
@@ -577,7 +636,7 @@ test.describe("the planning filter", () => {
     await page.emulateMedia({ media: "print" });
     await expect(filterLine(page)).toBeHidden();
     await expect(page.getByTestId("planning-filter-print")).toHaveText(
-      `Filter: ${FILTER}`,
+      new RegExp(`^Filter: ${FILTER}, 2 match, \\d+ hidden$`),
     );
   });
 
@@ -587,8 +646,6 @@ test.describe("the planning filter", () => {
     await page.goto("/.vantage/planning?filter=path:/plans/design.md");
     await expect(box(page)).toHaveValue("path:/plans/design.md");
     await expect(cards(page, "Needs you")).toHaveCount(2);
-    await expect(notice(page)).toContainText(
-      "Filtered by path:/plans/design.md: 2 of ",
-    );
+    await expect(counts(page)).toHaveText(/^\d+ match(es)? · \d+ hidden$/);
   });
 });

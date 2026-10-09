@@ -37,6 +37,12 @@
  *   hint while it shows, at every width.
  * - **Esc never clears** (§6.17): it puts back the applied filter's text over a
  *   text that is not applied, and otherwise hands the focus back to the pane.
+ * - **An applied filter's counts are in the hint's slot**
+ *   (`docs/design/planning-to-do-list.md` §3.2): *18 match · 379 hidden*,
+ *   and only *379 hidden* at a narrow width. The hint wins the slot while it
+ *   shows. Pressing *hidden* clears the filter, as ✕ does, and both add a
+ *   history entry, so Back brings the filter back (OQ-TD6, OQ-TD13); typing
+ *   still replaces the entry.
  *
  * The page draws it in every state but a static export, which has no
  * planning page to filter.
@@ -49,6 +55,7 @@ import {
   readPastedPlanningLink,
 } from "vantage-md/planning";
 import { filterValue } from "../lib/planningPages";
+import { hiddenText, matchText } from "../lib/planningLayout";
 import { cn } from "../lib/utils";
 
 /** A real filter, as the placeholder offers it: what the notice's example is. */
@@ -60,6 +67,27 @@ export const FILTER_PLACEHOLDER = "path:docs/design/*.md is:open";
  * applies it as written, and the notice then names what it cannot read.
  */
 export const FILTER_HINT = "Not applied: Enter says why";
+
+/**
+ * An applied filter's counts (§3.2 of the to-do list design): the *items* it
+ * keeps and hides, an item being one question or one document row the page
+ * lists, counted once.
+ */
+export interface FilterCounts {
+  match: number;
+  hidden: number;
+  /**
+   * What else the filter's summary says that the counts cannot: unmatched
+   * terms, unknown keys, other roadmaps, blocked questions left out. Said in
+   * the counts' tooltip and to a screen reader, never as a line that moves.
+   */
+  more: readonly string[];
+}
+
+const n = (value: number) => value.toLocaleString("en-US");
+
+/** The digits the counts keep room for, so a count's change moves nothing. */
+const COUNT_DIGITS = 4;
 
 export const PlanningFilterLine: React.FC<{
   /**
@@ -103,7 +131,7 @@ export const PlanningFilterLine: React.FC<{
    * Enter, ✕ and a pasted link, one replace navigation (§6.16). Text already
    * applied and written does nothing.
    */
-  onApply: (text: string, roadmap: string | null) => void;
+  onApply: (text: string, roadmap: string | null, push?: boolean) => void;
   /**
    * Enter applied a text the language reads, or none: the page takes the
    * focus, and shows the start of its results.
@@ -129,6 +157,8 @@ export const PlanningFilterLine: React.FC<{
    * shows in place of the box, so it always says it is filtered.
    */
   printText: string;
+  /** The applied filter's counts, once they are known; `null` without one. */
+  counts?: FilterCounts | null;
 }> = ({
   urlText,
   appliedText,
@@ -145,6 +175,7 @@ export const PlanningFilterLine: React.FC<{
   describedBy,
   announcement,
   printText,
+  counts = null,
 }) => {
   const id = useId();
   const location = useLocation();
@@ -184,16 +215,19 @@ export const PlanningFilterLine: React.FC<{
   }, [location.key, navigationType, urlText, inputRef]);
 
   /** Apply `next`, showing it in the box as the URL will hold it. */
-  const apply = (next: string, roadmap: string | null = null) => {
+  const apply = (next: string, roadmap: string | null = null, push = false) => {
     const value = filterValue(next);
     setText(value);
     setApplied(value);
-    onApply(next, roadmap);
+    onApply(next, roadmap, push);
   };
 
-  /** ✕: the filter cleared at once, and the focus in the box (§6.17). */
+  /**
+   * ✕, and *hidden*: the filter cleared at once, as a new history entry so
+   * Back brings it back, and the focus in the box (§6.17, §3.2).
+   */
   const clear = () => {
-    apply("");
+    apply("", null, true);
     inputRef.current?.focus();
   };
   useLayoutEffect(() => {
@@ -222,9 +256,36 @@ export const PlanningFilterLine: React.FC<{
   // width only an icon is drawn, and the words are for assistive technology
   // alone (§6.17).
   const hintId = useId();
+  const countsId = useId();
+  const countsShown = !unapplied && counts !== null;
   const described =
-    [describedBy, unapplied ? hintId : undefined].filter(Boolean).join(" ") ||
-    undefined;
+    [
+      describedBy,
+      unapplied ? hintId : undefined,
+      countsShown ? countsId : undefined,
+    ]
+      .filter(Boolean)
+      .join(" ") || undefined;
+  // *hidden*, which clears the filter: a button in the counts, in both of
+  // the slot's widths.
+  const hiddenButton = (testId: string) =>
+    counts === null ? null : (
+      <button
+        type="button"
+        data-testid={testId}
+        title={`Clear the filter, and show the ${n(counts.hidden)} it hides`}
+        // As ✕: the focus is not taken from the box on the way.
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={clear}
+        className="rounded text-blue-600 hover:underline dark:text-blue-400"
+      >
+        {hiddenText(counts.hidden)}
+      </button>
+    );
+  const countsTitle =
+    counts === null || counts.more.length === 0
+      ? undefined
+      : counts.more.join(" ");
   return (
     // In print the input row is hidden, and with no filter the line with
     // it, margin and all: a printout of the page changes only to say it is
@@ -335,25 +396,72 @@ export const PlanningFilterLine: React.FC<{
             the page's not following the box is never left unsaid. The words
             stay for assistive technology, which the input's description
             names while they show. */}
+        {/* The same slot holds an applied filter's counts, which the hint
+            wins while it shows (§3.2): as wide as both, kept from the
+            first paint, so neither arriving moves anything. */}
         <span
           data-testid="planning-filter-hint"
-          className="hidden w-44 shrink-0 text-xs whitespace-nowrap text-slate-500 @lg:block dark:text-slate-400"
+          title={countsShown ? countsTitle : undefined}
+          className="hidden w-44 shrink-0 overflow-hidden text-xs whitespace-nowrap text-slate-500 @lg:block dark:text-slate-400"
         >
-          {unapplied && FILTER_HINT}
+          {unapplied
+            ? FILTER_HINT
+            : counts !== null && (
+                <span data-testid="planning-filter-counts">
+                  {/* Each part in room of its own, its text growing to the
+                      right, so a count changing as the reader types moves
+                      nothing painted after it (planning-to-do-list.md §4.2):
+                      the number, its word, then *hidden*. */}
+                  <span
+                    className="inline-block text-left tabular-nums"
+                    style={{
+                      minWidth: `${Math.max(COUNT_DIGITS, n(counts.match).length)}ch`,
+                    }}
+                  >
+                    {n(counts.match)}
+                  </span>{" "}
+                  <span className="inline-grid">
+                    <span className="[grid-area:1/1]">
+                      {matchText(counts.match).replace(/^\S+ /, "")}
+                    </span>
+                    {/* The longer word's room, drawn from `data-reserve` by
+                        the stylesheet, so it adds no text to the page. */}
+                    <span
+                      aria-hidden="true"
+                      className="hdr-reserve-ghost [grid-area:1/1]"
+                    >
+                      <span data-reserve="matches" />
+                    </span>
+                  </span>{" "}
+                  · {hiddenButton("planning-filter-hidden")}
+                </span>
+              )}
         </span>
         <span
           data-testid="planning-filter-hint-icon"
-          title={unapplied ? FILTER_HINT : undefined}
-          className="flex size-3.5 shrink-0 items-center justify-center @lg:hidden"
+          title={
+            unapplied ? FILTER_HINT : countsShown ? countsTitle : undefined
+          }
+          className="flex w-20 shrink-0 items-center justify-start overflow-hidden text-xs whitespace-nowrap @lg:hidden"
         >
-          {unapplied && (
+          {unapplied ? (
             <AlertCircle
               size={14}
               className="text-amber-600 dark:text-amber-400"
               aria-hidden="true"
             />
+          ) : (
+            hiddenButton("planning-filter-hidden-narrow")
           )}
         </span>
+        {countsShown && (
+          <span id={countsId} className="sr-only">
+            {[
+              `${matchText(counts.match)}, ${hiddenText(counts.hidden)}.`,
+              ...counts.more,
+            ].join(" ")}
+          </span>
+        )}
         {unapplied && (
           <span id={hintId} className="sr-only">
             {FILTER_HINT}
@@ -392,6 +500,8 @@ export const PlanningFilterLine: React.FC<{
           className="hidden text-sm text-slate-700 [overflow-wrap:anywhere] print:block dark:text-slate-200"
         >
           Filter: <code>{printText}</code>
+          {counts !== null &&
+            `, ${matchText(counts.match)}, ${hiddenText(counts.hidden)}`}
         </p>
       )}
     </div>

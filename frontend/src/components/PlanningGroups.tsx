@@ -15,6 +15,7 @@ import React, { useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import {
   badgeFor,
+  dependsOnLabel,
   findDocument,
   isPlanningRequestId,
   type DependsOn,
@@ -155,13 +156,22 @@ const DocumentRow: React.FC<{
   );
 };
 
-/** What a blocked document waits on, inline: each entry, linked. */
+/** What the filter says beside an entry it leaves out (§3.2). */
+export const LEFT_OUT_BY_FILTER = "which this filter leaves out";
+
+/**
+ * What a blocked document waits on, inline: each entry, linked, and, under a
+ * filter, *which this filter leaves out* after each entry it does not keep
+ * (`docs/design/planning-to-do-list.md` §3.2: the notice's *Waits on* line,
+ * moved beside its document).
+ */
 const WaitingOn: React.FC<{
   from: string;
   entries: readonly DependsOn[];
   index: PlanningIndex;
   href: (path: string) => string;
-}> = ({ from, entries, index, href }) => (
+  leftOut?: ReadonlySet<string>;
+}> = ({ from, entries, index, href, leftOut }) => (
   <span className="min-w-0 truncate text-[13px] text-slate-600 dark:text-slate-400">
     blocked on{" "}
     {entries.map((entry, at) => {
@@ -186,6 +196,15 @@ const WaitingOn: React.FC<{
             </AppLink>
           )}
           {badge !== null && <PlanningBadgeChip badge={badge} />}
+          {leftOut?.has(dependsOnLabel(entry)) === true && (
+            <span
+              data-planning-left-out
+              className="text-amber-700 dark:text-amber-400"
+            >
+              {" "}
+              ({LEFT_OUT_BY_FILTER})
+            </span>
+          )}
         </React.Fragment>
       );
     })}
@@ -278,6 +297,11 @@ export const PlanningGroups: React.FC<{
   /** The agent request of a kind that has one, generated when pressed. */
   requestOf: (ids: readonly PlanningRequestId[]) => string | null;
   onOpenHere?: () => void;
+  /**
+   * Under a filter, each target a kept *Blocked* document waits on that the
+   * filter leaves out (`PlanningFilterSummary.waitsOutside`).
+   */
+  waitsOutside?: readonly { path: string; target: string }[];
 }> = ({
   layout,
   index,
@@ -289,7 +313,14 @@ export const PlanningGroups: React.FC<{
   explanationOf,
   requestOf,
   onOpenHere,
+  waitsOutside,
 }) => {
+  const leftOutOf = new Map<string, Set<string>>();
+  for (const { path, target } of waitsOutside ?? []) {
+    const set = leftOutOf.get(path) ?? new Set<string>();
+    set.add(target);
+    leftOutOf.set(path, set);
+  }
   const kindsTotal = [...counts.kinds.values()].reduce((n, k) => n + k, 0);
   const blockedRow = (entry: CardEntry) =>
     entry.kind === "question" ? (
@@ -315,6 +346,7 @@ export const PlanningGroups: React.FC<{
           entries={entry.waitingOn}
           index={index}
           href={href}
+          leftOut={leftOutOf.get(entry.path)}
         />
       </DocumentRow>
     );

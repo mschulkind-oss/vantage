@@ -379,8 +379,12 @@ It sits in the app as a document does: the sidebar is beside it, with its file
 tree, bookmarks and recent files (**`b`** puts it away and brings it back), and
 the header carries the sidebar button, the
 [contents column](#the-contents-column) and
-[full width](../features.md#full-width) toggles, and
-[Copy answers](#copy-answers). The contents and full-width toggles are the
+[full width](../features.md#full-width) toggles, **Expand all**
+([below](#a-questions-card)), the [updates](#late-changes-and-refresh) waiting
+for **Refresh**, [Review answers](#review-answers),
+[Copy answers](#copy-answers) and
+[Copy answers + maintenance](#copy-answers--maintenance). The header stays in
+view however far you scroll. The contents and full-width toggles are the
 document viewer's own: turned on for one, they are on for the other. The keys
 that act on the page work here too (`t`, `r`, `Shift+P`, `?`, `j`, `k`), and
 those that act on a document, such as `d` for its diff, do nothing, so the
@@ -410,14 +414,14 @@ was made for.
 > commit history of a root-level `notes.md`. In daemon mode the same goes for a
 > whole repository named `history` or `recent`.
 
-**What appears when.** The page's header, its Filter box and the line naming
-its sections appear as soon as you press `g p`. *Needs you*'s cards follow
+**What appears when.** The page's header and its Filter box appear as soon as
+you press `g p`; there is no line of section names under them. *Needs you*'s cards follow
 together, in one step, once their text, their documents' comments and their
 Mermaid diagrams are all in hand, so nothing on the page moves as they arrive. A spinner shows only if that takes longer than
 150 ms. Opened while the index is still being read, the page says *Reading
-planning documents…* where the line naming the sections will be, then
-*Scanning planning documents: 412 of 1,000*, and that line and the sections
-replace it when the index is ready. A rescan of an index already shown keeps the page
+planning documents…* where the sections will be, then
+*Scanning planning documents: 412 of 1,000*, and the sections replace it when
+the index is ready. A rescan of an index already shown keeps the page
 as it is, with a thin bar along its top.
 
 ### Its sections
@@ -444,12 +448,11 @@ From top to bottom, leaving out any that are empty:
 
 Under each heading, one line says what the entries are and what to do with
 them, such as *Built, with no questions left. An agent turns it into a
-reference doc.* under *Ready to graduate*. The line naming the sections, under
-the Filter box, and the [contents column](#the-contents-column) show the same
-line when the pointer rests on a section's name, and `vantage-check index`
-prints it under each heading. Clicking a section's name there goes to it,
-opening its folded group first. A kind that is an agent's work has **Copy agent
-request** ([below](#agent-requests)).
+reference doc.* under *Ready to graduate*. The
+[contents column](#the-contents-column)'s *Blocked* line shows the same line
+when the pointer rests on it, and `vantage-check index` prints it under each
+heading. A kind that is an agent's work has **Copy agent request**
+([below](#agent-requests)).
 
 Clicking a document's name opens it in this tab, and **Back** returns to the
 planning page at the same scroll position. A card's **Open document** opens it
@@ -483,10 +486,11 @@ line saying how many candidates there are and to narrow `include`.
 
 ### Several roadmaps
 
-When two or more roadmaps route, a **Roadmap** menu sits above the line naming
-the sections,
-or at the head of the [contents column](#the-contents-column) while that is
-shown. There is only ever one.
+When two or more roadmaps route, a **Roadmap** menu sits on *Needs you*'s
+heading line, since *Needs you* is the list the roadmap orders, or at the head
+of the [contents column](#the-contents-column) while that is shown. There is
+only ever one. Where *Needs you* has nothing to show, the menu has a line of
+its own at the top of the sections.
 It lists each by its full path, nearest the repository root first, with how
 many of its questions need you, such as `docs/plans/roadmap.md (4 need you)`:
 a question you have already answered with a comment, waiting on the agent, is
@@ -538,8 +542,10 @@ carries no `roadmap`.
    page size you choose.
 3. **The last line,** *12 more need you · show 10 | 20 | 30 | 50*. Choosing a
    size shows that many cards at once, and this browser remembers it for the
-   next visit. With nothing past the cards it offers the sizes alone, and with
-   nothing that needs you at all it says *Nothing needs you*.
+   next visit. With nothing past the cards it offers the sizes alone, and once
+   no card is left on the page it says *Nothing needs you*: an answer given
+   elsewhere only marks a card, so the line does not say it while a card is
+   still shown.
 
 Its heading counts the questions that need you, whatever the page size shows,
 and the answered rows it lists, as *Needs you 12 · 15 answered*. A ✅ question
@@ -552,7 +558,11 @@ row where it stands, and the next question that needs you joins the end of the
 cards; nothing above it moves, and nothing is reordered. **Undo** on a take
 opens the row back into its card, and the card that joined stays. The next
 layout, on **Refresh**, a filter, a roadmap or a page size, gathers the answered
-rows at the top.
+rows at the top. A row you opened with Show or Undo and answer again shrinks
+back to its row, and no second card joins for it. When an action of yours
+takes away the control you pressed, the focus goes where you are: to the row's
+**Show** after a card shrinks, to the card's heading after Show, and to the
+first row *… N more answered* brought in.
 
 There are no pages. An address from before, carrying a page such as
 `?needs-you=3`, shows the page as it is now, and the page drops that part of
@@ -562,7 +572,10 @@ the address in place.
 
 **Blocked** and **Maintenance** are each one heading line with its count,
 closed until you open it; *Maintenance*'s line names each kind with its count,
-as *Maintenance 13 · 3 not on a roadmap · 4 ready to build · 2 to graduate*.
+as *Maintenance 13 · 3 not on a roadmap · 4 ready to build · 2 to graduate*, on
+one line that never wraps. Which groups and kinds there are is the layout's: a
+group or kind that appears while the page is open is counted in the updates
+waiting for Refresh, and drawn by the next layout.
 This browser remembers which you left open. Opened, a group lists one line per
 entry, never a card: a question by its document, id and title, a document by
 its name, each a link. A long list shows its first 100 entries, then **Show
@@ -592,33 +605,39 @@ it appearing moves nothing, and a narrow header shows its icon and count.
 typed, then lays the page out again from what is in hand, keeping the first
 entry on screen where it was. Nothing else applies the changes on its own:
 choosing a filter, a roadmap or a page size lays the page out too, and so does
-opening it again.
+opening it again. After Refresh the focus goes to the entry it kept in place,
+or to *Needs you*'s heading, so pressing it never leaves the focus nowhere. What
+you do yourself is never counted: a card you are answering, while its box saves
+as you type, is not marked *Answered elsewhere*, and your own Undo is no
+update.
 
 ### The contents column
 
 The header's contents toggle, the one that shows a document's
 [table of contents](../features.md#table-of-contents), shows the page's outline
-in the same column here, beside the cards:
+in the same column here, beside the cards, titled **On this page**:
 
-- **Each section** that is not empty, with its count. Clicking one scrolls to
-  it, opening its folded group first.
-- **Under a section,** the documents it lists, in the section's order, each by
-  its file name with its folder below it, and after the name how many of its
-  questions the section holds (under *Stage conflict*, how many are still
-  open).
-  Clicking one scrolls to its first card or row, opening its folded group
-  first, and adds no history entry.
-- **Where you are** is marked as you scroll: the section, and the document
-  whose card is at the top of the page.
+- **The documents of *Needs you*'s cards,** in the cards' order, each by its
+  file name with its folder below it, and after the name how many of its
+  questions need you. Clicking one scrolls to its first card, and adds no
+  history entry.
+- **Then one line each** for the answered rows, *Blocked* and *Maintenance*,
+  with their counts. Clicking one scrolls to it, opening its folded group
+  first. *Maintenance*'s entries are not listed here: open the group to see
+  them.
+- **Where you are** is marked as you scroll: the document whose card is at the
+  top of the page, or the line you have scrolled to.
 - **Every entry is a link.** Tab reaches it and Enter follows it, and
-  Ctrl-click or a middle click opens it in a new tab, at the same card.
+  Ctrl-click or a middle click opens it in a new tab, at the same place.
 - **With several roadmaps,** the **Roadmap** menu sits at the head of the
-  column instead of above the line naming the sections, its path and count whole, wrapped
-  to the column's width.
+  column instead of on *Needs you*'s heading line, its path and count whole,
+  wrapped to the column's width.
 
-A section lists its first 50 documents, then says how many more there are. The
-column is not drawn on a narrow screen, where the menu
-stays above the line naming the sections.
+It lists its first 50 documents, then says how many more there are. The column
+is not drawn on a narrow screen, where the menu stays on *Needs you*'s heading
+line. There is no line of section names above the sections: with the groups
+folded, the page's top is the Filter box, *Needs you*'s heading and its first
+card.
 
 ### A question's card
 
@@ -651,8 +670,10 @@ own. A question with no bold title, such as a bare paragraph, shows as its
 document renders it, with its directive's leaning beside it when it writes none
 out.
 
-**Expand all**, at the end of the line naming the sections, unfolds every card
-on the page, and **Collapse all** folds them again. Either one also decides how
+**Expand all**, with the view toggles in the header, unfolds every card on the
+page, and **Collapse all** folds them again; it is there however far you have
+scrolled, and with the other toggles it folds into the header's **⋯** when the
+header is narrow. Either one also decides how
 cards open from then on: the cards a new layout brings in, and the next time
 you open the page. Vantage remembers it in this browser, as it remembers
 [full width](../features.md#full-width). Unfolding or folding one card yourself
@@ -800,16 +821,58 @@ its question as it is without a filter, so a comment on a question the filter
 hides, such as a ✅ question inside an open one under `is:open`, is never
 credited to the question around it.
 
+### Copy answers + maintenance
+
+**Copy answers + maintenance**, beside Copy answers, copies what Copy answers
+copies, byte for byte, and then the [agent requests](#agent-requests) for the
+kinds of *Maintenance* you choose, so one paste hands the agent your rulings and
+the upkeep the page found. Its count is the total it copies: your answers and
+every chosen kind's entries. It replaces Copy all agent requests.
+
+Its **▾**, at the button's right end, opens a panel that says what it copies:
+
+```text
+Your answers, the same as Copy answers, plus the
+maintenance this page found for the agent.        All · None
+
+      Your answers                  3
+   ☑  Not on a roadmap              3
+   ☑  Stage conflict                1
+   ☑  To fold into the ledger       3
+   ☑  Ready to graduate             2
+   ☐  Ready to build                4
+   ──────────────────────────────────
+      Copied                       12
+```
+
+- **It opens on hover,** once the pointer has rested on the button for 200 ms,
+  and stays while the pointer is on the button or the panel, closing 300 ms
+  after it leaves both. On a touch screen, and from the keyboard, the **▾**
+  opens it: a click, a tap, Enter, Space or ↓. Esc or a click elsewhere closes
+  it. Tabbing to the button never opens it.
+- **The counts follow the page** as every count does, a
+  [filter](#filtering-the-page) included. A kind with nothing in it shows 0
+  and keeps its checkbox.
+- **Your answers has no checkbox:** the button's name promises them. **All**
+  and **None** check or uncheck every kind.
+- **This browser remembers the checkboxes.** **Ready to build** starts
+  unchecked: its request starts the most expensive work there is, so it is
+  sent only once you check it.
+- **With no kind checked,** or nothing to copy at all, the button is greyed
+  out, and the panel still opens from it, so you can check a kind again.
+
+What it copies after your answers is what `vantage-check index --request`
+prints for the same kinds and filter, so an agent can check it.
+
 ### Agent requests
 
 Five of *Maintenance*'s kinds are an agent's work: *Not on a roadmap*, *Ready
 to build*, *Ready to graduate*, *Stage conflict* and *To fold into the ledger*.
 Each has **Copy agent request** beside its heading, which copies an instruction
 for an agent covering every entry of that kind, the ones past the first 100
-too. **Copy all agent requests**, before Expand all on the line naming the
-sections, copies one instruction covering all five. An empty kind is not
-shown, so it has no button, and with all five empty there is no Copy all agent
-requests.
+too. To hand an agent several kinds at once, check them in
+[Copy answers + maintenance](#copy-answers--maintenance)'s panel. An empty kind
+is not shown, so it has no button.
 
 | Section | The request asks the agent to |
 | :--- | :--- |
@@ -831,11 +894,11 @@ repository's root, the request names it `.`, or by its name in
 [daemon mode](daemon-mode.md).
 
 The button's label reads *Copied* for two seconds, in room kept for it, so
-nothing moves. Neither button prints. `vantage-check index --request` prints the
+nothing moves. It does not print. `vantage-check index --request` prints the
 same text, so an agent can ask for it itself
 ([`vantage-check index`](vantage-check.md#vantage-check-index)).
 
-**Under a [filter](#filtering-the-page),** both buttons cover only the entries
+**Under a [filter](#filtering-the-page),** a request covers only the entries
 the filter keeps, and the request says so in a line after `Repository:`:
 
 ```text
@@ -856,7 +919,8 @@ The **Filter** box at the top of the planning page narrows it to one piece of
 work, the way a search box does. Type a word, such as `generator`, or a filter
 such as `path:docs/design/search.md is:open`, and the page follows as you
 type, with no Enter to press: it lists only the entries the filter keeps, in
-the order they had, and a notice above the sections says what it hides. The
+the order they had, and beside the box it says how many it keeps and hides, as
+*18 match · 379 hidden* ([below](#what-the-filter-line-says)). The
 box is there in every state of the page, from its first paint, before the
 index is ready too.
 
@@ -894,15 +958,16 @@ leaves out what it matches:
   planning document.
 - **Only `path` and `is` are keys.** Any other term with a colon in it is a
   word: `Note:` and `http://x` are searched as text. When the part before the
-  colon is a lowercase word, as in `stage:ready`, the notice says *`stage:` is
-  not a filter key*, so you know a key you meant was read as a word. The keys
+  colon is a lowercase word, as in `stage:ready`, the counts' tooltip says
+  *`stage:` is not a filter key*, so you know a key you meant was read as a
+  word. The keys
   are lowercase: `Path:docs` is a word too.
 - **`path:` searches the path and nothing else.** `path:design` keeps every
   entry whose path holds *design*, while the word `design` also keeps a
   question whose title holds it.
 - **`is:open` keeps a question you have already answered** with a comment,
-  since Vantage reads no comments to decide what is open. It stays under its
-  section's *(N answered)* count.
+  since Vantage reads no comments to decide what is open. It stays an answered
+  row of *Needs you*.
 - **A filter never reorders anything.** *Needs you* keeps its roadmap's order,
   and a section the filter empties is not shown.
 
@@ -951,30 +1016,34 @@ the terms it reads could hide entries the filter asked for:
   Enter says why*. On a narrow screen the hint is an amber icon beside the
   box, with those words as its tooltip.
 - **Press Enter on it, or open a link that holds one,** and the page shows
-  every entry, the box gets an amber ring, and the notice names what it could
-  not read, as in *Not filtered: this Vantage cannot read `is:closed`. It
+  every entry, the box gets an amber ring, and a notice under the box names
+  what it could not read, as in *Not filtered: this Vantage cannot read `is:closed`. It
   reads words, "quoted phrases", path: and is:open terms, and a - before any of
   them to leave out what it matches, such as
   `generator path:docs/design/*.md is:open`. Every entry is shown.*
 
-#### What the notice says
+#### What the filter line says
 
-Under a filter, the first of the page's notices says how much of the page it
-shows:
+Under a filter, the slot beside the box says how much of the page it keeps:
 
-*Filtered by `path:/docs/design/search.md is:open`: 5 of 15 entries, in 1 of
-20 paths, 5 of them open questions.*
+*18 match · 379 hidden*
 
-That is the entries shown, of all the entries the page would list without it;
-the documents its `path:` terms keep, of every path the index lists; and how
-many of the entries shown are open questions. The paths are left out when the
-filter keeps every one, as a filter of words alone does. A line follows for
-each of these that applies:
+An **item** is one question or one document row the page lists, counted once
+even where two groups list it, so a document under both *Ready to graduate*
+and *Blocked* is one item. Items in folded groups count, and so do the
+questions that need you past the page size. *18 match* is the items the filter
+keeps; *379 hidden* is those of the unfiltered page it does not, and pressing
+**379 hidden** clears the filter ([below](#using-the-box)). The counts change
+as the page's data does, in room kept for them, so they move nothing. On a
+narrow screen only *379 hidden* shows. While the box holds a text that is not
+applied, the slot says *Not applied: Enter says why* instead.
+
+What the counts cannot say is in their tooltip, and a screen reader hears it
+with them:
 
 - **A `path:` term that matches no path:** *`path:docs/desing` matches no
   path the index lists.* The rest of the filter still applies, and that term
-  keeps nothing, or with a `-` in front leaves nothing out. A word that matches
-  nothing gets no line: the counts already say what it kept.
+  keeps nothing, or with a `-` in front leaves nothing out.
 - **A word before a `:` that is not a key:** *`stage:` is not a filter key, so
   `stage:ready` is searched as text. The keys are `path:` and `is:`.*
 - **Questions on other roadmaps:** *2 more questions it keeps are on other
@@ -985,22 +1054,25 @@ each of these that applies:
   need you later.* It counts the 🔒 questions the rest of the filter keeps and
   `is:open` leaves out, so you know whether another round of rulings will
   come.
-- **A document waiting outside the filter:** *docs/design/x.md waits on
-  docs/design/y.md, which this filter leaves out.* Add a `path:` term for that
-  document to see what it holds.
 
-The last line says how to see the rest, as *Clear the filter to see the other
-10.* When the filter hides no entry, the last line is *It hides no entry.*
-When nothing the filter keeps needs a ruling, the page says *Nothing this
-filter keeps needs you* in place of *Nothing needs you*.
+**A document waiting outside the filter** is marked where it is listed: its
+*Blocked* row says *(which this filter leaves out)* after each document it
+waits on that the filter does not keep. Add a `path:` term for that document to
+see what it holds.
+
+No notice line under the box repeats the filter: the only notices left there
+are *Not filtered*, for a filter Vantage does not understand, and, when nothing
+the filter keeps needs a ruling, *Nothing this filter keeps needs you* in place
+of *Nothing needs you*. `vantage-check index --filter` keeps its own notice,
+which agents read, as *Filtered by `path:/docs/design/search.md is:open`: 5 of
+15 entries, …*: the page's counts are its own words.
 
 #### When nothing matches
 
 A filter that keeps no entry in any section says so where the sections would
 be: *Nothing matches `zqxj`.*, with the filter in its
-[canonical text](#the-address). The line naming the sections is left out
-with them, since there is no section to jump to. One line under it says why,
-the first of these that applies:
+[canonical text](#the-address), and the counts say *0 match*. One line under
+it says why, the first of these that applies:
 
 | Why | The line |
 | :--- | :--- |
@@ -1017,13 +1089,12 @@ The buttons under the line are the way on:
   comes first when the questions it keeps are on other roadmaps. It does what
   choosing that roadmap in the Roadmap menu does, and the filter stays.
 - **Clear the filter** does what the box's ✕ does: it clears the filter at
-  once and puts the focus in the box.
+  once, as a step Back undoes, and puts the focus in the box.
 
-The notice above leaves out what the line under *Nothing matches* says, so
-nothing is said twice: the other roadmaps, a term that matches no path when
-that is the reason, and *Clear the filter to see the other 10.*, which the
-button says. *Nothing this filter keeps needs you* is not shown either, since
-there is nothing it keeps to need you. A filter Vantage does not understand
+The counts' tooltip leaves out what the line under *Nothing matches* says, so
+nothing is said twice: the other roadmaps, and a term that matches no path
+when that is the reason. *Nothing this filter keeps needs you* is not shown
+either, since there is nothing it keeps to need you. A filter Vantage does not understand
 never says *Nothing matches*: it shows every entry.
 
 #### Using the box
@@ -1043,9 +1114,9 @@ never says *Nothing matches*: it shows every entry.
 - **A text that keeps nothing waits until you stop typing.** While you type
   a word that is not there yet, or a `-` whose first letter leaves out
   everything, as `-m` does when every path ends in `.md`, the page keeps the
-  last results. Once you stop for 300 ms the text applies: the notice says
-  it keeps 0 entries, and [*Nothing matches*](#when-nothing-matches) stands
-  in place of the sections. A gap that long between two keys counts as
+  last results. Once you stop for 300 ms the text applies: the counts say
+  *0 match*, and [*Nothing matches*](#when-nothing-matches) stands in place of
+  the sections. A gap that long between two keys counts as
   stopping, so a slow typist sees *Nothing matches*, and it stays until a key
   brings back a text that keeps something.
   Enter, ✕, a paste and leaving the box apply it at once.
@@ -1057,7 +1128,8 @@ never says *Nothing matches*: it shows every entry.
   why: the page shows every entry, the notice names what it could not read,
   and the focus stays in the box for you to fix it.
 - **✕** clears the filter and applies that at once, and the focus stays in the
-  box.
+  box. So does pressing **379 hidden** beside it. Either adds a step to the
+  history, so **Back** brings the filter back.
 - **Esc** puts back the last filter you typed that Vantage understands when
   the box holds a text that is not applied, and otherwise gives the focus
   back to the page. It never clears the filter.
@@ -1094,6 +1166,10 @@ is encoded too, so a sentence's period after a pasted address cannot take it.
 - **Typing never adds a history entry.** Each write replaces the history entry
   rather than adding one, so **Back** goes where it went before you typed. A
   write keeps the roadmap and the rest of the address, and drops a `#` anchor.
+  Clearing the filter, with ✕, *hidden* or *Nothing matches*' Clear the
+  filter, is the one change that adds an entry, so Back undoes it. A filter
+  typed after clearing replaces the cleared page's entry, and Back from it
+  returns to the filter before.
 - **Vantage writes an understood filter in one spelling,** its canonical text:
   a repeated term is dropped, quotes that are not needed are dropped, as in
   `"pypi"` and `path:"docs/x.md"`, and a leading `./` is written `/`, so
@@ -1115,24 +1191,26 @@ is encoded too, so a sentence's period after a pasted address cannot take it.
 
 #### Everything else under a filter
 
-- The line naming the sections and the
-  [contents column](#the-contents-column) follow the filtered sections.
-- A *Blocked* row the filter keeps still names every document it waits on.
+- The [contents column](#the-contents-column) follows the filtered sections.
+- A *Blocked* row the filter keeps still names every document it waits on,
+  marking those it leaves out.
 - [Copy answers](#copy-answers) and the [agent requests](#agent-requests)
   cover only what the filter keeps, as their sections say, and with
   [several roadmaps](#several-roadmaps) the menu counts only the questions it
   keeps.
-- In print, the box is left out. A line, *Filter:* and the filter, prints in
-  its place, and the notice prints too, so a printout always says it is
-  filtered and by how much. So do *Nothing matches* and its line, without
+- In print, the box is left out. A line prints in its place, *Filter:
+  `path:docs/design/*.md`, 18 match, 379 hidden*, so a printout always says it
+  is filtered and by how much. So do *Nothing matches* and its line, without
   their buttons.
-- A screen reader hears the notice when the address takes a filter: at once
-  on Enter, ✕ or a paste, and for typing once you have stopped for a second
-  or left the box, followed by *Nothing matches* and its line when the
-  filter keeps no entry. It hears that every entry is shown after you clear one. It
-  hears nothing per key, however slowly you type, and nothing as the page
-  opens. The box is described by the notice, by *Nothing matches* and its
-  line while they show, and by its hint while that shows.
+- A screen reader hears the counts when the address takes a filter, as *18
+  match, 379 hidden.* and what the tooltip adds: at once on Enter, ✕ or a
+  paste, and for typing once you have stopped for a second or left the box,
+  followed by *Nothing matches* and its line when the filter keeps no entry.
+  It hears that every entry is shown after you clear one, and the *Not
+  filtered* notice for a filter Vantage does not understand. It hears nothing
+  per key, however slowly you type, and nothing as the page opens. The box is
+  described by the counts, by the *Not filtered* notice, by *Nothing matches*
+  and its line while they show, and by its hint while that shows.
 
 #### Filtered links
 
@@ -1175,12 +1253,12 @@ A filtered page is usually reached by a link:
 
 A filtered link is for handing over, not for keeping. A later Vantage may keep
 other entries for the same text, so an agent runs `vantage-check index
---filter` again rather than reuse an old link, and the notice always says what
-the page in front of you shows.
+--filter` again rather than reuse an old link, and the counts beside the box
+always say what the page in front of you shows.
 
 A Vantage from before the filter, 0.8.1 or earlier, has no Filter box and opens
 a filtered link as the whole planning page, without saying so. A page with no
-*Filtered by* notice is not filtered, and its Copy agent request has no
+counts beside its box is not filtered, and its Copy agent request has no
 `Filter:` line. A static export has no planning page.
 
 ---
@@ -1282,7 +1360,11 @@ repository. It holds the roadmap's path and nothing else, and only a choice
 made in the menu writes it. Clearing the site data removes it too; without it,
 the page opens on the roadmap nearest the root. Whether cards open unfolded
 ([Expand all](#a-questions-card)) is kept the same way, under
-`vantage:planningCardsExpanded`; without it, they open folded. A
+`vantage:planningCardsExpanded`; without it, they open folded. So are the page
+size, under `vantage:planningPageSize`, which groups you left open, under
+`vantage:planningBlockedOpen` and `vantage:planningMaintenanceOpen`, and the
+kinds [Copy answers + maintenance](#copy-answers--maintenance) leaves out, under
+`vantage:planningCopyLeftOut`; without it, only Ready to build is left out. A
 [filter](#filtering-the-page) is not kept anywhere: it is in the page's address
 and nowhere else.
 

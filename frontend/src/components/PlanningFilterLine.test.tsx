@@ -2,14 +2,23 @@ import { createRef } from "react";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
-import { FILTER_HINT, PlanningFilterLine } from "./PlanningFilterLine";
+import {
+  FILTER_HINT,
+  PlanningFilterLine,
+  type FilterCounts,
+} from "./PlanningFilterLine";
 
 // The filter line on its own (docs/reference/planning-index.md §6.17): what it
 // hands the page as the reader types, and between the box's own Enter, ✕ or
 // paste and the location it navigates to. The router commits a location in
 // a transition, so for that while the URL still holds the old text: here it
 // holds it for good, since nothing navigates.
-function renderLine(urlText: string, printText = "", appliedText = urlText) {
+function renderLine(
+  urlText: string,
+  printText = "",
+  appliedText = urlText,
+  counts: FilterCounts | null = null,
+) {
   const onType = vi.fn();
   const onApply = vi.fn();
   const onEnter = vi.fn();
@@ -33,6 +42,7 @@ function renderLine(urlText: string, printText = "", appliedText = urlText) {
         clearRef={clearRef}
         announcement=""
         printText={printText}
+        counts={counts}
       />
     </MemoryRouter>,
   );
@@ -175,7 +185,7 @@ describe("PlanningFilterLine, before the URL holds what it applied", () => {
         },
       });
     });
-    expect(onApply).toHaveBeenCalledWith("path:plans/b.md", null);
+    expect(onApply).toHaveBeenCalledWith("path:plans/b.md", null, false);
     expect(onType).not.toHaveBeenCalled();
     expect(box.value).toBe("path:plans/b.md");
     expect(hint()).toBe("");
@@ -191,7 +201,8 @@ describe("PlanningFilterLine, before the URL holds what it applied", () => {
     act(() => {
       fireEvent.click(screen.getByRole("button", { name: "Clear the filter" }));
     });
-    expect(onApply).toHaveBeenLastCalledWith("", null);
+    // ✕ adds a history entry (OQ-TD13).
+    expect(onApply).toHaveBeenLastCalledWith("", null, true);
     expect(box.value).toBe("");
     expect(hint()).toBe("");
     fireEvent.change(box, { target: { value: "path:./plans/c.md" } });
@@ -199,7 +210,7 @@ describe("PlanningFilterLine, before the URL holds what it applied", () => {
     act(() => {
       fireEvent.submit(box.form!);
     });
-    expect(onApply).toHaveBeenLastCalledWith("path:./plans/c.md", null);
+    expect(onApply).toHaveBeenLastCalledWith("path:./plans/c.md", null, false);
     // Enter shows the canonical text.
     expect(box.value).toBe("path:/plans/c.md");
     // Entered, a text it cannot read is applied as written, and so is not
@@ -209,7 +220,11 @@ describe("PlanningFilterLine, before the URL holds what it applied", () => {
     act(() => {
       fireEvent.submit(box.form!);
     });
-    expect(onApply).toHaveBeenLastCalledWith('path:plans/c.md "is', null);
+    expect(onApply).toHaveBeenLastCalledWith(
+      'path:plans/c.md "is',
+      null,
+      false,
+    );
     expect(box.value).toBe('path:plans/c.md "is');
     expect(hint()).toBe("");
   });
@@ -231,7 +246,7 @@ describe("PlanningFilterLine's Enter", () => {
       fireEvent.change(box, { target: { value: "" } });
       fireEvent.submit(box.form!);
     });
-    expect(onApply).toHaveBeenLastCalledWith("", null);
+    expect(onApply).toHaveBeenLastCalledWith("", null, false);
     expect(onEnter).toHaveBeenCalledTimes(2);
     // The notice then says what to correct, in the box that still has the
     // focus.
@@ -239,7 +254,11 @@ describe("PlanningFilterLine's Enter", () => {
       fireEvent.change(box, { target: { value: 'path:plans/a.md "is' } });
       fireEvent.submit(box.form!);
     });
-    expect(onApply).toHaveBeenLastCalledWith('path:plans/a.md "is', null);
+    expect(onApply).toHaveBeenLastCalledWith(
+      'path:plans/a.md "is',
+      null,
+      false,
+    );
     expect(onEnter).toHaveBeenCalledTimes(2);
     expect(document.activeElement).toBe(box);
   });
@@ -270,7 +289,7 @@ describe("PlanningFilterLine's ✕, for the page", () => {
       clearRef.current!();
     });
     expect(onApply).toHaveBeenCalledTimes(1);
-    expect(onApply).toHaveBeenLastCalledWith("", null);
+    expect(onApply).toHaveBeenLastCalledWith("", null, true);
     expect(box.value).toBe("");
     expect(document.activeElement).toBe(box);
     expect(onFlush).not.toHaveBeenCalled();
@@ -279,7 +298,7 @@ describe("PlanningFilterLine's ✕, for the page", () => {
     act(() => {
       fireEvent.click(screen.getByRole("button", { name: "Clear the filter" }));
     });
-    expect(onApply).toHaveBeenLastCalledWith("", null);
+    expect(onApply).toHaveBeenLastCalledWith("", null, true);
     expect(box.value).toBe("");
   });
 });
@@ -302,6 +321,74 @@ describe("PlanningFilterLine in print", () => {
     expect(line).not.toHaveClass("print:hidden");
     expect(screen.getByTestId("planning-filter-print")).toHaveTextContent(
       "Filter: path:plans/a.md",
+    );
+  });
+});
+
+describe("PlanningFilterLine's counts (planning-to-do-list.md §3.2)", () => {
+  const COUNTS: FilterCounts = {
+    match: 18,
+    hidden: 379,
+    more: ["`path:x` matches no path the index lists."],
+  };
+
+  it("shows an applied filter's counts in the hint's slot, and only hidden at a narrow width", () => {
+    const { box } = renderLine("is:open", "is:open", "is:open", COUNTS);
+    expect(screen.getByTestId("planning-filter-counts")).toHaveTextContent(
+      "18 match · 379 hidden",
+    );
+    expect(
+      screen.getByTestId("planning-filter-hidden-narrow"),
+    ).toHaveTextContent(/^379 hidden$/);
+    // What the counts cannot say is in their tooltip, and both are the
+    // box's description.
+    expect(screen.getByTestId("planning-filter-hint")).toHaveAttribute(
+      "title",
+      "`path:x` matches no path the index lists.",
+    );
+    expect(box).toHaveAccessibleDescription(
+      "18 match, 379 hidden. `path:x` matches no path the index lists.",
+    );
+  });
+
+  it("says 1 matches for one item", () => {
+    renderLine("is:open", "is:open", "is:open", {
+      match: 1,
+      hidden: 2,
+      more: [],
+    });
+    expect(screen.getByTestId("planning-filter-counts")).toHaveTextContent(
+      "1 matches · 2 hidden",
+    );
+  });
+
+  it("gives the slot to the hint while the box holds a text that is not applied", () => {
+    const { box, hint } = renderLine("is:open", "is:open", "is:open", COUNTS);
+    fireEvent.change(box, { target: { value: 'is:open "x' } });
+    expect(hint()).toBe(FILTER_HINT);
+    expect(screen.queryByTestId("planning-filter-counts")).toBeNull();
+    expect(screen.queryByTestId("planning-filter-hidden-narrow")).toBeNull();
+  });
+
+  it("clears the filter on hidden, as a new history entry, with the focus in the box", () => {
+    const { onApply, box } = renderLine(
+      "is:open",
+      "is:open",
+      "is:open",
+      COUNTS,
+    );
+    act(() => {
+      fireEvent.click(screen.getByTestId("planning-filter-hidden"));
+    });
+    expect(onApply).toHaveBeenLastCalledWith("", null, true);
+    expect(box.value).toBe("");
+    expect(document.activeElement).toBe(box);
+  });
+
+  it("prints the counts after the filter", () => {
+    renderLine("is:open", "is:open", "is:open", COUNTS);
+    expect(screen.getByTestId("planning-filter-print")).toHaveTextContent(
+      "Filter: is:open, 18 match, 379 hidden",
     );
   });
 });

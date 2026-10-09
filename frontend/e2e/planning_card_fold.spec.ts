@@ -437,7 +437,7 @@ test.describe("a question card's fold", () => {
       // The outline's jump to later.md goes past OQ-F11, above OQ-L1, which
       // has a cut of its own to draw.
       await page
-        .getByRole("navigation", { name: "Planning outline" })
+        .getByRole("navigation", { name: "On this page" })
         .locator('[data-testid=outline-document][data-path="later.md"]')
         .click();
       await expect(target).toBeVisible();
@@ -455,7 +455,7 @@ test.describe("a question card's fold", () => {
       // The same entry's link, opened afresh, and a card's below OQ-F1's and
       // OQ-F2's cuts.
       const href = await page
-        .getByRole("navigation", { name: "Planning outline" })
+        .getByRole("navigation", { name: "On this page" })
         .locator('[data-testid=outline-document][data-path="later.md"]')
         .getAttribute("href");
       for (const [url, id] of [
@@ -479,15 +479,21 @@ test.describe("a question card's fold", () => {
   }) => {
     await open(page, 900, 10);
     const toggle = page.getByRole("button", { name: "Expand all" });
-    // At the end of the section bar's line.
-    const bar = (await page
-      .getByRole("navigation", { name: "Sections" })
+    // With the header's view toggles, after full width, on their line
+    // (planning-to-do-list.md §3.1).
+    const width = (await page
+      .getByRole("button", { name: "Use full width" })
       .boundingBox())!;
     const at = (await toggle.boundingBox())!;
-    expect(at.x).toBeGreaterThan(bar.x + bar.width);
+    expect(at.x).toBeGreaterThan(width.x + width.width - 1);
     expect(
-      Math.abs(at.y + at.height / 2 - (bar.y + bar.height / 2)),
+      Math.abs(at.y + at.height / 2 - (width.y + width.height / 2)),
     ).toBeLessThan(4);
+    expect(
+      await toggle.evaluate(
+        (el) => el.closest("[data-testid=planning-header]") !== null,
+      ),
+    ).toBe(true);
 
     await toggle.click();
     await expect(

@@ -389,9 +389,7 @@ test.describe("the planning page", () => {
     await page.goto("/.vantage/planning");
     const needsYou = section(page, "Needs you");
     await expect(needsYou.getByRole("article")).toHaveCount(10);
-    await expect(
-      page.getByRole("navigation", { name: "Sections" }),
-    ).toContainText("Needs you 14");
+    await expect(page.getByTestId("needs-you-count")).toHaveText("14");
 
     // A visit reads its reviews in two requests at most, and no document's
     // alone.
@@ -556,7 +554,20 @@ test.describe("the planning page", () => {
     expect(copied).toMatch(/Verify: .*vantage-check index/);
     await expect(copy).toHaveText("Copy agent request", { timeout: 4000 });
 
-    await page.getByRole("button", { name: "Copy all agent requests" }).click();
+    // Copy answers + maintenance, with every kind checked, copies every
+    // request (planning-to-do-list.md §5).
+    await page
+      .getByRole("button", {
+        name: "Choose what Copy answers + maintenance copies",
+      })
+      .click();
+    await page
+      .getByRole("group", { name: "What Copy answers + maintenance copies" })
+      .getByRole("button", { name: "All" })
+      .click();
+    await page
+      .getByRole("button", { name: /^Copy answers \+ maintenance / })
+      .click();
     const all = await page.evaluate(() => navigator.clipboard.readText());
     expect(all).toContain("Not on a roadmap (27)");
     expect(all).toContain("Ready to graduate (1)");
@@ -580,6 +591,9 @@ test.describe("the planning page", () => {
     context,
   }) => {
     await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+    // Wide enough for the header's labels beside the sidebar, now that it
+    // holds Copy answers + maintenance too (planning-to-do-list.md §3.1).
+    await page.setViewportSize({ width: 1440, height: 720 });
     await page.goto("/.vantage/planning");
     // An answer waiting on the agent, so Copy answers has one to copy.
     await card(page, LAST)
@@ -624,6 +638,75 @@ test.describe("the planning page", () => {
       // Copied is the shorter label by far, so it has room either side.
       expect(now.before, JSON.stringify(now)).toBeGreaterThan(now.padding + 5);
     }
+  });
+
+  // planning-to-do-list.md §5.1 and §11, item 7: the panel opens on hover
+  // after a rest and from its ▾, its checkboxes are remembered, and none of
+  // it moves anything painted.
+  test("opens Copy answers + maintenance's panel on hover and from its ▾, remembers its checkboxes, and moves nothing painted", async ({
+    page,
+  }) => {
+    await watchShifts(page);
+    await page.goto("/.vantage/planning");
+    await expect(section(page, "Needs you").getByRole("article")).toHaveCount(
+      10,
+    );
+    await resetShifts(page);
+    const button = page.getByRole("button", {
+      name: /^Copy answers \+ maintenance /,
+    });
+    const toggle = page.getByRole("button", {
+      name: "Choose what Copy answers + maintenance copies",
+    });
+    const panel = page.getByRole("group", {
+      name: "What Copy answers + maintenance copies",
+    });
+    // Focus alone never opens it.
+    await button.focus();
+    await page.waitForTimeout(400);
+    await expect(panel).toHaveCount(0);
+    // Hover opens it once the pointer has rested on the button.
+    await button.hover();
+    await expect(panel).toBeVisible();
+    await expect(panel).toContainText(
+      "Your answers, the same as Copy answers, plus the maintenance this page found for the agent.",
+    );
+    // It stays while the pointer is on the panel, and goes once it leaves
+    // both.
+    await panel.hover();
+    await page.waitForTimeout(500);
+    await expect(panel).toBeVisible();
+    await page.mouse.move(5, 700);
+    await expect(panel).toHaveCount(0);
+
+    // Ready to build starts unchecked; None greys the button out, and the ▾
+    // still opens the panel.
+    await toggle.click();
+    await expect(panel).toBeVisible();
+    await expect(panel.getByRole("checkbox", { name: /Ready to build/ })).not.toBeChecked();
+    await expect(
+      panel.getByRole("checkbox", { name: /Not on a roadmap/ }),
+    ).toBeChecked();
+    await panel.getByRole("button", { name: "None" }).click();
+    await expect(button).toHaveAttribute("aria-disabled", "true");
+    await page.keyboard.press("Escape");
+    await expect(panel).toHaveCount(0);
+    await expect(toggle).toBeFocused();
+    await page.keyboard.press("ArrowDown");
+    await expect(panel).toBeVisible();
+    const shifts = await shifted(page);
+    expect(shifts, JSON.stringify(shifts)).toEqual([]);
+
+    // A reload keeps the checkboxes.
+    await page.reload();
+    await expect(section(page, "Needs you").getByRole("article")).toHaveCount(
+      10,
+    );
+    await expect(button).toHaveAttribute("aria-disabled", "true");
+    await toggle.click();
+    await expect(
+      panel.getByRole("checkbox", { name: /Not on a roadmap/ }),
+    ).not.toBeChecked();
   });
 
   test("moves nothing painted on a load that has to build the index first", async ({

@@ -203,9 +203,8 @@ test.describe("several roadmaps", () => {
     await expect(empty).toContainText(
       `1 question it keeps is on another roadmap: ${NESTED} (1). The filter stays when you choose that roadmap.`,
     );
-    await expect(page.getByTestId("filter-notice")).not.toContainText(
-      "another roadmap",
-    );
+    // No notice says it again (planning-to-do-list.md §3.2).
+    await expect(page.getByTestId("filter-notice")).toHaveCount(0);
     await expect(empty.getByRole("button")).toHaveText([
       `Choose ${NESTED}`,
       "Clear the filter",
@@ -335,7 +334,7 @@ test.describe("several roadmaps", () => {
       localStorage.setItem("vantage:tocOpen", "true");
     });
     await page.goto("/.vantage/planning");
-    const outline = page.getByRole("navigation", { name: "Planning outline" });
+    const outline = page.getByRole("navigation", { name: "On this page" });
     await expect(
       outline.getByRole("combobox", { name: "Roadmap" }),
     ).toBeVisible();
@@ -350,10 +349,35 @@ test.describe("several roadmaps", () => {
       "OQ-B3: Does beta need a flag?",
       "OQ-A2: How soon does alpha ship?",
     ]);
-    // The outline follows the pick, with the section bar.
+    // The outline follows the pick: the new cards' documents.
     await expect(
-      outline.getByRole("link", { name: /^Needs you \d/ }),
-    ).toHaveText("Needs you 4");
+      outline.locator(
+        '[data-testid=outline-document][data-path="designs/beta.md"]',
+      ),
+    ).toBeVisible();
+  });
+
+  // Where the column is not drawn, the picker is on Needs you's heading
+  // line, the list the roadmap orders (planning-to-do-list.md §3.5).
+  test("puts the picker on Needs you's heading line where the column is not drawn", async ({
+    page,
+  }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem("vantage:tocOpen", "false");
+    });
+    await page.goto("/.vantage/planning");
+    await expect(picker(page)).toHaveCount(1);
+    const heading = page
+      .getByRole("region", { name: /^Needs you/ })
+      .getByRole("heading", { level: 2 });
+    const headingBox = (await heading.boundingBox())!;
+    const pickerBox = (await page.getByTestId("roadmap-line").boundingBox())!;
+    expect(pickerBox.x).toBeGreaterThan(headingBox.x + headingBox.width - 1);
+    expect(
+      Math.abs(
+        pickerBox.y + pickerBox.height / 2 - (headingBox.y + headingBox.height / 2),
+      ),
+    ).toBeLessThan(12);
   });
 
   // §6.8 in the outline's 256 px: the path is the only name that tells two
@@ -367,7 +391,7 @@ test.describe("several roadmaps", () => {
       localStorage.setItem("vantage:tocOpen", "true");
     });
     await page.goto(`/.vantage/planning?roadmap=${NESTED}`);
-    const outline = page.getByRole("navigation", { name: "Planning outline" });
+    const outline = page.getByRole("navigation", { name: "On this page" });
     const shown = outline.getByTestId("roadmap-shown");
     await expect(shown).toHaveText(`${NESTED} (4 need you)`);
     await expect(picker(page)).toHaveAttribute("title", NESTED);
@@ -409,7 +433,7 @@ test.describe("several roadmaps", () => {
       localStorage.setItem("vantage:tocOpen", "true");
     });
     await page.goto("/.vantage/planning");
-    const outline = page.getByRole("navigation", { name: "Planning outline" });
+    const outline = page.getByRole("navigation", { name: "On this page" });
     const select = outline.getByRole("combobox", { name: "Roadmap" });
     const before = await outline.getByTestId("roadmap-shown").boundingBox();
     await select.click();
@@ -487,12 +511,12 @@ test.describe("several roadmaps", () => {
       );
       release();
       const outline = page.getByRole("navigation", {
-        name: "Planning outline",
+        name: "On this page",
       });
       await expect(
         outline.getByRole("combobox", { name: "Roadmap" }),
       ).toHaveValue("roadmap.md");
-      await expect(outline.getByText("Contents")).toBeVisible();
+      await expect(outline.getByText("On this page")).toBeVisible();
       await cardsIn(page, "Needs you").toEqual([
         "OQ-A1: Which way does alpha go?",
         "OQ-A2: How soon does alpha ship?",

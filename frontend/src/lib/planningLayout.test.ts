@@ -10,8 +10,10 @@ import {
   NOTHING_IN_PLACE,
   agentReplies,
   commentsByQuestion,
+  filterItemCounts,
   heldUpdates,
   itemKey,
+  layoutItemKeys,
   layoutNeedsYou,
   marksOf,
   openRow,
@@ -471,5 +473,45 @@ describe("an answered row's chip (§3.3)", () => {
       ] as ReviewComment[],
     });
     expect([...on.keys()]).toEqual([questionKey(q3)]);
+  });
+});
+
+describe("the filter line's items (§3.2)", () => {
+  const STAGED = {
+    DESIGN: "open" as const,
+    DECIDED: "ready" as const,
+    BUILT: "built" as const,
+  };
+  const tree = {
+    ...treeOf(["OQ-T1", "OQ-T2", "OQ-T3"]),
+    // Decided, and waiting on a question: listed by
+    // Ready to build and by Blocked both.
+    "plans/built.md":
+      "---\nstage: DECIDED\ndepends-on:\n  - a.md#OQ-T1\n---\n\n# Built\n",
+  };
+  const index = indexOf(tree, { stages: STAGED });
+
+  it("counts a document two groups list once, and every question past the page size", () => {
+    const layout = layoutPlanningPage(index, sectionsOf(index), 1);
+    const kinds = layout.maintenance.map((k) => k.id);
+    expect(kinds).toContain("ready");
+    expect(layout.blocked.some((e) => e.kind === "document")).toBe(true);
+    const keys = layoutItemKeys(layout);
+    expect([...keys].filter((k) => k === "doc\nplans/built.md")).toHaveLength(
+      1,
+    );
+    // Three questions, the built document once.
+    expect(keys.size).toBe(4);
+  });
+
+  it("counts what a filter keeps, and what it hides of the unfiltered page", () => {
+    const all = layoutPlanningPage(index, sectionsOf(index), 1);
+    const kept = layoutPlanningPage(
+      index,
+      sectionsOf(index, null, "oq-t2"),
+      1,
+      "oq-t2",
+    );
+    expect(filterItemCounts(kept, all)).toEqual({ match: 1, hidden: 3 });
   });
 });

@@ -24,35 +24,39 @@
  * Every section says under its heading what its entries are and who acts on
  * them, in the shared planning module's words (`vantage-md/planning`'s guide),
  * which `vantage-check index` prints too. A kind of *Maintenance* that is an
- * agent's work has Copy agent request, and the section bar's line Copy all
- * agent requests: the request for every entry of the kind, or of every such
- * kind, generated from the index on screen when it is pressed.
+ * agent's work has Copy agent request, and the header has Copy answers +
+ * maintenance (`components/PlanningCopyPanel.tsx`): Copy answers' text, then
+ * the request for the kinds its panel checks, generated from the data in hand
+ * when it is pressed (planning-to-do-list.md §5).
  *
  * Filtered (`docs/reference/planning-index.md` §6.11): a filter line at the
  * top of the column holds the Filter box, whose text is the URL's `filter=`,
  * read and applied by the shared planning module to the sections derived
  * from the whole index (F1, F2). The page follows the box as the reader
  * types, and the URL follows it in one replace navigation after an idle
- * pause, or at once on Enter, ✕, a paste or the focus leaving the box
- * (§6.16); the filter notice, first of the frame's notices, says what it
- * hides. A typed text that keeps no entry at all waits for the URL to take
+ * pause, or at once on Enter, a paste or the focus leaving the box (§6.16);
+ * ✕ and *hidden* clear it as a new history entry, so Back brings it back
+ * (planning-to-do-list.md §3.2). The filter line's *N match · M hidden* says
+ * what it keeps and hides. A typed text that keeps no entry at all waits for the URL to take
  * it, so a half-typed word does not empty the page between two keystrokes
  * that come within the idle pause of each other. An applied filter that
- * keeps no entry says *Nothing matches* in place of the sections and their
- * bar, with the one reason that applies and a Clear the filter that does
+ * keeps no entry says *Nothing matches* in place of the sections, with the
+ * one reason that applies and a Clear the filter that does
  * what the box's ✕ does, rather than leave the page blank under its notice
  * (§6.18); where all it keeps is on other roadmaps, *Nothing on this roadmap
  * matches*, with a button choosing each first. A filter this release does
  * not understand is applied not at all: typed, it leaves the page as it
  * was, and entered, the notice names its term (F3).
  *
- * Several roadmaps (`planning-index.md` §6.8): when two or more route, the
- * roadmap line above the section bar offers a picker, and *Needs you* follows
- * the chosen one. The choice is in the URL as `?roadmap=`, and a pick is
+ * Several roadmaps (`planning-index.md` §6.8): when two or more route, a
+ * picker at the head of the contents column, or on *Needs you*'s heading line
+ * where the column is not drawn, offers each, and *Needs you* follows the
+ * chosen one. The choice is in the URL as `?roadmap=`, and a pick is
  * remembered for the repository in this browser; picking makes a new layout.
  *
  * Frame first (§6.3, §6.5): the route's first render is the header, the
- * section bar and the notices, with no card in it. The sections fill the
+ * filter line and the notices, with no card in it; there is no section bar
+ * (planning-to-do-list.md §3.5). The sections fill the
  * region below in one later commit, from a complete set of page inputs —
  * blocks, reviews and diagrams (`hooks/usePlanningPageInputs.ts`) — and a set
  * stays on screen until the next one is complete. Nothing that arrives after
@@ -100,7 +104,6 @@ import {
   PLANNING_SPACE_PARAM,
   badgeFor,
   filterKeepsQuestion,
-  isPlanningRequestId,
   isPlanningSpaceId,
   parsePlanningFilter,
   planningAgentRequest,
@@ -126,13 +129,17 @@ import {
 } from "../components/AppShell";
 import { CollapsedFolders } from "../components/CollapsedFolders";
 import { HeaderOverflow } from "../components/HeaderOverflow";
-import { PlanningFilterLine } from "../components/PlanningFilterLine";
+import {
+  PlanningFilterLine,
+  type FilterCounts,
+} from "../components/PlanningFilterLine";
 import { PlanningOutline } from "../components/PlanningOutline";
 import { PlanningPendingAnswers } from "../components/PlanningPendingAnswers";
 import { AnsweredRow, PlanningNeedsYou } from "../components/PlanningNeedsYou";
 import { PlanningGroups, type GroupId } from "../components/PlanningGroups";
 import { PlanningUpdates } from "../components/PlanningUpdates";
-import { CopyRequestButton } from "../components/CopyRequestButton";
+import { PlanningCopyPanel } from "../components/PlanningCopyPanel";
+import { maintenancePayload } from "../lib/planningCopy";
 import {
   PlanningQuestionCard,
   type CardFolds,
@@ -158,10 +165,10 @@ import { copyTextOrWarn } from "../lib/clipboard";
 import { planningCardId } from "../lib/planningCardId";
 import { afterClampMeasures } from "../lib/planningCardParts";
 import {
-  outlineTargetId,
   planningOutline,
   planningRowId,
   type OutlineDocument,
+  type OutlineLine,
 } from "../lib/planningOutline";
 import { cn } from "../lib/utils";
 import {
@@ -190,7 +197,6 @@ import {
   withFilter,
   withRoadmap,
   MAINTENANCE_KIND_IDS,
-  MAINTENANCE_TITLES,
   type CardEntry,
   type MaintenanceKindId,
   type QuestionEntry,
@@ -243,11 +249,14 @@ import {
   blockKeyOf,
   blockSizes,
   commentsByQuestion,
+  filterItemCounts,
   groupKeys,
   heldUpdates,
+  hiddenText,
   itemKey,
   layoutNeedsYou,
   maintenanceKeys,
+  matchText,
   marksOf,
   openRow,
   rowAnswer,
@@ -515,108 +524,72 @@ function badgeOf(index: PlanningIndex, path: string): PlanningBadge | null {
 type AgentRequestOf = (ids?: readonly PlanningRequestId[]) => string | null;
 
 /**
- * One line naming each non-empty section with its exact count, from the index
- * (`docs/reference/planning-index.md` §6.3), and the line under its heading
- * as its tooltip. Each entry scrolls to its
- * section and moves the focus to its heading, so Tab goes on from there, and
- * adds no history entry. Its link is still the section's `#id`, which a new
- * tab opened on it scrolls to once the sections are in.
- */
-const SectionBar: React.FC<{
-  entries: readonly {
-    id: string;
-    title: string;
-    total: number;
-    about?: string;
-  }[];
-  onGo: (id: string) => void;
-}> = ({ entries, onGo }) => (
-  <nav
-    aria-label="Sections"
-    className="flex flex-wrap items-center gap-x-2 text-sm text-slate-600 dark:text-slate-300"
-  >
-    {entries.map((entry, at) => (
-      <React.Fragment key={entry.id}>
-        {at > 0 && (
-          <span
-            aria-hidden="true"
-            className="text-slate-500 dark:text-slate-400"
-          >
-            ·
-          </span>
-        )}
-        <a
-          href={`#${entry.id}`}
-          title={entry.about}
-          onClick={(e) => {
-            e.preventDefault();
-            onGo(entry.id);
-          }}
-          className="text-blue-600 no-underline hover:underline dark:text-blue-400"
-        >
-          {entry.title}{" "}
-          <span className="tabular-nums">
-            {entry.total.toLocaleString("en-US")}
-          </span>
-        </a>
-      </React.Fragment>
-    ))}
-  </nav>
-);
-
-/**
  * Expand all, or Collapse all: every question card on the page unfolded or
- * folded, and every card rendered after it opened the same way — on another
- * page, in another section, on the next visit — until it is pressed again
- * (§6.6). It sits at the end of the section bar's line, the page's own line of
- * controls over its sections, from the frame's first paint.
+ * folded, and every card rendered after it opened the same way — on the next
+ * visit too — until it is pressed again (§6.6). One of the header's view
+ * toggles (`docs/design/planning-to-do-list.md` §3.1), beside the contents
+ * column's and full width's, so it is in view wherever the reader has
+ * scrolled; unlike them it is drawn at every width, and it folds into the
+ * "⋯" with them, where `CardsTogglePanel` draws it.
  *
  * `expanded` is what the last press here, or the page's opening, brought the
  * cards on screen to, so the label names what a press does to them. A screen
  * reader is told what a press did, since a button's new name is not read out.
  */
-const CardsToggle: React.FC<{ expanded: boolean; onToggle: () => void }> = ({
-  expanded,
-  onToggle,
-}) => {
-  const [pressed, setPressed] = useState(false);
-  return (
-    <>
-      <button
-        type="button"
-        data-planning-cards-toggle
-        onClick={() => {
-          setPressed(true);
-          onToggle();
-        }}
-        title={
-          expanded
-            ? "Fold every question to its first lines, and open the cards shown later folded"
-            : "Show every question in full, and open the cards shown later unfolded"
-        }
-        className="inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100 print:hidden dark:text-slate-300 dark:hover:bg-slate-700"
-      >
-        {expanded ? (
-          <ChevronsDownUp size={14} aria-hidden="true" />
-        ) : (
-          <ChevronsUpDown size={14} aria-hidden="true" />
-        )}
-        {expanded ? "Collapse all" : "Expand all"}
-      </button>
-      <span
-        data-planning-cards-status
-        className="sr-only"
-        aria-live="polite"
-        aria-atomic="true"
-      >
-        {pressed &&
-          (expanded
-            ? "Every question is shown in full."
-            : "Every question is folded to its first lines.")}
-      </span>
-    </>
-  );
-};
+const cardsToggleTitle = (expanded: boolean) =>
+  expanded
+    ? "Fold every question to its first lines, and open the cards shown later folded"
+    : "Show every question in full, and open the cards shown later unfolded";
+
+const CardsToggle: React.FC<{
+  expanded: boolean;
+  pressed: boolean;
+  onToggle: () => void;
+}> = ({ expanded, pressed, onToggle }) => (
+  <>
+    <button
+      type="button"
+      data-planning-cards-toggle
+      onClick={onToggle}
+      aria-label={expanded ? "Collapse all" : "Expand all"}
+      title={cardsToggleTitle(expanded)}
+      className="hdr-view block shrink-0 cursor-pointer rounded-md p-1.5 text-slate-500 transition-colors hover:bg-slate-100 print:hidden dark:text-slate-400 dark:hover:bg-slate-700"
+    >
+      {expanded ? (
+        <ChevronsDownUp size={18} aria-hidden="true" />
+      ) : (
+        <ChevronsUpDown size={18} aria-hidden="true" />
+      )}
+    </button>
+    <span
+      data-planning-cards-status
+      className="sr-only"
+      aria-live="polite"
+      aria-atomic="true"
+    >
+      {pressed &&
+        (expanded
+          ? "Every question is shown in full."
+          : "Every question is folded to its first lines.")}
+    </span>
+  </>
+);
+
+/** The same toggle in the header's "⋯" panel, once the toggles fold in. */
+const CardsTogglePanel: React.FC<{
+  expanded: boolean;
+  onToggle: () => void;
+}> = ({ expanded, onToggle }) => (
+  <button
+    type="button"
+    onClick={onToggle}
+    title={cardsToggleTitle(expanded)}
+    className="flex cursor-pointer items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs text-slate-500 transition-colors hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-700/50"
+  >
+    {expanded ? <ChevronsDownUp size={14} /> : <ChevronsUpDown size={14} />}
+    <span>{expanded ? "Collapse all" : "Expand all"}</span>
+  </button>
+);
 
 /** Scroll to a section's heading, and give the heading the focus. */
 function bringSectionIntoView(id: string): void {
@@ -629,7 +602,7 @@ function bringSectionIntoView(id: string): void {
  * Bring an outline document's card or row into view the way the contents
  * column brings a heading (`lib/anchorScroll.ts`), and give it the focus —
  * or its first control, when it takes none itself — so Tab goes on from
- * there, as it does from a section the section bar jumps to.
+ * there, as it does from a group heading the outline jumps to.
  */
 function bringTargetIntoView(id: string, scroller: HTMLElement | null): void {
   const el = document.getElementById(id);
@@ -682,7 +655,7 @@ const Notice: React.FC<{ children: React.ReactNode; testId?: string }> = ({
   </p>
 );
 
-/** The line that stands where the section bar will be, while the index builds. */
+/** The line that stands where the sections will be, while the index builds. */
 const ProgressLine: React.FC<{
   progress: { done: number; total: number } | null;
 }> = ({ progress }) => (
@@ -745,28 +718,50 @@ const FilterNotice: React.FC<{
   </div>
 );
 
-/** The filter notice's lines for the frame's filter, or `null` for none. */
+/**
+ * The filter notice's lines for the frame's filter, or `null` for none: only
+ * *Not filtered* now (planning-to-do-list.md §3.2). An applied filter's
+ * counts are the filter line's, *N match · M hidden*, and *Nothing matches*
+ * stands in place of the sections.
+ */
 function filterNoticeLines(
-  summary: PlanningFilterSummary | null,
   notUnderstood: NotUnderstoodPlanningFilter | null,
 ): PlanningNoticeLine[] | null {
-  if (summary !== null) return PLANNING_NOTICES.filtered(summary, "page");
-  if (notUnderstood !== null) {
-    return [PLANNING_NOTICES.notFiltered(notUnderstood)];
-  }
-  return null;
+  return notUnderstood === null
+    ? null
+    : [PLANNING_NOTICES.notFiltered(notUnderstood)];
 }
 
 /**
- * The notices under the section bar (§6.2): each only when it applies. The
- * filter notice comes first (§6.18). The roadmap notice
+ * What else an applied filter's summary says that its counts cannot, as the
+ * notice's own sentences (§6.18): its unmatched terms, unknown keys, other
+ * roadmaps and blocked questions left out. Not its first line, which the
+ * counts replace; not the *Waits on* lines, which *Blocked* draws beside
+ * their documents; and not its last, which *hidden* does.
+ */
+function summaryClauses(summary: PlanningFilterSummary): string[] {
+  const waiting = [...new Set(summary.waitsOutside.map((w) => w.path))];
+  return PLANNING_NOTICES.filtered(summary, "page")
+    .slice(1)
+    .map(spokenLine)
+    .filter(
+      (line) =>
+        !waiting.some((path) => line.startsWith(`${path} waits on `)) &&
+        !line.startsWith("Clear the filter to see") &&
+        line !== "It hides no entry.",
+    );
+}
+
+/**
+ * The notices under the filter line (§6.2): each only when it applies. The
+ * Not filtered notice comes first (§6.18). The roadmap notice
  * names what the page looked for when no roadmap routes, or a listed roadmap
  * it could not read while another routes (§6.8).
  */
 const Notices: React.FC<{
   sections: PlanningSections;
   config: PlanningConfig;
-  /** The filter notice, drawn first, when a filter is applied or not understood. */
+  /** The Not filtered notice, drawn first, for a filter not understood. */
   filterNotice: React.ReactNode;
   /** A filter is applied: *Nothing needs you* takes filtered words (§6.15). */
   filtered: boolean;
@@ -941,7 +936,7 @@ const otherRoadmapsLine = (count: number): string =>
     : PLANNING_NOTICES.otherRoadmaps(count);
 
 /**
- * The roadmap line (§6.8): above the section bar, and only when two or more
+ * The roadmap line (§6.8): on *Needs you*'s heading line, and only when two or more
  * roadmaps route. A native select labelled Roadmap offers each by its full
  * path, never shortened, since every one is named roadmap.md, with its
  * *Needs you* count; after it, as text, how many questions need you only on
@@ -985,9 +980,11 @@ const RoadmapLine: React.FC<{
   onPick: (path: string) => void;
   /**
    * Drawn at the head of the planning outline, its parts one under another,
-   * rather than as a line above the section bar (§6.9).
+   * rather than on *Needs you*'s heading line (planning-to-do-list.md §3.5).
    */
   stacked?: boolean;
+  /** Drawn on *Needs you*'s heading line: no margin of its own. */
+  inline?: boolean;
 }> = ({
   roadmaps,
   needYou,
@@ -998,6 +995,7 @@ const RoadmapLine: React.FC<{
   busy,
   onPick,
   stacked = false,
+  inline = false,
 }) => {
   const id = React.useId();
   const chosen = roadmaps.find((roadmap) => roadmap.path === value);
@@ -1011,7 +1009,10 @@ const RoadmapLine: React.FC<{
       className={
         stacked
           ? "mb-4 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-slate-600 dark:text-slate-300"
-          : "mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-600 dark:text-slate-300"
+          : cn(
+              "flex flex-wrap items-center gap-x-3 gap-y-1 text-sm font-normal tracking-normal normal-case text-slate-600 dark:text-slate-300",
+              !inline && "mb-3",
+            )
       }
     >
       <label htmlFor={id} className="font-medium">
@@ -1418,8 +1419,10 @@ export const PlanningPage: React.FC = () => {
   // preference, which the cards rendered later open with, and moves none on
   // screen here, so the toggle goes on naming what a press does to them.
   const [cardsBrought, setCardsBrought] = useState(cardsExpanded);
+  const [cardsPressed, setCardsPressed] = useState(false);
   const toggleCards = useCallback(() => {
     const next = !cardsBrought;
+    setCardsPressed(true);
     setCardsBrought(next);
     setCardsExpanded(next);
     setFolds(new Map());
@@ -1907,7 +1910,7 @@ export const PlanningPage: React.FC = () => {
   }, [frameFilter]);
 
   // Opened while the index was still building: the progress line stays until
-  // the section bar and the sections replace it in one commit (§6.10).
+  // the sections replace it in one commit (§6.10).
   const [openedBuilding, setOpenedBuilding] = useState(false);
   if (
     !openedBuilding &&
@@ -2081,24 +2084,31 @@ export const PlanningPage: React.FC = () => {
   const reviewsFailed = reviews.failed && !countKnown;
   const restFailed = reviewsFailed && shown?.inputs.reviewsFailed !== true;
   const [copied, setCopied] = useState(false);
+  // Copy answers' text: what this tab's boxes hold, as last typed
+  // (planning-to-do-list.md §6.3). Copy answers + maintenance starts with
+  // it, byte for byte (§5.1).
+  const answersText = useCallback(
+    (): string | null =>
+      answersPayload(
+        pending.map((group) => ({
+          ...group,
+          comments: typedComments(group.path, group.comments).filter(
+            isPendingForAgent,
+          ),
+        })),
+      ),
+    [pending],
+  );
   const copyAnswers = useCallback(() => {
     if (quotesLoading || !countKnown) return;
-    // What this tab's boxes hold, as last typed (planning-to-do-list.md §6.3).
-    const payload = answersPayload(
-      pending.map((group) => ({
-        ...group,
-        comments: typedComments(group.path, group.comments).filter(
-          isPendingForAgent,
-        ),
-      })),
-    );
+    const payload = answersText();
     if (payload === null) return;
     void copyTextOrWarn(payload).then((ok) => {
       if (!ok) return;
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });
-  }, [pending, quotesLoading, countKnown]);
+  }, [answersText, quotesLoading, countKnown]);
 
   const { adopt } = reviews;
   const fileComment = useCallback(
@@ -2146,7 +2156,7 @@ export const PlanningPage: React.FC = () => {
   );
 
   // The frame follows the sections on screen once there are any: an index
-  // update, or a filter applied, changes the section bar and the notices in
+  // update, or a filter applied, changes the notices and the counts in
   // the commit that changes the sections, not before it (§6.5,
   // §6.16). Before, it is the index's.
   const frameLayout = shown?.inputs.layout ?? layout;
@@ -2186,7 +2196,7 @@ export const PlanningPage: React.FC = () => {
     frameFilter === "" && frameUrlFilter.kind === "not-understood"
       ? frameUrlFilter
       : null;
-  // What names the frame's filter and its notice: the section bar's box and
+  // What names the frame's filter and its notice: the outline and
   // the notices are drawn anew when it changes, and the sections' box is put
   // back where it stands (below), so a filter applied removes and inserts
   // them rather than moving them (§6.16). A canonical text
@@ -2666,7 +2676,7 @@ export const PlanningPage: React.FC = () => {
     else bringTargetIntoView(jump.target, contentRef.current);
   }, [groupsOpen]);
 
-  // A link to a section (`#graduate`, the section bar's own link), or to a
+  // A link to a section (`#graduate`), or to a
   // card or a row (an outline entry's), opened in a new tab or pasted: the
   // browser looked for it before it was rendered, so the page scrolls to it
   // once the sections are in. Once a visit, and not over a position the
@@ -2710,7 +2720,7 @@ export const PlanningPage: React.FC = () => {
   }, [placedKey]);
 
   // The planning outline (§6.9): drawn from the frame's index, so it paints
-  // with the section bar and changes when it does.
+  // with the sections and changes when they do.
   const frameIndex = shown?.inputs.index ?? index;
 
   // What still needs the human, on the frame's index: the counts the index
@@ -2763,25 +2773,28 @@ export const PlanningPage: React.FC = () => {
   // `Filter:` line, whose text leaves out the unmatched terms, and reads every
   // blocked-on fact from the unfiltered sections; with every `path:` term
   // unmatched nothing is kept, and there is no request (§6.2, §6.15).
+  //
+  // From the data in hand, under the layout's roadmap and filter: what the
+  // groups' and the copy panel's counts read, live, so a request copies what
+  // its count says (planning-to-do-list.md §4.2, §5.1).
+  const requestRoadmap = (shownLayout ?? frameLayout)?.roadmap ?? null;
   const requestOf = useCallback<AgentRequestOf>(
     (ids) => {
-      if (frameIndex === null || frameSections === null || repo === null) {
-        return null;
-      }
-      if (frameSummary !== null && frameSummary.requestText === null) {
-        return null;
-      }
-      return planningAgentRequest(frameIndex, frameSections, {
+      if (index === null || index.refused || repo === null) return null;
+      const filter = frameFilter;
+      const sections = sectionsOf(index, requestRoadmap, filter);
+      const summary =
+        filter === "" ? null : filterSummaryOf(index, requestRoadmap, filter);
+      if (summary !== null && summary.requestText === null) return null;
+      return planningAgentRequest(index, sections, {
         repository: repoLabel(repo),
         ids,
         viewer: VIEWER_RELEASE,
-        ...(frameSummary !== null &&
-        frameSummary.requestText !== null &&
-        frameUnfiltered !== null
+        ...(summary !== null && summary.requestText !== null
           ? {
               filter: {
-                text: frameSummary.requestText,
-                unfiltered: frameUnfiltered,
+                text: summary.requestText,
+                unfiltered: sectionsOf(index, requestRoadmap),
                 // `compact` lists ✅ questions from the whole index.
                 ...(frameKeeps === undefined ? {} : { keeps: frameKeeps }),
               },
@@ -2789,91 +2802,112 @@ export const PlanningPage: React.FC = () => {
           : {}),
       });
     },
-    [
-      frameIndex,
-      frameSections,
-      frameSummary,
-      frameUnfiltered,
-      frameKeeps,
-      repo,
-    ],
+    [index, requestRoadmap, frameFilter, frameKeeps, repo],
   );
-  const outline = useMemo(
-    () =>
-      outlineShown &&
-      frameReady &&
-      frameIndex !== null &&
-      frameSections !== null
-        ? planningOutline(frameIndex, frameSections)
-        : null,
-    [outlineShown, frameReady, frameIndex, frameSections],
+  // Copy answers + maintenance (§5.1): Copy answers' text, then the request
+  // for the kinds its panel checks.
+  const copyWithMaintenance = useCallback(
+    async (kinds: readonly PlanningRequestId[]): Promise<boolean> => {
+      if (quotesLoading || !countKnown) return false;
+      const text = maintenancePayload(
+        answersText(),
+        kinds.length === 0 ? null : requestOf(kinds),
+      );
+      if (text === null) return false;
+      return copyTextOrWarn(text);
+    },
+    [quotesLoading, countKnown, answersText, requestOf],
   );
-  // What the outline follows as the page scrolls: each heading, and the
-  // items of *Needs you* and of the opened groups, in page order.
+  // *On this page* (planning-to-do-list.md §3.5): the full cards' documents,
+  // then the answered rows, *Blocked* and *Maintenance*, from the layout on
+  // screen, with the groups' counts in hand.
+  const maintenanceTotal = useMemo(
+    () => [...groupCounts.kinds.values()].reduce((n, k) => n + k, 0),
+    [groupCounts],
+  );
+  const outline = useMemo(() => {
+    if (
+      !outlineShown ||
+      !frameReady ||
+      current === null ||
+      needsYouView === null ||
+      shownLayout === null
+    ) {
+      return null;
+    }
+    const firstRow =
+      needsYouView.top.find((i) => i.as === "row") ??
+      needsYouView.list.find((i) => i.as === "row");
+    return planningOutline({
+      cards: needsYouView.list
+        .filter((i) => i.as === "card")
+        .map((i) => i.entry.question),
+      needing: [...current.needsYou.cards, ...current.needsYou.more].map(
+        (e) => e.question,
+      ),
+      answered: {
+        total: needsYouView.rows,
+        first: firstRow?.entry.question ?? null,
+      },
+      blocked: shownLayout.blocked.length > 0 ? groupCounts.blocked : undefined,
+      blockedExplanation:
+        frameSections === null
+          ? undefined
+          : sectionExplanation("waiting", frameSections),
+      maintenance:
+        shownLayout.maintenance.length > 0 ? maintenanceTotal : undefined,
+    });
+  }, [
+    outlineShown,
+    frameReady,
+    current,
+    needsYouView,
+    shownLayout,
+    groupCounts,
+    maintenanceTotal,
+    frameSections,
+  ]);
+  // What the outline follows as the page scrolls, in page order: the
+  // answered rows, then *Needs you*'s cards by document, then each group's
+  // heading.
   const outlineTargets = useMemo((): OutlineTarget[] => {
     if (!outlineShown || shownLayout === null || needsYouView === null) {
       return [];
     }
-    const question = (
-      section: SectionId,
-      q: PlanningQuestion,
-    ): OutlineTarget => ({
-      section,
-      path: q.path,
-      id: planningCardId(q.path, q.id, q.unitLine),
-    });
-    const out: OutlineTarget[] = [
-      { section: "needs-you", path: null, id: "needs-you" },
-      ...[...needsYouView.top, ...needsYouView.list].map((item) =>
-        question("needs-you", item.entry.question),
-      ),
-    ];
+    const out: OutlineTarget[] = [];
+    for (const item of [...needsYouView.top, ...needsYouView.list]) {
+      const q = item.entry.question;
+      out.push(
+        item.as === "row"
+          ? {
+              section: "answered",
+              path: null,
+              id: planningCardId(q.path, q.id, q.unitLine),
+            }
+          : {
+              section: "needs-you",
+              path: q.path,
+              id: planningCardId(q.path, q.id, q.unitLine),
+            },
+      );
+    }
     if (shownLayout.blocked.length > 0) {
       out.push({ section: "waiting", path: null, id: "waiting" });
-      if (groupsOpen.blocked) {
-        for (const entry of shownLayout.blocked) {
-          out.push(
-            entry.kind === "question"
-              ? question("waiting", entry.question)
-              : {
-                  section: "waiting",
-                  path: entry.path,
-                  id: planningRowId("waiting", entry.path),
-                },
-          );
-        }
-      }
     }
-    if (groupsOpen.maintenance) {
-      for (const kind of shownLayout.maintenance) {
-        if (kind.id === "compact") continue;
-        out.push({ section: kind.id, path: null, id: kind.id });
-        if (kind.kind === "questions") {
-          for (const entry of kind.items) {
-            out.push(question(kind.id, entry.question));
-          }
-        } else if (kind.kind === "documents") {
-          for (const path of kind.items) {
-            out.push({
-              section: kind.id,
-              path,
-              id: planningRowId(kind.id, path),
-            });
-          }
-        }
-      }
+    if (shownLayout.maintenance.length > 0) {
+      out.push({ section: "maintenance", path: null, id: "maintenance" });
     }
     return out;
-  }, [outlineShown, shownLayout, needsYouView, groupsOpen]);
+  }, [outlineShown, shownLayout, needsYouView]);
   const outlineActive = usePlanningOutlineActive(
     pane,
     outlineTargets,
     outlineShown && sectionsIn,
   );
-  // A document in the outline: its first card or row brought into view, its
-  // group opened first if it is folded.
-  const jumpToDocument = useCallback(
-    (id: SectionId, document: OutlineDocument) => {
+  // An entry of the outline: what it names brought into view, its group
+  // opened first if it is folded.
+  const jumpTo = useCallback(
+    (target: string, heading: boolean) => {
       // The outline is the old filter's while another's page is on its way,
       // and goes nowhere until it is in; so is it when a keystroke this
       // render has not applied is.
@@ -2882,19 +2916,26 @@ export const PlanningPage: React.FC = () => {
         writeNow();
         return;
       }
-      goTo(outlineTargetId(id, document), false);
+      goTo(target, heading);
     },
     [askedIsFlip, typedPast, writeNow, goTo],
   );
+  const jumpToDocument = useCallback(
+    (document: OutlineDocument) => jumpTo(document.target, false),
+    [jumpTo],
+  );
+  const jumpToLine = useCallback(
+    (line: OutlineLine) => jumpTo(line.target, line.id !== "answered"),
+    [jumpTo],
+  );
   // Its link, for a modified click and a new tab: the entry as the fragment.
   const outlineHref = useCallback(
-    (id: SectionId, document: OutlineDocument): string => {
+    (target: string): string => {
       const query = planningQuery(appliedSearch);
-      return `${location.pathname}${query === "" ? "" : `?${query}`}#${outlineTargetId(id, document)}`;
+      return `${location.pathname}${query === "" ? "" : `?${query}`}#${target}`;
     },
     [appliedSearch, location.pathname],
   );
-  const goToSection = useCallback((id: string) => goTo(id, true), [goTo]);
 
   // Show question on a preview card: the whole block, which only a request
   // naming it in full is answered with (§6.6), with its diagrams drawn.
@@ -3010,50 +3051,6 @@ export const PlanningPage: React.FC = () => {
     );
   };
 
-  // The section bar's entries (§6.3): *Needs you*, then each group and kind
-  // the layout on screen lists.
-  const barEntries = useMemo(
-    () =>
-      frameLayout === null
-        ? []
-        : [
-            ...(frameLayout.needsYou.length > 0
-              ? [
-                  {
-                    id: "needs-you",
-                    title: "Needs you",
-                    total: frameLayout.needsYou.length,
-                    about: frameLayout.needsYouExplanation,
-                  },
-                ]
-              : []),
-            ...(frameLayout.blocked.length > 0
-              ? [
-                  {
-                    id: "waiting",
-                    title: "Blocked",
-                    total: frameLayout.blocked.length,
-                    about:
-                      frameSections === null
-                        ? undefined
-                        : sectionExplanation("waiting", frameSections),
-                  },
-                ]
-              : []),
-            ...frameLayout.maintenance.map((kind) => ({
-              id: kind.id,
-              title: MAINTENANCE_TITLES[kind.id],
-              total: kind.items.length,
-              about:
-                kind.id === "compact"
-                  ? COMPACT_EXPLANATION
-                  : frameSections === null
-                    ? undefined
-                    : sectionExplanation(kind.id, frameSections),
-            })),
-          ],
-    [frameLayout, frameSections],
-  );
   // Each kind's line under its sub-heading: the shared guide's.
   const explanationOf = useCallback(
     (id: MaintenanceKindId | "waiting") =>
@@ -3158,7 +3155,7 @@ export const PlanningPage: React.FC = () => {
   // applied and written, under the roadmap already shown, does nothing. The
   // URL is the filter's writer after it, so nothing typed is owed.
   const applyFilter = useCallback(
-    (text: string, roadmap: string | null) => {
+    (text: string, roadmap: string | null, push = false) => {
       cancelIdle();
       typedRef.current = null;
       let next = withFilter(search, text, roadmap);
@@ -3198,13 +3195,16 @@ export const PlanningPage: React.FC = () => {
       // still a change, and is said.
       setAnnouncement("");
       jumpRef.current = null;
+      // ✕ and *hidden* add a history entry, so Back brings the filter
+      // back (planning-to-do-list.md §3.2, OQ-TD6, OQ-TD13); Enter and a
+      // paste replace it.
       // With the URL, in one render, so the page never shows the URL's old
       // filter between the box's and the new one.
       startTransition(() => {
         setLead(null);
         navigate(
           { search: query === "" ? "" : `?${query}` },
-          { replace: true },
+          { replace: !push },
         );
       });
     },
@@ -3224,7 +3224,7 @@ export const PlanningPage: React.FC = () => {
   // emptied and the focus put in it; without the box, the clear alone.
   const clearFilter = useCallback(() => {
     if (filterClearRef.current !== null) filterClearRef.current();
-    else applyFilter("", null);
+    else applyFilter("", null, true);
   }, [applyFilter]);
   // A roadmap's button under *Nothing on this roadmap matches*: what the
   // Roadmap menu does, the filter kept, and the focus put in the box, as
@@ -3238,9 +3238,40 @@ export const PlanningPage: React.FC = () => {
   );
   // The filter notice's lines, for the frame: what the page on screen shows.
   const filterNotice = useMemo(
-    () => filterNoticeLines(frameSummary, frameNotUnderstood),
-    [frameSummary, frameNotUnderstood],
+    () => filterNoticeLines(frameNotUnderstood),
+    [frameNotUnderstood],
   );
+  // The filter line's counts (planning-to-do-list.md §3.2): the items the
+  // layout's filter keeps of the data in hand, and those it hides of the
+  // same page unfiltered, live as every count is (§4.2).
+  const liveUnfiltered = useMemo(
+    () =>
+      index === null ||
+      index.refused ||
+      shownLayout === null ||
+      shownLayout.filter === ""
+        ? null
+        : layoutPlanningPage(
+            index,
+            sectionsOf(index, shownLayout.roadmap),
+            shownLayout.pageSize,
+          ),
+    [index, shownLayout],
+  );
+  const filterCounts = useMemo((): FilterCounts | null => {
+    if (
+      frameFilter === "" ||
+      liveLayout === null ||
+      liveUnfiltered === null ||
+      frameSummary === null
+    ) {
+      return null;
+    }
+    return {
+      ...filterItemCounts(liveLayout, liveUnfiltered),
+      more: summaryClauses(frameSummary),
+    };
+  }, [frameFilter, liveLayout, liveUnfiltered, frameSummary]);
   const filterNoticeId = React.useId();
   const noticeShown = frameReady && filterNotice !== null;
   // An applied filter that keeps no entry: *Nothing matches* in place of the
@@ -3273,25 +3304,40 @@ export const PlanningPage: React.FC = () => {
     frameSections?.nothingNeedsYou === true &&
     nothingMatches === null;
   const nothingId = React.useId();
-  const filterDescribedBy = !noticeShown
-    ? undefined
-    : nothingMatches !== null
-      ? `${filterNoticeId} ${nothingMatchesId} ${nothingReasonId}`
-      : nothingFiltered
-        ? `${filterNoticeId} ${nothingId}`
-        : filterNoticeId;
+  // The box's description: the Not filtered notice, and *Nothing matches*'
+  // headline and reason line or the filtered *Nothing needs you*, while one
+  // shows; the filter line adds its counts.
+  const filterDescribedBy =
+    [
+      noticeShown ? filterNoticeId : null,
+      sectionsIn && nothingMatches !== null
+        ? `${nothingMatchesId} ${nothingReasonId}`
+        : null,
+      sectionsIn && nothingFiltered ? nothingId : null,
+    ]
+      .filter(Boolean)
+      .join(" ") || undefined;
+  // What the live region says once the URL takes the reader's filter: the
+  // counts where it said the notice (§3.2), then what else the summary says,
+  // or the Not filtered notice.
   const spoken =
-    filterNotice === null
-      ? FILTER_CLEARED
-      : [
-          ...filterNotice.map(spokenLine),
-          ...(nothingFiltered
-            ? [PLANNING_NOTICES.nothingFilteredNeedsYou]
-            : []),
-          // Its headline and its reason line, which says what the notice
-          // leaves to it.
-          ...(nothingMatches ?? []).map(spokenLine),
-        ].join(" ");
+    filterNotice !== null
+      ? filterNotice.map(spokenLine).join(" ")
+      : frameFilter === ""
+        ? FILTER_CLEARED
+        : [
+            ...(filterCounts === null
+              ? []
+              : [
+                  `${matchText(filterCounts.match)}, ${hiddenText(filterCounts.hidden)}.`,
+                  ...filterCounts.more,
+                ]),
+            ...(nothingFiltered
+              ? [PLANNING_NOTICES.nothingFilteredNeedsYou]
+              : []),
+            // *Nothing matches*' headline and its reason line.
+            ...(nothingMatches ?? []).map(spokenLine),
+          ].join(" ");
   // A push or a pop (`g p`, the sidebar's entry, Back, Forward) is no
   // reader's Enter: it forgets what the region said, so the same notice
   // applied again is a change and is said, and what it was still to say.
@@ -3301,7 +3347,15 @@ export const PlanningPage: React.FC = () => {
   let toSay = announceFor;
   if (announceKey !== location.key) {
     setAnnounceKey(location.key);
-    if (navigationType !== "REPLACE") {
+    // The page's own push, ✕ or *hidden* clearing the filter, is the
+    // reader's: what it brings in is said as an Enter's is. It is the push
+    // from the location its announcement was asked on, to the filter asked.
+    const ownPush =
+      navigationType === "PUSH" &&
+      announceFor !== null &&
+      announceFor.from === announceKey &&
+      announceFor.filter === filterText;
+    if (navigationType !== "REPLACE" && !ownPush) {
       toSay = null;
       if (announceFor !== null) setAnnounceFor(null);
       if (announcement !== "") setAnnouncement("");
@@ -3339,16 +3393,23 @@ export const PlanningPage: React.FC = () => {
     }
   }
 
+  // Whether *Needs you* is drawn: with an item in it.
+  const needsYouDrawn =
+    nothingMatches === null &&
+    needsYouView !== null &&
+    (needsYouView.top.length > 0 || needsYouView.list.length > 0);
   // The roadmap picker (§6.8), and only one of it: at the head of the
-  // planning outline while the outline is drawn, else on its line above the
-  // section bar (§6.9). Its options are the frame's.
+  // planning outline while the outline is drawn, else on *Needs you*'s
+  // heading line, or a line of its own where *Needs you* is not drawn
+  // (planning-to-do-list.md §3.5). Its options are the frame's.
   const picker =
     frameReady &&
     frameSections !== null &&
     frameRoutes.length >= 2 &&
     pickerValue !== null
-      ? (stacked: boolean) => (
+      ? (stacked: boolean, inline = false) => (
           <RoadmapLine
+            inline={inline}
             roadmaps={frameRoutes}
             needYou={frameNeedYou?.roadmaps}
             value={pickerValue}
@@ -3408,6 +3469,11 @@ export const PlanningPage: React.FC = () => {
       <div className="hdr-lead flex items-center gap-2">
         {showSidebar && <OpenSidebarButton shell={shell} />}
         <ViewToggles contents={contentsToggle} fullWidth={fullWidthToggle} />
+        <CardsToggle
+          expanded={cardsBrought}
+          pressed={cardsPressed}
+          onToggle={toggleCards}
+        />
         {/* Not painted while the server is asked which project a space is
             (§13.6), nor is the toolbar: the answer names the crumb's
             project, and a crumb painted as Projects and then renamed would
@@ -3462,10 +3528,16 @@ export const PlanningPage: React.FC = () => {
         />
         <HeaderOverflow
           extra={
-            <ViewTogglesPanel
-              contents={contentsToggle}
-              fullWidth={fullWidthToggle}
-            />
+            <>
+              <ViewTogglesPanel
+                contents={contentsToggle}
+                fullWidth={fullWidthToggle}
+              />
+              <CardsTogglePanel
+                expanded={cardsBrought}
+                onToggle={toggleCards}
+              />
+            </>
           }
         >
           <PlanningPendingAnswers
@@ -3533,6 +3605,12 @@ export const PlanningPage: React.FC = () => {
               }}
             />
           </button>
+          <PlanningCopyPanel
+            answers={pendingCount}
+            known={countKnown}
+            counts={groupCounts.kinds}
+            onCopy={copyWithMaintenance}
+          />
         </HeaderOverflow>
       </div>
     </div>
@@ -3569,7 +3647,7 @@ export const PlanningPage: React.FC = () => {
                 active={outlineActive}
                 picker={picker?.(true) ?? null}
                 hrefOf={outlineHref}
-                onSection={goToSection}
+                onLine={jumpToLine}
                 onDocument={jumpToDocument}
               />
             )}
@@ -3606,6 +3684,7 @@ export const PlanningPage: React.FC = () => {
                   describedBy={filterDescribedBy}
                   announcement={announcement}
                   printText={frameFilter}
+                  counts={frameReady ? filterCounts : null}
                 />
               )}
               {ready?.rescanning && (
@@ -3673,83 +3752,29 @@ export const PlanningPage: React.FC = () => {
                 </Notice>
               ) : (
                 <>
-                  {/* The frame (§6.3): the roadmap line when two or more
-                roadmaps route, the section bar, or the progress line in
-                their place, then the notices. It paints first; the
-                sections fill the region below it in one later commit. */}
-                  {!outlineShown && picker?.(false)}
-                  {/* Keyed by what it holds: the progress line's box is
-                          not the section bar's. Reused, it was the one
-                          painted box the roadmap line, inserted above it,
-                          moved down, which the browser scores as a layout
-                          shift on every cold load of a page with a picker,
-                          though nothing painted under it moved
-                          (planning-index.md §6.10). Replaced, it is
-                          a removal and an insertion, which score nothing.
-                          So is it, and all below it, when a filter is
-                          applied: a shorter bar, or one with no Copy all
-                          agent requests, moved its controls, and the
-                          notice the frame gains moved the sections
-                          (§6.16). */}
-                  {/* Not drawn at all under *Nothing matches*, which has
-                      no section to jump to and no card to unfold: its room,
-                      held for links that arrive later, read as something
-                      that failed to load above it. It goes in the commit
-                      that draws *Nothing matches*, so it moves nothing
-                      painted. */}
-                  {!(
-                    frameReady &&
-                    frameLayout !== null &&
-                    nothingMatches !== null
-                  ) && (
+                  {/* The frame (§6.3): the progress line while the index
+                      builds, then the notices. The section bar is gone
+                      (planning-to-do-list.md §3.5): the page's top is the
+                      filter line, Needs you's heading and its first card.
+                      The sections fill the region below in one later
+                      commit. */}
+                  {!(frameReady && frameLayout !== null) && (
                     <div
-                      key={
-                        frameReady && frameLayout !== null
-                          ? `bar\n${frameFilterKey}`
-                          : "progress"
-                      }
+                      key="progress"
                       className="mb-6 flex min-h-7 flex-wrap items-center gap-x-3 gap-y-1"
                     >
-                      {frameReady && frameLayout !== null ? (
-                        <>
-                          <SectionBar entries={barEntries} onGo={goToSection} />
-                          {/* The page's controls over its sections, at the
-                            end of the line, or of a line of their own when
-                            the section bar leaves no room for them. */}
-                          <div className="ml-auto flex shrink-0 items-center gap-1 print:hidden">
-                            {frameLayout.maintenance.some((kind) =>
-                              isPlanningRequestId(kind.id),
-                            ) && (
-                              <CopyRequestButton
-                                label="Copy all agent requests"
-                                name="Copy all agent requests"
-                                hint="Copy one instruction for an agent covering every entry of every section an agent works on, on every page"
-                                done="Copied every agent request."
-                                request={() => requestOf()}
-                              />
-                            )}
-                            {frameLayout.needsYou.length > 0 && (
-                              <CardsToggle
-                                expanded={cardsBrought}
-                                onToggle={toggleCards}
-                              />
-                            )}
-                          </div>
-                        </>
-                      ) : (
-                        <ProgressLine
-                          progress={
-                            load.status === "loading"
-                              ? load.progress
-                              : index !== null
-                                ? {
-                                    done: index.candidateCount,
-                                    total: index.candidateCount,
-                                  }
-                                : null
-                          }
-                        />
-                      )}
+                      <ProgressLine
+                        progress={
+                          load.status === "loading"
+                            ? load.progress
+                            : index !== null
+                              ? {
+                                  done: index.candidateCount,
+                                  total: index.candidateCount,
+                                }
+                              : null
+                        }
+                      />
                     </div>
                   )}
                   {/* Keyed so too, the notices and the sections' box: the
@@ -3804,6 +3829,11 @@ export const PlanningPage: React.FC = () => {
                               Comments could not be loaded.
                             </p>
                           )}
+                          {/* The roadmap picker where the column is not
+                              drawn: on Needs you's heading line, the list
+                              the roadmap orders, else on a line of its own
+                              (planning-to-do-list.md §3.5). */}
+                          {!outlineShown && !needsYouDrawn && picker?.(false)}
                           {nothingMatches !== null ? (
                             <NothingMatches
                               id={nothingMatchesId}
@@ -3815,27 +3845,30 @@ export const PlanningPage: React.FC = () => {
                             />
                           ) : (
                             <>
-                              {needsYouView !== null &&
-                                (needsYouView.top.length > 0 ||
-                                  needsYouView.list.length > 0) && (
-                                  <PlanningNeedsYou
-                                    explanation={
-                                      shown.inputs.layout.needsYouExplanation
-                                    }
-                                    needYou={
-                                      freshNeedsYou === null
-                                        ? 0
-                                        : freshNeedsYou.cards.length +
-                                          freshNeedsYou.more.length
-                                    }
-                                    view={needsYouView}
-                                    pageSize={shown.inputs.layout.pageSize}
-                                    pageSizes={planningLimits.pageSizes}
-                                    item={needsYouItem}
-                                    onShowAnswered={showAnswered}
-                                    onPageSize={choosePageSize}
-                                  />
-                                )}
+                              {needsYouDrawn && needsYouView !== null && (
+                                <PlanningNeedsYou
+                                  explanation={
+                                    shown.inputs.layout.needsYouExplanation
+                                  }
+                                  needYou={
+                                    freshNeedsYou === null
+                                      ? 0
+                                      : freshNeedsYou.cards.length +
+                                        freshNeedsYou.more.length
+                                  }
+                                  view={needsYouView}
+                                  pageSize={shown.inputs.layout.pageSize}
+                                  pageSizes={planningLimits.pageSizes}
+                                  item={needsYouItem}
+                                  onShowAnswered={showAnswered}
+                                  onPageSize={choosePageSize}
+                                  headingExtra={
+                                    outlineShown
+                                      ? undefined
+                                      : (picker?.(false, true) ?? undefined)
+                                  }
+                                />
+                              )}
                               <PlanningGroups
                                 layout={shown.inputs.layout}
                                 index={shown.inputs.index}
@@ -3846,6 +3879,7 @@ export const PlanningPage: React.FC = () => {
                                 gone={groupGone}
                                 explanationOf={explanationOf}
                                 requestOf={requestOf}
+                                waitsOutside={frameSummary?.waitsOutside}
                                 onOpenHere={saveScroll}
                               />
                             </>

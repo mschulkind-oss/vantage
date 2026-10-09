@@ -4,11 +4,14 @@
  * card or row is being read, measured as the pane scrolls.
  */
 import { useEffect, useState } from "react";
-import type { SectionId } from "../lib/planningPages";
 
 /** Where the reader is, as the outline marks it. */
 export interface OutlineActive {
-  section: SectionId | null;
+  /**
+   * What is being read: `needs-you` for a full card's document, else the
+   * outline line's id (`answered`, `waiting`, `maintenance`).
+   */
+  section: string | null;
   /** The document whose card or row is being read, in `section`. */
   path: string | null;
 }
@@ -20,7 +23,7 @@ export const NOWHERE: OutlineActive = { section: null, path: null };
  * is the section's, or a document's card or row, by the id it carries.
  */
 export interface OutlineTarget {
-  section: SectionId;
+  section: string;
   path: string | null;
   id: string;
 }
