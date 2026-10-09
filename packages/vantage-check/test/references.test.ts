@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { checkTree, makeTree, ruleIds } from "./helpers.js";
+import { checkTree, gitEnvScrubbed, makeTree, ruleIds } from "./helpers.js";
 
 /**
  * A tree that is a git repository, so ignore rules apply to it.
@@ -17,7 +17,7 @@ function gitTree(files: Record<string, string>): string {
   const root = makeTree(files);
   execFileSync("git", ["-c", "core.excludesFile=/dev/null", "init", "-q"], {
     cwd: root,
-    env: { ...process.env, GIT_CONFIG_NOSYSTEM: "1" },
+    env: { ...gitEnvScrubbed(), GIT_CONFIG_NOSYSTEM: "1" },
   });
   return root;
 }

@@ -35,7 +35,7 @@ import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
  * pointing at the *outer* repository, and an inherited one would silently
  * answer about the wrong tree.
  */
-const GIT_LOCATION_ENV = [
+export const GIT_LOCATION_ENV = [
   "GIT_DIR",
   "GIT_WORK_TREE",
   "GIT_INDEX_FILE",
