@@ -1228,12 +1228,33 @@ describe("your own actions (planning-to-do-list.md §4.1)", () => {
     await settle();
     // Typing never shrinks it.
     expect(cardIds()).toEqual(["OQ-T1", "OQ-T2"]);
+    // Past the pause, the box has saved what it holds: the review answers
+    // the question now, and it is still no late data of anyone else's.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+    });
+    await settle();
+    expect(reviews["plans/todo.md"]?.[0]?.comment).toBe("The second way.");
+    expect(cardIds()).toEqual(["OQ-T1", "OQ-T2"]);
+    expect(
+      cardFor("OQ-T1").querySelector(
+        '[data-planning-mark="answered-elsewhere"]',
+      ),
+    ).toBeNull();
+    expect(updatesButton()).toHaveAttribute("aria-hidden", "true");
     await act(async () => {
       fireEvent.click(screen.getAllByRole("button", { name: "Close" })[0]!);
     });
     await settle();
     expect(rowIds()).toEqual(["OQ-T1"]);
     expect(cardIds()).toEqual(["OQ-T2", "OQ-T3"]);
+    expect(updatesButton()).toHaveAttribute("aria-hidden", "true");
+    // The focus, whose control the shrink took away, goes to the row's Show.
+    expect(document.activeElement).toBe(
+      within(
+        screen.getByRole("group", { name: "OQ-T1: Question OQ-T1?" }),
+      ).getByRole("button", { name: /^Show/ }),
+    );
   });
 
   it("opens the row back into its card on Undo, and keeps the card that joined", async () => {
@@ -1316,6 +1337,193 @@ describe("your own actions (planning-to-do-list.md §4.1)", () => {
     await renderPage();
     expect(listedIn("Not on a roadmap")).toHaveLength(2);
     expect(toggle(/^Blocked/)).toBeTruthy();
+  });
+});
+
+describe("the focus, where the reader's own action takes its control away (§4.1)", () => {
+  it("goes to the row's Show when Take this leaning shrinks the card", async () => {
+    pageSize(2);
+    seed(todoTree(3));
+    await renderPage();
+    const take = within(cardFor("OQ-T1")).getByRole("button", {
+      name: "Take this leaning",
+    });
+    take.focus();
+    await act(async () => {
+      fireEvent.click(take);
+    });
+    await settle();
+    expect(document.activeElement).toBe(
+      within(
+        screen.getByRole("group", { name: "OQ-T1: Question OQ-T1?" }),
+      ).getByRole("button", { name: /^Show/ }),
+    );
+  });
+
+  it("goes to the opened card's heading on Show", async () => {
+    pageSize(2);
+    const tree = todoTree(3);
+    seed(tree);
+    answer(tree, "OQ-T1");
+    await renderPage();
+    const show = within(
+      screen.getByRole("group", { name: "OQ-T1: Question OQ-T1?" }),
+    ).getByRole("button", { name: /^Show/ });
+    show.focus();
+    await act(async () => {
+      fireEvent.click(show);
+    });
+    await settle();
+    expect(document.activeElement).toBe(
+      within(cardFor("OQ-T1")).getByRole("heading", { level: 3 }),
+    );
+  });
+
+  it("goes to the first row … N more answered shows", async () => {
+    pageSize(2);
+    const tree = todoTree(8);
+    seed(tree);
+    answer(tree, "OQ-T1", "OQ-T2", "OQ-T3", "OQ-T4", "OQ-T5", "OQ-T6");
+    await renderPage();
+    const more = section("Needs you").querySelector<HTMLButtonElement>(
+      "[data-planning-more-answered]",
+    )!;
+    more.focus();
+    await act(async () => {
+      fireEvent.click(more);
+    });
+    await settle();
+    expect(document.activeElement).toBe(
+      within(
+        screen.getByRole("group", { name: "OQ-T6: Question OQ-T6?" }),
+      ).getByRole("button", { name: /^Show/ }),
+    );
+  });
+
+  it("goes after Refresh to the item it kept in place, else Needs you's heading", async () => {
+    pageSize(2);
+    const tree = todoTree(3);
+    seed(tree);
+    await renderPage();
+    answer(tree, "OQ-T1");
+    await reviewPushed("plans/todo.md");
+    updatesButton().focus();
+    await refresh();
+    // jsdom lays nothing out, so no item is on screen to keep.
+    expect(document.activeElement).toBe(
+      within(section("Needs you")).getByRole("heading", { level: 2 }),
+    );
+  });
+});
+
+describe("a group the layout did not have (§4.2)", () => {
+  it("is not drawn until the next layout: its items count in the updates slot", async () => {
+    pageSize(2);
+    const tree = todoTree(2);
+    seed(tree);
+    await renderPage();
+    expect(querySection("Blocked")).toBeNull();
+    expect(querySection("Maintenance")).toBeNull();
+    const after = {
+      ...tree,
+      "plans/todo.md": doc(
+        "stage: DESIGN",
+        q("OQ-T1", OPEN),
+        q("OQ-T2", OPEN),
+        q("OQ-T3", BLOCKED),
+      ),
+      "plans/ready.md": doc("status: accepted\nstage: DECIDED", "Decided."),
+    };
+    serveTree(after);
+    setLoad(readyOf(after));
+    await settle();
+    expect(querySection("Blocked")).toBeNull();
+    expect(querySection("Maintenance")).toBeNull();
+    expect(updatesButton()).toHaveAttribute(
+      "title",
+      expect.stringContaining("new under Blocked"),
+    );
+    await refresh();
+    expect(querySection("Blocked")).not.toBeNull();
+    expect(querySection("Maintenance")).not.toBeNull();
+  });
+
+  it("names in Maintenance's heading only the kinds the layout has, their numbers live", async () => {
+    const tree = todoTree(1, {
+      "plans/ready.md": doc("status: accepted\nstage: DECIDED", "Decided."),
+    });
+    seed(tree);
+    await renderPage();
+    const kinds = () => screen.getByTestId("maintenance-kinds");
+    expect(kinds()).toHaveTextContent(/^· 1 ready to build$/);
+    const after = {
+      ...tree,
+      "plans/ready2.md": doc("status: accepted\nstage: DECIDED", "Decided."),
+      "plans/built.md": doc("status: accepted\nstage: BUILT", "Built."),
+    };
+    serveTree(after);
+    setLoad(readyOf(after));
+    await settle();
+    expect(kinds()).toHaveTextContent(/^· 2 ready to build$/);
+    await refresh();
+    expect(kinds()).toHaveTextContent(/^· 2 ready to build · 1 to graduate$/);
+  });
+});
+
+describe("the end line follows the layout on screen (§3.3)", () => {
+  it("never says Nothing needs you while a full card is still painted", async () => {
+    pageSize(2);
+    const tree = todoTree(1);
+    seed(tree);
+    await renderPage();
+    answer(tree, "OQ-T1");
+    await reviewPushed("plans/todo.md");
+    expect(cardIds()).toEqual(["OQ-T1"]);
+    expect(endLine()).not.toHaveTextContent("Nothing needs you");
+    await refresh();
+    expect(endLine()).toHaveTextContent("Nothing needs you");
+  });
+});
+
+describe("a card a row opens into (§4.1)", () => {
+  it("is drawn from the document as it is at the layout, after an edit and Refresh", async () => {
+    pageSize(2);
+    // Its block, in a document of its own, is past those a layout fetches
+    // ahead, so Show fetches it.
+    const tree = {
+      ...todoTree(9),
+      "roadmap.md":
+        "# Roadmap\n\n1. [The list](plans/todo.md)\n2. [Late](plans/late.md)\n",
+      "plans/late.md": doc("stage: DESIGN", q("OQ-T10", OPEN)),
+    };
+    seed(tree);
+    answer(tree, "OQ-T10");
+    await renderPage();
+    const show = async () => {
+      await act(async () => {
+        fireEvent.click(
+          within(
+            screen.getByRole("group", { name: "OQ-T10: Question OQ-T10?" }),
+          ).getByRole("button", { name: /^Show/ }),
+        );
+      });
+      await settle();
+    };
+    await show();
+    expect(cardFor("OQ-T10")).not.toHaveTextContent("and more besides");
+    const after = {
+      ...tree,
+      "plans/late.md": tree["plans/late.md"].replace(
+        "_Leaning:_ Yes.",
+        "_Leaning:_ Yes, and more besides.",
+      ),
+    };
+    serveTree(after);
+    setLoad(readyOf(after));
+    await settle();
+    await refresh();
+    await show();
+    expect(cardFor("OQ-T10")).toHaveTextContent("and more besides");
   });
 });
 
@@ -1453,8 +1661,13 @@ describe("what arrives late (planning-to-do-list.md §4.2)", () => {
       "title",
       expect.stringContaining("1 done"),
     );
-    // Maintenance's count changed live; its list waits.
-    expect(screen.getByTestId("maintenance-count")).toHaveTextContent("1");
+    // Maintenance, which the layout did not have, waits for the next one;
+    // its item is counted in the updates slot meanwhile.
+    expect(querySection("Maintenance")).toBeNull();
+    expect(updatesButton()).toHaveAttribute(
+      "title",
+      expect.stringContaining("1 new under Maintenance"),
+    );
     await refresh();
     expect(cardIds()).toEqual(["OQ-T2", "OQ-T3"]);
     expect(listedIn("To fold into the ledger")).toEqual([
