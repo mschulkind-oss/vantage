@@ -452,6 +452,8 @@ the box closes before the request answers, so a failure loses the text
   while it is empty: the server accepts an empty edit today, and only the box
   stops it
   ([`review_command_handlers.go`](../../internal/api/review_command_handlers.go#L128)).
+  A reply box closed empty does the same as an edit box: the reply keeps its
+  last saved text.
 - **Its own saves never disturb it.** A save pushes a review change to every
   tab, this one included, and the document page rebuilds its comment layer on
   every push ([`useReviewHighlights.ts`](../../frontend/src/hooks/useReviewHighlights.ts#L913)),
@@ -484,9 +486,10 @@ the box closes before the request answers, so a failure loses the text
 - **A failed save is retried** 1 s later, then after twice as long each time,
   up to every 30 s, for as long as the tab is open. The text stays in the box
   meanwhile. A box closed with text not yet saved hands it to the same
-  retries; while any text is unsaved, the app shell says how many comments are
-  not saved, with a way to reopen each, and leaving or reloading the tab asks
-  first. No text is ever dropped without the reader being told.
+  retries. While any save has failed and is being retried, the app shell says
+  how many comments are not saved, with a way to reopen each; it does not
+  flash for an ordinary pause or a save in flight. Leaving or reloading the
+  tab asks first whenever any text is unsaved, a pause's included. No text is ever dropped without the reader being told.
 - **Two tabs editing one comment:** the last save wins, as it does today
   ([`review-state-architecture.md` §6.1](review-state-architecture.md#61-reviewer-writes-become-commands)).
 
