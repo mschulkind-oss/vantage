@@ -62,13 +62,25 @@ cite them were then checked against `09a0914`'s code, whose perimeter differs
 from `b759024`'s only by `b5a0860` and by comments. *Nothing matches*, what a
 filter that keeps no entry shows and prints (`fdc6f06`, `4d18878`), and the
 caution for a `target` before 0.8 (`3fbfaa4`) were then written in from
-`3fbfaa4`'s code ([§6.18](#618-the-filter-notice-and-nothing-matches)), whose
+`3fbfaa4`'s code ([§6.18](#618-the-filters-counts-the-notice-and-nothing-matches)), whose
 perimeter differs from `09a0914`'s only by those three commits. The rest was
 verified on 2026-09-30 against `0a872d9`, the commit that added this document,
 and amended since by each commit that changed what it describes, in that commit.
 Of the perimeter's other commits since, `06e8797`, `ffb1676`, `6b62ed1`, `db5c01f` and
 `519cd66` were read against it at graduation and change none of its claims; the
 amendments were not read again.
+The planning page as a to-do list graduated into this document on 2026-10-09 from
+[`planning-to-do-list.md`](../design/planning-to-do-list.md), written from
+`9a27a9fa`'s code: its sections and groups
+([§6.2](#62-sections-top-to-bottom)), the frame and header
+([§6.3](#63-the-frame-and-the-header)), *Needs you*, layouts and Refresh, in
+place of pages ([§6.4](#64-needs-you-as-a-to-do-list)), Copy answers +
+maintenance ([§6.7](#67-answering-and-copy-answers)), the picker's place
+([§6.8](#68-several-roadmaps-on-the-page)), *On this page*
+([§6.9](#69-the-planning-outline)), the filter line's counts
+([§6.17](#617-the-filter-line), [§6.18](#618-the-filters-counts-the-notice-and-nothing-matches)),
+[§12](#12-late-data-never-moves-painted-content)'s late data, and the `OQ-TD` rows of [Why it's this way](#why-its-this-way).
+The design stays beside it until the user retires it.
 **MEASURED at scale on 2026-10-01**, against `46c4091`'s code: every scale target
 in [§18](#18-scale-targets-and-what-has-been-measured) has been run against the
 build, or is held by a test. The scale fixture meets every target but D6 as the
@@ -310,7 +322,7 @@ git.
   is 300 ms, and a gap that long between two keys is a pause too: the page then
   says *Nothing matches* in place of its sections, and goes on saying it until a
   key types a text that keeps an entry ([§6.16](#616-typing-and-the-url),
-  [§6.18](#618-the-filter-notice-and-nothing-matches)).
+  [§6.18](#618-the-filters-counts-the-notice-and-nothing-matches)).
 
 ---
 
@@ -341,10 +353,17 @@ Their text is in git; this is now where the terms are defined.
 | **Section guide** | Each section's title, the one line that explains it, and its actor, kept once in `packages/vantage-md/src/planning/guide.ts` ([§6.2](#62-sections-top-to-bottom)) | the section ids, which never change | the section retitling, 2026-10-01 |
 | **Actor** (of a section) | Who acts next on its entries: `you`, the reader; `agent`, an agent given its request; or `nobody` | who wrote the documents | the section retitling, 2026-10-01 |
 | **Agent section** | A section whose actor is `agent`: *Not on a roadmap*, *Ready to build*, *Ready to graduate* and *Stage conflict* | the only sections an agent reads: `index` prints every one | the section retitling, 2026-10-01 |
-| **Agent request** | The self-contained instruction, for every entry of one or more agent sections, that the page copies and `vantage-check index --request` prints ([§6.2](#62-sections-top-to-bottom)) | a stored prompt: it is generated from the index each time it is asked for | the section retitling, 2026-10-01 |
-| **Roadmap line** | The line of the planning page's frame holding the roadmap picker, shown only when two or more roadmaps route ([§6.8](#68-several-roadmaps-on-the-page)) | the roadmap notice, which says why none routes | the planning-index design |
+| **Agent request** | The self-contained instruction, for every entry of one or more agent sections or of `compact`'s ✅ questions, that the page copies and `vantage-check index --request` prints ([§6.2](#62-sections-top-to-bottom)) | a stored prompt: it is generated from the index each time it is asked for | the section retitling, 2026-10-01 |
+| **Roadmap line** | The line holding the roadmap picker, shown only when two or more roadmaps route: on *Needs you*'s heading line, or at the outline's head ([§6.8](#68-several-roadmaps-on-the-page)) | the roadmap notice, which says why none routes | the planning-index design |
+| **Group** (folded) | *Blocked* or *Maintenance* on the planning page: a heading line with its count, closed until opened, listing one row per item ([§6.2](#62-sections-top-to-bottom)) | a section of the index, which *Maintenance* holds several of | the to-do list design, 2026-10-08 |
+| **Kind** (of *Maintenance*) | One sub-list of *Maintenance*: an agent section, *To fold into the ledger* (`compact`), *Too large* or *Unreadable* ([§6.2](#62-sections-top-to-bottom)) | a question's state | the to-do list design |
+| **Item** | One question or one document row the page lists, counted once even where two groups list it: what the filter line's *N match · M hidden* counts ([§6.18](#618-the-filters-counts-the-notice-and-nothing-matches)) | an entry, which a document in two sections is twice | the to-do list design, 2026-10-08 |
+| **Layout** | The page's arrangement of items: which it lists, in what order, as rows or cards. Only the reader's own actions make one ([§6.4](#64-needs-you-as-a-to-do-list)) | the data in hand, which late data changes | the to-do list design, 2026-10-08 |
+| **Answered row** | A question answered by a comment, drawn as one line in *Needs you* with its chip and Show ([§6.4](#64-needs-you-as-a-to-do-list)) | a ✅ question, which *Maintenance* lists | the to-do list design, 2026-10-08 |
+| **Page size** | How many questions that need you *Needs you* shows as full cards: 10, 20, 30 or 50, remembered per browser ([§6.4](#64-needs-you-as-a-to-do-list)) | a page of a section, which no longer exists | the to-do list design, 2026-10-08 |
+| **Updates slot** | The header's *N updates · Refresh*, counting the late changes a new layout would apply ([§6.4](#64-needs-you-as-a-to-do-list)) | a notification: nothing applies the updates but the reader | the to-do list design, 2026-10-08 |
 | **App shell** | The frame the viewer draws around a document — sidebar, pickers, dialogs, shortcuts — which the planning page is drawn in too ([§6.1](#61-the-url-the-route-and-the-app-shell)) | the header alone | the planning-index design |
-| **Planning outline** | What the contents column shows on the planning page, in place of a document's table of contents ([§6.9](#69-the-planning-outline)) | the section bar, though it is drawn from the same index | the planning-index design |
+| **Planning outline** | What the contents column shows on the planning page, titled *On this page*, in place of a document's table of contents ([§6.9](#69-the-planning-outline)) | a list of every section's documents, which it was until 2026-10-09 | the planning-index design |
 | **Project root** | The nearest ancestor of a directory holding `.git` or `.vantage.toml` ([§13.1](#131-the-project-root)) | the directory a `--config` file sits in | the planning-index design |
 | **Unit** (of a question) | The blocks a question is: its list item; or, outside a list, its host block and the blocks after it up to the next heading, rule or question ([§3.3](#33-questions)) | the card block, which can hold several units | the first implementation plan; outside a list, amended 2026-10-01 |
 | **Single-path mode** | The planning endpoint answering for one `?path=` ([§9.2](#92-one-path-the-single-path-mode)) | the content endpoint, which it deliberately is not | the first implementation plan |
@@ -363,10 +382,8 @@ Their text is in git; this is now where the terms are defined.
 | **Owner** | The scanner id and the server id together: whose results the scan cache holds | either half alone | the at-scale amendment |
 | **Warm build** | A build that starts with at least one scan-cache entry for its repository under the current owner. Any other build is **cold** | a build that happens to be fast | the at-scale amendment |
 | **Card block** | The Markdown a question's card renders, with its line offset ([§10.4](#104-card-blocks)) | the question's unit | the at-scale amendment |
-| **Frame** | The planning page's header, roadmap line, section bar and notices, painted first ([§6.3](#63-the-frame-and-the-section-bar)) | the sections | the at-scale amendment |
-| **Section bar** | One line under the frame's header naming each non-empty section with its exact count | a pager | the at-scale amendment |
-| **Page** (of a section) | A run of one section's entries, chosen by a URL query parameter ([§6.4](#64-pages)) | a browser page | the at-scale amendment |
-| **Page inputs** | What the shown pages' cards need before they may paint: their card blocks, their documents' reviews, and their Mermaid diagrams drawn ([§6.5](#65-page-inputs-and-one-commit)) | the index | the at-scale amendment |
+| **Frame** | The planning page's header, the outline with its picker while the column is drawn, and the notices, painted first ([§6.3](#63-the-frame-and-the-header)) | the sections | the at-scale amendment |
+| **Page inputs** | What a layout's cards need before they may paint: their card blocks, their documents' reviews, and their Mermaid diagrams drawn ([§6.5](#65-page-inputs-and-one-commit)) | the index | the at-scale amendment |
 | **Preview card** | A card drawn from the index alone, for a question whose card block is too large to render unasked ([§6.6](#66-question-cards)) | a summary shown instead of every card | the at-scale amendment |
 | **Placement** | Matching a comment to a listed question by its anchor line, for a card not rendered this visit ([§6.7](#67-answering-and-copy-answers)) | the card's own scoping, which reads the rendered block | the at-scale amendment |
 | **Answered by a comment** | A question with a comment pending for the agent on it, by scoping or placement: the human's answer, whatever its text ([§6.7](#67-answering-and-copy-answers)) | the ✅ *answered* state, which only the document's marker gives | coined in this document, from the user's ruling of 2026-10-01 |
@@ -392,9 +409,9 @@ Their text is in git; this is now where the terms are defined.
 | **Applied filter** | The filter whose results the page shows, or is bringing in. While the reader types, the box's newest understood text, unless that text keeps no entry, which waits for the idle pause; otherwise the URL's ([§6.16](#616-typing-and-the-url)) | the box's text, which may not be understood; and not the URL's either, which lags the box by up to the idle pause | the planning-filter design, 2026-10-05; amended 2026-10-06 |
 | **Idle pause** | The short stillness of the box's text after which the URL takes the box's newest understood text ([§6.16](#616-typing-and-the-url)) | a wait before the page applies a text, except one that keeps no entry: no other text's results wait for it | the planning-filter design |
 | **Filter line** | The fixed-height row at the top of the planning page that holds the Filter box ([§6.17](#617-the-filter-line)) | the frame, or the header | the planning-filter design |
-| **Filter notice** | The sentences, shared by the page and the checker, saying a page is filtered and what that hides ([§6.18](#618-the-filter-notice-and-nothing-matches)) | the box | the planning-filter design |
-| ***Nothing matches*** | What the page shows, and the checker prints, in place of the sections when an applied filter keeps no entry: a headline naming the filter, then one line saying why ([§6.18](#618-the-filter-notice-and-nothing-matches)). Where all it keeps is on other roadmaps, the headline is *Nothing on this roadmap matches* | *Nothing this filter keeps needs you*, said only where the filter keeps an entry; a filter that is not understood, which shows every entry | coined for this page by the empty-state ruling of 2026-10-06 (`fdc6f06`) |
-| **Planning link** | A URL to the planning page that carries a planning filter, as `--filter` prints it ([§13.5](#135-handing-the-human-a-filtered-page)) | the address bar after a flip, which may also hold page parameters | the planning-filter design |
+| **Filter notice** | The sentences, shared by the page and the checker, saying a page is filtered and what that hides ([§6.18](#618-the-filters-counts-the-notice-and-nothing-matches)). The checker prints them; the page draws only *Not filtered* as a line, and says the rest in the counts' tooltip | the box, and the page's *N match · M hidden* | the planning-filter design |
+| ***Nothing matches*** | What the page shows, and the checker prints, in place of the sections when an applied filter keeps no entry: a headline naming the filter, then one line saying why ([§6.18](#618-the-filters-counts-the-notice-and-nothing-matches)). Where all it keeps is on other roadmaps, the headline is *Nothing on this roadmap matches* | *Nothing this filter keeps needs you*, said only where the filter keeps an entry; a filter that is not understood, which shows every entry | coined for this page by the empty-state ruling of 2026-10-06 (`fdc6f06`) |
+| **Planning link** | A URL to the planning page that carries a planning filter, as `--filter` prints it ([§13.5](#135-handing-the-human-a-filtered-page)) | the address bar, which may also hold a roadmap or a fragment | the planning-filter design |
 | **Root-relative link** | A planning link that starts at `/.vantage/planning`, with no scheme, host or port, because the checker does not know them: what [RFC 3986 §4.2](https://www.rfc-editor.org/rfc/rfc3986#section-4.2) calls an absolute-path reference | a relative Markdown link; it is never resolved against the page it is opened from | the planning-filter design |
 | **Pasted link** | A planning link, whole or root-relative, pasted into the Filter box on its own or inside the lines the checker prints around it. The box applies its filter at once ([§6.17](#617-the-filter-line)) | filter text: `filter=` and `--filter` never read a link | the planning-filter design |
 | **Space id** | One random id per checkout, kept as the single line of its `.vantage/space`, which a planning link carries as `space=` so a server serving many projects can open the one the link was made in ([§13.6](#136-the-space-id)) | a project's name, which is the server's; an address; anything committed | coined for this feature from the user's word *space*, 2026-10-06 |
@@ -553,7 +570,7 @@ spans.
   question's unit; `block` is the root-level block holding it, or, for a
   question outside a list at the root, its directive run to the unit's last
   line; and `cardChars` is the length of its card block, which the page pages
-  by ([§6.4](#64-pages)). `unitEndLine` has no rendered twin — a rendered
+  by ([§6.4](#64-needs-you-as-a-to-do-list)). `unitEndLine` has no rendered twin — a rendered
   `<li>` carries only its start line — so it is tested against parse
   positions, and placement by it against the page's own reading of every
   block of every document under `docs/`.
@@ -810,9 +827,10 @@ planning page (`frontend/src/components/AppShell.tsx`), so going from a document
 to the planning page and back replaces the main column and nothing else: the
 sidebar is not drawn again, its tree keeps its expanded folders and scroll
 position, and nothing it shows is asked for again. The header is the viewer's,
-fitted by the same yield steps: the sidebar button, the contents-column and
-full-width toggles, the breadcrumb with the page's name, and **Review answers**
-and **Copy answers**.
+fitted by the same yield steps: the sidebar button, the contents-column,
+full-width and Expand all toggles, the breadcrumb with the page's name, the
+updates slot, and **Review answers**, **Copy answers** and **Copy answers +
+maintenance** ([§6.3](#63-the-frame-and-the-header)).
 
 - A document's controls (Raw, Path, history, review) have no meaning here and are
   not drawn, and the keys that act on a document do nothing, so the shortcuts
@@ -830,9 +848,10 @@ and **Copy answers**.
   ([§13.5](#135-handing-the-human-a-filtered-page)).
 - The two toggles are the viewer's own preferences, so the page stores nothing
   new for them. Cards keep a reading width, and full width widens them to the
-  pane. The page's one preference of its own, **Expand all** / **Collapse all**
-  ([§6.6](#66-question-cards)), is a display preference of the same kind, kept
-  the same way.
+  pane. The page's own preferences — **Expand all** / **Collapse all**
+  ([§6.6](#66-question-cards)), the page size, which groups are open, and the
+  kinds Copy answers + maintenance leaves out — are display preferences of the
+  same kind, kept the same way ([Current values](#current-values)).
 - The pane is what scrolls, so the page's saved and restored scroll position is
   the pane's, and a page opened with the focus on nothing gives the pane the
   focus, without scrolling it, so the browser's scrolling keys work.
@@ -843,22 +862,36 @@ and **Copy answers**.
 ### 6.2 Sections, top to bottom
 
 `derivePlanningSections` in `packages/vantage-md/src/planning/sections.ts` decides
-what each section holds, and `guide.ts` beside it holds the *section guide*: each
-section's title, the line that explains it, and its actor.
+what each section of the index holds, and `guide.ts` beside it holds the *section
+guide*: each section's title, the line that explains it, and its actor. The page
+arranges those sections as a to-do list
+([`planning-to-do-list.md`](../design/planning-to-do-list.md), [OQ-TD1](#why-its-this-way)):
+*Needs you* first, then two folded groups, *Blocked* and *Maintenance*, which hold
+everything else (`layoutPlanningPage` in `frontend/src/lib/planningPages.ts`).
 
-| Section (id) | Contains | Order | Actor |
-| :--- | :--- | :--- | :--- |
-| **Needs you** (`needs-you`) | Questions the chosen roadmap routes whose state is *open* or *answered* | the chosen roadmap's order | you |
-| **Not on a roadmap** (`unrouted`) | Open questions no roadmap routes | path, then document order | agent |
-| **Blocked** (`waiting`) | Blocked questions; also documents with a `depends-on` entry that still waits. An entry naming a question waits while that question is open (💬); one naming a document waits while that document has an open question | path | nobody |
-| **Ready to build** (`ready`) | Documents whose stage has the `ready` role and no open questions, *Blocked* or not | path | agent |
-| **Ready to graduate** (`graduate`) | Documents whose stage has the `built` role and no live questions, *Blocked* or not | path | agent |
-| **Stage conflict** (`disagrees`) | Documents whose stage says `ready` or `built` while they still have open questions | path | agent |
-| **Too large** (`skipped`) / **Unreadable** (`could-not-read`) | [§16](#16-limits-and-bounds), [§15](#15-failure-modes) | path | you |
+| Section (id) | Contains | Order | Actor | On the page |
+| :--- | :--- | :--- | :--- | :--- |
+| **Needs you** (`needs-you`) | Questions the chosen roadmap routes whose state is *open* or *answered* | the chosen roadmap's order | you | *Needs you*, its open questions only ([§6.4](#64-needs-you-as-a-to-do-list)); a ✅ one is under *Maintenance* |
+| **Not on a roadmap** (`unrouted`) | Open questions no roadmap routes | path, then document order | agent | a kind of *Maintenance* |
+| **Blocked** (`waiting`) | Blocked questions; also documents with a `depends-on` entry that still waits. An entry naming a question waits while that question is open (💬); one naming a document waits while that document has an open question | path | nobody | the *Blocked* group |
+| **Ready to build** (`ready`) | Documents whose stage has the `ready` role and no open questions, *Blocked* or not | path | agent | a kind of *Maintenance* |
+| **Ready to graduate** (`graduate`) | Documents whose stage has the `built` role and no live questions, *Blocked* or not | path | agent | a kind of *Maintenance* |
+| **Stage conflict** (`disagrees`) | Documents whose stage says `ready` or `built` while they still have open questions | path | agent | a kind of *Maintenance* |
+| **Too large** (`skipped`) / **Unreadable** (`could-not-read`) | [§16](#16-limits-and-bounds), [§15](#15-failure-modes) | path | you | kinds of *Maintenance* |
+
+*Maintenance* holds one more kind that is not a section of the index: **To fold
+into the ledger** (`compact`), the ✅ questions, listed by `answeredQuestions`, the
+same function the `compact` request reads (P7). The index's sections, and their
+JSON, keep their meaning (P5 of the design): `sections.needs-you` still holds ✅
+questions in `vantage-check index --format json`, and the page and the checker
+count *Needs you* differently, as two views of the same data at different times
+([OQ-TD12](#why-its-this-way)). *Maintenance*'s kinds, in its order:
+`unrouted`, `ready`, `graduate`, `disagrees`, `compact`, `skipped`,
+`could-not-read` (`MAINTENANCE_KIND_IDS`).
 
 - **A title completes "these …" and is display text; the id is the interface.**
-  URLs, heading anchors, the outline, `--request` and the JSON carry the id, and
-  it never changes, because a release never gives existing notation a new meaning
+  URLs, heading anchors, `--request` and the JSON carry the id, and it never
+  changes, because a release never gives existing notation a new meaning
   ([`checker-version-skew.md`](../design/checker-version-skew.md), P0). The titles
   were Needs you, Unrouted, Waiting, Ready, Graduate, Disagrees, Skipped and Could
   not read until 2026-10-01; the ids are those names still.
@@ -866,32 +899,37 @@ section's title, the line that explains it, and its actor.
   it (`sectionExplanation`), such as *Built, with no questions left. An agent
   turns it into a reference doc.* With no roadmap chosen, *Needs you*'s line is
   *Open questions, by document. Rule each, then Copy answers.*, since there is no
-  roadmap order for it to follow.
-- **Each agent section has an agent request** (`planningAgentRequest`), generated
+  roadmap order for it to follow. *To fold into the ledger*'s is the page's own,
+  *Ruled, and waiting to be folded into the body they govern. An agent compacts
+  each.*
+- **Each agent kind has an agent request** (`planningAgentRequest`), generated
   from the index each time it is asked for, so it names what the documents say
   now in the stage words `[planning.stages]` declares now, in code-unit order. It
-  names the repository, then for each agent section that holds an entry what the
-  section means, what to do and every entry on every page — a question by path,
-  line, id and title, a document by path and stage, a *Stage conflict* document
-  with its open questions' ids — and ends with how to verify: `vantage-check` on
-  every changed Markdown file, then `vantage-check index`. Markdown only, because
+  names the repository, then for each requested kind that holds an entry what the
+  kind means, what to do and every entry — a question by path, line, id and title,
+  a document by path and stage, a *Stage conflict* document with its open
+  questions' ids — and ends with how to verify: `vantage-check` on every changed
+  Markdown file, then `vantage-check index`. Markdown only, because
   `vantage-check` reads any file it is given as Markdown, so a code file's `§N`
-  comments would read as broken references. What each asks:
+  comments would read as broken references. The five requests are the four agent
+  sections and `compact`, in that order whatever order they are asked for in. What
+  each asks:
 
-  | Section | The agent is asked to |
+  | Request | The agent is asked to |
   | :--- | :--- |
   | Not on a roadmap | propose each question's place on a roadmap, with a one-clause reason, and leave priority to the human: show the proposals, and edit a roadmap only once they confirm the order |
   | Ready to build | build each from its plan and give it a `built` stage; or, if one should not be built, ask the human and only with their agreement give it the `done` stage they choose |
   | Ready to graduate | write each as a reference document of the system as built, verified against the code, saying what it covers and the commit it was verified at, with the stage the repository's other reference documents carry (the `done` words are listed) or none; delete the design document and any plan written for it, repoint every link and citation of them in documents, code comments and tests, and keep every question id other documents cite resolvable |
   | Stage conflict | find which is wrong, the stage or the questions, and fix a wrong stage with an `open` one, or propose moving a follow-up question to a new document; rule and answer nothing, and ask the human for rulings |
+  | To fold into the ledger (`compact`) | compact each ✅ question: fold its ruling into the body it governs, add a Decision Ledger row keeping its id, remove its directive, and repair the links to its anchor |
 
   **A blocked document is marked, not left out.** *Ready to build* and *Ready to
   graduate* keep a document *Blocked* also lists, because `sections.ready` and
   `sections.graduate` mean that in the JSON and a published key keeps its
   meaning (P0). So the request says what holds it, as `(stage DECIDED; blocked
   on docs/a.md, 🔒 line 20)`: each `depends-on` entry that still waits, then
-  each 🔒 question of its own. When one of a section's entries is so marked, the
-  section's paragraph ends *Skip any entry marked blocked: it waits on something
+  each 🔒 question of its own. When one of a kind's entries is so marked, the
+  kind's paragraph ends *Skip any entry marked blocked: it waits on something
   else first.*
 
   **The `done` role holds words that differ in meaning,** such as this
@@ -900,22 +938,23 @@ section's title, the line that explains it, and its actor.
   human, or names it when only one is declared, and a new reference document
   follows the repository's other reference documents.
 
-  Each agent section that holds an entry has a **Copy agent request** button for
-  its own entries, at the end of its heading's line, and the page a **Copy all
-  agent requests** for every agent section at once, on the section bar's line
-  before Expand all / Collapse all, which paints with the bar: beside Copy
-  answers it would arrive after the header had painted, and move it. Both copy
-  the request built in the browser from the index in hand when pressed, so they
-  work offline and with nothing selected, and print hides them. Their label
-  reads *Copied* for two seconds in room kept for the longer label, so nothing
-  moves. The request names the repository by the root path `/info` reports,
-  asked for once when the page opens and read only when a button is pressed;
-  until it answers, by the repository's name in daemon mode, or `.`.
-  `vantage-check index --request` prints the same text, naming the project root
-  ([§13.2](#132-vantage-check-index)), so the two agree wherever the server
-  serves a repository's root.
+  Each agent kind that holds an entry has a **Copy agent request** button on its
+  sub-heading in *Maintenance*, for its own entries; the header's
+  [Copy answers + maintenance](#67-answering-and-copy-answers) copies the requests
+  of several kinds at once, after the answers. Both build the request in the
+  browser when pressed, from the data in hand under the layout's roadmap and
+  filter, the same data the kinds' live counts read
+  ([§4.2 of the design](../design/planning-to-do-list.md#42-what-arrives-late)), so
+  a request copies what its count says, offline and with nothing selected; print
+  hides them. Their label reads *Copied* for two seconds in room kept for the
+  longer label, so nothing moves. The request names the repository by the root
+  path `/info` reports, asked for once when the page opens and read only when a
+  button is pressed; until it answers, by the repository's name in daemon mode,
+  or `.`. `vantage-check index --request` prints the same text, naming the
+  project root ([§13.2](#132-vantage-check-index)), so the two agree wherever the
+  server serves a repository's root.
 
-  **Under a [planning filter](#611-the-planning-filter), both buttons follow it.**
+  **Under a [planning filter](#611-the-planning-filter), every request follows it.**
   The request covers the kept entries and gains one line after `Repository:`:
 
   ```text
@@ -933,45 +972,58 @@ section's title, the line that explains it, and its actor.
     the longest run inside it and padded with a space where it starts or ends with
     a backtick, so the period after it is never read as part of a path.
   - **Every blocked-on fact comes from the unfiltered sections**
-    ([§6.15](#615-what-a-filter-does-to-the-sections)).
+    ([§6.15](#615-what-a-filter-does-to-the-sections)), and `compact` reads the
+    filter's test of each ✅ question (`keeps`), since no filtered section holds
+    them.
   - **A not-understood filter is not applied,** so its request has no `Filter:`
     line and equals plain `--request`, and an unfiltered request gains nothing.
   - **The request is byte-equal to `vantage-check index --request --filter '<the
-    line's text>'`** for the same tree; the parity test runs over every understood
+    line's text>'`** for the same tree; the parity test runs Copy answers +
+    maintenance, every kind checked and no answer pending, over every understood
     text in the fixture of forms whose request is not empty
     ([§6.19](#619-across-releases)).
 
-- An empty section is not shown, and neither is one a filter empties. When a
-  filter empties every section,
-  [*Nothing matches*](#618-the-filter-notice-and-nothing-matches) stands in their
+- **An empty group or kind is not shown,** and neither is one a filter empties.
+  Which groups and kinds there are is the layout's
+  ([§6.4](#64-needs-you-as-a-to-do-list)): one that comes after it is counted in
+  the updates slot until the next layout, and one whose count falls to 0 keeps its
+  line. When a filter empties every section,
+  [*Nothing matches*](#618-the-filters-counts-the-notice-and-nothing-matches) stands in their
   place.
+- **The folded groups** are each a heading line with its count, closed until the
+  reader opens it, its state remembered in this browser per group
+  (`vantage:planningBlockedOpen`, `vantage:planningMaintenanceOpen`), read once a
+  visit (`frontend/src/components/PlanningGroups.tsx`). *Maintenance*'s heading
+  line names each of the layout's kinds with its live count, as *Maintenance 13 ·
+  3 not on a roadmap · 4 ready to build*, on one line that never wraps. Opened, a
+  group lists one row per item, never a card — a question by its document, id and
+  title, a document by its path and badge, each a link — the first 100 of each
+  list and then *Show all N*. A *Blocked* document row names what it waits on, and
+  under a filter adds *(which this filter leaves out)* after each target the
+  filter does not keep ([§6.18](#618-the-filters-counts-the-notice-and-nothing-matches)). A
+  question listed in a group is answered from its document.
 - A document whose stage has the `done` role appears in no section.
-- If no document outside the `done` role has an open question, the page says
-  **Nothing needs you**. That line can sit above a *Needs you* holding only ✅
-  answered questions, which await compaction rather than a ruling. It says so
-  too when every open question is *answered by a comment*
-  ([§6.7](#67-answering-and-copy-answers)), adding that every open question has
-  the human's answer, waiting on the agent; that line stands at the head of the
-  sections rather than among the notices, since it is drawn from the reviews the
-  sections are painted with. Under a filter both count kept questions only, and
-  the first reads *Nothing this filter keeps needs you*
+- **Nothing needs you.** If no document outside the `done` role has an open
+  question, the page says **Nothing needs you** among the notices; under a filter,
+  *Nothing this filter keeps needs you*
   ([§6.15](#615-what-a-filter-does-to-the-sections)). Neither is said where the
-  filter keeps no entry, since *Nothing matches* says that.
+  filter keeps no entry, since *Nothing matches* says that. *Needs you*'s own end
+  line says *Nothing needs you* once no full card is painted
+  ([§6.4](#64-needs-you-as-a-to-do-list)).
 - **A question only another roadmap routes** is in neither *Needs you* nor
   *Not on a roadmap*: it is routed, just not by the chosen roadmap. The page counts those
-  questions beside its roadmap picker rather than listing them in a section of
-  their own.
+  questions beside its roadmap picker rather than listing them.
 - If no roadmap routes — there is none, or every one is `done`, `skipped`,
   `unreadable` or `missing` — *Needs you* lists every open question grouped by
   document, *Not on a roadmap* disappears, and a single line says what the page looked
   for and how to point it at a roadmap ([§6.8](#68-several-roadmaps-on-the-page)).
-- If no stages are declared, the three stage sections disappear, and a single
+- If no stages are declared, the three stage kinds disappear, and a single
   line says how to declare stages.
 
 Every notice's wording is `PLANNING_NOTICES`, shared with `vantage-check index`
 (P7).
 
-### 6.3 The frame and the section bar
+### 6.3 The frame and the header
 
 `g p` is slow if the page renders every card before it paints: React Router's
 `BrowserRouter` wraps every navigation in a
@@ -980,96 +1032,139 @@ stays on screen under the new URL until the new page's whole tree has committed.
 So the route's first render is only the **frame** and an empty sections region,
 and it commits inside the transition at once.
 
-- **The frame** is the header ([§6.1](#61-the-url-the-route-and-the-app-shell)),
-  then, while the contents column is drawn, the planning outline with the roadmap
-  picker at its head, and otherwise the roadmap line when two or more roadmaps
-  route; then the section bar and the notices (the
-  [filter notice](#618-the-filter-notice-and-nothing-matches), first, then
-  *Nothing needs you*, no roadmap, a listed roadmap not read, no stages, refused).
-  The
+- **The header** is outside the pane that scrolls, so what is in it is always in
+  view. It holds, left to right: the sidebar button and the view toggles — the
+  contents column, full width, and **Expand all** / **Collapse all**
+  ([§6.6](#66-question-cards)), which is drawn at every width, unlike the other
+  two, and folds into the "⋯" with them; the breadcrumb; the **updates slot**,
+  *N updates · Refresh*, whose room is kept from first paint and which never folds
+  into the "⋯" ([§6.4](#64-needs-you-as-a-to-do-list)); **Review answers**,
+  **Copy answers** and **Copy answers + maintenance**
+  ([§6.7](#67-answering-and-copy-answers)). It is fitted by the viewer's yield
+  steps (`frontend/src/lib/headerFit.ts`); at 1280 px with the sidebar open its
+  labels yield to icons.
+- **The frame** is the header, then, while the contents column is drawn, the
+  planning outline with the roadmap picker at its head ([§6.9](#69-the-planning-outline));
+  then the notices (*Not filtered*
+  ([§6.18](#618-the-filters-counts-the-notice-and-nothing-matches)), first, then *Nothing
+  needs you*, no roadmap, a listed roadmap not read, no stages, refused). The
   [filter line](#617-the-filter-line) stands above all of it, outside the frame,
   since the frame is not drawn in the error and refused states.
-- **The section bar** names each non-empty section and its count, for example
-  `Needs you 143 · Not on a roadmap 12 · Blocked 7 · Ready to build 3 · Too large 1`. Each entry
-  jumps to its section without adding a history entry and moves the keyboard's
-  focus to the section's heading. Its link is the section's `#id`, so a page
-  opened on one scrolls to that section once the sections render, unless the visit
-  restores a scroll position of its own. The counts come from the index, never
-  from rendering, so they are exact at first paint, and every count is written in
-  one format, `1,200`, in the bar, the headings and the pagers alike. At the end
-  of the bar's line, whenever a section holds question cards, is **Expand all**
-  or **Collapse all** ([§6.6](#66-question-cards)), drawn with the bar. Under
-  [*Nothing matches*](#618-the-filter-notice-and-nothing-matches) the bar's whole
-  row is not drawn.
-- Once sections are on screen, the roadmap line, the bar and the notices are drawn
-  from the index those sections were laid out from, so an index update changes
-  them in the commit that changes the sections.
+- **There is no section bar** ([§3.5 of the design](../design/planning-to-do-list.md#35-the-contents-column)).
+  With the groups folded, the page's top is the filter line, *Needs you*'s heading
+  and its first card, so a line naming the sections had nothing left to jump to. A
+  link to a section's `#id`, or to a card's or a row's, still scrolls there once
+  the sections render, unless the visit restores a scroll position of its own.
+  Every count is written in one format, `1,200`.
+- Once sections are on screen, the notices are drawn from the index those
+  sections were laid out from, so they change in the commit of the next layout.
 - **The sections fill the empty region** in one later commit
-  ([§6.5](#65-page-inputs-and-one-commit)), below everything already painted.
+  ([§6.5](#65-page-inputs-and-one-commit)), below everything already painted,
+  with the roadmap picker on *Needs you*'s heading line where the column is not
+  drawn ([§6.8](#68-several-roadmaps-on-the-page)).
 - **The first sections a visit shows start rendering only once the frame has
-  painted** (`afterNextPaint`). On `g p`, page 1's inputs were asked for on the
-  `g` and are usually in hand when the frame commits, and rendering their cards at
-  once would hold the main thread when the frame was due to paint.
+  painted** (`afterNextPaint`). On `g p`, the first layout's inputs were asked for
+  on the `g` and are usually in hand when the frame commits, and rendering their
+  cards at once would hold the main thread when the frame was due to paint.
 
-### 6.4 Pages
+### 6.4 Needs you as a to-do list
 
-Each section shows one page of its entries:
+*Needs you* holds the chosen roadmap's open questions, in its order, laid out in
+three parts (`frontend/src/components/PlanningNeedsYou.tsx`,
+`frontend/src/lib/planningLayout.ts`):
 
-| Sections | A page holds |
+1. **Answered rows.** An *answered row* *(a term the design coined)* is a question
+   answered by a comment ([§6.7](#67-answering-and-copy-answers)), still waiting
+   on the agent, drawn as one line: its marker, id and title, the chip its card
+   would show (*Answered — waiting on the agent*, or *Leaning taken* with its
+   Undo), and **Show**, which opens it into its card in place. They come first,
+   in roadmap order. The first 5 show, then *… N more answered · Show* opens the
+   rest in place; the 5 is fixed ([OQ-TD9](#why-its-this-way)).
+2. **Full cards.** The first *N* questions that need you, as cards, *N* the *page
+   size* *(the design's term)*: 10, 20, 30 or 50, default 10, remembered in this
+   browser (`vantage:planningPageSize`) and read again at each layout
+   ([OQ-TD8](#why-its-this-way)). There is no character budget: the full cards of
+   one layout paint in one commit, whatever the page size.
+3. **The end line.** *M more need you · show 10 | 20 | 30 | 50*, choosing a size
+   being both the setting and its effect. With nothing more, the sizes alone; with
+   no full card painted, *Nothing needs you*. It follows the layout on screen, so
+   it never says *Nothing needs you* while a card is still shown.
+
+The heading says *Needs you 12 · 15 answered*: the questions that need you, live,
+whatever the page size shows, and the answered rows listed. A ✅ question is not in
+*Needs you* ([OQ-TD4](#why-its-this-way)); *Blocked* and *Not on a roadmap*
+questions are not either. The answered rows are not a read state: whether a
+question is answered is read from the review store, and the page stores nothing
+about which questions the reader has seen.
+
+**There are no pages** ([OQ-TD5](#why-its-this-way), [OQ-TD11](#why-its-this-way)).
+Page parameters in an address, such as `needs-you=3`, are ignored and dropped by
+the in-place rewrite; no old link is honored.
+
+**A layout** *(the design's term)* is the page's arrangement of items: which items
+it lists, in what order, as rows or as cards. Only the reader's own actions make
+one: opening the page, a filter applied, a roadmap picked, a page size chosen, and
+**Refresh**. The page lays out the load it last made a layout from, its *basis*
+*(coined in `PlanningPage.tsx`)*, never the newest one; until the first layout is
+on screen the basis follows the load. What the reader does in place changes only
+the item they acted on ([OQ-TD9](#why-its-this-way)):
+
+| Action | What it does |
 | :--- | :--- |
-| Needs you, Not on a roadmap, Blocked | a handful of entries, and stops early before its cards' Markdown passes a budget. A Blocked document row counts as one entry and as no Markdown; a preview card counts as none |
-| Ready to build, Ready to graduate, Stage conflict | a couple of dozen document rows |
-| Too large, Unreadable | a few dozen lines |
+| A card's comment box closes holding text, or its leaning is taken | The card shrinks to an answered row where it is, and the first question past the page size, if any, joins the end of the cards. The focus, whose control went, goes to the row's Show |
+| Undo on a take | The row opens back into its card where it is; the card that joined stays |
+| Show on a row, or its New reply | Opens it into its card in place; the focus goes to the card's heading |
+| *… N more answered · Show* | Opens the rest in place; the focus goes to the first row it brought in |
+| A row opened by Show or Undo is answered again | It shrinks back to its row, and no second card joins |
+| Opening or closing a group, Expand all / Collapse all | In place |
 
-The exact sizes are in [Current values](#current-values).
+A card shrinks when its box closes, never as it is typed in, and nothing the reader
+does reorders *Needs you*: the next layout gathers the answered rows at the top.
 
-- **Page boundaries come from the index alone**, from each question's
-  `cardChars`, so they are known before anything is fetched. A page always holds
-  at least one entry. Pure functions of the index and the limits module lay a page
-  out (`frontend/src/lib/planningPages.ts`), so the page, its inputs and every
-  prefetch agree.
-- **The pager** sits under a section's heading and again after its last entry —
-  `1–10 of 143 · ‹ Previous · Next ›`, plus a page select in a long section. Its
-  height is fixed, and a section of one page has no pager. Its buttons are inert
-  at the ends but stay focusable (`aria-disabled`, not `disabled`): a focused
-  button that becomes disabled drops the keyboard's focus to the page's body.
-- **The pager's controls go on from the page asked for**, the URL's; its range
-  shows the page on screen. The two differ only while a flip waits for its inputs,
-  so a second Next during that wait asks for the page after the one asked for.
-- **The URL carries the pages**, `/.vantage/planning?needs-you=3&waiting=2`,
-  1-based, with page 1 left out, and the chosen roadmap as `roadmap=` when there
-  is a choice. Under a filter the pages are read against the filtered sections, and
-  a change of the filter writes `filter=` first and puts every section back on its
-  first page ([§6.16](#616-typing-and-the-url)). Every other parameter is kept and
-  ignored. A flip replaces the history entry, so Back from a document the
-  page opened in this tab returns to the same pages and scroll position, and
-  Back from the planning page leaves it rather than stepping back through pages.
-  A replace navigation gets a new `location.key`, so a flip carries the saved
-  scroll position over.
-- **Out of range:** a page past the end is clamped to the last one, a malformed
-  value reads as 1, and either rewrites the URL in place.
-- **A flip** keeps the current page on screen until the next page's inputs are
-  ready, then swaps it in one commit. The bottom pager then scrolls its section's
-  heading into view and moves the focus to it, unless the reader has put the focus
-  outside the section meanwhile; the top pager leaves both alone. A polite live
-  region in the section says where the flip went (*Not on a roadmap, page 2 of 3, entries
-  11–20 of 27*), and says nothing for the page a visit opens on.
-- **Prefetch:** the next page's inputs when the pointer or focus reaches a pager.
-  Page 1's inputs on the `g` of `g p`, and on hover or focus of the sidebar's
-  planning entry, once the index is ready; the usual gap between `g` and `p` hides
-  both requests.
-- **No infinite scroll, and no windowing.** The reader pages.
+**Late data marks, and counts; it never lays out**
+([OQ-TD10](#why-its-this-way), [§12](#12-late-data-never-moves-painted-content)).
+An index update, reviews arriving, an agent's reply or an answer made elsewhere
+changes text, numbers and marks on what is painted, never its layout. Each late
+change marks the item it concerns (*New reply*, *Answered elsewhere*, *Done*,
+*Changed in the document*, in the item's own line; the New reply mark adds a bar in
+the item's left gutter), or is counted in the header's **updates slot**, *N updates
+· Refresh*, or both. The count is one per item a new layout would bring in, take
+out, change between row and card, or render again, and one for a reordered roadmap,
+which is not counted again for the questions it moves; its title lists them by
+kind, as *2 new replies, 1 new question, 1 done* (`heldUpdates`). The reader's own
+actions are never counted, nor marked: a question whose Answer… box is open on the
+page, or closed there holding text this visit, is the reader's own answer, so its
+card is never marked *Answered elsewhere* while its box saves as they type; Undo,
+and the card that joined for an answer, are no update. A card keeps the comment
+list and the text it painted until the reader opens it or lays the page out again.
+Blocks fetched for a row opened into its card are keyed by their document's content
+hash as well as their place, so a row opened after an edit and a Refresh shows the
+document as it is.
+
+**Refresh** closes every open comment box first (`closeBoxes`), which saves what it
+holds, and waits for those saves, at most the reviews deadline; then lays the page
+out from the data in hand, as opening it would, every mark cleared; and keeps the
+first item on screen at the same height, or *Needs you*'s top with none left, by a
+scroll in a layout effect before the paint. Pressed from the keyboard, its button
+goes as the count reaches 0, so the focus goes to the item it kept, or to *Needs
+you*'s heading. Nothing applies held updates on its own: not a timer, not the tab
+coming back into view, not a rescan finishing.
 
 ### 6.5 Page inputs, and one commit
 
-- **The page inputs** for the shown pages are their card blocks, from the scanner
-  client; the reviews of the documents their cards and rows belong to, in one
-  reviews request ([§9.3](#93-reviews-in-one-request)); and every Mermaid diagram
-  in those blocks, drawn into the viewer's SVG cache through `getMermaid()`, so
-  the diagram renders at its full size on mount.
+- **The page inputs** of a layout are the card blocks of *Needs you*'s first page
+  size of open questions and a few more ahead, from the scanner client, then of as
+  many more as the answered ones among them leave short, once the reviews are in;
+  the reviews of the documents their cards belong to, in one reviews request
+  ([§9.3](#93-reviews-in-one-request)), asked for beside the blocks rather than
+  before them; and every Mermaid diagram in those blocks, drawn into the viewer's
+  SVG cache through `getMermaid()`, so the diagram renders at its full size on
+  mount (`frontend/src/hooks/usePlanningPageInputs.ts`). A card that joins past
+  the blocks fetched ahead is drawn as a preview card until asked for.
 - **The sections render only from a complete set,** in one commit inside a
-  transition. The render is time-sliced and bounded in cards and in Markdown per
-  commit. A visit's first set also waits for the frame's paint, and on a page
+  transition: every full card of a layout in one commit, whatever the page size,
+  since painting them in batches would push the end line and the groups down as
+  later batches landed. A visit's first set also waits for the frame's paint, and on a page
   opened before its index was ready, for the Markdown pipeline's warm-up
   ([§6.10](#610-before-the-index-is-ready)).
 - **A spinner** shows only if the wait passes a short delay, so an ordinary visit
@@ -1079,18 +1174,17 @@ The exact sizes are in [Current values](#current-values).
   reserved count. Mermaid gets the same: a diagram not drawn by then draws later
   into a fixed-height frame, scaled to fit.
 - **A `stale` block** (one from another version of its file) refreshes its path,
-  and the previous page stays until the refresh lands and the blocks are asked for
-  again.
-- **An index update** (a push, a rescan) derives the pages again. The page on
-  screen stays until the new set's inputs are ready, then changes in one commit,
-  the section bar's counts and the notices with it. That is a change of data
-  ([§12.1](#121-the-rules)), so the page may re-lay out.
+  and the previous layout stays until the refresh lands and the blocks are asked
+  for again.
+- **An index update** (a push, a rescan) is late data
+  ([§6.4](#64-needs-you-as-a-to-do-list)): it marks and counts, and the next
+  layout the reader makes applies it.
 - **Each set of inputs is cached** by repository, index version, chosen roadmap,
-  applied filter and page parameters, a few kept. A set laid out for a filter the
+  applied filter and page size, a few kept. A set laid out for a filter the
   reader is typing is held apart, so typing never evicts a set another history
   entry was shown with ([§6.16](#616-typing-and-the-url)). A prefetch asks for the
-  roadmap the page would choose: the remembered one, else the default, with the
-  filter the page applies for a pager and none for `g p`. Returning to a history entry whose
+  roadmap the page would choose: the remembered one, else the default, with no
+  filter for `g p`, and the remembered page size. Returning to a history entry whose
   inputs are cached renders the frame and the sections in one commit and then
   restores the scroll, so the page never flashes at the top first.
 
@@ -1139,14 +1233,19 @@ Each question appears as a card:
   prints every card unfolded, with no fade and no controls.
 - **Its document,** by name, with that document's badge. The name opens the
   document in this tab, at its top, and saves the page's scroll position first
-  (the card's `onOpenHere`), so **Back** returns to the same pages at the same
+  (the card's `onOpenHere`), so **Back** returns to the same layout at the same
   scroll.
 - **Its controls, which follow its state.** An open question offers **Take this
   leaning**, whichever name declared it, with the document row's default text
-  when it states no leaning, **Answer…** and **Open document**. A ✅ answered
-  question has been ruled, so it offers **Answer…** and **Open document**. A 🔒
-  blocked question, listed under *Blocked*, cannot be answered yet and offers
-  only **Open document**.
+  when it states no leaning, **Answer…** and **Open document**. Only open
+  questions are cards: a ✅ or 🔒 question is a row of *Maintenance* or *Blocked*
+  ([§6.2](#62-sections-top-to-bottom)), answered from its document.
+- **Its marks** ([§6.4](#64-needs-you-as-a-to-do-list)): *New reply*, a button
+  that opens the reply, with a bar in the card's left gutter; *Answered
+  elsewhere*, *Done* and *Changed in the document*, as text in the card's top
+  line. Each is drawn in room the card already has, so a mark changes no card's
+  height. The card's comment list is the one the layout painted until the reader
+  opens it.
 - **Whether it is answered by a comment** ([§6.7](#67-answering-and-copy-answers)),
   by the document row's own rule (`questionOffer`,
   [`inline-markup.md`](inline-markup.md#a-comment-on-a-question-is-its-answer)),
@@ -1173,9 +1272,11 @@ Each question appears as a card:
   (`planningCardId`). A question appears on the page at most once, so the id is
   unique.
 
-**Expand all / Collapse all**, at the end of the section bar's line, unfolds or
-folds every card on the page and sets how every card rendered later opens — on
-another page, in another section, on the next visit. It is a display preference
+**Expand all / Collapse all**, one of the header's view toggles
+([§6.3](#63-the-frame-and-the-header)), unfolds or folds every card on the page
+and sets how every card rendered later opens — in a new layout, on the next
+visit. It is an icon with its name as its label, drawn at every width and folded
+into the "⋯" with the other toggles. It is a display preference
 like full width, not planning state: remembered under
 `vantage:planningCardsExpanded` and followed across tabs, where another tab's
 choice opens the cards rendered later its way and moves none on screen. Its label
@@ -1183,8 +1284,8 @@ names what a press does to the cards on screen, which the page's opening or this
 tab's last press brought them to, so another tab's choice changes neither them
 nor the label, and the first press here after it does what it says. A press is
 announced to a screen reader, which does not read out a button's new name. A card
-the reader folds or unfolds keeps that fold for the visit, across a flip away and
-back, until the next press, which brings every card to the page's; with every card
+the reader folds or unfolds keeps that fold for the visit, across a new layout,
+until the next press, which brings every card to the page's; with every card
 unfolded by hand, Expand all still reads Expand all, and its press sets the
 default and moves nothing.
 
@@ -1285,7 +1386,7 @@ one card:
   placed by its old line until its card is rendered. A pending comment is one the
   agent has not answered yet, so its document has rarely changed under it.
 
-The page inputs' reviews request holds the shown pages' documents and every
+The page inputs' reviews request holds the full cards' documents and every
 listed document holding a question that needs the human — open, or ✅ awaiting
 compaction — on any page and under any roadmap (`needYouDocuments`), since a
 comment in one of those can take a question off the numbers below. The reviews
@@ -1324,13 +1425,12 @@ exactly as long as the comment is pending. Then:
 
 - **Its card says so** ([§6.6](#66-question-cards)), and Copy answers copies the
   comment, as it copies every pending comment on a listed question.
-- **It stops counting as needing the human.** The picker's *(N need you)*, the
-  line counting questions that need you on other roadmaps, and *Nothing needs
-  you* leave it out (`frontend/src/lib/planningAnswers.ts`), while its section
-  keeps listing it, marked, so the human sees what they answered. The section's
-  own count, and the section bar's, still count it, since they count entries,
-  and say beside it how many of those are answered, as *Needs you 3 (3
-  answered)*, so neither reads as contradicting *Nothing needs you* above it.
+- **It stops counting as needing the human.** *Needs you*'s count, the picker's
+  *(N need you)*, the line counting questions that need you on other roadmaps,
+  and *Nothing needs you* leave it out (`frontend/src/lib/planningAnswers.ts`),
+  and *Needs you* lists it as an answered row
+  ([§6.4](#64-needs-you-as-a-to-do-list)), so the human sees what they answered;
+  the heading counts those rows apart, as *Needs you 12 · 15 answered*.
 - **A take no longer pending needs the human again.** Once the agent replies to
   a take, or the reviewer dismisses it, the take is not pending, so the
   question counts again; its card and its row say what became of the take and
@@ -1346,18 +1446,51 @@ which reviews each reads depends on what it would move. **The picker's counts
 and the other-roadmaps line** keep the room of the index's count, which an
 answer only lowers ([§6.8](#68-several-roadmaps-on-the-page)), so they read
 every review the page holds, the moment it arrives. ***Nothing needs you***, which
-adds a line, and the sections' answered counts read only the reviews of the
-**counted** documents *(coined here)*: those whose reviews were held when the
-page opened, then every document whose reviews are held when a set of sections
-commits — the first, a flip, a roadmap picked, an index update — and the
-document of an answer filed on the page. A document whose reviews first arrive
+adds a line, reads only the reviews of the **counted** documents *(coined here)*:
+those whose reviews were held when the page opened, then every document whose
+reviews are held when a set of sections commits — the first, a new layout — and
+the document of an answer filed on the page. A document whose reviews first arrive
 after its sections painted — past the reviews deadline, since every document
 these numbers read is in the page inputs' request — waits for the next such
 commit; a counted document's reviews changing is a change of data, which
-applies at once ([§12.1](#121-the-rules), L1 and L2). Until 2026-10-01 every
+applies at once ([§12.1](#121-the-rules), L1 and L2). Which items are answered
+rows is decided when a layout is made, from the reviews in hand then; an answer
+arriving later marks its card *Answered elsewhere* until the next layout. Until 2026-10-01 every
 number read the counted documents alone, and the documents another roadmap
 routes came in the second request, so a cold visit counted none of their
 answers until the reader picked another roadmap and came back.
+
+**Copy answers + maintenance** (`frontend/src/components/PlanningCopyPanel.tsx`,
+`frontend/src/lib/planningCopy.ts`) sits beside Copy answers and copies its
+payload byte for byte, a blank line, then `planningAgentRequest` for the
+*Maintenance* kinds its panel checks, with the filter's `keeps`: exactly what
+`vantage-check index --request <kinds> --filter` prints for the same kinds and
+filter ([OQ-TD7](#why-its-this-way)). It replaced Copy all agent requests.
+
+- **Its count is the total it copies:** the pending answers and every checked
+  kind's items, live and filtered as the groups count them, in room for four
+  digits, left-aligned so a count that grows moves no painted text.
+- **Its panel** opens below it. A **▾** at the button's right end, a button of
+  its own, opens it by click, tap, Enter, Space or ↓, the focus going in when the
+  keyboard opened it; hover opens it after the pointer has rested on the button
+  for 200 ms, and it stays while the pointer is on the button or the panel,
+  closing 300 ms after it leaves both; a touch never counts as hover. Esc, which
+  gives the focus back to the ▾, or a press elsewhere closes it; focus alone never
+  opens it. It reads the sentence *Your answers, the same as Copy answers, plus
+  the maintenance this page found for the agent.*, **All · None**, a row *Your
+  answers* with no checkbox, a checkbox row per kind (*Not on a roadmap*, *Stage
+  conflict*, *To fold into the ledger*, *Ready to graduate*, *Ready to build*)
+  with its live count, 0 shown with the checkbox kept, and a total row *Copied
+  N*. *Too large* and *Unreadable* have no request, so they are not offered.
+- **The checkboxes are one preference,** the kinds left out, comma-separated,
+  under `vantage:planningCopyLeftOut`, followed across tabs; absent, *Ready to
+  build* alone is left out, since sent by accident it starts the most expensive
+  work there is. An id a later release offers is ignored.
+- **Greyed out, never disabled:** with no kind checked, which would copy nothing
+  Copy answers does not, or a total of 0, the button is `aria-disabled` and a
+  press copies nothing; the panel still opens from it, or nothing could check a
+  kind again. Its accessible name stays *Copy answers + maintenance N*, and a
+  polite live region says it copied.
 
 **Quoted context comes without the text.** The scanner client fetches only the
 documents holding pending comments, returns only the lines each quote needs (the
@@ -1368,10 +1501,12 @@ while any group's lines are still coming.
 
 ### 6.8 Several roadmaps on the page
 
-**The roadmap line** stands directly above the section bar, shown only when two or
-more roadmaps route. With one, or none, there is no line. While the contents
-column is drawn, the picker stands at the head of the planning outline instead, so
-there is only ever one picker.
+**The roadmap line** stands on *Needs you*'s heading line, the list the roadmap
+orders ([§3.5 of the design](../design/planning-to-do-list.md#35-the-contents-column)),
+shown only when two or more roadmaps route; where *Needs you* is not drawn, on a
+line of its own at the top of the sections. With one roadmap, or none, there is no
+line. While the contents column is drawn, the picker stands at the head of the
+planning outline instead, so there is only ever one picker.
 
 - **The picker** is a native select with the visible label **Roadmap**. It offers
   every roadmap that routes, in roadmap order, each by its full repo-relative path
@@ -1396,9 +1531,8 @@ there is only ever one picker.
   writes the choice into the URL in place, with no history entry, so a copied link
   shows the same roadmap to anyone; with fewer it removes the parameter. Both
   spellings of an escaped `/` are read.
-- **Picking a roadmap** replaces the URL's `roadmap` with no history entry, as a
-  flip does, and drops `needs-you`, since that section's order is another
-  roadmap's now. It also remembers the choice, in `localStorage`, per origin,
+- **Picking a roadmap** replaces the URL's `roadmap` with no history entry, and
+  makes a new layout ([§6.4](#64-needs-you-as-a-to-do-list)). It also remembers the choice, in `localStorage`, per origin,
   keyed by the repository. Only a pick is remembered, never a visit to a URL that
   names one. The remembered choice is read once per visit, so another tab's pick
   never swaps *Needs you* under a reader part-way through answering it, and
@@ -1414,13 +1548,13 @@ there is only ever one picker.
   roadmap is chosen. Their room is the frame's unfiltered sections' counts
   (`frameRooms`), which no filter can raise, so a filter applied as the reader types
   moves nothing on the line, as answers lowering a count do not.
-- **The swap is a flip.** The picker shows the roadmap asked for at once; *Needs
-  you*, the section bar's counts and the line's own count change together in one
-  commit once the new page's inputs are in hand, with the spinner beside the
-  picker in room kept for it.
+- **The swap is a new layout.** The picker shows the roadmap asked for at once;
+  *Needs you* and the line's own count change together in one commit once the
+  new layout's inputs are in hand, with the spinner beside the picker in room
+  kept for it.
 - **When the chosen roadmap stops routing** — deleted, renamed, excluded or given a
-  `done` stage — the page falls back as above and rewrites the URL in place. That
-  is a change of data, which may re-lay the page out.
+  `done` stage — the page falls back as above and rewrites the URL in place, at
+  the next layout.
 
 **The notice names what was looked for.** When no roadmap routes, one line says
 why, in words the page and `vantage-check index` share (P7): that nothing named
@@ -1428,7 +1562,7 @@ why, in words the page and `vantage-check index` share (P7): that nothing named
 not route, and the remedy that fits. When every roadmap was read and is retired by
 a `done` stage, the remedy is its stage, since the path is right and finding by
 name would find the same file. When at least one roadmap routes and a *listed* one
-is `missing`, `skipped` or `unreadable`, a line under the section bar names it; a
+is `missing`, `skipped` or `unreadable`, a notice names it; a
 `done` listed roadmap gets no such line, since a `done` stage is a deliberate
 retirement, and neither does one found by name, since *Too large* and
 *Unreadable* already list it. The words are `PLANNING_NOTICES.roadmapNotice` and
@@ -1436,52 +1570,58 @@ retirement, and neither does one found by name, since *Too large* and
 
 ### 6.9 The planning outline
 
-The contents column shows the planning outline, drawn from the frame's index, so it
-paints with the section bar and changes when it does
-(`frontend/src/lib/planningOutline.ts`, `frontend/src/components/PlanningOutline.tsx`).
+The contents column shows the planning outline, titled **On this page**, since it
+is no longer a document's contents
+([§3.5 of the design](../design/planning-to-do-list.md#35-the-contents-column)),
+drawn from the layout on screen (`frontend/src/lib/planningOutline.ts`,
+`frontend/src/components/PlanningOutline.tsx`). Its navigation landmark is named
+*On this page* too.
 
-- **Each non-empty section,** with its count. Clicking one scrolls to its heading
-  and gives it the focus, as the section bar does.
-- **Under a section of cards or rows,** the documents it lists, in the section's
-  order, up to a cap and then a line with how many more. Each shows its file name,
-  the folder under it, and how many of its questions the section holds, or under
-  *Stage conflict* how many are open. Clicking one flips its section to the page
-  holding the document's first entry, with no history entry, then scrolls to that
-  entry, 16 px below the pane's top as the contents column brings a heading
-  (`ANCHOR_MARGIN`), and focuses it. The cards a flip puts above the entry draw
-  the fold controls at their cuts in a pass of their own, after the page's
-  (`afterClampMeasures`), so the scroll is made again once they have, before
-  anything paints. The count wraps under the name rather than take its width:
-  the file name wins (S6).
-- **It follows the scroll.** The section being read, and the document whose entry
-  is at the top of the pane, are marked; scrolled to the end, the last entry on
+- **The documents of *Needs you*'s full cards,** in list order, each by its file
+  name with the folder under it and, after the name, how many of its questions
+  need you in the layout, cards and the rest; up to a cap, then a line with how
+  many more. Clicking one scrolls to its first card, with no history entry, 16 px
+  below the pane's top as the contents column brings a heading
+  (`ANCHOR_MARGIN`), and focuses its first control. The cards above it draw the
+  fold controls at their cuts in a pass of their own (`afterClampMeasures`), so
+  the scroll is made again once they have, before anything paints. The count
+  wraps under the name rather than take its width: the file name wins (S6).
+- **Then one line each** for the answered rows, *Blocked* and *Maintenance*, with
+  their counts: the answered rows while there are any, a group while the layout
+  has it, its count live, so a group whose count falls to 0 keeps its line and a
+  group that comes late adds none. Clicking the answered line goes to the first
+  answered row; a group's goes to its heading and gives it the focus, opening the
+  group first. *Blocked*'s line has *Blocked*'s explanation as its tooltip.
+  *Maintenance*'s items are not listed.
+- **It follows the scroll.** The document whose card is at the top of the pane,
+  or the line whose part it is, is marked; scrolled to the end, the last on
   screen is.
-- **Every entry is a link.** A document's names its page and its entry as the
-  fragment, as `?unrouted=2#pq-plans%2Fb.md--L12`; a row's id is `pr-`, its
-  section, `--`, and its path encoded. A page opened on such a link scrolls to that
-  entry once its sections are in, where the click would have, and so does one
-  whose query the page rewrites as it opens: the rewrite keeps the fragment.
-  Under a filter the outline is drawn from the filtered sections, and every link
-  carries the whole query, `filter=` in the link encoding
+- **Every entry is a link,** to the page with the entry's target as the fragment,
+  as `#pq-plans%2Fb.md--L12` or `#maintenance`; a row's id, which a link may
+  name, is `pr-`, its section, `--`, and its path encoded. A page opened on such
+  a link scrolls to that entry once its sections are in, where the click would
+  have, and so does one whose query the page rewrites as it opens: the rewrite
+  keeps the fragment. Under a filter every link carries the whole query,
+  `filter=` in the link encoding
   ([§13.5](#135-handing-the-human-a-filtered-page)), so its address reads back
   whole when pasted into the box.
 - **The roadmap picker** stands at its head when two or more roadmaps route, its
   path and count whole, wrapping in the column's width. On a narrow screen, where
-  the column is not drawn, it stays on its line. Nothing of the column is drawn
-  before the outline is, its head included: a label painted first was pushed down
-  by the picker arriving above it.
+  the column is not drawn, it is on *Needs you*'s heading line. Nothing of the
+  column is drawn before the outline is, its head included: a label painted first
+  was pushed down by the picker arriving above it.
 
 ### 6.10 Before the index is ready
 
-- **One fixed-height progress line** stands where the section bar will be: *Reading
+- **One fixed-height progress line** stands where the sections will be: *Reading
   planning documents…* until the stream's header arrives, then *Scanning planning
   documents: 412 of 1,000*, updated at the scanner's progress rate. The total is the
   header's candidate count.
-- **When the index is ready**, the roadmap line (when there is one), the section bar
-  and the sections replace that line in one commit. The box that held the progress
-  line is replaced too, never reused for the section bar: reused, it is a painted
-  box the roadmap line, inserted above it, pushes down, which the browser scores as
-  a layout shift on every cold load.
+- **When the index is ready**, the notices and the sections replace that line in
+  one commit, the roadmap line with them. The box that held the progress line is
+  removed, never reused: reused, it was a painted box the roadmap line, inserted
+  above it, pushed down, which the browser scores as a layout shift on every cold
+  load.
 - **The Markdown pipeline is warmed once while the index builds**
   (`frontend/src/lib/warmMarkdown.ts`), after the progress line has painted, over
   a few short samples of what a card holds, one per task, and the first sections
@@ -1514,7 +1654,8 @@ the page's `filter` URL parameter, and `vantage-check index --filter`
   index, under the chosen roadmap, as it does unfiltered, and `applyPlanningFilter`
   then returns sections of the same shape with entries removed and none reordered.
   Every consumer that reads sections picks the filter up unchanged: the layout, the
-  pagers, the outline, the section bar and the agent request. *Blocked* still names
+  groups and their counts, the outline, the filter line's counts and the agent
+  request. *Blocked* still names
   the blockers a filter hides, and routing still uses the roadmaps it hides,
   because neither is recomputed ([§6.15](#615-what-a-filter-does-to-the-sections)).
 - **Plain data across the module's boundary.** A parsed filter (`PlanningFilter`)
@@ -1615,20 +1756,21 @@ question; the row tests inside `applyPlanningFilter` for the rest):
   it.
 - **No match is an answer, not an error.** A text term that matches nothing leaves
   an empty result, which the notice counts and *Nothing matches* explains
-  ([§6.18](#618-the-filter-notice-and-nothing-matches)); it is never an unmatched
+  ([§6.18](#618-the-filters-counts-the-notice-and-nothing-matches)); it is never an unmatched
   term.
 
 **The rest of the rules:**
 
 - **An unknown key draws a hint.** A text term whose part before its first `:` is
   one or more lowercase ASCII letters, is not a key, and is not followed by a `/`
-  gets a line in the notice saying that word is not a filter key
-  ([§6.18](#618-the-filter-notice-and-nothing-matches)). So `stage:ready` and
+  gets a line in the notice saying that word is not a filter key, which the page
+  says in its counts' tooltip
+  ([§6.18](#618-the-filters-counts-the-notice-and-nothing-matches)). So `stage:ready` and
   `-title:x` draw one; `http://x`, `Note:` and `Path:x` do not, and neither does a
   quoted phrase.
 - **`is:open` keeps a question answered by a comment.** The index reads no
-  comments, so the card stays, under its section's *(N answered)* count
-  ([§6.7](#67-answering-and-copy-answers)). That collision is also why a value for ✅
+  comments, so the question stays in *Needs you*, as an answered row
+  ([§6.4](#64-needs-you-as-a-to-do-list)). That collision is also why a value for ✅
   questions would never be `answered`: the page already calls a question with a
   pending comment *answered*.
 - **`path:<doc> is:open` is every question the human needs to answer** for
@@ -1792,16 +1934,17 @@ text holds no control characters, so it can sit in any newline-joined cache key.
 
 | Value | Under a filter, on the page and in the checker's `filter.sections` |
 | :--- | :--- |
-| Every section's entries: *Needs you*, *Not on a roadmap*, *Blocked* (both kinds), *Ready to build*, *Ready to graduate*, *Stage conflict*, *Too large*, *Unreadable* | The kept entries, in the same order. A section the filter empties is not shown, and when it empties every one, *Nothing matches* stands in their place ([§6.18](#618-the-filter-notice-and-nothing-matches)) |
-| Section bar, section headings, pagers, page bounds, outline | From the filtered sections. Page bounds still come from index facts alone, so they are exact at first paint. Under *Nothing matches*, no section bar and no outline entry |
-| `onOtherRoadmaps`, and the line counting questions on other roadmaps | Kept questions only. They stay counted questions, never entries, and the filter notice names each roadmap that holds them ([§6.18](#618-the-filter-notice-and-nothing-matches)) |
+| Every section's entries: *Needs you*, *Not on a roadmap*, *Blocked* (both kinds), *Ready to build*, *Ready to graduate*, *Stage conflict*, *Too large*, *Unreadable* | The kept entries, in the same order. A section the filter empties is not shown, and when it empties every one, *Nothing matches* stands in their place ([§6.18](#618-the-filters-counts-the-notice-and-nothing-matches)) |
+| *Needs you*, the groups and their kinds, their counts, the outline | From the filtered sections. Under *Nothing matches*, none of them |
+| The filter line's *N match · M hidden* | Items the filtered layout lists, and those of the unfiltered layout it does not ([§6.18](#618-the-filters-counts-the-notice-and-nothing-matches)) |
+| `onOtherRoadmaps`, and the line counting questions on other roadmaps | Kept questions only. They stay counted questions, never entries, and the filter notice names each roadmap that holds them, in the page's counts' tooltip ([§6.18](#618-the-filters-counts-the-notice-and-nothing-matches)) |
 | Each roadmap's `needsYouCount`, the picker's count and the page's recount of it | Counted over kept questions; the recount (`frontend/src/lib/planningAnswers.ts`) applies the same predicate |
 | The roadmap list, each roadmap's state, `chosenRoadmap`, `stagesDeclared` | Unchanged. A filter never changes which roadmap is chosen |
 | `nothingNeedsYou` | True when no open question in a live document is kept, so a kept question on another roadmap counts. The frame's line then reads *Nothing this filter keeps needs you*, unless the filter keeps no entry, where *Nothing matches* is said instead |
 | The head-of-sections line saying every open question has the human's answer | Over kept questions; not drawn under *Nothing matches* |
-| A *Blocked* document row | Kept when the filter keeps it as a row, with every blocker still named and linked, because the row comes from the whole derivation. An `is:` term drops it. Either way, the notice names each blocker the filter leaves out |
+| A *Blocked* document row | Kept when the filter keeps it as a row, with every blocker still named and linked, because the row comes from the whole derivation. An `is:` term drops it. The row marks each blocker the filter leaves out *(which this filter leaves out)*, and the checker's notice names them |
 | The roadmap notice, the no-stages notice, the refusal past `max-candidates` | Unchanged: they are facts about the repository |
-| Copy agent request, Copy all agent requests | The kept entries, with a `Filter:` line ([§6.2](#62-sections-top-to-bottom)) |
+| Copy agent request, and the requests Copy answers + maintenance copies | The kept entries, with a `Filter:` line ([§6.2](#62-sections-top-to-bottom)) |
 | Copy answers | Pending comments on kept questions only ([§6.7](#67-answering-and-copy-answers)) |
 
 The checker's JSON keeps `sections` unfiltered and carries these values as
@@ -1820,7 +1963,7 @@ handed the unfiltered sections for those facts, beside the filtered ones it list
 ### 6.16 Typing, and the URL
 
 - **On open.** The page reads `filter`. If it is understood and not canonical, the
-  in-place rewrite ([§6.4](#64-pages)) writes the canonical text as one parameter, in
+  in-place rewrite ([§6.4](#64-needs-you-as-a-to-do-list)) writes the canonical text as one parameter, in
   the same replace that clamps pages, with the fragment kept. A not-understood
   filter is left exactly as written. Page parameters in a filtered link are read
   against the filtered sections.
@@ -1837,7 +1980,7 @@ handed the unfiltered sections for those facts, beside the filtered ones it list
     `-m`, which every `.md` path holds, or a half word that matches nothing, does not
     empty the page between two keystrokes less than 300 ms apart. A longer gap is the
     pause, and the page then shows
-    [*Nothing matches*](#618-the-filter-notice-and-nothing-matches) in place of its
+    [*Nothing matches*](#618-the-filters-counts-the-notice-and-nothing-matches) in place of its
     sections, and goes on showing it until a key types a text that keeps an
     entry, since the filter it applied last is now one that keeps none: at about 30
     words a minute, a key every 400 ms, it can say *Nothing matches* at `pat` on the
@@ -1903,17 +2046,17 @@ handed the unfiltered sections for those facts, beside the filtered ones it list
   - A navigation the box did not cause, a push or a pop, wins over the box. It drops
     a write the idle pause still owes, and the box and the applied filter both take
     its URL's filter.
-- **While the results are on their way,** the old page's pagers and the outline flip
-  nothing, since their pages are the old filter's. Past the spinner delay a spinner
+- **While the results are on their way,** the outline's entries go nowhere,
+  since they are the old filter's. Past the spinner delay a spinner
   shows in the filter line's own slot. It is drawn in the commit of the reader's
   change and shown by the browser once the delay has passed (the `planning-reveal`
   class), because the router commits the URL, and the page its new inputs, in
   transitions, and an update a timer makes meanwhile commits only with them. Typing
   past an Enter, ✕ or paste whose page is still on its way hands the spinner to the
   typed text's page.
-- **An index update while filtered** applies the same text to the new index, typed
-  or not. Counts change in the commit that changes the sections.
-- **A roadmap pick, a flip and the outline's links keep the filter.** Each carries
+- **An index update while filtered** is late data: the counts follow it at once,
+  and the next layout applies the same text to the new index.
+- **A roadmap pick and the outline's links keep the filter.** Each carries
   the applied filter, so one the idle pause still owes is written in the same
   replace, and each writes `filter` in the link encoding, so the address bar never
   shows the form encoding's bare `*`, and a copy of it pasted into the box reads back
@@ -1921,9 +2064,16 @@ handed the unfiltered sections for those facts, beside the filtered ones it list
   that keystroke's text instead (`typedPast`), and so does a press while a typed text
   that keeps no entry is held back, which the press then applies. So the URL never
   takes an older filter than the page goes on to show: a pick keeps its roadmap, and
-  a flip or an outline jump flips nothing, since its page is the old filter's.
+  an outline jump goes nowhere, since its target is the old filter's.
+- **Clearing the filter adds a history entry** ([OQ-TD6](#why-its-this-way),
+  [OQ-TD13](#why-its-this-way)): ✕, *hidden* beside the counts, and *Nothing
+  matches*' Clear the filter each push the cleared URL, so Back brings the filter
+  back. The page tells its own push from a navigation the box did not cause by the
+  announcement it asked for on the way, so the live region still says what the
+  clear brought in. Typing still replaces the entry, so a filter typed after a
+  clear replaces the cleared page, and Back from it returns to the filter before.
 - **`g p` and the sidebar entry open the bare page** and drop the filter, as they
-  drop page parameters and `roadmap=`. A filter belongs to a link, never to the
+  drop `roadmap=`. A filter belongs to a link, never to the
   document the reader came from; Back returns to the filtered URL, and the box
   follows it.
 - **Before the index is ready,** there are no sections: the applied filter is
@@ -1937,8 +2087,8 @@ handed the unfiltered sections for those facts, beside the filtered ones it list
 **Identities, and what typing must not churn.** The applied filter's canonical text
 joins every identity a page has: the cache of derived sections, keyed by index, then
 roadmap, then filter; the layout (`PlanningLayout.filter`); the page-inputs key; the
-pager and outline prefetches; and the frame's re-derivation of its sections from the
-shown layout. A not-understood filter shows the same entries as no filter, so its
+outline's links; and the frame's re-derivation of its sections from the shown
+layout. A not-understood filter shows the same entries as no filter, so its
 identity is no filter's. Typing lays out a page per keystroke, and none of that may
 cost what Back relies on:
 
@@ -1979,7 +2129,7 @@ cost what Back relies on:
 > keystroke. A layout effect now removes the box and puts it back in the same place
 > before the browser paints: Chromium scores a re-inserted node as new rather than
 > moved, so the layout shift stays 0, while every card both filters show stays
-> mounted. The section bar, the notices and the outline are still drawn anew. And do
+> mounted. The notices and the outline are still drawn anew. And do
 > not lean on the layout-shift score's input exclusion, which forgives a shift only
 > within 500 ms of an input: results that land later count.
 
@@ -2006,18 +2156,30 @@ page ([OQ-PF5](#why-its-this-way)).
 
 - **Why there.** Not the header, whose yield steps a box would bring on sooner until
   it narrowed the file name, and which is hidden in print. Not the frame, which is
-  not drawn in the error and refused states. Not the section bar's line, which wraps
-  with the bar, and not the outline's head, which exists only on wide screens.
+  not drawn in the error and refused states. Not *Needs you*'s heading line, which
+  is not drawn before the sections, and not the outline's head, which exists only
+  on wide screens.
 - **It never moves anything.** Its height is fixed and nothing is ever inserted above
   it. Its text comes from the URL synchronously, so it is complete at first paint.
-  Its ✕, its hint and its spinner each have a slot that is always present.
+  Its ✕, its hint-and-counts slot and its spinner each have a slot that is always
+  present.
 - **Contents.** A `<form role="search">` named *Filter the planning page*, holding a
   visible label, *Filter*; a `type="text"` input, never `type="search"`, because
   Chrome clears that kind on Esc; a placeholder that is a real filter, in ink dark
-  enough to read on a light panel; the ✕ slot, empty while there is no text; a hint
-  slot; and the spinner slot.
-- **At narrow widths** the hint's words give way first, to an icon in a slot of its
-  own whose title holds the words; then the visible label gives way, and stays the
+  enough to read on a light panel; the ✕ slot, empty while there is no text; the
+  hint slot, which holds the counts; and the spinner slot.
+- **The counts** ([§6.18](#618-the-filters-counts-the-notice-and-nothing-matches)):
+  under an applied, understood filter, the hint slot reads *18 match · 379
+  hidden*, *1 matches* for one. While the box holds a text that is not applied,
+  the hint wins the slot. Each part has room of its own — the number in room for
+  four digits, its word in the room of *matches*, then *hidden* — and each grows to
+  the right, so a count changing as the reader types moves nothing painted.
+  ***379 hidden*** is a button that does what ✕ does: it clears the filter as a
+  new history entry and puts the focus in the box, preventing its own `mousedown`
+  as ✕ does.
+- **At narrow widths** the hint slot gives way first, to a narrow slot of its own
+  that holds the hint's icon, whose title holds the words, or *379 hidden* alone,
+  the part the reader can act on; then the visible label gives way, and stays the
   accessible name. The input keeps a minimum width, the ✕ and spinner keep their
   slots, and the row never wraps.
 
@@ -2061,17 +2223,17 @@ page ([OQ-PF5](#why-its-this-way)).
   it still holds the text the URL held before, so no write of the reader's own text
   touches it, and a link written in a spelling of its own still shows its canonical
   text once the page rewrites it.
-- **✕ clears and applies in one step,** and the focus stays in the box: ✕ is a
-  control a reader aims at, and the link the agent handed over still holds the
-  filter. It prevents its own `mousedown`, so pressing it does not take the focus
-  from the box and write what it is about to clear. *Nothing matches*' Clear the
-  filter is the same action: the filter line hands the page its handler
-  (`clearRef`) ([§6.18](#618-the-filter-notice-and-nothing-matches)).
+- **✕ clears and applies in one step, as a new history entry,** and the focus stays
+  in the box: ✕ is a control a reader aims at, and Back brings the cleared filter
+  back ([OQ-TD13](#why-its-this-way)). It prevents its own `mousedown`, so pressing
+  it does not take the focus from the box and write what it is about to clear.
+  *hidden* and *Nothing matches*' Clear the filter are the same action: the filter
+  line hands the page its handler (`clearRef`)
+  ([§6.18](#618-the-filters-counts-the-notice-and-nothing-matches)).
 - **Esc puts back the box's newest understood text** when the box holds a text that
   is not applied: the one the idle pause is about to write, else the URL's.
   Otherwise it returns the focus to the pane. **Esc never clears:** it is pressed by
-  reflex to leave a field, and a filter change replaces the history entry, so Back
-  would not bring a cleared filter back.
+  reflex to leave a field, and a clear by reflex is one the reader did not mean.
 - **Leaving the box** writes the URL at once when the idle pause still owes a write,
   so an address copied right after typing holds the filter on screen. A text that is
   not applied stays in the box, with its hint.
@@ -2118,20 +2280,22 @@ Enter does, and shows it as its text (`readPastedPlanningLink`).
 So *press `/`, paste* reaches the filtered page from any origin, in any mode and
 through any tunnel, and nothing stores an address.
 
-- **For screen readers.** The input's `aria-describedby` names the filter notice, and
-  with it, while one shows, the filtered *Nothing needs you* or
-  [*Nothing matches*](#618-the-filter-notice-and-nothing-matches)' headline and
-  reason line. A polite live region speaks the notice, followed by whichever of
-  those shows, when the URL takes the reader's text: at once on an Enter, a ✕ or a
+- **For screen readers.** The input's `aria-describedby` names the counts, as *18
+  match, 379 hidden.* with what the summary adds, or the *Not filtered* notice, and
+  with them, while one shows, the filtered *Nothing needs you* or
+  [*Nothing matches*](#618-the-filters-counts-the-notice-and-nothing-matches)' headline and
+  reason line. A polite live region speaks the same, the counts where it spoke the
+  notice, followed by whichever of those shows, when the URL takes the reader's
+  text: at once on an Enter, a ✕ or a
   paste, and for typing once the box has been still for longer than the idle
   pause, or when the focus leaves it. The idle pause is shorter, so a slow
   typist's every key is followed by a write, and speaking at each write would speak
   per keystroke. It never speaks per keystroke, and never as the page opens; a push
-  or a pop clears it. A filter change that resets a section to page 1 is not
-  announced as a flip.
+  or a pop clears it, but for the page's own push clearing the filter, whose
+  clear it says.
 - **In print,** the input row is hidden, and with no filter the whole line, margin
-  and all. A print-only line reads `Filter: <canonical text>`, and the notice prints,
-  so a printout always says it is filtered and by how much. *Nothing matches* and
+  and all. A print-only line reads *Filter: `<canonical text>`, 18 match, 379
+  hidden*, so a printout always says it is filtered and by how much. *Nothing matches* and
   its reason line print too, and its buttons do not.
 
 > [!NOTE]
@@ -2140,23 +2304,47 @@ through any tunnel, and nothing stores an address.
 > the reviews request has failed, a screen reader may announce it again on every
 > filter change.
 
-### 6.18 The filter notice, and Nothing matches
+### 6.18 The filter's counts, the notice, and Nothing matches
 
-The notice is the first of the frame's notices. It arrives with the section bar, it
-describes the results on screen rather than the box's text, and it prints. A filter
-that keeps no entry also says *Nothing matches* in place of the sections, after it
-(below). Its words
-are `PLANNING_NOTICES`' (`filtered`, `notFiltered`), so the page and the checker
-share them, and each reader ends it in its own words. The filter text in it is set
-off as code, on the page as code and in the checker between backticks, so the `:`
-after it cannot be read as part of it. It takes four forms:
+**On the page, an applied filter's counts say what it keeps**
+([§3.2 of the design](../design/planning-to-do-list.md#32-the-filter-line)), in the
+filter line's hint slot ([§6.17](#617-the-filter-line)): *18 match · 379 hidden*.
+An **item** *(a term the design coined)* is one question or one document row the
+page lists, counted once even where two groups list it, so a document in both
+*Ready to graduate* and *Blocked* is one item; items in folded groups count, and so
+do *Needs you*'s questions past the page size (`layoutItemKeys`,
+`filterItemCounts` in `frontend/src/lib/planningLayout.ts`). *18 match* is the
+items the filtered layout of the data in hand lists; *379 hidden* is those of the
+same page unfiltered that it does not. They replace the notice's *entries*, which
+counted a document in two sections twice, and *paths*, neither of which a reader
+could check by looking. Being numbers, they change live with the data in hand
+([§6.4](#64-needs-you-as-a-to-do-list)). The counts' wording is the page's own:
+the checker's notice is unchanged.
+
+**The notice line under the filter line stays only for what the counts cannot
+say:** *Not filtered: this Vantage cannot read …*, for a filter it does not
+understand, and *Nothing matches* with its reason, which stands in place of the
+sections (below). What else the summary says — an unmatched term, an unknown key,
+the questions on other roadmaps, the blocked questions left out — is the counts'
+tooltip and part of the box's description, never a line that moves. *A document
+waits on something the filter leaves out* is drawn in *Blocked*, beside that
+document: its row adds *(which this filter leaves out)* after each such target
+([§6.2](#62-sections-top-to-bottom)).
+
+**The filter notice** is what the checker prints, and the sentences the page's
+tooltip and *Not filtered* line are cut from. It describes the results rather than
+the box's text. Its words are `PLANNING_NOTICES`' (`filtered`, `notFiltered`), so
+the page and the checker share them, and each reader ends it in its own words. The
+filter text in it is set off as code, on the page as code and in the checker
+between backticks, so the `:` after it cannot be read as part of it. It takes four
+forms:
 
 | Form | Says |
 | :--- | :--- |
-| Applied | A first line: the canonical text, then entries shown of the unfiltered total, kept documents of the paths the index lists when its path terms leave a path out, and how many kept entries are open questions, as ``Filtered by `path:/docs/design/x.md is:open`: 5 of 15 entries, in 1 of 20 paths, 5 of them open questions.`` Then one line per clause below that applies. Last, the page's *Clear the filter to see the other 10.* or the checker's *Run without --filter to see the other 10.*, or *It hides no entry.* when it hides none |
-| Applied, nothing kept | The same, with none shown, and *Nothing matches* after it. It leaves out what *Nothing matches*' reason line says: the *Other roadmaps* clause when the questions it keeps are all on other roadmaps, and the unmatched lines when they are why it keeps no document. On the page it also leaves out *Clear the filter to see the other 10.*, which the button under *Nothing matches* does; the checker, which has no button, keeps *Run without --filter …*. *Nothing this filter keeps needs you* is not said |
+| Applied | A first line: the canonical text, then entries shown of the unfiltered total, kept documents of the paths the index lists when its path terms leave a path out, and how many kept entries are open questions, as ``Filtered by `path:/docs/design/x.md is:open`: 5 of 15 entries, in 1 of 20 paths, 5 of them open questions.`` Then one line per clause below that applies. Last, the checker's *Run without --filter to see the other 10.*, or *It hides no entry.* when it hides none. The page draws none of this as a line: the counts replace the first line, the tooltip carries the clauses but *Waits on*, which *Blocked* carries, and *hidden* does what the last line said |
+| Applied, nothing kept | The same, with none shown, and *Nothing matches* after it. It leaves out what *Nothing matches*' reason line says: the *Other roadmaps* clause when the questions it keeps are all on other roadmaps, and the unmatched lines when they are why it keeps no document. *Nothing this filter keeps needs you* is not said |
 | Unmatched term | One line per term, under the first: `` `path:docs/desing` matches no path the index lists. ``, unless the filter keeps nothing for that reason, which *Nothing matches* then says |
-| Not understood | ``Not filtered: this Vantage cannot read `<term>`.``, then what the language reads, with a real example, and *Every entry is shown.* Where there is no term to name, the reason stands in its place: an unclosed quote, or a filter past the term or code-point limit |
+| Not understood | ``Not filtered: this Vantage cannot read `<term>`.``, then what the language reads, with a real example, and *Every entry is shown.* Where there is no term to name, the reason stands in its place: an unclosed quote, or a filter past the term or code-point limit. The page draws this as a line under the filter line, in amber |
 
 The clauses of the applied form, after its unmatched lines:
 
@@ -2184,10 +2372,10 @@ large* and *Unreadable* paths. A filter with no `path:` or `-path:` term keeps e
 path, so the *Waits on* clause never applies to it, and the first line leaves the
 paths out whenever the path terms keep every path: said of a word that keeps
 nothing, *in 20 of 20 paths* reads as a contradiction. The checker's JSON still gives
-both counts. The total of entries is the unfiltered section bar's sum, and a question
-on another roadmap is never an entry. "Not understood" is the words chosen so as to
-collide with none of the roadmap state `unreadable`, the *Unreadable* section and the
-refusal past `max-candidates`.
+both counts. The total of entries is the sum over the unfiltered sections, and a
+question on another roadmap is never an entry. "Not understood" is the words chosen
+so as to collide with none of the roadmap state `unreadable`, the *Unreadable*
+section and the refusal past `max-candidates`.
 
 **Nothing matches.** An applied filter that keeps no entry in any section says so in
 place of the sections, on the page and in the checker, in the words of
@@ -2238,18 +2426,15 @@ buttons are the way on:
   replace navigation, and puts the focus in the box.
 - **Clear the filter** does exactly what the box's ✕ does, through the filter line's
   own handler ([§6.17](#617-the-filter-line)): it clears and applies the empty
-  filter at once, and puts the focus in the box. Like ✕, both buttons prevent their
+  filter at once, as a new history entry, and puts the focus in the box. Like ✕, both buttons prevent their
   `mousedown`, so pressing one does not take the focus from the box first and write
   the box's text.
 
-The section bar's row is not drawn, and Expand all and Copy all agent requests go
-with it: there is no section to jump to and no card to unfold, and the row's reserved
-height left a blank band and an empty *Sections* landmark between the box and the
-notice. It goes in the same commit, and the row is keyed by the filter, so nothing
-painted moves. The line saying every open question has the human's answer is not
-drawn either. *Nothing matches* prints without its buttons, and a screen reader hears
-its headline and reason line after the notice, which describe the box with it
-([§6.17](#617-the-filter-line)).
+Nothing stands between the box and it: no row held room for controls there, which
+read as something that failed to load. The counts read *0 match*, and *Nothing
+needs you* is not drawn. *Nothing matches* prints without its buttons, and a screen
+reader hears its headline and reason line after the counts, which describe the box
+with it ([§6.17](#617-the-filter-line)).
 
 **In the checker,** the headline and the reason line are one block where the sections
 would be, after the notices and the Roadmaps block, and the run exits `0`
@@ -2268,7 +2453,7 @@ nothing and says why on stderr.
 | A 0.7.x viewer | Any planning URL | It has no planning page |
 | A 0.8.0 or 0.8.1 viewer | A planning link the checker printed | Keeps `filter=`, ignores it, and shows every entry with no notice. The link carries no page parameters, so nothing is read against the wrong sections, and `roadmap=` keeps its meaning |
 | A 0.8.x viewer | An address-bar URL copied from a newer page, holding a filter and page parameters | Reads the page parameters against the unfiltered sections and clamps them: a true page of the whole list, not the one the sender saw |
-| A 0.8.x viewer | Copy agent request or Copy all agent requests, on a filtered link | Copies the whole request, with no `Filter:` line: what that page shows. An agent taught that a filtered page's request carries a `Filter:` line can tell |
+| A 0.8.x viewer | Copy agent request, or Copy all agent requests, which 0.8.x had, on a filtered link | Copies the whole request, with no `Filter:` line: what that page shows. An agent taught that a filtered page's request carries a `Filter:` line can tell |
 | A 0.8.x viewer | Copy answers, on a filtered link | Every pending answer |
 | A 0.8.x checker | `--filter` | Exits `2` with `unknown option for index: --filter` |
 | Agent text frozen in a released viewer | — | Nothing frozen runs `--filter`: the `Verify:` line is unchanged, and `Filter:` is data |
@@ -2499,7 +2684,7 @@ sequenceDiagram
     W->>C: write each fresh result
     W-->>S: started, header, documents in chunks, ready
     S->>S: finish the index, set the store once
-    P->>W: cards for the shown pages
+    P->>W: cards for the layout's full cards
     P->>G: POST /planning/reviews for their documents
     W-->>P: card blocks
     P->>P: one commit of the sections
@@ -2947,7 +3132,7 @@ why it is filed under the server id as well.
 | `meta` | `"scanner"`, `"server"` | the owner: the scanner id and the server id | when the database opens, and in every other transaction |
 | `stamps` | `[repo, path]` | `{hash, kind}`, plus `reason` for an unreadable file | every build, to make `have` |
 | `documents` | `[repo, path]` | the planning document's facts | every warm build |
-| `cards` | `[repo, path]` | `{hash, blocks}` | for the shown pages only |
+| `cards` | `[repo, path]` | `{hash, blocks}` | for a layout's full cards only |
 
 - **A result is used only when the stream answers `same`** with the hash it was
   stored under. The key is content, so there is no modification-time race, a
@@ -3076,12 +3261,15 @@ by number.
 
 - **L1.** Whatever arrives after a surface's first paint goes into space reserved for
   it at first paint, or into room left over that exists anyway, or it waits for the
-  next render the reader causes: a navigation, a page flip, Show question. It never
+  next render the reader causes: a navigation, a new layout, Show question. It never
   moves or narrows anything painted.
-- **L2. A change of data is not late data.** A push saying that a file or a review
-  changed re-renders in place, as the viewer re-renders a document it live-reloads.
-  The rule is about data that existed when the page painted and reached it
-  afterwards.
+- **L2. A change of data is not late data, but on the planning page it waits.** A
+  push saying that a file or a review changed re-renders a document in place, as
+  the viewer re-renders a document it live-reloads. On the planning page it marks
+  and counts, and changes no item's height, position or presence until the reader
+  makes a new layout ([§6.4](#64-needs-you-as-a-to-do-list), P2 of
+  [the to-do list design](../design/planning-to-do-list.md#1-principles),
+  [OQ-TD10](#why-its-this-way)): only the reader's own action moves an item.
 - **L3. Nothing is shown on a guess.** The header never says *Untracked file* before
   git status has answered, nor when the request failed: a failure ends the hold like
   an answer, and the header shows neither that label nor a date until a push or the
@@ -3093,21 +3281,25 @@ by number.
 
 | Datum | Surface | Its space |
 | :--- | :--- | :--- |
-| The sections | planning page | the empty region below the frame, filled in one commit |
-| Section counts | planning page | ready at first paint, from the index |
-| The roadmap line | planning page | ready at first paint, from the index and the remembered choice, which is read synchronously; it takes the progress line's place with the section bar |
-| The filter line | planning page | drawn at first paint from the URL alone, one fixed-height row above every state of the route; its ✕, hint and spinner have slots of their own; its notice is the frame's ([§6.17](#617-the-filter-line)) |
+| The sections | planning page | the empty region below the frame, filled in one commit: every full card of a layout at once |
+| *Needs you*'s heading count, the groups' and kinds' counts, the filter line's counts, the header buttons' counts | planning page | live, in slots sized for them: *Needs you*'s count three digits wide, the groups' counts in theirs, the filter line's number in room for four digits and its word in the room of *matches*, Copy answers' and Copy answers + maintenance's in four digits, each growing to the right; *Maintenance*'s heading line never wraps ([§6.4](#64-needs-you-as-a-to-do-list)) |
+| An agent's reply on a painted item | planning page | the *New reply* mark in the item's own line, and a bar in its left gutter, room the item already has; pressed, it opens the reply, the reader's action |
+| An answer made elsewhere, a ✅ or a gone question, a changed question | planning page | *Answered elsewhere*, *Done*, *Changed in the document* in the item's own line; the card keeps the text and the comment list it painted |
+| A new question, a reordered roadmap, a group or kind that came or went | planning page | counted in the header's updates slot only, whose room is kept from first paint; a group the layout did not have is not drawn, and one it had keeps its line at a count of 0 |
+| Held updates | planning page | the next layout the reader makes: **Refresh**, a filter, a roadmap, a page size, or opening the page; Refresh keeps the first item on screen at its height |
+| The roadmap line | planning page | ready at first paint in the outline's head, from the index and the remembered choice, which is read synchronously; where the column is not drawn, on *Needs you*'s heading line, which arrives with the sections |
+| The filter line | planning page | drawn at first paint from the URL alone, one fixed-height row above every state of the route; its ✕, hint-and-counts and spinner have slots of their own; its *Not filtered* notice is the frame's ([§6.17](#617-the-filter-line)) |
 | A typed filter's results | planning page | the next render the reader causes: the old results stay until the new set's inputs are in, then change in one commit, the sections' box put back in place before the paint; the roadmap line's counts keep the unfiltered sections' room ([§6.16](#616-typing-and-the-url)) |
-| *Nothing matches* | planning page | the sections' box, in the commit that would have drawn the sections; the section bar's row leaves in that commit, keyed by the filter, so nothing painted moves ([§6.18](#618-the-filter-notice-and-nothing-matches)) |
+| *Nothing matches* | planning page | the sections' box, in the commit that would have drawn the sections ([§6.18](#618-the-filters-counts-the-notice-and-nothing-matches)) |
 | Which project a link's space id names | planning page, daemon mode | on a first load, the app shell's loading state, held for the answer at most the hold's deadline after the repositories are in, so the project's page is the first paint; past it, or followed inside the app, the sidebar's column, the header's buttons and the filter line until the answer, which keeps them all where they are: the project's page, or the page saying no project here holds it, or that several do, below them ([§13.6](#136-the-space-id)) |
 | The other-checkout notice | planning page, single-project mode | ready at the frame's first paint, which waits for the answer at most the hold's deadline; an answer after that is not drawn ([§13.6](#136-the-space-id)) |
 | Comments filed before the visit | cards | ready at first paint, through the gate |
 | Comments past the reviews deadline | cards | a fixed-width *N comments* count in the card's control row, which is always there, expanding on click; nothing inline |
-| The planning outline's head: its label and the roadmap picker | planning page, contents column | drawn with the outline, in the commit that draws the section bar; the column's width is held by its empty frame meanwhile |
+| The planning outline, its head included: its label and the roadmap picker | planning page, contents column | drawn with the outline, from the first layout; the column's width is held by its empty frame meanwhile; its group lines follow the layout's groups, with live counts |
 | Whether a question runs past its folded lines | cards | measured before the card paints, and again when its size changes, which a reader's resize does, all cards of a page in one pass of reads before any write; the fade and *Show full question* at the cut are drawn in that pass, and the clamp is on from the first paint |
 | The fold a card opens with | cards | ready at first paint: the reader's own fold from earlier in the visit, else the remembered *Expand all* / *Collapse all*, read synchronously; another tab's change opens only the cards rendered after it |
-| The pending count | planning page header | a slot reserved for a few digits |
-| Questions answered by a comment, in the need-you numbers | planning page | every document holding a question that needs you is in the page inputs' reviews request, so a cold visit paints with their answers; the picker's count and the other-roadmaps line keep the room of the index's count, which an answer only lowers, and read every review as it arrives; *Nothing needs you* from answers, and each section's answered count, read the counted documents' reviews alone, so one arriving after its sections painted waits for the next commit of sections, and the line stands at the head of the sections, drawn with them |
+| The pending count, and Copy answers + maintenance's total | planning page header | a slot reserved for four digits each |
+| Questions answered by a comment, in the need-you numbers | planning page | every document holding a question that needs you is in the page inputs' reviews request, so a cold visit paints with their answers as answered rows; the picker's count and the other-roadmaps line keep the room of the index's count, which an answer only lowers, and read every review as it arrives; *Nothing needs you* reads the counted documents' reviews alone, so one arriving after its sections painted waits for the next commit of sections; an answer arriving after the layout marks its card *Answered elsewhere* |
 | A question's controls in review mode | documents | a layout effect, so the row is in the document's first paint; comments arriving later change what the row holds, one line high in every state, and the controls a state drops are its last |
 | Mermaid in a card | cards | drawn before the commit; past its deadline, a fixed-height frame |
 | KaTeX and highlighting | cards | synchronous, so never late |
@@ -3118,7 +3310,8 @@ by number.
 | Tree badges | file tree | the room the name leaves ([§7.2](#72-the-file-trees-badge)) |
 | `next` link ids | frontmatter card | the same text becoming a link, at the same size |
 | Header git data (status, history, the file's date, *N commits*, and the Path button's root) | viewer header | requested together with the content, not after it renders. Within the hold, it is in the first paint. Later, an item takes only the room the header has left, or the slot its label reserved at first paint (`frontend/src/lib/headerFit.ts`); where that is not room enough, the item is not drawn until the header next has room for it. It never collapses a painted folder, folds a painted action or narrows the file name (S6) |
-| An index update from a push | everywhere | L2: applied live |
+| An index update from a push | documents, the file tree | L2: applied live |
+| An index update from a push | planning page | L2: marked and counted, laid out at the next layout the reader makes |
 
 Two other sources of layout shift fall under the same rules and are not the planning
 index's: a folder in the file tree filling late, and review mode's 4 px bar. Each is a
@@ -3402,7 +3595,7 @@ handed an empty page, or a fuller one than the agent meant (F5). A text term tha
 matches nothing is not one: a search that finds nothing is an answer, and the page
 shows it the same way.
 
-**Text output.** The [filter notice](#618-the-filter-notice-and-nothing-matches)
+**Text output.** The [filter notice](#618-the-filters-counts-the-notice-and-nothing-matches)
 comes first, its clauses included, in the checker's words. Then the
 `Planning page:` line and its hint lines
 ([§13.5](#135-handing-the-human-a-filtered-page)). Then the output a run without the
@@ -3412,7 +3605,7 @@ sections, and, when an agent section has entries, `Agent requests: vantage-check
 index --request --filter '<canonical text>'`, shell-quoted, each `'` written
 `'\''`, since a quoted path can hold one. The chosen roadmap's source follows
 unchanged. A filter that keeps no entry prints no section: its
-[*Nothing matches*](#618-the-filter-notice-and-nothing-matches) headline and
+[*Nothing matches*](#618-the-filters-counts-the-notice-and-nothing-matches) headline and
 reason line stand where the sections would be, *Nothing this filter keeps needs
 you* is not printed, and there is no `Agent requests:` line.
 
@@ -3532,7 +3725,7 @@ UTF-8, and writes a space as `+`:
 `URLSearchParams` on the page reads that query back to exactly the canonical text,
 so opening the link triggers no rewrite, and a round trip over every understood form
 in the fixture of forms pins it. Every write of the page's URL uses the same
-encoding (`planningQuery`), a flip's, a roadmap pick's and the outline's links
+encoding (`planningQuery`), a roadmap pick's and the outline's links
 included, and a change of the filter writes `filter` first (`withFilter`), so a
 typed filter's address matches an agent's link. Other writes keep the order the URL
 has. One difference from an agent's link remains: the page writes a roadmap in a
@@ -3582,7 +3775,7 @@ needs no click at all.
    filter ([§6.7](#67-answering-and-copy-answers)).
 6. **The agent applies the answers** and reruns the same command until it reports
    *Nothing this filter keeps needs you*, or, once no entry is left at all,
-   [*Nothing matches*](#618-the-filter-notice-and-nothing-matches), as the last
+   [*Nothing matches*](#618-the-filters-counts-the-notice-and-nothing-matches), as the last
    round can: with every question ruled, `is:open` keeps none, and the line reads,
    for one, ``Without `is:open` it would keep 3 entries, and none of them is an
    open question.`` *Nothing on this
@@ -3863,13 +4056,13 @@ declares its stage vocabulary; and runs `planning/unrouted` as a warning.
 | The reviews request fails | The sections paint without comments, with one line at the top of the region in the same commit (*Comments could not be loaded*), and Copy answers is disabled. A push retries |
 | The second reviews request fails, after the sections painted | A line above the sections would move them, so it is said where nothing moves: the pending count stays `–`, Copy answers stays disabled with a warning icon in place of its own and a tooltip, and a screen reader hears *Comments could not be loaded* once. A push retries |
 | A Mermaid diagram misses its deadline | The fixed-height frame |
-| A page parameter is out of range or malformed | Clamped, or read as page 1, and the URL rewritten in place |
+| An old page parameter, such as `needs-you=3` | Ignored, and dropped by the in-place rewrite ([§6.4](#64-needs-you-as-a-to-do-list)) |
 | A tab of an unreleased build asks for the old batch | `410`; the page shows its store's own error with Retry, and a reload fixes it |
 | A tab from before several roadmaps reads a header with `roadmaps` | Its build fails with the stream's shape error and Retry; a reload fixes it. No released tab has ever read the stream |
 | More candidates than `max-candidates` | No scan at all. The planning page says how many files there are and to narrow `include`; `vantage-check index` prints the same and exits `3` |
 | Multi-repo mode | One index per repository; a link from one repository into another is never decorated |
 | A planning filter that is not understood | Applied not at all (F3). Opened from a URL or entered with Enter, the page shows every entry under the *Not filtered* notice, naming the first term it cannot read or the reason, and keeps the text in the box and the URL as written, with the box marked invalid; typed, it keeps the page as it was, and the hint says the text is not applied. `vantage-check index --filter` exits `2` before the scan ([§6.14](#614-what-is-not-understood-and-canonical-text)) |
-| A filter's `path:` or `-path:` term matches no path the index lists | The page applies it, keeping nothing or excluding nothing, and names the term in the notice, or in *Nothing matches* when the term is why it keeps no document ([§6.18](#618-the-filter-notice-and-nothing-matches)); the checker exits `2` with stdout empty, naming each such term ([§13.4](#134-vantage-check-index---filter)) |
+| A filter's `path:` or `-path:` term matches no path the index lists | The page applies it, keeping nothing or excluding nothing, and names the term in the notice, or in *Nothing matches* when the term is why it keeps no document ([§6.18](#618-the-filters-counts-the-notice-and-nothing-matches)); the checker exits `2` with stdout empty, naming each such term ([§13.4](#134-vantage-check-index---filter)) |
 | A filter past `max-candidates` | No sections, so nothing is applied: the page shows its refusal, with the filter line still reading and writing the URL, and `index --filter` exits `3`, never holding a term to the tree |
 | A 0.8.x viewer opens a planning link | It keeps `filter=`, ignores it and shows every entry, with no notice; its Copy agent request has no `Filter:` line ([§6.19](#619-across-releases)) |
 | A 0.8.x checker is given `--filter` | `unknown option for index: --filter`, exit `2` |
@@ -4233,8 +4426,8 @@ questions, [OQ-E1](../../frontend/e2e/fixtures/test_repo/plans/design.md#OQ-E1) 
    prints the notice, the line `Planning page:
    /.vantage/planning?filter=path:/plans/design.md+is:open` and its hint line, with
    exactly those two questions under *Needs you*.
-2. Opening that link shows those two cards and nothing else. The section bar counts
-   them, the box holds the text, and the notice says what is hidden.
+2. Opening that link shows those two cards and nothing else. *Needs you* counts
+   them, the box holds the text, and the counts beside it say what is hidden.
 3. Typing the same text into the box on the unfiltered page gives the same page
    without an Enter, and once the idle pause has passed, the same `filter` value and
    the same address.
@@ -4285,7 +4478,8 @@ questions, [OQ-E1](../../frontend/e2e/fixtures/test_repo/plans/design.md#OQ-E1) 
 
 ## Current values
 
-Verified at `3fbfaa4`. The prose above explains what each of these is for; this table
+Verified at `3fbfaa4`; the planning page's rows from the to-do list design, against
+the commit that graduated it. The prose above explains what each of these is for; this table
 is the only place most of the numbers are stated.
 
 | Value | Setting | Defined in |
@@ -4298,7 +4492,7 @@ is the only place most of the numbers are stated.
 | Planning page URL | `/.vantage/planning`, `/.vantage/planning/<repo>`, the repository segment percent-encoded | `PLANNING_PAGE_PATH` in `packages/vantage-md/src/planning/filter.ts`, which `PLANNING_ROUTE` in `frontend/src/lib/planningRoute.ts` re-exports; `planningPath` there |
 | Keyboard chord | `g p` | `useKeyboardShortcuts` |
 | The Filter box's key | `/`, on the planning page only | `onFocusFilter` in `useKeyboardShortcuts`, the row in `KeyboardShortcuts.tsx` |
-| Section ids, which are the URL parameters | `needs-you`, `unrouted`, `waiting`, `ready`, `graduate`, `disagrees`, `skipped`, `could-not-read`; and `roadmap`, `filter` and `space` | `PLANNING_SECTION_IDS` in `packages/vantage-md/src/planning/guide.ts`; `PLANNING_ROADMAP_PARAM`, `PLANNING_FILTER_PARAM` in `filter.ts`; `PLANNING_SPACE_PARAM` in `space.ts` |
+| Section ids, which name the headings, and the URL parameters | `needs-you`, `unrouted`, `waiting`, `ready`, `graduate`, `disagrees`, `skipped`, `could-not-read`; the parameters `roadmap`, `filter` and `space`, an old page parameter dropped | `PLANNING_SECTION_IDS` in `packages/vantage-md/src/planning/guide.ts`; `PLANNING_ROADMAP_PARAM`, `PLANNING_FILTER_PARAM` in `filter.ts`; `PLANNING_SPACE_PARAM` in `space.ts` |
 | A space id, and where a checkout keeps it | 16 characters of `a–z 2–7` (80 random bits); `.vantage/space` | `PLANNING_SPACE_ID_PATTERN`, `PLANNING_SPACE_FILE` in `packages/vantage-md/src/planning/space.ts`; `internal/spaceid` |
 | The space endpoint | `GET /api/spaces/{id}`, sent `no-store` | `Handlers.Space` in `internal/api/space_handlers.go` |
 | Space answers kept per tab | 16 ids, the oldest out first; a failure never | `KEPT` in `frontend/src/lib/planningSpace.ts` |
@@ -4321,8 +4515,13 @@ is the only place most of the numbers are stated.
 | The typing flow | `generator is:open`, a key every 150 ms; the burst, a key every 30 ms | `--query`, `--type-gap` and `--burst-gap` defaults in `frontend/perf/planning/run.ts` |
 | Section titles | Needs you, Not on a roadmap, Blocked, Ready to build, Ready to graduate, Stage conflict, Too large, Unreadable | `PLANNING_SECTION_GUIDE`, same file |
 | Agent sections | `unrouted`, `ready`, `graduate`, `disagrees` | `PLANNING_AGENT_SECTION_IDS`, same file |
+| Agent requests | the agent sections, then `compact` | `PLANNING_REQUEST_IDS`, same file |
 | Remembered roadmap | `localStorage` key `vantage:planningRoadmap:<repo>` | `PLANNING_ROADMAP_FAMILY` in `frontend/src/lib/preferences.ts` |
 | Cards open unfolded | `localStorage` key `vantage:planningCardsExpanded`, `"true"` or `"false"`; absent, folded | `PREFERENCE_KEYS` in `frontend/src/lib/preferences.ts` |
+| The page size | `localStorage` key `vantage:planningPageSize`, one of the page sizes; absent, the default | same |
+| Which groups are open | `localStorage` keys `vantage:planningBlockedOpen`, `vantage:planningMaintenanceOpen`, `"true"` or `"false"`; absent, closed | same |
+| The kinds Copy answers + maintenance leaves out | `localStorage` key `vantage:planningCopyLeftOut`, request ids comma-separated, `""` for none; absent, `ready` | same |
+| *Maintenance*'s kinds, in its order | `unrouted`, `ready`, `graduate`, `disagrees`, `compact`, `skipped`, `could-not-read` | `MAINTENANCE_KIND_IDS` in `frontend/src/lib/planningPages.ts` |
 | Lines a folded card shows | 3 | `CARD_CLAMP_LINES` in `frontend/src/lib/planningCardParts.ts` |
 | Card and row ids | `pq-<path>--<id or L<line>>`, `pr-<section>--<path>` | `planningCardId`, `planningOutline.ts` |
 | Badge and link attributes | `data-vantage-planning-badge`, `data-vantage-link-target`, `data-vantage-referenced-by` | `PLANNING_BADGE_ATTR`, `LINK_TARGET_ATTR`, `REFERENCED_BY_ATTR` |
@@ -4342,21 +4541,23 @@ is the only place most of the numbers are stated.
 | In-memory card blocks, without a cache and for roadmaps | 8 Mi characters, least recently used out | `memoryCardChars` |
 | Inline client's slice | 8 ms | `sliceMs` |
 | Helpers | after 2 MiB unscanned; each queue 2 MiB; at most 3; 2 cores reserved | `helperThresholdBytes`, `helperQueueBytes`, `maxHelpers`, `helperReservedCores` |
-| Page of Needs you, Not on a roadmap, Blocked | 10 entries, or fewer before 32 Ki characters of card Markdown | `pageEntries`, `pageMarkdownChars` |
-| Page of Ready to build, Ready to graduate, Stage conflict | 25 rows | `pageRows` |
-| Page of Too large, Unreadable | 50 lines | `pageLines` |
-| Page select offered from | 5 pages | `pageSelectFrom` |
-| One commit of the sections | at most 30 cards and 96 Ki characters | `commitCards`, `commitMarkdownChars` |
+| Page sizes of *Needs you*, and the default | 10, 20, 30, 50; 10 | `pageSizes`, `defaultPageSize` |
+| Answered rows shown before *… N more answered* | 5 | `answeredRowsShown` |
+| Rows a group's list shows before *Show all N* | 100 | `groupRows` |
+| Blocks fetched past the page size, for cards that join | 5 | `cardsAhead` |
+| Copy answers + maintenance's panel: hover rest before it opens, and its close after the pointer leaves | 200 ms, 300 ms | `OPEN_MS`, `CLOSE_MS` in `frontend/src/components/PlanningCopyPanel.tsx` |
+| Copy answers + maintenance's kinds, in the panel's order | `unrouted`, `disagrees`, `compact`, `graduate`, `ready` | `COPY_KINDS` in `frontend/src/lib/planningCopy.ts` |
+| The filter line's counts' room | 4 digits, and the word *matches* | `COUNT_DIGITS` in `PlanningFilterLine.tsx` |
 | Spinner delay | 150 ms | `spinnerMs` |
 | The Filter box's idle pause, before the address takes the filter ([§6.16](#616-typing-and-the-url)) | 300 ms | `filterIdleMs` |
 | The Filter box's stillness before the live region speaks what the idle pause wrote, from the same keystroke ([§6.17](#617-the-filter-line)); a number the build coined | 1 s | `filterSpeechMs` |
 | Reviews deadline / Mermaid deadline | 1 s / 1 s | `reviewsDeadlineMs`, `mermaidDeadlineMs` |
 | Late Mermaid frame | 240 px tall | `mermaidFramePx` |
 | Page-input sets kept | 8 | `pageInputsKept` |
-| Pending count slot | 4 digits | `pendingCountDigits` |
+| Pending count slot, and Copy answers + maintenance's | 4 digits | `pendingCountDigits` |
 | Review answers previews per page | 20 comments | `ANSWERS_PER_PAGE` in [PlanningPendingAnswers](../../frontend/src/components/PlanningPendingAnswers.tsx) |
 | Quote context | 2 lines either side | `quoteContextLines` |
-| Documents per section in the outline | 50 | `outlineDocuments` |
+| Documents in the outline | 50 | `outlineDocuments` |
 | The hold | 150 ms after the content arrives; for a space's answer, after the repositories arrive, or the page mounts | `holdMs`; `usePlanningSpaceHold` in `frontend/src/lib/planningSpace.ts` |
 | Referenced by headings per row | 4, then *+M more* | `HEADINGS_SHOWN` in `ReferencedBy.tsx` |
 | `planning/question-length` default | 120 words (`max-words`) | `QUESTION_WORDS_DEFAULT` in `rules/questionLength.ts` |
@@ -4369,7 +4570,8 @@ is the only place most of the numbers are stated.
 
 Rulings a maintainer reading only the text above might undo on purpose, each with the
 id that code comments and sibling documents cite. `OQ-PL`, `OQ-PS` and `OQ-PF` rows
-ruled the three designs' open questions, the last the planning filter's; *Plan Q* rows
+ruled the three designs' open questions, the last the planning filter's; `OQ-TD` rows
+ruled [the to-do list design](../design/planning-to-do-list.md#decision-ledger)'s; *Plan Q* rows
 ruled the questions the first implementation plan raised. Ids not listed were absorbed
 into the text above or are in git.
 
@@ -4388,10 +4590,23 @@ into the text above or are in git.
 | OQ-PF3 | No address is stored or printed, so there is no `VANTAGE_PLANNING_URL` and the server prints no ready-to-paste address: an address is a fact about a machine, with no right home, and one machine may open a repository at several. The checker prints a root-relative link, and pasting it into the Filter box, alone or with the lines around it, applies its filter ([§13.5](#135-handing-the-human-a-filtered-page), [§6.17](#617-the-filter-line)) | 2026-10-05 |
 | OQ-PF4 | Besides typing, `/` focuses the box, and a document's Referenced by line links to the page filtered to that document. No per-card *show only this document* toggle, which would add a control to every card and row ([§6.17](#617-the-filter-line), [§7.1](#71-referenced-by)) | 2026-10-05 |
 | OQ-PF5 | The filter line is always on the page: one fixed-height row in every state, from first paint. Behind a Filter button it would be a state of its own and a layout-shift case, and a filter a person operates has to be seen to be learned ([§6.17](#617-the-filter-line)) | 2026-10-05 |
-| OQ-PF6 | The page applies the filter as the reader types, basically instantly, ruled in conversation over applying it on Enter only. Typing never adds a history entry; the URL follows after the idle pause and at once on Enter, ✕ or a paste; the box is never rewritten while the reader types; a text not understood mid-typing keeps the results on screen; and "instant" is held to T1 to T4. Amended on 2026-10-06: a typed text that keeps no entry at all applies only once the idle pause ends, the last results staying until then, so `-m` or a half word does not empty the page between keys less than the pause apart; Enter, ✕, a paste and leaving the box apply at once, empty or not. No debounce of the results otherwise: matching takes a few milliseconds, so any wait would be the whole delay ([§6.16](#616-typing-and-the-url), [§18](#18-scale-targets-and-what-has-been-measured)) | 2026-10-05, 2026-10-06 |
+| OQ-PF6 | The page applies the filter as the reader types, basically instantly, ruled in conversation over applying it on Enter only. Typing never adds a history entry; the URL follows after the idle pause and at once on Enter or a paste, and ✕ adds an entry since [OQ-TD13](#why-its-this-way); the box is never rewritten while the reader types; a text not understood mid-typing keeps the results on screen; and "instant" is held to T1 to T4. Amended on 2026-10-06: a typed text that keeps no entry at all applies only once the idle pause ends, the last results staying until then, so `-m` or a half word does not empty the page between keys less than the pause apart; Enter, ✕, a paste and leaving the box apply at once, empty or not. No debounce of the results otherwise: matching takes a few milliseconds, so any wait would be the whole delay ([§6.16](#616-typing-and-the-url), [§18](#18-scale-targets-and-what-has-been-measured)) | 2026-10-05, 2026-10-06 |
 | OQ-PF7 | No freeze across releases, ruled in conversation: a filter text may match differently in a later release, so nothing compares the fixture of forms with an earlier release's, and "not understood" keeps no form free for later. P0 still governs what lives in files or feeds scripts, roadmap order never changes, and the page and the checker agree within one release ([§6.19](#619-across-releases)) | 2026-10-05 |
 | OQ-PF8 | A link names the checkout it was made in by a random space id the checker keeps in `.vantage/space` and the server reads, ruled in conversation over matching the checker's root against served names or contents: an agent is already in the checkout, as the review inbox shows, so the filesystem carries the id and *Choose a project* need never show for an agent's link ([§13.6](#136-the-space-id)) | 2026-10-06 |
 | OQ-PF9 | Enter leaves the box for the results, ruled in conversation: typing already applies the text, so an Enter that only applied it changed nothing on screen and read as a key that does nothing. On a text the page reads, or none, Enter scrolls the pane to its top and gives it the focus; a not-understood text keeps the focus in the box, where the reader corrects what the notice names. ✕ and a paste still keep the focus ([§6.17](#617-the-filter-line)) | 2026-10-08 |
+| OQ-TD1 | The page is a to-do list: what needs you comes first, and everything that is not a question for you is folded, with counts ([§6.2](#62-sections-top-to-bottom), [§6.4](#64-needs-you-as-a-to-do-list)) | 2026-10-08 |
+| OQ-TD2 | *Needs you* keeps its name, and holds only questions waiting on your reply; *your turn*, *on your plate* and the other names offered were rejected ([§6.4](#64-needs-you-as-a-to-do-list)) | 2026-10-08 |
+| OQ-TD3 | This is the page's default view, not a default filter: the checker cannot read reviews, so a filter meaning *needs you* would mean one thing on the page and another in an agent's link; an agent never needs to link to finished questions ([§6.4](#64-needs-you-as-a-to-do-list)) | 2026-10-08 |
+| OQ-TD4 | A ✅ question is never shown in *Needs you*; it should go away as fast as possible, so *Maintenance* lists it to fold into the ledger and the `compact` request asks the agent to compact it ([§6.2](#62-sections-top-to-bottom)) | 2026-10-08 |
+| OQ-TD5 | No infinite scroll, and no pages: a to-do list fills in as you work, so there is never a next page to go to ([§6.4](#64-needs-you-as-a-to-do-list)) | 2026-10-08 |
+| OQ-TD6 | Pressing *hidden* clears the filter, and Back undoes it ([§6.16](#616-typing-and-the-url), [§6.17](#617-the-filter-line)) | 2026-10-08 |
+| OQ-TD7 | Two copy buttons side by side: Copy answers, the same on every page, and Copy answers + maintenance, which adds the maintenance requests, with a panel of live counts and remembered checkboxes, All and None, opened on hover with a visible ▾; no checked kind greys it out; its count is the total it copies. One button with answers behind a checkbox would make the planning page's Copy answers behave unlike every other page's; a hover-only panel has no way in on a touch screen ([§6.7](#67-answering-and-copy-answers)) | 2026-10-08 |
+| OQ-TD8 | *Needs you* holds a fixed number of cards, never a character budget; the number is a setting remembered in this browser. A page size whose first layout misses the typing targets is a risk to report, not a reason to put the budget back ([§6.4](#64-needs-you-as-a-to-do-list), [§18](#18-scale-targets-and-what-has-been-measured)) | 2026-10-08 |
+| OQ-TD9 | Answering shrinks a card to a row in place, and the list fills in to keep the page size; answered rows gather at the top at the next layout, the first 5 shown, and the 5 is fixed until it proves to need a setting. Removing an answered card was rejected: the next card would jump up under the pointer, and Undo would have nowhere to be ([§6.4](#64-needs-you-as-a-to-do-list)) | 2026-10-08 |
+| OQ-TD10 | Late changes never change an item's height, position or presence: they mark it, a reply with visual weight, and Refresh in the header applies them, rather than a dismiss, which would hide a reply that may need you. Comments save as you type, with a *Saved* indicator and a Close button, no Save, no Cancel and no draft state: Copy answers copies what is saved ([§6.4](#64-needs-you-as-a-to-do-list), [§12](#12-late-data-never-moves-painted-content)) | 2026-10-08 |
+| OQ-TD11 | Old links do not matter: page parameters are dropped by the in-place rewrite, and none is honored ([§6.4](#64-needs-you-as-a-to-do-list)) | 2026-10-08 |
+| OQ-TD12 | The page and the checker counting *Needs you* differently is acceptable: the checker counts ✅ and answered questions in it, and the page does not; they are views of the same data at different times, and converge once the agent acts. The index's sections and JSON keep their meaning ([§6.2](#62-sections-top-to-bottom)) | 2026-10-08 |
+| OQ-TD13 | ✕ adds a history entry when it clears the filter, as *hidden* does, so Back undoes either; Esc still never clears ([§6.17](#617-the-filter-line)) | 2026-10-09 |
 | Plan Q1 | Patterns keep the server's matcher, its quirks and RE2 dialect included; the checker ports it, and one shared fixture pins both readers ([§3.1](#31-candidates-and-planning-documents)) | 2026-09-28 |
 | Plan Q2 | A listed roadmap is read whenever it exists, even when `include` or `exclude` rules it out — per entry, since several roadmaps ([§4.1](#41-which-files-are-roadmaps)) | 2026-09-28 |
 | Plan Q3 | A static export gets no badges and no planning index; its planning page says so ([§15](#15-failure-modes)) | 2026-09-28 |
@@ -4410,7 +4625,7 @@ into the text above or are in git.
 | Plan Q19 | The planning module is internal to `vantage-md`; `FrontmatterDisplay`'s optional `linkIds` is the one public addition (P4) | 2026-09-28 |
 | Plan Q20 | The degenerate cases: a header that does not parse makes its file unreadable; a non-string or empty `stage` and a non-string or multi-line `next` are ignored; a single `depends-on` path is a one-entry list and a non-string entry is dropped; stage matching is exact and case-sensitive; an empty stages table is none; a `depends-on` target outside the repository, or whose id appears nowhere in it, is a finding; a skipped or unreadable roadmap does not route; an empty document badge is not drawn; `next` links only an id a question carries ([§3.4](#34-the-header-of-record-stage-next-depends-on)) | 2026-09-28 |
 | — | **Open document** lands at the top of the document, not at the question ([§6.6](#66-question-cards)) | 2026-09-28 |
-| — | An empty result says so: an applied filter that keeps no entry shows *Nothing matches* and the one reason that applies in place of the sections, with the way on, rather than a blank page under a notice whose *Nothing this filter keeps needs you* reads as though something matched. Where all it keeps is on other roadmaps it says *Nothing on this roadmap matches*, and offers each roadmap before Clear the filter ([§6.18](#618-the-filter-notice-and-nothing-matches)) | 2026-10-06 |
+| — | An empty result says so: an applied filter that keeps no entry shows *Nothing matches* and the one reason that applies in place of the sections, with the way on, rather than a blank page under a notice whose *Nothing this filter keeps needs you* reads as though something matched. Where all it keeps is on other roadmaps it says *Nothing on this roadmap matches*, and offers each roadmap before Clear the filter ([§6.18](#618-the-filters-counts-the-notice-and-nothing-matches)) | 2026-10-06 |
 | — | **Open document** opens a new tab, as its `ExternalLink` icon says, and the planning page stays where it is; the document's name above the question opens it in this tab, with Back to the same pages and scroll. A plain click on Open document took this tab, which a reader did not expect of that icon ([§6.6](#66-question-cards)) | 2026-10-01 |
 | — | A comment pending for the agent on a question is the human's answer, whatever its text: a take, an Answer…, or a comment typed anywhere in the question. The question's card and its row in the document show it answered, and it stops counting as needing the human while it stays listed. A reviewer who does not take the leaning comments on the question, and that comment is the action the agent gets; offering Take beside it, or counting the question as still needing them, asked twice for what they had given ([§6.7](#67-answering-and-copy-answers)) | 2026-10-01 |
 | — | A question outside a list runs from its host over the blocks after it, up to the next heading, rule or question, in the scan and the page alike. The user asked for a question's controls at its end whether it is a list item, a paragraph or a title with blocks under it, and for a comment anywhere around a question to answer it; as the one block its directive stamped, such a question put its row between its title and its context, and a comment on its leaning answered nothing ([§3.3](#33-questions)) | 2026-10-01 |

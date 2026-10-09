@@ -1047,8 +1047,9 @@ build* (`ready`), *Ready to graduate* (`graduate`) and *Stage conflict*
 questions, the ones you have ruled that still sit in their documents, and asks
 the agent to compact each. `vantage-check index --request` prints, for each of
 them that holds an entry, what it means, what to do and every entry, on every
-page, then how to check the work: the planning page's **Copy agent request** and
-**Copy all agent requests** buttons copy exactly this text. Name requests to
+page, then how to check the work: the planning page's **Copy agent request**
+buttons copy exactly this text, and **Copy answers + maintenance** copies it for
+the kinds its panel checks, after the answers. Name requests to
 narrow it, as in `vantage-check index --request graduate`.
 
 ```text
