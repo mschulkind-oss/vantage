@@ -966,7 +966,7 @@ function questionOf(
   return q !== undefined && q.id === ref.id ? q : questionFor(index, ref);
 }
 
-/** How many entries a set of sections lists: the section bar's sum. */
+/** How many entries a set of sections lists: the sum over its sections. */
 function entryCount(sections: PlanningSections): number {
   return (
     sections.needsYou.length +
