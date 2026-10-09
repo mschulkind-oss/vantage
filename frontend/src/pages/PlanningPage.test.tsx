@@ -6588,6 +6588,34 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       ]);
     });
 
+    // Typing has applied the text already, so Enter also leaves the box
+    // for the results (planning-index.md §6.17, OQ-PF9).
+    it("takes the focus to the top of the pane on Enter, and says at once what the idle pause wrote", async () => {
+      limits({ filterIdleMs: 300, filterSpeechMs: 1000 });
+      await renderPage();
+      scroller().scrollTop = 640;
+      box().focus();
+      await type("oq-d3");
+      await idle(400);
+      expect(filterOf()).toBe("oq-d3");
+      expect(status()).toHaveTextContent(/^$/);
+      await enter();
+      expect(filterOf()).toBe("oq-d3");
+      expect(document.activeElement).toBe(scroller());
+      expect(scroller().scrollTop).toBe(0);
+      expect(status().textContent).toMatch(
+        /^Filtered by oq-d3: 1 of 10 entries/,
+      );
+      // A text it cannot read keeps the focus, for the reader to correct
+      // what the notice names, and the pane where it was.
+      box().focus();
+      scroller().scrollTop = 640;
+      await enter('oq-d3 "');
+      expect(noticeLines()[0]).toMatch(/^Not filtered/);
+      expect(document.activeElement).toBe(box());
+      expect(scroller().scrollTop).toBe(640);
+    });
+
     it("changes nothing for a text with the applied canonical text, such as one with a space added (§6.16)", async () => {
       await renderPage();
       box().focus();

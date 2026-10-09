@@ -12,6 +12,7 @@ import { FILTER_HINT, PlanningFilterLine } from "./PlanningFilterLine";
 function renderLine(urlText: string, printText = "", appliedText = urlText) {
   const onType = vi.fn();
   const onApply = vi.fn();
+  const onEnter = vi.fn();
   const onFlush = vi.fn();
   const onLeave = vi.fn();
   const inputRef = createRef<HTMLInputElement>();
@@ -25,6 +26,7 @@ function renderLine(urlText: string, printText = "", appliedText = urlText) {
         busyAfter={null}
         onType={onType}
         onApply={onApply}
+        onEnter={onEnter}
         onFlush={onFlush}
         onLeave={onLeave}
         inputRef={inputRef}
@@ -38,7 +40,7 @@ function renderLine(urlText: string, printText = "", appliedText = urlText) {
     name: "Filter",
   }) as HTMLInputElement;
   const hint = () => screen.getByTestId("planning-filter-hint").textContent;
-  return { onType, onApply, onFlush, onLeave, box, hint, clearRef };
+  return { onType, onApply, onEnter, onFlush, onLeave, box, hint, clearRef };
 }
 
 describe("PlanningFilterLine, as the reader types", () => {
@@ -210,6 +212,52 @@ describe("PlanningFilterLine, before the URL holds what it applied", () => {
     expect(onApply).toHaveBeenLastCalledWith('path:plans/c.md "is', null);
     expect(box.value).toBe('path:plans/c.md "is');
     expect(hint()).toBe("");
+  });
+});
+
+describe("PlanningFilterLine's Enter", () => {
+  // Typing has already applied what the box reads, so Enter also takes the
+  // reader to the results (planning-index.md §6.17, OQ-PF9).
+  it("hands the page the focus after applying a text it reads, or none, and keeps it for a text it cannot read", () => {
+    const { onApply, onEnter, box } = renderLine("path:plans/a.md");
+    box.focus();
+    // The URL's own text, which typing applied already.
+    act(() => {
+      fireEvent.submit(box.form!);
+    });
+    expect(onApply).toHaveBeenCalledTimes(1);
+    expect(onEnter).toHaveBeenCalledTimes(1);
+    act(() => {
+      fireEvent.change(box, { target: { value: "" } });
+      fireEvent.submit(box.form!);
+    });
+    expect(onApply).toHaveBeenLastCalledWith("", null);
+    expect(onEnter).toHaveBeenCalledTimes(2);
+    // The notice then says what to correct, in the box that still has the
+    // focus.
+    act(() => {
+      fireEvent.change(box, { target: { value: 'path:plans/a.md "is' } });
+      fireEvent.submit(box.form!);
+    });
+    expect(onApply).toHaveBeenLastCalledWith('path:plans/a.md "is', null);
+    expect(onEnter).toHaveBeenCalledTimes(2);
+    expect(document.activeElement).toBe(box);
+  });
+
+  it("hands the page nothing of ✕ or a pasted link, which keep the focus in the box", () => {
+    const { onApply, onEnter, box } = renderLine("path:plans/a.md");
+    act(() => {
+      fireEvent.click(screen.getByRole("button", { name: "Clear the filter" }));
+    });
+    act(() => {
+      fireEvent.paste(box, {
+        clipboardData: {
+          getData: () => "/.vantage/planning?filter=path:plans/b.md",
+        },
+      });
+    });
+    expect(onApply).toHaveBeenCalledTimes(2);
+    expect(onEnter).not.toHaveBeenCalled();
   });
 });
 

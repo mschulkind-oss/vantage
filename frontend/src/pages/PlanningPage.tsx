@@ -2560,6 +2560,16 @@ export const PlanningPage: React.FC = () => {
   const leaveFilter = useCallback(() => {
     contentRef.current?.focus({ preventScroll: true });
   }, []);
+  // Enter on a text the page reads, or none (§6.17, OQ-PF9): the focus to
+  // the pane, scrolled to the top, so the box shows it is done with and the
+  // scrolling keys and the page's shortcuts go through the results from
+  // their start. The box's blur then says what the idle pause wrote.
+  const enterFilter = useCallback(() => {
+    const pane = contentRef.current;
+    if (pane === null) return;
+    scrollPaneTo(pane, 0);
+    pane.focus({ preventScroll: true });
+  }, []);
   // The visit's second review request goes once the reader changes the
   // filter, if the sections have not painted yet, and before the typed
   // text's inputs ask for anything: they then wait for its answer rather
@@ -2626,7 +2636,6 @@ export const PlanningPage: React.FC = () => {
   const applyFilter = useCallback(
     (text: string, roadmap: string | null) => {
       cancelIdle();
-      dropSpeech();
       typedRef.current = null;
       let next = withFilter(search, text, roadmap);
       // A pasted link's roadmap, written as the in-place rewrite would leave
@@ -2651,10 +2660,13 @@ export const PlanningPage: React.FC = () => {
       followFilter(filter);
       const sameRoadmap =
         readRoadmapRequest(next) === readRoadmapRequest(search);
+      // A notice the idle pause's write still owes is kept: it is this
+      // filter's, and the box's blur says it at once.
       if (readFilterRequest(next) === filterValue(filterText) && sameRoadmap) {
         startTransition(() => setLead(null));
         return;
       }
+      dropSpeech();
       const query = planningQuery(next);
       setApplying(filter);
       setAnnounceFor({ filter: readFilterRequest(next), from: location.key });
@@ -3058,6 +3070,7 @@ export const PlanningPage: React.FC = () => {
                   }
                   onType={typeFilter}
                   onApply={applyFilter}
+                  onEnter={enterFilter}
                   onFlush={flushFilter}
                   onLeave={leaveFilter}
                   inputRef={filterInputRef}

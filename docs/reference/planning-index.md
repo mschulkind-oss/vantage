@@ -1887,8 +1887,11 @@ handed the unfiltered sections for those facts, beside the filtered ones it list
   then shows its canonical text. A not-understood text is applied as written: the
   URL takes it, and the page shows every entry under the *Not filtered* notice, as
   it does when a URL holds one on open. Enter on the text already applied and
-  written rewrites the box to canonical text and does nothing else. **✕** is Enter
-  on an empty text.
+  written rewrites the box to canonical text and writes nothing, and a notice the
+  idle pause's write still owes is kept, to be said as the box loses the focus.
+  Then, on any text but a not-understood one, the focus leaves the box for the
+  results ([§6.17](#617-the-filter-line)). **✕** applies as Enter on an empty
+  text does, and keeps the focus in the box.
 - **On a paste.** A pasted planning link applies its filter at once, and its roadmap
   when it names one ([§6.17](#617-the-filter-line)). Other pasted text changes the
   box as typing does, and is written at once rather than after the pause.
@@ -2041,6 +2044,13 @@ page ([OQ-PF5](#why-its-this-way)).
   and a pasted link, which put their own text in the box, it is the one way the
   reader's own action rewrites the box's text while it has the focus. The form's
   submit is prevented, or Enter would reload the page.
+- **Enter then takes the reader to the results** ([OQ-PF9](#why-its-this-way)),
+  unless the text is not understood. The pane is scrolled to its top, where the
+  results start under the box, and given the focus, as Esc gives it. So the
+  box's focus ring goes, the scrolling keys and the page's shortcuts go through
+  the results, and a phone's keyboard closes. A not-understood text keeps the
+  focus in the box and the pane where it was, because the notice Enter brings up
+  names what to correct. Leaving the box says any notice still owed, as below.
 - **The box follows every navigation it did not cause.** The box is local state,
   reset from the URL when the location's key changes, because `BrowserRouter`
   commits a location in a transition and a box controlled from the URL would drop
@@ -4381,6 +4391,7 @@ into the text above or are in git.
 | OQ-PF6 | The page applies the filter as the reader types, basically instantly, ruled in conversation over applying it on Enter only. Typing never adds a history entry; the URL follows after the idle pause and at once on Enter, ✕ or a paste; the box is never rewritten while the reader types; a text not understood mid-typing keeps the results on screen; and "instant" is held to T1 to T4. Amended on 2026-10-06: a typed text that keeps no entry at all applies only once the idle pause ends, the last results staying until then, so `-m` or a half word does not empty the page between keys less than the pause apart; Enter, ✕, a paste and leaving the box apply at once, empty or not. No debounce of the results otherwise: matching takes a few milliseconds, so any wait would be the whole delay ([§6.16](#616-typing-and-the-url), [§18](#18-scale-targets-and-what-has-been-measured)) | 2026-10-05, 2026-10-06 |
 | OQ-PF7 | No freeze across releases, ruled in conversation: a filter text may match differently in a later release, so nothing compares the fixture of forms with an earlier release's, and "not understood" keeps no form free for later. P0 still governs what lives in files or feeds scripts, roadmap order never changes, and the page and the checker agree within one release ([§6.19](#619-across-releases)) | 2026-10-05 |
 | OQ-PF8 | A link names the checkout it was made in by a random space id the checker keeps in `.vantage/space` and the server reads, ruled in conversation over matching the checker's root against served names or contents: an agent is already in the checkout, as the review inbox shows, so the filesystem carries the id and *Choose a project* need never show for an agent's link ([§13.6](#136-the-space-id)) | 2026-10-06 |
+| OQ-PF9 | Enter leaves the box for the results, ruled in conversation: typing already applies the text, so an Enter that only applied it changed nothing on screen and read as a key that does nothing. On a text the page reads, or none, Enter scrolls the pane to its top and gives it the focus; a not-understood text keeps the focus in the box, where the reader corrects what the notice names. ✕ and a paste still keep the focus ([§6.17](#617-the-filter-line)) | 2026-10-08 |
 | Plan Q1 | Patterns keep the server's matcher, its quirks and RE2 dialect included; the checker ports it, and one shared fixture pins both readers ([§3.1](#31-candidates-and-planning-documents)) | 2026-09-28 |
 | Plan Q2 | A listed roadmap is read whenever it exists, even when `include` or `exclude` rules it out — per entry, since several roadmaps ([§4.1](#41-which-files-are-roadmaps)) | 2026-09-28 |
 | Plan Q3 | A static export gets no badges and no planning index; its planning page says so ([§15](#15-failure-modes)) | 2026-09-28 |
