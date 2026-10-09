@@ -269,9 +269,10 @@ export const PlanningNeedsYou: React.FC<{
   onPageSize,
   headingExtra,
 }) => {
-  // Whether anything needs you: the live count, so the last line says
-  // *Nothing needs you* in its own room once the last one is answered.
-  const anyNeeded = needYou > 0;
+  // Whether the layout on screen still paints a full card: the end line says
+  // *Nothing needs you* only where none is left, never under a card still
+  // shown, which an answer from elsewhere only marks (§4.2).
+  const cardsPainted = view.list.some((i) => i.as === "card");
   const sizes = (
     <span className="inline-flex items-center gap-1">
       show{" "}
@@ -371,7 +372,7 @@ export const PlanningNeedsYou: React.FC<{
             </span>{" "}
             {sizes}
           </>
-        ) : anyNeeded ? (
+        ) : cardsPainted ? (
           sizes
         ) : (
           <span className="font-medium text-slate-700 dark:text-slate-200">

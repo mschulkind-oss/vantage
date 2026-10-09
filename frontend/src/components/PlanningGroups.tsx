@@ -236,14 +236,14 @@ const GroupHeading: React.FC<{
   <h2
     id={id}
     tabIndex={-1}
-    className="scroll-mt-4 text-sm font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400"
+    className="flex min-w-0 scroll-mt-4 items-baseline text-sm font-semibold whitespace-nowrap uppercase tracking-wider text-slate-500 dark:text-slate-400"
   >
     <button
       type="button"
       aria-expanded={open}
       aria-controls={controls}
       onClick={onToggle}
-      className="inline-flex items-center gap-1 uppercase tracking-wider hover:text-slate-700 dark:hover:text-slate-200"
+      className="inline-flex shrink-0 items-center gap-1 uppercase tracking-wider hover:text-slate-700 dark:hover:text-slate-200"
     >
       {open ? (
         <ChevronDown size={14} aria-hidden="true" />
@@ -400,7 +400,9 @@ export const PlanningGroups: React.FC<{
   };
   return (
     <>
-      {(counts.blocked > 0 || layout.blocked.length > 0) && (
+      {/* Which groups there are is the layout's: a group that comes after it
+          is counted in the updates slot until the next (§4.2). */}
+      {layout.blocked.length > 0 && (
         <section
           aria-labelledby="waiting"
           aria-describedby={open.blocked ? "about-waiting" : undefined}
@@ -428,7 +430,7 @@ export const PlanningGroups: React.FC<{
           )}
         </section>
       )}
-      {(kindsTotal > 0 || layout.maintenance.length > 0) && (
+      {layout.maintenance.length > 0 && (
         <section aria-labelledby="maintenance" className="mb-6">
           <GroupHeading
             id="maintenance"
@@ -438,18 +440,20 @@ export const PlanningGroups: React.FC<{
             controls="group-maintenance"
             onToggle={() => onToggle("maintenance")}
           >
+            {/* The layout's kinds, with their numbers in hand: a kind that
+                comes after the layout waits for the next, and the line
+                never wraps to a second one. */}
             <span
               data-testid="maintenance-kinds"
-              className="ml-1 font-normal tracking-normal normal-case"
+              className="ml-1 min-w-0 truncate font-normal tracking-normal normal-case"
             >
-              {[...counts.kinds]
-                .filter(([, n]) => n > 0)
-                .map(([id, n]) => (
-                  <React.Fragment key={id}>
-                    {" · "}
-                    <LiveCount n={n} room={1} /> {SUMMARY_WORDS[id]}
-                  </React.Fragment>
-                ))}
+              {layout.maintenance.map(({ id }) => (
+                <React.Fragment key={id}>
+                  {" · "}
+                  <LiveCount n={counts.kinds.get(id) ?? 0} room={1} />{" "}
+                  {SUMMARY_WORDS[id]}
+                </React.Fragment>
+              ))}
             </span>
           </GroupHeading>
           {open.maintenance && (

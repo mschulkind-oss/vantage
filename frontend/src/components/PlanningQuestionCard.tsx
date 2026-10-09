@@ -270,6 +270,13 @@ interface PlanningQuestionCardProps {
    */
   onAnswered?: (key: string) => void;
   /**
+   * Its **Answer…** box opened (`true`), or closed (`true` holding text,
+   * `false` empty): while it is open, and once it has answered, what its
+   * saves file is the reader's own answer here, never late data
+   * (`docs/design/planning-to-do-list.md` P2).
+   */
+  onAnswering?: (key: string, answering: boolean) => void;
+  /**
    * Whether a card opens unfolded: the page's remembered Expand all /
    * Collapse all. Read as the card mounts, and again only when `folds` is
    * replaced, so a change from another tab opens later cards its way and
@@ -568,6 +575,8 @@ const Headline: React.FC<{ question: PlanningQuestion; id: string }> = ({
   return (
     <h3
       id={id}
+      // Where the focus goes when a row opens into this card (§4.1).
+      tabIndex={-1}
       data-planning-card-headline
       className="mt-0 mb-1.5 text-[17px] leading-snug font-semibold text-slate-900 dark:text-slate-100"
     >
@@ -622,6 +631,7 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
   newReply = false,
   onNewReply,
   onAnswered,
+  onAnswering,
 }: PlanningQuestionCardProps) {
   // Show question's answer, for the question it was fetched for.
   const [shown, setShown] = useState<{
@@ -1020,6 +1030,7 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
     boxRef.current = null;
     setAnswering(null);
     setHeld(null);
+    onAnswering?.(cardKey, box.typed !== "");
     // As after a take: the list opens on what was filed, and the page
     // shrinks the card to an answered row (planning-to-do-list.md §4.1).
     if (box.typed !== "") {
@@ -1246,6 +1257,7 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
               const target = reviewTarget(question.path);
               if (now === null || target === null) return;
               setHeld({ offer: state.offer, listed: liveListed });
+              onAnswering?.(cardKey, true);
               setAnswering({
                 rect: e.currentTarget.getBoundingClientRect(),
                 text: now.fallbackText,
