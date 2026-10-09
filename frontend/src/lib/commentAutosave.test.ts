@@ -403,7 +403,50 @@ describe("what a box says", () => {
       "Empty text is not saved",
     );
     expect(statusText({ ...base, status: "idle", savedAt: null }, 0)).toBe("");
+    expect(statusText({ ...base, status: "saved", unsaved: true }, 0)).toBe(
+      "Not saved yet",
+    );
+    expect(statusText({ ...base, status: "idle", unsaved: true }, 0)).toBe(
+      "Not saved yet",
+    );
     expect(savedAgo(3 * 3_600_000)).toBe("Saved 3 h ago");
+  });
+
+  it("never says saved while what is typed is not", async () => {
+    const box = newBox();
+    const says = () => statusText(box.getState(), Date.now());
+    expect(says()).toBe("");
+    box.input("first");
+    expect(says()).toBe("Not saved yet");
+    await vi.advanceTimersByTimeAsync(SAVE_PAUSE_MS);
+    expect(says()).toBe("Saving…");
+    sent[0].resolve();
+    await settle();
+    expect(says()).toBe("Saved just now");
+
+    // A keystroke after a save: the save no longer covers the box.
+    box.input("first, then more");
+    expect(says()).toBe("Not saved yet");
+    await vi.advanceTimersByTimeAsync(SAVE_PAUSE_MS);
+    expect(says()).toBe("Saving…");
+
+    // Typed while that save was on its way: when it lands, the box is
+    // still ahead of it.
+    box.input("first, then more, and more");
+    sent[1].resolve();
+    await settle();
+    expect(box.getState().status).toBe("saved");
+    expect(says()).toBe("Not saved yet");
+    await vi.advanceTimersByTimeAsync(SAVE_PAUSE_MS);
+    sent[2].resolve();
+    await settle();
+    expect(says()).toBe("Saved just now");
+
+    // Typing back to what is saved needs no save.
+    box.input("first, then more, and more!");
+    expect(says()).toBe("Not saved yet");
+    box.input("first, then more, and more");
+    expect(says()).toBe("Saved just now");
   });
 });
 

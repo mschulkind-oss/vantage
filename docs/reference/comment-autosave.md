@@ -169,15 +169,18 @@ systems); the box's status; and **Close**. The status reads:
 
 | Status | When |
 | :--- | :--- |
-| *(nothing)* | Nothing saved yet, and nothing on its way |
+| *(nothing)* | Nothing typed yet, or nothing changed in an edit box |
+| *Not saved yet* | The box holds text no save has carried: typing has not paused yet, or more was typed while a save was on its way |
 | *Saving…* | A save is on its way |
-| *Saved just now*, *Saved 1 min ago*, *Saved 2 h ago* | The last save landed; the words are read again as the minutes pass |
+| *Saved just now*, *Saved 1 min ago*, *Saved 2 h ago* | The last save landed and carried the text in the box; the words are read again as the minutes pass |
 | *Empty text is not saved* | The box is empty, and something is saved that the emptiness does not touch |
 | *Not saved, retrying*, in amber | The last save failed and is being retried |
 | *This comment was deleted*, in amber | The box is gone ([§4.3](#43-a-comment-deleted-under-its-box)) |
 
-Each save that lands pulses the status once; under `prefers-reduced-motion` it does
-not. The status is a `role="status"` region, so a screen reader hears it change.
+*Saved* is said only of the text in the box, so the first keystroke after a save
+turns it to *Not saved yet*: a reader who sees *Saved* while still typing has been
+told something false. Each save that lands pulses the status once, unless more was
+typed while it was on its way; under `prefers-reduced-motion` it does not. The status is a `role="status"` region, so a screen reader hears it change.
 The inline boxes are hand-built DOM with the same classes as the React ones, so the
 four kinds of box look and read alike.
 

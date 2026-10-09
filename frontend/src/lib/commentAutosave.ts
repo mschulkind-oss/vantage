@@ -653,14 +653,19 @@ export function closeHint(): string {
 }
 
 /**
- * The words at a box's foot for `state` at `now`: *Saving…*, *Saved just
- * now*, *Saved 1 min ago*, *Not saved, retrying*, or *Empty text is not
- * saved*; "" before anything has been saved.
+ * The words at a box's foot for `state` at `now`: *Saving…*, *Not saved
+ * yet*, *Saved just now*, *Saved 1 min ago*, *Not saved, retrying*, or *Empty
+ * text is not saved*; "" before anything has been typed.
+ *
+ * *Saved* is said only of the text in the box: a keystroke after a save, or
+ * one typed while that save was on its way, turns it to *Not saved yet* until
+ * a save carries it.
  */
 export function statusText(state: BoxState, now: number): string {
   if (state.status === "gone") return "This comment was deleted";
   if (state.status === "retrying") return "Not saved, retrying";
   if (state.status === "saving") return "Saving…";
+  if (state.unsaved) return "Not saved yet";
   if (state.empty) return "Empty text is not saved";
   if (state.status === "saved" && state.savedAt !== null) {
     return savedAgo(now - state.savedAt);
