@@ -61,7 +61,7 @@ jobs:
           fetch-depth: 0 # buildinfo reads vcs metadata
 
       - name: Install mise
-        uses: jdx/mise-action@v4
+        uses: jdx/mise-action@v5
 
       # One workspace, one lockfile, one install — this covers all three
       # packages. `just check-ci` then compiles vantage-check into a standalone
@@ -98,7 +98,7 @@ jobs:
         with:
           fetch-depth: 0 # the release tags name the previous release
       - name: Install mise
-        uses: jdx/mise-action@v4
+        uses: jdx/mise-action@v5
       - name: Install the npm workspace
         run: npm ci
       - name: Read this tree's notation with the previous release
@@ -116,7 +116,7 @@ jobs:
         with:
           fetch-depth: 0 # buildinfo reads vcs metadata
       - name: Install mise
-        uses: jdx/mise-action@v4
+        uses: jdx/mise-action@v5
       - name: Install the npm workspace
         run: npm ci
       - name: Cache Playwright browsers
