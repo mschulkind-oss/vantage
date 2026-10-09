@@ -48,6 +48,9 @@ test.describe("comment autosave", () => {
 
     await popover(page).press("End");
     await popover(page).pressSequentially(" And more.");
+    // Typed since the save: the foot no longer says it is saved.
+    await expect(page.getByText("Not saved yet")).toBeVisible();
+    await expect(page.getByText("Saved just now")).toHaveCount(0);
     await popover(page).press("Escape");
     await expect(popover(page)).toHaveCount(0);
     await page.reload();
