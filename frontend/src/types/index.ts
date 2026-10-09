@@ -182,6 +182,18 @@ export type ReactionKind =
   "addressed" | "wont_fix" | "needs_clarification" | "noted";
 
 export interface CommentReaction {
+  /**
+   * A reviewer reply's id, chosen by the browser that wrote it, so the comment
+   * box that wrote it can edit it in place as the reviewer goes on typing.
+   * Absent on agent reactions and on replies written before replies had ids.
+   */
+  id?: string;
+  /**
+   * When the reviewer last reworded this reply. Like a comment's `edited_at`,
+   * a value later than the agent's last answer puts the thread back in the
+   * agent's queue. Absent when never edited.
+   */
+  edited_at?: number;
   actor: ReactionActor;
   kind: ReactionKind;
   summary: string;

@@ -173,7 +173,7 @@ test.describe("A folder renamed under the reader", () => {
     const prose = content(page).locator(".prose");
     await prose.getByText("Paragraph 2,", { exact: false }).click();
     await popover.fill("filed before the rename");
-    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await page.getByText("Close", { exact: true }).click();
     await expect(
       cards.filter({ hasText: "filed before the rename" }),
     ).toBeVisible();
@@ -201,13 +201,17 @@ test.describe("A folder renamed under the reader", () => {
     expect(await content(page).evaluate((el) => el.scrollTop)).toBe(where);
     expect((await target.boundingBox())?.y).toBe(top?.y);
 
-    // Filed under the new address now: a fresh load there shows it.
-    await page.getByRole("button", { name: "Cancel", exact: true }).click();
+    // Filed under the new address now, both of them: the one being written
+    // saved as it was typed, and closing it keeps it. A fresh load there
+    // shows them.
+    await page.getByText("Close", { exact: true }).click();
+    await expect(cards.filter({ hasText: "half written" })).toBeVisible();
     await page.reload();
     await expect(heading(page)).toContainText("Moving book");
     await expect(
       cards.filter({ hasText: "filed before the rename" }),
     ).toBeVisible();
+    await expect(cards.filter({ hasText: "half written" })).toBeVisible();
   });
 
   test("says the document is gone when its folder leaves the tree, and shows it again when it is back", async ({

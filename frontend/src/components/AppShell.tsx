@@ -49,6 +49,7 @@ import {
 import { AppLink } from "./AppLink";
 import { ConnectionBanner } from "./ConnectionBanner";
 import { DegradedBanner } from "./DegradedBanner";
+import { UnsavedComments } from "./UnsavedComments";
 import { FilePicker } from "./FilePicker";
 import { FileTree } from "./FileTree";
 import {
@@ -469,6 +470,7 @@ const ShellFrame: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   return (
     <div className="flex flex-col h-screen bg-slate-50 dark:bg-slate-900 overflow-hidden text-slate-900 dark:text-slate-100">
       <ConnectionBanner />
+      <UnsavedComments />
       <div className="flex flex-1 overflow-hidden">
         {/* Mobile sidebar backdrop */}
         {showSidebar && sidebarOpen && (

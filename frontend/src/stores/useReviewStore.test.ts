@@ -12,6 +12,10 @@ import {
   newReviewComment,
   postCommentTo,
   reviewCommentsBlock,
+  saveCommentText,
+  saveNewComment,
+  saveNewReply,
+  saveReplyText,
   useReviewStore,
 } from "./useReviewStore";
 import { useRepoStore } from "./useRepoStore";
@@ -29,6 +33,7 @@ import type {
 } from "../types";
 
 vi.mock("axios");
+import { CommentBox, resetBoxesForTest } from "../lib/commentAutosave";
 const mockedAxios = vi.mocked(axios, true);
 
 const resetStores = () => {
@@ -2039,6 +2044,184 @@ describe("the follow-up note matches the turns actually in the payload", () => {
     expect(payload).toMatch(/rewrote the request itself/);
     // Both returning threads are counted, not just the replied-to one.
     expect(payload).toContain("2 of these are follow-up rounds.");
+  });
+});
+
+describe("comments written by a box that saves as you type", () => {
+  const writeText = vi.fn().mockResolvedValue(undefined);
+
+  beforeEach(() => {
+    resetStores();
+    writeText.mockClear();
+    Object.assign(navigator, { clipboard: { writeText } });
+  });
+  afterEach(() => resetBoxesForTest());
+
+  const payloadFor = async (comments: ReviewComment[]): Promise<string> => {
+    useReviewStore.setState({
+      filePath: "doc.md",
+      lastContent: "line one\nline two\n",
+      comments,
+    });
+    await useReviewStore.getState().copyAllToClipboard();
+    return writeText.mock.calls[0][0] as string;
+  };
+
+  it("does not mark a comment edited while the agent has not answered it", async () => {
+    const payload = await payloadFor([
+      {
+        ...mkThreadComment("abcdef12-0000", "typed over several saves", []),
+        edited_at: 500,
+      },
+    ]);
+    expect(payload).not.toContain("_(the reviewer edited this comment)_");
+  });
+
+  it("re-queues a thread whose reply was edited after the agent answered", async () => {
+    const reply = {
+      ...mkReaction("reviewer", "needs_clarification", "which part?", 100),
+      id: "r1",
+      edited_at: 300,
+    };
+    const answered = mkReaction("agent", "addressed", "Rewrote it", 200);
+    const c = mkThreadComment("abcdef12-0000", "please fix", [reply, answered]);
+    expect(isPendingForAgent(c)).toBe(true);
+    // An edit before the answer changes nothing.
+    expect(
+      isPendingForAgent({
+        ...c,
+        reactions: [{ ...reply, edited_at: 150 }, answered],
+      }),
+    ).toBe(false);
+
+    const payload = await payloadFor([c]);
+    expect(payload).toContain("_(the reviewer edited this follow-up)_");
+    expect(payload).toMatch(/A follow-up marked .* was rewritten/);
+    expect(payload).not.toMatch(/rewrote the request itself/);
+  });
+
+  it("does not mark a follow-up the agent never saw, however often it was saved", async () => {
+    // Answered at 100; the reviewer's follow-up written at 200 and saved again
+    // at 201 as they went on typing. The agent has not read it at all.
+    const c = mkThreadComment("abcdef12-0000", "please fix", [
+      mkReaction("agent", "addressed", "Fixed", 100),
+      {
+        ...mkReaction("reviewer", "needs_clarification", "not quite", 200),
+        id: "r1",
+        edited_at: 201,
+      },
+    ]);
+    expect(isPendingForAgent(c)).toBe(true);
+    const payload = await payloadFor([c]);
+    expect(payload).toContain("**Follow-up:** not quite");
+    expect(payload).not.toContain("_(the reviewer edited this follow-up)_");
+    expect(payload).not.toMatch(/A follow-up marked/);
+  });
+
+  it("does not mark an edit a later answer has already read", async () => {
+    // A follow-up at 50, answered at 100, reworded at 150, answered again at
+    // 200: the second answer read the rewording.
+    const reply = {
+      ...mkReaction("reviewer", "needs_clarification", "which part?", 50),
+      id: "r1",
+      edited_at: 150,
+    };
+    const c = mkThreadComment("abcdef12-0000", "please fix", [
+      mkReaction("agent", "addressed", "Rewrote it", 0),
+      reply,
+      mkReaction("agent", "addressed", "This part", 100),
+      mkReaction("agent", "addressed", "And this part", 200),
+    ]);
+    expect(isPendingForAgent(c)).toBe(false);
+    // The comment's own wording, edited between two answers, likewise.
+    const edited = {
+      ...mkThreadComment("bbbbbbbb-0000", "tighten (reworded)", [
+        mkReaction("agent", "addressed", "Tightened", 100),
+        mkReaction("agent", "addressed", "Tightened again", 200),
+      ]),
+      edited_at: 150,
+      // Re-queued by a later follow-up, so the payload carries it.
+    };
+    const followed = {
+      ...edited,
+      reactions: [
+        ...edited.reactions!,
+        mkReaction("reviewer", "needs_clarification", "still long", 300),
+      ],
+    };
+    const payload = await payloadFor([
+      {
+        ...c,
+        reactions: [
+          ...c.reactions!,
+          mkReaction("reviewer", "needs_clarification", "one more", 300),
+        ],
+      },
+      followed,
+    ]);
+    expect(payload).not.toContain("_(the reviewer edited this follow-up)_");
+    expect(payload).not.toContain("_(the reviewer edited this comment)_");
+  });
+
+  it("copies the text as last typed in this tab's open box", async () => {
+    const c = mkThreadComment("abcdef12-0000", "saved wording", []);
+    const box = new CommentBox(
+      {
+        kind: "edit",
+        target: { base: "/api", path: "doc.md" },
+        commentId: c.id,
+        label: "Edited comment",
+      },
+      { update: () => new Promise(() => {}) },
+      { text: c.comment, created: true },
+    );
+    box.open();
+    box.input("typed wording, not saved yet");
+    const payload = await payloadFor([c]);
+    expect(payload).toContain("typed wording, not saved yet");
+    expect(payload).not.toContain("saved wording\n");
+  });
+
+  it("sends a reply's id with its first save, and edits it by that id", async () => {
+    mockedAxios.post.mockResolvedValue({ data: null });
+    mockedAxios.patch.mockResolvedValue({ data: null });
+    const target = { base: "/api", path: "doc.md" };
+    await saveNewReply(target, "c1", "r1", "one", false);
+    await saveNewReply(target, "c1", "r2", "two", true);
+    await saveReplyText(target, "c1", "r1", "one, edited");
+    expect(mockedAxios.post.mock.calls).toEqual([
+      [
+        "/api/review/comments/c1/replies",
+        { id: "r1", text: "one" },
+        { params: { path: "doc.md" } },
+      ],
+      [
+        "/api/review/comments/c1/reopen-reply",
+        { id: "r2", text: "two" },
+        { params: { path: "doc.md" } },
+      ],
+    ]);
+    expect(mockedAxios.patch).toHaveBeenCalledWith(
+      "/api/review/comments/c1/replies/r1",
+      { text: "one, edited" },
+      { params: { path: "doc.md" } },
+    );
+  });
+
+  it("adopts a save's answer for the document on screen, and rejects on failure without a banner", async () => {
+    useReviewStore.setState({ filePath: "doc.md", comments: [] });
+    const saved = mkThreadComment("abcdef12-0000", "landed", []);
+    mockedAxios.post.mockResolvedValueOnce({
+      data: { file_path: "doc.md", comments: [saved] },
+    });
+    const target = { base: "/api", path: "doc.md" };
+    await saveNewComment(target, saved);
+    expect(useReviewStore.getState().comments).toEqual([saved]);
+
+    mockedAxios.patch.mockRejectedValueOnce(new Error("Network Error"));
+    await expect(saveCommentText(target, saved.id, "x")).rejects.toThrow();
+    expect(useReviewStore.getState().commandError).toBeNull();
+    expect(useReviewStore.getState().comments).toEqual([saved]);
   });
 });
 

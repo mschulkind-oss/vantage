@@ -211,6 +211,80 @@ func TestReviewCommentReplyAppendsAndRecaptures(t *testing.T) {
 	require.Equal(t, "rewritten paragraph.", c.CapturedBlock)
 }
 
+func TestReviewCommentCreateRepeatedEditsInPlace(t *testing.T) {
+	e := newCmdEnv(t)
+	writeFile(t, e.dir, "a.md", cmdDoc)
+	e.createComment(t, "c1", 3)
+
+	// The same id again, as a retry whose first answer was lost would send it,
+	// carrying the newer text: an edit of the comment, not a second one.
+	w := e.do(e.h.ReviewCommentCreate, http.MethodPost, "/review/comments?path=a.md",
+		`{"id":"c1","comment":"tighten this paragraph","created_at":1717000000}`, true)
+	require.Equal(t, http.StatusOK, w.Code, "body: %s", w.Body.String())
+	var data model.ReviewData
+	decode(t, w, &data)
+	require.Len(t, data.Comments, 1)
+	require.Equal(t, "tighten this paragraph", data.Comments[0].Comment)
+	require.Greater(t, data.Comments[0].EditedAt, float64(0))
+	require.Len(t, e.changed, 2, "the repeated create broadcasts like any write")
+}
+
+func TestReviewCommentReplyWithIDThenPatch(t *testing.T) {
+	e := newCmdEnv(t)
+	writeFile(t, e.dir, "a.md", cmdDoc)
+	e.createComment(t, "c1", 3)
+
+	reply := func(body string) model.ReviewData {
+		t.Helper()
+		w := e.doID(e.h.ReviewCommentReply, http.MethodPost, "/review/comments/c1/replies?path=a.md", body, "c1")
+		require.Equal(t, http.StatusOK, w.Code, "body: %s", w.Body.String())
+		var data model.ReviewData
+		decode(t, w, &data)
+		return data
+	}
+	reply(`{"id":"r1","text":"still"}`)
+	data := reply(`{"id":"r1","text":"still unclear"}`)
+	require.Len(t, data.Comments[0].Reactions, 1, "a retried reply edits, never duplicates")
+	require.Equal(t, "r1", data.Comments[0].Reactions[0].ID)
+
+	r := httptest.NewRequest(http.MethodPatch, "/review/comments/c1/replies/r1?path=a.md",
+		strings.NewReader(`{"text":"still unclear: which part?"}`))
+	r = r.WithContext(WithRepoServices(r.Context(), RepoServices{Repo: e.repo, Git: e.git, FS: e.fs}))
+	r.SetPathValue("id", "c1")
+	r.SetPathValue("reply", "r1")
+	w := httptest.NewRecorder()
+	e.h.ReviewReplyPatch(w, r)
+	require.Equal(t, http.StatusOK, w.Code, "body: %s", w.Body.String())
+	decode(t, w, &data)
+	require.Equal(t, "still unclear: which part?", data.Comments[0].Reactions[0].Summary)
+	require.Greater(t, data.Comments[0].Reactions[0].EditedAt, float64(0))
+	require.Len(t, e.changed, 4)
+}
+
+func TestReviewReplyPatchShapes(t *testing.T) {
+	e := newCmdEnv(t)
+	writeFile(t, e.dir, "a.md", cmdDoc)
+	e.createComment(t, "c1", 3)
+	patch := func(comment, reply, body string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(http.MethodPatch, "/review/comments/x/replies/y?path=a.md", strings.NewReader(body))
+		r = r.WithContext(WithRepoServices(r.Context(), RepoServices{Repo: e.repo, Git: e.git, FS: e.fs}))
+		r.SetPathValue("id", comment)
+		r.SetPathValue("reply", reply)
+		w := httptest.NewRecorder()
+		e.h.ReviewReplyPatch(w, r)
+		return w
+	}
+	require.Equal(t, http.StatusBadRequest, patch("c1", "r1", `{"text":""}`).Code)
+	require.Equal(t, http.StatusBadRequest, patch("c1", "r1", `{not json`).Code)
+	w := patch("c1", "r1", `{"text":"x"}`)
+	require.Equal(t, http.StatusNotFound, w.Code)
+	var env map[string]string
+	decode(t, w, &env)
+	require.Equal(t, "No reply found", env["error"])
+	require.Equal(t, http.StatusNotFound, patch("c9", "r1", `{"text":"x"}`).Code)
+	require.Len(t, e.changed, 1, "only the create broadcast; no failure does")
+}
+
 func TestReviewCommentReplyEmptyText400(t *testing.T) {
 	e := newCmdEnv(t)
 	e.createComment(t, "c1", 3)
@@ -359,6 +433,7 @@ func TestRoutesTableIncludesReviewCommands(t *testing.T) {
 		{http.MethodPatch, "/review/comments/{id}"},
 		{http.MethodDelete, "/review/comments/{id}"},
 		{http.MethodPost, "/review/comments/{id}/replies"},
+		{http.MethodPatch, "/review/comments/{id}/replies/{reply}"},
 		{http.MethodPost, "/review/comments/{id}/reopen-reply"},
 		{http.MethodPost, "/review/dismissals"},
 		{http.MethodPost, "/review/move"},

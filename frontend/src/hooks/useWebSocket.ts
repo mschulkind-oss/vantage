@@ -11,7 +11,7 @@ import { usePlanningStore } from "../stores/usePlanningStore";
 import { WebSocketMessage } from "../types";
 import { isStaticMode } from "../lib/staticMode";
 import { filesWithin, isWithin, renamedTo } from "../lib/removedDirs";
-import { hasInlineDraft } from "./useReviewHighlights";
+import { hasOpenBox } from "../lib/commentAutosave";
 import { wsLog, bindLoggerSocket } from "../lib/wsLogger";
 
 // Debounce window: collect all messages within this period, then process once
@@ -53,16 +53,16 @@ const reviewPath = () => {
 };
 
 /**
- * Whether the reader is in the middle of writing in review mode: a new
- * comment's popover is open, or an inline comment's reply or edit box holds
- * words not yet sent. Both live only as long as the document they are on, so
- * replacing it with the page saying it is gone would throw them away.
+ * Whether the reader is in the middle of writing in review mode: a comment box
+ * is open on the document — a new comment's popover, or an edit or reply box
+ * inline or in the review panel. A box saves as it is typed in, but it is
+ * drawn on the document, so replacing the document with the page saying it is
+ * gone would end it under the reader; the reload waits until the box closes
+ * (docs/design/planning-to-do-list.md §6.1).
  */
 const writingInReview = () => {
   const { isReviewMode, pendingSelection } = useReviewStore.getState();
-  return (
-    isReviewMode && (pendingSelection !== null || hasInlineDraft(document))
-  );
+  return isReviewMode && (pendingSelection !== null || hasOpenBox());
 };
 
 /** What the pushes waiting for the next batch named, for one repository. */

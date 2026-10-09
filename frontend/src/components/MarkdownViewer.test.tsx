@@ -5,7 +5,7 @@ import {
   waitFor,
   act,
 } from "@testing-library/react";
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { readFileSync } from "node:fs";
 import axios from "axios";
 import { MarkdownViewer } from "./MarkdownViewer";
@@ -15,6 +15,11 @@ import { useRepoStore } from "../stores/useRepoStore";
 import { blockVisibleText, hashBlockText } from "../lib/reviewAnchor";
 import { layout } from "../test/layout";
 import type { CommentReaction, ReviewComment } from "../types";
+import { installReviewServer } from "../test/reviewServer";
+import { resetBoxesForTest } from "../lib/commentAutosave";
+
+// A box left open by one test must not count as open in the next.
+afterEach(() => resetBoxesForTest());
 
 // Store writes (resolve, dismiss, reply, …) fire command requests via axios.
 vi.mock("axios");
@@ -734,20 +739,21 @@ describe("MarkdownViewer — inline review actions wiring", () => {
     expect(comment().reactions).toHaveLength(1);
   });
 
-  it("wires the inline edit box to editComment (new text + edited_at stamp)", () => {
+  it("saves the inline edit box's text as the comment's, stamping edited_at", async () => {
     renderWithComment(baseComment({}));
+    installReviewServer();
 
     fireEvent.click(inlineButton("c1", ".review-inline-comment-edit"));
     const textarea = document.querySelector<HTMLTextAreaElement>(
       ".review-inline-edit-area",
     )!;
     fireEvent.input(textarea, { target: { value: "please change this MORE" } });
-    fireEvent.click(
-      document.querySelector<HTMLElement>(".review-inline-edit-save")!,
-    );
+    fireEvent.click(document.querySelector<HTMLElement>(".comment-box-close")!);
 
-    expect(comment().comment).toBe("please change this MORE");
-    // editComment stamps edited_at, which is what re-queues the comment.
+    await waitFor(() =>
+      expect(comment().comment).toBe("please change this MORE"),
+    );
+    // The edit stamps edited_at, which is what re-queues the comment.
     expect(comment().edited_at).toBeGreaterThan(0);
   });
 
@@ -766,43 +772,35 @@ describe("MarkdownViewer — inline review actions wiring", () => {
     expect(payload).toContain("please change this");
   });
 
-  it("routes inline Reply on an UNRESOLVED comment to replyToComment", () => {
-    const real = useReviewStore.getState();
-    const replyToComment = vi.fn(real.replyToComment);
-    const reopenAndReply = vi.fn(real.reopenAndReply);
-    useReviewStore.setState({ replyToComment, reopenAndReply });
-
+  it("posts an inline Reply on an UNRESOLVED comment as a reply, with its id", async () => {
     renderWithComment(baseComment({ reactions: [agentAddressed] }));
+    const server = installReviewServer();
 
     fireEvent.click(inlineButton("c1", ".review-inline-comment-reply"));
     const textarea = document.querySelector<HTMLTextAreaElement>(
       ".review-inline-reply-area",
     )!;
     fireEvent.input(textarea, { target: { value: "still not right" } });
-    fireEvent.click(
-      document.querySelector<HTMLElement>(".review-inline-edit-save")!,
-    );
+    fireEvent.keyDown(textarea, { key: "Escape" });
 
-    expect(replyToComment).toHaveBeenCalledWith("c1", "still not right");
-    expect(reopenAndReply).not.toHaveBeenCalled();
+    await waitFor(() => expect(comment().reactions).toHaveLength(2));
+    expect(server.writes).toEqual(["POST /api/review/comments/c1/replies"]);
     expect(comment().resolved).toBeFalsy();
     expect(comment().reactions![1]).toMatchObject({
       actor: "reviewer",
       kind: "needs_clarification",
       summary: "still not right",
     });
-
-    useReviewStore.setState({
-      replyToComment: real.replyToComment,
-      reopenAndReply: real.reopenAndReply,
-    });
+    expect(comment().reactions![1].id).toBeTruthy();
   });
 
-  it("routes inline Reply on a RESOLVED comment to reopenAndReply (reopens it)", () => {
+  it("reopens a RESOLVED comment with an inline Reply's first save", async () => {
     renderWithComment(
       baseComment({ resolved: true, reactions: [agentAddressed] }),
     );
+    const server = installReviewServer();
 
+    fireEvent.click(document.querySelector(".review-resolved-indicator")!);
     fireEvent.click(inlineButton("c1", ".review-inline-comment-reply"));
     const textarea = document.querySelector<HTMLTextAreaElement>(
       ".review-inline-reply-area",
@@ -810,13 +808,14 @@ describe("MarkdownViewer — inline review actions wiring", () => {
     fireEvent.input(textarea, {
       target: { value: "actually, one more thing" },
     });
-    fireEvent.click(
-      document.querySelector<HTMLElement>(".review-inline-edit-save")!,
-    );
+    fireEvent.click(document.querySelector<HTMLElement>(".comment-box-close")!);
 
     // Without the resolved branch the reply lands but the comment stays
     // closed, so the agent never sees it again.
-    expect(comment().resolved).toBe(false);
+    await waitFor(() => expect(comment().resolved).toBe(false));
+    expect(server.writes).toEqual([
+      "POST /api/review/comments/c1/reopen-reply",
+    ]);
     expect(comment().reactions![1]).toMatchObject({
       actor: "reviewer",
       kind: "needs_clarification",
@@ -1013,7 +1012,8 @@ describe("MarkdownViewer — the one-click Open Question answer", () => {
     }
   });
 
-  it("still lets the reviewer type an answer on the very block that carries a button", () => {
+  it("still lets the reviewer type an answer on the very block that carries a button", async () => {
+    installReviewServer([]);
     // D4(b): the button adds a path and removes none. This is also the case that
     // pins the hash strip — the popover hashes the block with the button already
     // in the DOM, so an unstripped button would make the typed comment drift.
@@ -1032,11 +1032,13 @@ describe("MarkdownViewer — the one-click Open Question answer", () => {
     expect(textarea).not.toBeNull();
     fireEvent.change(textarea, { target: { value: "front of the queue" } });
     act(() => {
-      fireEvent.click(screen.getByText("Save"));
+      fireEvent.click(screen.getByText("Close"));
     });
 
+    await waitFor(() =>
+      expect(useReviewStore.getState().comments).toHaveLength(1),
+    );
     const comments = useReviewStore.getState().comments;
-    expect(comments).toHaveLength(1);
     expect(comments[0].comment).toBe("front of the queue");
     expect(comments[0].fallback_text).toBe(
       "where does the ticket go on re-entry?",
@@ -1055,7 +1057,8 @@ describe("MarkdownViewer — the one-click Open Question answer", () => {
     );
   });
 
-  it("opens the comment popover from Answer…, and files the comment a click on the question would", () => {
+  it("opens the comment popover from Answer…, and files the comment a click on the question would", async () => {
+    installReviewServer([]);
     const { container } = renderDoc(OQ_LIST_DOC);
     const item = container.querySelector("li")!;
     const row = item.lastElementChild as HTMLElement;
@@ -1072,9 +1075,12 @@ describe("MarkdownViewer — the one-click Open Question answer", () => {
     expect(textarea).not.toBeNull();
     fireEvent.change(textarea, { target: { value: "Front of the queue." } });
     act(() => {
-      fireEvent.click(screen.getByText("Save"));
+      fireEvent.click(screen.getByText("Close"));
     });
 
+    await waitFor(() =>
+      expect(useReviewStore.getState().comments).toHaveLength(1),
+    );
     const [comment] = useReviewStore.getState().comments;
     const leaning = container.querySelector<HTMLElement>(
       'p[data-source-line="5"]',
@@ -1112,6 +1118,121 @@ describe("MarkdownViewer — the one-click Open Question answer", () => {
     const [open, closed] = Array.from(container.querySelectorAll("li"));
     expect(open.querySelector(".review-oq-take")).not.toBeNull();
     expect(closed.querySelector("[data-vantage-oq-button]")).toBeNull();
+  });
+});
+
+describe("MarkdownViewer — the new-comment box saves as you type", () => {
+  const DOC = "# Title\n\nA paragraph to comment on.\n";
+
+  beforeEach(() => {
+    useReviewStore.setState({
+      comments: [],
+      filePath: "doc.md",
+      lastContent: DOC,
+      pendingSelection: null,
+      isReviewMode: true,
+    });
+    useRepoStore.setState({ currentRepo: null, isMultiRepo: false });
+    vi.clearAllMocks();
+  });
+
+  const open = () => {
+    const view = render(
+      <BrowserRouter>
+        <MarkdownViewer content={DOC} currentPath="doc.md" isReviewMode />
+      </BrowserRouter>,
+    );
+    const block = view.container.querySelector<HTMLElement>(
+      'p[data-source-line="3"]',
+    )!;
+    fireEvent.mouseMove(view.container.querySelector(".prose")!, {
+      clientY: 0,
+    });
+    fireEvent.click(block);
+    const textarea =
+      screen.getByPlaceholderText<HTMLTextAreaElement>("Your comment...");
+    return { ...view, textarea };
+  };
+
+  it("files the comment while the box stays open, and edits it after", async () => {
+    const server = installReviewServer([]);
+    const { textarea } = open();
+    fireEvent.change(textarea, { target: { value: "first words" } });
+    await waitFor(
+      () => expect(useReviewStore.getState().comments).toHaveLength(1),
+      { timeout: 3000 },
+    );
+    // Still open, still typing.
+    expect(screen.getByPlaceholderText("Your comment...")).toBe(textarea);
+    expect(await screen.findByText("Saved just now")).toBeInTheDocument();
+
+    fireEvent.change(textarea, { target: { value: "first words, then more" } });
+    fireEvent.keyDown(textarea, { key: "Enter", ctrlKey: true });
+    await waitFor(() =>
+      expect(useReviewStore.getState().comments[0].comment).toBe(
+        "first words, then more",
+      ),
+    );
+    expect(server.writes).toEqual([
+      "POST /api/review/comments",
+      "PATCH /api/review/comments/" + server.comments[0].id,
+    ]);
+    expect(screen.queryByPlaceholderText("Your comment...")).toBeNull();
+  });
+
+  it("keeps the text on Esc", async () => {
+    installReviewServer([]);
+    const { textarea } = open();
+    fireEvent.change(textarea, { target: { value: "kept on Esc" } });
+    fireEvent.keyDown(document, { key: "Escape" });
+    await waitFor(() =>
+      expect(useReviewStore.getState().comments[0]?.comment).toBe(
+        "kept on Esc",
+      ),
+    );
+    expect(useReviewStore.getState().pendingSelection).toBeNull();
+  });
+
+  it("keeps the text on a click outside", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    installReviewServer([]);
+    const { textarea } = open();
+    fireEvent.change(textarea, { target: { value: "kept on a click away" } });
+    // The outside-click listener arms a moment after the popover opens.
+    await act(() => vi.advanceTimersByTimeAsync(150));
+    fireEvent.mouseDown(document.body);
+    vi.useRealTimers();
+    await waitFor(() =>
+      expect(useReviewStore.getState().comments[0]?.comment).toBe(
+        "kept on a click away",
+      ),
+    );
+  });
+
+  it("keeps the text when review mode is turned off", async () => {
+    installReviewServer([]);
+    const { textarea } = open();
+    fireEvent.change(textarea, { target: { value: "kept on mode off" } });
+    act(() => useReviewStore.getState().toggleReviewMode());
+    await waitFor(() =>
+      expect(vi.mocked(axios.post)).toHaveBeenCalledWith(
+        "/api/review/comments",
+        expect.objectContaining({ comment: "kept on mode off" }),
+        { params: { path: "doc.md" } },
+      ),
+    );
+  });
+
+  it("deletes the comment it filed when closed empty", async () => {
+    const server = installReviewServer([]);
+    const { textarea } = open();
+    fireEvent.change(textarea, { target: { value: "oops" } });
+    await waitFor(() => expect(server.comments).toHaveLength(1), {
+      timeout: 3000,
+    });
+    fireEvent.change(textarea, { target: { value: "" } });
+    fireEvent.click(screen.getByText("Close"));
+    await waitFor(() => expect(server.comments).toHaveLength(0));
   });
 });
 
@@ -1195,7 +1316,8 @@ describe("MarkdownViewer — commenting on a table cell", () => {
     expect(popover).toHaveTextContent("120ms");
   });
 
-  it("anchors the saved comment to that cell, on its row's line", () => {
+  it("anchors the saved comment to that cell, on its row's line", async () => {
+    installReviewServer([]);
     const { container } = renderTable();
     const cell = Array.from(container.querySelectorAll<HTMLElement>("td")).find(
       (c) => c.textContent === "90ms",
@@ -1206,8 +1328,11 @@ describe("MarkdownViewer — commenting on a table cell", () => {
       fireEvent.change(screen.getByPlaceholderText("Your comment..."), {
         target: { value: "Is this p50 or p99?" },
       });
-      fireEvent.click(screen.getByRole("button", { name: "Save" }));
+      fireEvent.click(screen.getByText("Close"));
     });
+    await waitFor(() =>
+      expect(useReviewStore.getState().comments).toHaveLength(1),
+    );
 
     const [comment] = useReviewStore.getState().comments;
     expect(comment.comment).toBe("Is this p50 or p99?");
@@ -1221,7 +1346,8 @@ describe("MarkdownViewer — commenting on a table cell", () => {
     });
   });
 
-  it("renders the new comment against the cell, without claiming drift", () => {
+  it("renders the new comment against the cell, without claiming drift", async () => {
+    installReviewServer([]);
     const { container } = renderTable();
 
     pointAndClick(container, 100, 135);
@@ -1229,8 +1355,11 @@ describe("MarkdownViewer — commenting on a table cell", () => {
       fireEvent.change(screen.getByPlaceholderText("Your comment..."), {
         target: { value: "Pin the build flags." },
       });
-      fireEvent.click(screen.getByRole("button", { name: "Save" }));
+      fireEvent.click(screen.getByText("Close"));
     });
+    await waitFor(() =>
+      expect(useReviewStore.getState().comments).toHaveLength(1),
+    );
 
     const cell = Array.from(container.querySelectorAll<HTMLElement>("td")).find(
       (c) => c.textContent === "whisper.cpp",

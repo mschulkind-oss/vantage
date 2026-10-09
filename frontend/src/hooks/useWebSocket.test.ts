@@ -4,6 +4,7 @@ import { useWebSocket } from "./useWebSocket";
 import { useRepoStore } from "../stores/useRepoStore";
 import { useGitStore } from "../stores/useGitStore";
 import { useReviewStore } from "../stores/useReviewStore";
+import { CommentBox } from "../lib/commentAutosave";
 import { useStarredStore } from "../stores/useStarredStore";
 import { useFilePickerStore } from "../stores/useFilePickerStore";
 import { useAllRecentsStore } from "../stores/useAllRecentsStore";
@@ -1276,7 +1277,7 @@ describe("useWebSocket", () => {
         clamped: false,
       };
 
-      it("keeps a document that went on screen until the new comment is saved or cancelled", () => {
+      it("keeps a document that went on screen until the new comment's box closes", () => {
         viewing("docs/old/a.md");
         useReviewStore.setState({
           isReviewMode: true,
@@ -1308,13 +1309,23 @@ describe("useWebSocket", () => {
         expect(mockLoadFile).toHaveBeenCalledTimes(2);
       });
 
-      it("waits for an inline reply that has words in it", () => {
+      it("waits for an open reply or edit box until it closes, empty or not", () => {
         viewing("docs/old/a.md");
         useReviewStore.setState({ isReviewMode: true });
-        document.body.innerHTML =
-          '<div data-review-inline-comment="c1"><textarea class="review-inline-reply-area"></textarea></div>';
-        const area = document.querySelector("textarea")!;
-        area.value = "half a reply";
+        // An open box, as the document's inline reply box or the panel's
+        // holds one (lib/commentAutosave.ts). It saves as it is typed in, so
+        // what it holds is not the question: it is drawn on the document.
+        const box = new CommentBox(
+          {
+            kind: "reply",
+            target: { base: "/api", path: "docs/old/a.md" },
+            commentId: "c1",
+            replyId: "r1",
+            label: "Reply",
+          },
+          { create: async () => {}, update: async () => {} },
+        );
+        box.open();
         renderHook(() => useWebSocket({ onMoved }));
         send({ type: "files_changed", paths: [], removed_dirs: ["docs/old"] });
         settle();
@@ -1325,7 +1336,11 @@ describe("useWebSocket", () => {
         gone();
         expect(mockLoadFile).toHaveBeenCalledTimes(1);
         act(() => {
-          area.value = "";
+          vi.advanceTimersByTime(2000);
+        });
+        expect(mockLoadFile).toHaveBeenCalledTimes(1);
+        act(() => {
+          box.close();
           vi.advanceTimersByTime(600);
         });
         expect(mockLoadFile).toHaveBeenLastCalledWith("docs/old/a.md");

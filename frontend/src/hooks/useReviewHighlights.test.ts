@@ -7,6 +7,12 @@ import {
 import { blockVisibleText, hashBlockText } from "../lib/reviewAnchor";
 import type { CommentAnchor, CommentReaction, ReviewComment } from "../types";
 import { useReviewStore } from "../stores/useReviewStore";
+import {
+  CommentBox,
+  liveBoxes,
+  resetBoxesForTest,
+  SAVE_PAUSE_MS,
+} from "../lib/commentAutosave";
 
 const agentAddressed: CommentReaction = {
   actor: "agent",
@@ -67,6 +73,16 @@ const orphanAnchor: CommentAnchor = {
 };
 
 let actions: InlineReviewActions;
+/** What the inline boxes saved: `edit <id> <text>`, `reply <id> <text>`, … */
+let saved: string[];
+/** The requests a box sends, failing when `failing` is set. */
+let failing: boolean;
+
+const target = { base: "/api", path: "doc.md" };
+const request = (line: string) => () =>
+  failing
+    ? Promise.reject(new Error("down"))
+    : (saved.push(line), Promise.resolve());
 
 const renderInline = (comments: ReviewComment[]) => {
   const ref = { current: container };
@@ -89,14 +105,37 @@ beforeEach(() => {
     onDelete: vi.fn(),
     onDismiss: vi.fn(),
     onReopen: vi.fn(),
-    onEdit: vi.fn(),
-    onReply: vi.fn(),
+    editBox: (c) =>
+      new CommentBox(
+        { kind: "edit", target, commentId: c.id, label: "Edited comment" },
+        { update: (text) => request(`edit ${c.id} ${text}`)() },
+        { text: c.comment, created: true },
+      ),
+    replyBox: (c) =>
+      new CommentBox(
+        {
+          kind: "reply",
+          target,
+          commentId: c.id,
+          replyId: "r1",
+          label: "Reply",
+        },
+        {
+          create: (text) =>
+            request(`reply ${c.id} ${c.resolved ? "reopen " : ""}${text}`)(),
+          update: (text) => request(`reply-edit ${c.id} ${text}`)(),
+        },
+      ),
     onCopy: vi.fn().mockResolvedValue(true),
   };
+  saved = [];
+  failing = false;
 });
 
 afterEach(() => {
   container.remove();
+  resetBoxesForTest();
+  vi.useRealTimers();
 });
 
 describe("useReviewHighlights — inline Copy", () => {
@@ -281,12 +320,10 @@ describe("useReviewHighlights — outdated comments", () => {
     const area = block.querySelector<HTMLTextAreaElement>(
       ".review-inline-edit-area",
     )!;
-    fireEvent.change(area, { target: { value: "reworded request" } });
-    fireEvent.click(
-      block.querySelector<HTMLElement>(".review-inline-edit-save")!,
-    );
+    fireEvent.input(area, { target: { value: "reworded request" } });
+    fireEvent.click(block.querySelector<HTMLElement>(".comment-box-close")!);
 
-    expect(actions.onEdit).toHaveBeenCalledWith("c1", "reworded request");
+    expect(saved).toEqual(["edit c1 reworded request"]);
   });
 });
 
@@ -525,64 +562,219 @@ describe("useReviewHighlights — resolved comments", () => {
   });
 });
 
-describe("useReviewHighlights — draft preservation", () => {
-  it("keeps an unsent reply when the comments array changes underneath", () => {
+describe("useReviewHighlights — boxes that save as you type", () => {
+  const openBox = (kind: "edit" | "reply", id = "c1") => {
+    fireEvent.click(
+      blockFor(id)!.querySelector<HTMLElement>(
+        kind === "edit"
+          ? ".review-inline-comment-edit"
+          : ".review-inline-comment-reply",
+      )!,
+    );
+    return blockFor(id)!.querySelector<HTMLTextAreaElement>(
+      kind === "edit"
+        ? ".review-inline-edit-area"
+        : ".review-inline-reply-area",
+    )!;
+  };
+  const type = (area: HTMLTextAreaElement, value: string) =>
+    fireEvent.input(area, { target: { value } });
+
+  it("has Close, the hint, and no Save or Cancel", () => {
+    renderInline([baseComment({ anchor: anchorAt(1) })]);
+    openBox("edit");
+    const block = blockFor("c1")!;
+    expect(block.querySelector(".comment-box-close")?.textContent).toBe(
+      "Close",
+    );
+    expect(block.querySelector(".comment-box-hint")?.textContent).toMatch(
+      /^(Ctrl|⌘)\+Enter or Esc closes$/,
+    );
+    const words = [...block.querySelectorAll("button")].map(
+      (b) => b.textContent,
+    );
+    expect(words).not.toContain("Save");
+    expect(words).not.toContain("Cancel");
+  });
+
+  it("saves an edit a second after typing pauses, and says so", async () => {
+    vi.useFakeTimers();
+    renderInline([baseComment({ anchor: anchorAt(1) })]);
+    const area = openBox("edit");
+    type(area, "reworded");
+    expect(saved).toEqual([]);
+    await vi.advanceTimersByTimeAsync(SAVE_PAUSE_MS);
+    expect(saved).toEqual(["edit c1 reworded"]);
+    expect(
+      blockFor("c1")!.querySelector(".comment-box-status")?.textContent,
+    ).toBe("Saved just now");
+  });
+
+  it("saves on Esc and closes, keeping the text", async () => {
+    const { rerender } = renderInline([baseComment({ anchor: anchorAt(1) })]);
+    const area = openBox("edit");
+    type(area, "kept on Esc");
+    fireEvent.keyDown(area, { key: "Escape" });
+    await waitFor(() => expect(saved).toEqual(["edit c1 kept on Esc"]));
+    expect(
+      blockFor("c1")!.querySelector(".review-inline-edit-area"),
+    ).toBeNull();
+    rerender({
+      cs: [baseComment({ anchor: anchorAt(1), comment: "kept on Esc" })],
+    });
+    expect(
+      blockFor("c1")!.querySelector(".review-inline-comment-text")?.textContent,
+    ).toContain("kept on Esc");
+  });
+
+  it("closes on Ctrl+Enter, saving what it holds", async () => {
+    renderInline([baseComment({ anchor: anchorAt(1) })]);
+    const area = openBox("edit");
+    type(area, "sent with the keys");
+    fireEvent.keyDown(area, { key: "Enter", ctrlKey: true });
+    await waitFor(() => expect(saved).toEqual(["edit c1 sent with the keys"]));
+  });
+
+  it("never saves empty text from an edit box, and says so", async () => {
+    vi.useFakeTimers();
+    renderInline([baseComment({ anchor: anchorAt(1) })]);
+    const area = openBox("edit");
+    type(area, "   ");
+    await vi.advanceTimersByTimeAsync(SAVE_PAUSE_MS * 10);
+    expect(saved).toEqual([]);
+    expect(
+      blockFor("c1")!.querySelector(".comment-box-status")?.textContent,
+    ).toBe("Empty text is not saved");
+    fireEvent.keyDown(area, { key: "Escape" });
+    await vi.advanceTimersByTimeAsync(SAVE_PAUSE_MS);
+    expect(saved).toEqual([]);
+  });
+
+  it("creates a reply once, then edits it in place", async () => {
+    vi.useFakeTimers();
+    const answered = baseComment({
+      anchor: anchorAt(1),
+      reactions: [agentAddressed],
+    });
+    renderInline([answered]);
+    const area = openBox("reply");
+    type(area, "still");
+    await vi.advanceTimersByTimeAsync(SAVE_PAUSE_MS);
+    type(area, "still unclear");
+    await vi.advanceTimersByTimeAsync(SAVE_PAUSE_MS);
+    expect(saved).toEqual(["reply c1 still", "reply-edit c1 still unclear"]);
+  });
+
+  it("reopens a dismissed comment with its first save, and keeps the box where it is", async () => {
+    vi.useFakeTimers();
+    const dismissed = baseComment({ anchor: anchorAt(1), resolved: true });
+    const { rerender } = renderInline([dismissed]);
+    // The dismissed comments are folded behind their bar.
+    fireEvent.click(container.querySelector(".review-resolved-indicator")!);
+    const area = openBox("reply");
+    type(area, "not fixed");
+    await vi.advanceTimersByTimeAsync(SAVE_PAUSE_MS);
+    expect(saved).toEqual(["reply c1 reopen not fixed"]);
+
+    // The save's push: the comment is open again, and the box stays put.
+    rerender({ cs: [{ ...dismissed, resolved: false }] });
+    const list = container.querySelector(".review-resolved-list")!;
+    expect(list.querySelector(".review-inline-reply-area")).toBe(area);
+    expect(document.activeElement).toBe(area);
+  });
+
+  it("keeps focus, caret, selection and scroll through every rebuild", () => {
+    const comment = baseComment({ anchor: anchorAt(1) });
+    const { rerender } = renderInline([comment]);
+    const area = openBox("edit");
+    type(area, "a sentence still being written");
+    area.focus();
+    area.setSelectionRange(2, 10, "backward");
+    area.scrollTop = 7;
+
+    // A save's echo, and the push it causes in every tab: a fresh array, and
+    // the whole layer torn down and built again.
+    rerender({ cs: [{ ...comment, comment: "a sentence still" }] });
+    rerender({
+      cs: [
+        { ...comment, comment: "a sentence still" },
+        baseComment({ id: "c2", anchor: anchorAt(5) }),
+      ],
+    });
+
+    const after = blockFor("c1")!.querySelector<HTMLTextAreaElement>(
+      ".review-inline-edit-area",
+    );
+    expect(after).toBe(area);
+    expect(after!.value).toBe("a sentence still being written");
+    expect(document.activeElement).toBe(area);
+    expect([area.selectionStart, area.selectionEnd]).toEqual([2, 10]);
+    expect(area.selectionDirection).toBe("backward");
+    expect(area.scrollTop).toBe(7);
+    // The comment's own text stays hidden behind the box.
+    expect(
+      blockFor("c1")!.querySelector<HTMLElement>(".review-inline-comment-text")!
+        .style.display,
+    ).toBe("none");
+  });
+
+  it("hides the reply it is still editing, once that reply is saved", () => {
     const answered = baseComment({
       anchor: anchorAt(1),
       reactions: [agentAddressed],
     });
     const { rerender } = renderInline([answered]);
-
-    fireEvent.click(
-      blockFor("c1")!.querySelector<HTMLElement>(
-        ".review-inline-comment-reply",
-      )!,
-    );
-    fireEvent.change(
-      blockFor("c1")!.querySelector<HTMLTextAreaElement>(
-        ".review-inline-reply-area",
-      )!,
-      { target: { value: "half-written thought" } },
-    );
-
-    // Any store write hands the hook a fresh array and rebuilds the whole
-    // inline layer — here, a second comment arriving.
-    const other = baseComment({ id: "c2", anchor: anchorAt(5) });
-    rerender({ cs: [answered, other] });
-
-    const area = blockFor("c1")!.querySelector<HTMLTextAreaElement>(
-      ".review-inline-reply-area",
-    );
-    expect(area).not.toBeNull();
-    expect(area!.value).toBe("half-written thought");
-    // Still unsent — the rebuild must not submit it.
-    expect(actions.onReply).not.toHaveBeenCalled();
+    openBox("reply");
+    rerender({
+      cs: [
+        {
+          ...answered,
+          reactions: [
+            agentAddressed,
+            { ...reviewerNoted, kind: "needs_clarification", id: "r1" },
+          ],
+        },
+      ],
+    });
+    const entry = blockFor("c1")!.querySelector<HTMLElement>(
+      '[data-review-reply-id="r1"]',
+    )!;
+    expect(entry.style.display).toBe("none");
   });
 
-  it("keeps an unsent edit when the comments array changes underneath", () => {
+  it("says Not saved, retrying, and saves once the server is back", async () => {
+    vi.useFakeTimers();
+    renderInline([baseComment({ anchor: anchorAt(1) })]);
+    const area = openBox("edit");
+    failing = true;
+    type(area, "while down");
+    await vi.advanceTimersByTimeAsync(SAVE_PAUSE_MS);
+    const status = blockFor("c1")!.querySelector(".comment-box-status")!;
+    expect(status.textContent).toBe("Not saved, retrying");
+    expect(status.classList).toContain("comment-box-status--retrying");
+    expect(area.value).toBe("while down");
+    failing = false;
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(saved).toEqual(["edit c1 while down"]);
+    expect(status.textContent).toBe("Saved just now");
+  });
+
+  it("closes a box whose comment is gone, and the box still saves its text", async () => {
     const comment = baseComment({ anchor: anchorAt(1) });
     const { rerender } = renderInline([comment]);
-
-    fireEvent.click(
-      blockFor("c1")!.querySelector<HTMLElement>(
-        ".review-inline-comment-edit",
-      )!,
+    type(openBox("edit"), "typed before it went");
+    rerender({ cs: [] });
+    await waitFor(() =>
+      expect(saved).toEqual(["edit c1 typed before it went"]),
     );
-    fireEvent.change(
-      blockFor("c1")!.querySelector<HTMLTextAreaElement>(
-        ".review-inline-edit-area",
-      )!,
-      { target: { value: "mid-edit wording" } },
-    );
+  });
 
-    rerender({ cs: [{ ...comment }] });
-
-    const area = blockFor("c1")!.querySelector<HTMLTextAreaElement>(
-      ".review-inline-edit-area",
-    );
-    expect(area).not.toBeNull();
-    expect(area!.value).toBe("mid-edit wording");
-    expect(actions.onEdit).not.toHaveBeenCalled();
+  it("closes every box when the document goes, saving what each holds", async () => {
+    const { unmount } = renderInline([baseComment({ anchor: anchorAt(1) })]);
+    type(openBox("edit"), "left mid-thought");
+    unmount();
+    await waitFor(() => expect(saved).toEqual(["edit c1 left mid-thought"]));
+    expect(liveBoxes()).toEqual([]);
   });
 });
 

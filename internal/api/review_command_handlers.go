@@ -51,6 +51,8 @@ func (h *Handlers) writeCommandResult(w http.ResponseWriter, repo, path string, 
 	switch {
 	case errors.Is(err, review.ErrCommentNotFound):
 		writeError(w, http.StatusNotFound, "No comment found")
+	case errors.Is(err, review.ErrReplyNotFound):
+		writeError(w, http.StatusNotFound, "No reply found")
 	case errors.Is(err, review.ErrReviewNotFound):
 		writeError(w, http.StatusNotFound, "No review found")
 	case err != nil:
@@ -80,7 +82,9 @@ func decodeBody(w http.ResponseWriter, r *http.Request, v any) bool {
 // ReviewCommentCreate handles POST /review/comments (and the /r/{repo} form).
 // The client supplies the id and created_at; the server captures the anchored
 // block's current text so the comment records what the reviewer was looking
-// at. The review file is created if absent.
+// at. The review file is created if absent. A create naming a comment the
+// review already holds edits that comment's text instead, so a retried create
+// cannot duplicate it ([review.Store.AddComment]).
 func (h *Handlers) ReviewCommentCreate(w http.ResponseWriter, r *http.Request) {
 	svc, path, ok := h.reviewCommandTarget(w, r)
 	if !ok {
@@ -145,7 +149,10 @@ func (h *Handlers) ReviewCommentPatch(w http.ResponseWriter, r *http.Request) {
 }
 
 // ReviewCommentReply handles POST /review/comments/{id}/replies: a reviewer
-// follow-up. The anchored block is re-captured from the current document.
+// follow-up. The anchored block is re-captured from the current document. The
+// body is {"text":…}, with an optional "id" the client chose for the reply: a
+// reply whose id the comment already holds edits that reply's text instead of
+// adding another, so a retried reply cannot duplicate it.
 func (h *Handlers) ReviewCommentReply(w http.ResponseWriter, r *http.Request) {
 	h.replyCommand(w, r, false)
 }
@@ -162,6 +169,7 @@ func (h *Handlers) replyCommand(w http.ResponseWriter, r *http.Request, reopen b
 		return
 	}
 	var req struct {
+		ID   string `json:"id"`
 		Text string `json:"text"`
 	}
 	if !decodeBody(w, r, &req) {
@@ -178,10 +186,34 @@ func (h *Handlers) replyCommand(w http.ResponseWriter, r *http.Request, reopen b
 		err  error
 	)
 	if reopen {
-		data, err = h.deps.Reviews.ReopenReply(path, svc.Repo, id, req.Text, doc)
+		data, err = h.deps.Reviews.ReopenReply(path, svc.Repo, id, req.ID, req.Text, doc)
 	} else {
-		data, err = h.deps.Reviews.Reply(path, svc.Repo, id, req.Text, doc)
+		data, err = h.deps.Reviews.Reply(path, svc.Repo, id, req.ID, req.Text, doc)
 	}
+	h.writeCommandResult(w, svc.Repo, path, data, err)
+}
+
+// ReviewReplyPatch handles PATCH /review/comments/{id}/replies/{reply}: it
+// rewrites the text of the reviewer's reply {reply} on comment {id}, which a
+// comment box does as the reviewer goes on typing it
+// ([review.Store.EditReply]). The body is {"text":…}, and empty text is a 400.
+// An unknown comment or reply is a 404.
+func (h *Handlers) ReviewReplyPatch(w http.ResponseWriter, r *http.Request) {
+	svc, path, ok := h.reviewCommandTarget(w, r)
+	if !ok {
+		return
+	}
+	var req struct {
+		Text string `json:"text"`
+	}
+	if !decodeBody(w, r, &req) {
+		return
+	}
+	if req.Text == "" {
+		writeError(w, http.StatusBadRequest, "Reply text is required")
+		return
+	}
+	data, err := h.deps.Reviews.EditReply(path, svc.Repo, r.PathValue("id"), r.PathValue("reply"), req.Text, currentDocContent(svc, path))
 	h.writeCommandResult(w, svc.Repo, path, data, err)
 }
 
