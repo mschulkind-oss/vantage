@@ -151,6 +151,36 @@ describe("in place (§4.1)", () => {
     ]);
   });
 
+  it("shrinks a row opened by Undo back to a row when it is answered again, and joins no second card", () => {
+    const key = keyOf(index, "OQ-T1");
+    const opened = openRow(shrinkCard(NOTHING_IN_PLACE, needsYou, key), key);
+    const again = shrinkCard(opened, needsYou, key);
+    expect(again.joined).toBe(1);
+    expect(
+      viewNeedsYou(needsYou, again, 5).list.map((i) => [
+        i.entry.question.id,
+        i.as,
+      ]),
+    ).toEqual([
+      ["OQ-T1", "row"],
+      ["OQ-T2", "card"],
+      ["OQ-T3", "card"],
+    ]);
+  });
+
+  it("shrinks an answered row opened by Show back to a row when it is answered again", () => {
+    const answered = layoutNeedsYou(
+      layoutOf(index).needsYou,
+      new Set([qKey(index, "OQ-T2")]),
+      2,
+    );
+    const key = keyOf(index, "OQ-T2");
+    const again = shrinkCard(openRow(NOTHING_IN_PLACE, key), answered, key);
+    expect(again.opened.has(key)).toBe(false);
+    expect(again.joined).toBe(0);
+    expect(viewNeedsYou(answered, again, 5).top[0]?.as).toBe("row");
+  });
+
   it("joins nothing when nothing is left beyond the cards", () => {
     const small = layoutNeedsYou(layoutOf(index, 10).needsYou, new Set(), 10);
     const after = shrinkCard(NOTHING_IN_PLACE, small, keyOf(index, "OQ-T1"));
@@ -236,6 +266,7 @@ describe("held updates (§4.3)", () => {
       answeredNow?: string[];
       replied?: string[];
       inPlace?: Parameters<typeof shrinkCard>[0];
+      own?: string[];
     } = {},
   ) {
     const then = new Set(
@@ -262,6 +293,7 @@ describe("held updates (§4.3)", () => {
       freshOrder: freshLayout.needsYou,
       freshBlocked: freshLayout.blocked,
       freshMaintenance: freshLayout.maintenance,
+      own: new Set((options.own ?? []).map((id) => keyOf(before, id))),
       facts: (key) => {
         const painted = thenQs.get(key) ?? nowQs.get(key);
         if (painted === undefined) return undefined;
@@ -364,6 +396,23 @@ describe("held updates (§4.3)", () => {
     );
     const held = updates(after);
     expect(held.get("roadmap reordered")).toBe(1);
+    // Once: not again for each question it moves in or out of the cards.
+    expect(updatesTotal(held)).toBe(1);
+  });
+
+  it("counts nothing for a card whose own Answer… box is answering it, while it is typed in", () => {
+    // Its box saves as the reader types, so a comment answers it now; the
+    // card stays a card until the box closes, and nothing is held.
+    expect(
+      updatesTotal(updates(before, { answeredNow: ["OQ-T1"], own: ["OQ-T1"] })),
+    ).toBe(0);
+  });
+
+  it("counts nothing for the reader's own Undo, nor for the card that joined before it", () => {
+    const needsYou = layoutNeedsYou(layout.needsYou, new Set(), 2);
+    const key = keyOf(before, "OQ-T1");
+    const inPlace = openRow(shrinkCard(NOTHING_IN_PLACE, needsYou, key), key);
+    expect(updatesTotal(updates(before, { inPlace }))).toBe(0);
   });
 
   it("says the held updates by kind in its title", () => {

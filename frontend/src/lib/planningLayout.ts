@@ -97,27 +97,34 @@ export const NOTHING_IN_PLACE: InPlace = Object.freeze({
 /**
  * A card answered here: it shrinks to a row where it is, and the first
  * question beyond the cards, if any, joins their end (§4.1). A card already a
- * row changes nothing.
+ * row changes nothing. A row the reader opened into its card, by Show, Undo
+ * or New reply, that is answered again shrinks back to its row, and nothing
+ * joins for it: the card that joined when it first shrank is still there.
  */
 export function shrinkCard(
   inPlace: InPlace,
   layout: NeedsYouLayout,
   key: string,
 ): InPlace {
+  if (inPlace.opened.has(key)) {
+    const opened = new Set(inPlace.opened);
+    opened.delete(key);
+    const isRow = layout.answered.some((e) => itemKey(e.question) === key);
+    return {
+      ...inPlace,
+      opened,
+      shrunk: isRow ? inPlace.shrunk : new Set(inPlace.shrunk).add(key),
+    };
+  }
   const isCard =
     layout.cards.some((e) => itemKey(e.question) === key) ||
     layout.more
       .slice(0, inPlace.joined)
       .some((e) => itemKey(e.question) === key);
-  if (!isCard || (inPlace.shrunk.has(key) && !inPlace.opened.has(key))) {
-    return inPlace;
-  }
-  const opened = new Set(inPlace.opened);
-  opened.delete(key);
+  if (!isCard || inPlace.shrunk.has(key)) return inPlace;
   return {
     ...inPlace,
     shrunk: new Set(inPlace.shrunk).add(key),
-    opened,
     joined: Math.min(layout.more.length, inPlace.joined + 1),
   };
 }
@@ -305,6 +312,25 @@ export interface QuestionFacts {
   siblingsNow?: number;
 }
 
+/**
+ * How many questions share each root-level block, by `blockKeyOf`: counted
+ * once per index, so each question's count is a lookup (§4.2).
+ */
+export function blockSizes(
+  questions: Iterable<PlanningQuestion>,
+): ReadonlyMap<string, number> {
+  const out = new Map<string, number>();
+  for (const q of questions) {
+    const key = blockKeyOf(q);
+    out.set(key, (out.get(key) ?? 0) + 1);
+  }
+  return out;
+}
+
+/** A question's root-level block, as `blockSizes` keys it. */
+export const blockKeyOf = (q: PlanningQuestion): string =>
+  `${q.path}\n${q.block.startLine}`;
+
 /** How many of `questions` share `question`'s root-level block. */
 export function blockSiblings(
   questions: Iterable<PlanningQuestion>,
@@ -442,6 +468,12 @@ export interface UpdatesInput {
   freshMaintenance: readonly MaintenanceKind[];
   /** Each item's facts, by `itemKey`, for every item of either. */
   facts: (key: string) => QuestionFacts | undefined;
+  /**
+   * The items a box of this page is answering, or answered this visit, by
+   * `itemKey`: the reader's own answers, which a card shows once its box
+   * closes, so a new layout making them rows is no held update.
+   */
+  own?: ReadonlySet<string>;
 }
 
 type Role = "row" | "card" | null;
@@ -453,49 +485,85 @@ type Role = "row" | "card" | null;
  * data in hand makes it, since opening it was their own action.
  */
 export function heldUpdates(input: UpdatesInput): HeldUpdates {
-  const { layout, needsYou, inPlace, fresh, facts } = input;
+  const { layout, needsYou, fresh, facts } = input;
   const counts = new Map<UpdateKind, number>();
   const add = (kind: UpdateKind) =>
     counts.set(kind, (counts.get(kind) ?? 0) + 1);
 
+  const freshRoles = new Map<string, Role>();
+  for (const e of fresh.answered) freshRoles.set(itemKey(e.question), "row");
+  for (const e of fresh.cards) freshRoles.set(itemKey(e.question), "card");
+
+  // The reader's own answers, as their boxes will leave them once closed: a
+  // card answered by its own box compares as the row it becomes (§4.1).
+  let inPlace = input.inPlace;
+  if (input.own !== undefined && input.own.size > 0) {
+    const asDrawn = viewNeedsYou(
+      needsYou,
+      { ...inPlace, allAnswered: true },
+      0,
+    );
+    for (const item of asDrawn.list) {
+      if (
+        item.as === "card" &&
+        input.own.has(item.key) &&
+        freshRoles.get(item.key) === "row"
+      ) {
+        inPlace = shrinkCard(inPlace, needsYou, item.key);
+      }
+    }
+  }
+
   const drawn = new Map<string, Role>();
+  const joined = new Set<string>();
   const view = viewNeedsYou(needsYou, { ...inPlace, allAnswered: true }, 0);
-  for (const item of [...view.top, ...view.list]) drawn.set(item.key, item.as);
+  for (const item of [...view.top, ...view.list]) {
+    drawn.set(item.key, item.as);
+    if (item.from === "joined") joined.add(item.key);
+  }
   const opened = new Set(
     [...view.top, ...view.list]
       .filter((item) => inPlace.opened.has(item.key))
       .map((item) => item.key),
   );
-  const freshRoles = new Map<string, Role>();
-  for (const e of fresh.answered) freshRoles.set(itemKey(e.question), "row");
-  for (const e of fresh.cards) freshRoles.set(itemKey(e.question), "card");
   const known = new Set(layout.needsYou.map((e) => itemKey(e.question)));
+
+  // The roadmap's order, over the questions both hold: a reorder counts
+  // once, and not again for each question it moves in or out of the cards.
+  const before = layout.needsYou.map((e) => itemKey(e.question));
+  const after = input.freshOrder.map((e) => itemKey(e.question));
+  const beforeSet = new Set(before);
+  const afterSet = new Set(after);
+  const a = before.filter((key) => afterSet.has(key));
+  const b = after.filter((key) => beforeSet.has(key));
+  const reordered = a.some((key, i) => b[i] !== key);
+  if (reordered) add("roadmap reordered");
 
   for (const key of new Set([...drawn.keys(), ...freshRoles.keys()])) {
     const was = drawn.get(key) ?? null;
     const will = freshRoles.get(key) ?? null;
     const f = facts(key);
     const marks = f && was !== null ? marksOf(f, was) : null;
-    if (was !== will && !(opened.has(key) && will !== null)) {
-      if (was === null) add(known.has(key) ? "moved" : "new question");
-      else if (will === null)
-        add(marks?.marks.includes("done") ? "done" : "moved");
-      else if (will === "card") {
+    // A row the reader opened compares by its marks alone, and so does a
+    // card that joined for one they answered: both are their own doing.
+    const own = opened.has(key) || (joined.has(key) && will === null);
+    if (was !== will && !own) {
+      const done = marks?.marks.includes("done") === true;
+      if (was === null) {
+        if (!known.has(key)) add("new question");
+        else if (!reordered) add("moved");
+      } else if (will === null) {
+        if (done) add("done");
+        else if (!reordered) add("moved");
+      } else if (will === "card") {
         add(marks?.newReply ? "new reply" : "needs you again");
       } else add("answered elsewhere");
     } else if (was !== null && marks !== null) {
-      if (marks.newReply) add("new reply");
+      if (marks.marks.includes("done") && was !== will) add("done");
+      else if (marks.newReply) add("new reply");
       else if (marks.marks.includes("changed")) add("changed");
     }
   }
-
-  // The roadmap's order, over the questions both hold.
-  const before = layout.needsYou.map((e) => itemKey(e.question));
-  const after = input.freshOrder.map((e) => itemKey(e.question));
-  const both = new Set(before.filter((key) => after.includes(key)));
-  const a = before.filter((key) => both.has(key));
-  const b = after.filter((key) => both.has(key));
-  if (a.some((key, i) => b[i] !== key)) add("roadmap reordered");
 
   const diff = (
     was: readonly string[],

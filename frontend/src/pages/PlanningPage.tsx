@@ -240,7 +240,8 @@ import type { ReviewComment } from "../types";
 import {
   NOTHING_IN_PLACE,
   agentReplies,
-  blockSiblings,
+  blockKeyOf,
+  blockSizes,
   commentsByQuestion,
   groupKeys,
   heldUpdates,
@@ -406,6 +407,10 @@ const USER_SCROLL_EVENTS = [
   "keydown",
   "mousedown",
 ] as const;
+
+/** An extra block's key: its document's content hash, and its place. */
+const extraBlockKey = (hash: string | undefined, at: string): string =>
+  `${hash ?? ""}\n${at}`;
 
 /** A key for one question, stable across index versions. */
 const refKey = (ref: QuestionRef): string => `${ref.path}\n${ref.line}`;
@@ -1173,6 +1178,68 @@ function keepPlace(
         ),
   );
 }
+
+/**
+ * Where the focus goes after the reader's own action changes the layout:
+ * `row`, the row's Show; `card`, the card's heading; `kept`, the item
+ * Refresh kept in place, else *Needs you*'s heading. `onlyIfLost`: only when
+ * the action left the focus nowhere.
+ */
+interface FocusAfter {
+  key: string | null;
+  on: "row" | "card" | "kept";
+  onlyIfLost: boolean;
+}
+
+/** Give the focus to item `key`'s own place for it (`FocusAfter`). */
+function focusItem(key: string | null, on: FocusAfter["on"]): void {
+  const item =
+    key === null
+      ? undefined
+      : [
+          ...document.querySelectorAll<HTMLElement>("[data-planning-item]"),
+        ].find((el) => el.dataset.planningItem === key);
+  if (item === undefined) {
+    if (on === "kept") {
+      document.getElementById("needs-you")?.focus({ preventScroll: true });
+    }
+    return;
+  }
+  if (item.hasAttribute("data-planning-row")) {
+    item
+      .querySelector<HTMLElement>("[data-planning-row-show]")
+      ?.focus({ preventScroll: true });
+    return;
+  }
+  const headline = () =>
+    item.querySelector<HTMLElement>("[data-planning-card-headline]");
+  const now = headline();
+  if (now !== null) {
+    now.focus({ preventScroll: true });
+    return;
+  }
+  // A card takes its title out of its rendered question a frame or two
+  // after it commits: the focus waits on its first control until then.
+  const first = item.querySelector<HTMLElement>(
+    "a[href], button:not([disabled])",
+  );
+  first?.focus({ preventScroll: true });
+  let frames = HEADLINE_FRAMES;
+  const wait = () => {
+    const found = headline();
+    if (found !== null) {
+      if (document.activeElement === first || first === null) {
+        found.focus({ preventScroll: true });
+      }
+      return;
+    }
+    if (--frames > 0 && item.isConnected) requestAnimationFrame(wait);
+  };
+  requestAnimationFrame(wait);
+}
+
+/** How many frames the focus waits for an opened card's heading. */
+const HEADLINE_FRAMES = 10;
 
 /**
  * Once `box`'s last save has landed, failed into its retries, or the reviews
@@ -2173,6 +2240,15 @@ export const PlanningPage: React.FC = () => {
     [shownIndex],
   );
   const liveQuestions = useMemo(() => questionsByItem(index), [index]);
+  // Each block's questions, counted once per index (§4.2).
+  const shownBlocks = useMemo(
+    () => blockSizes(shownQuestions.values()),
+    [shownQuestions],
+  );
+  const liveBlocks = useMemo(
+    () => blockSizes(liveQuestions.values()),
+    [liveQuestions],
+  );
   const liveComments = useMemo(
     () => commentsByQuestion(listedQuestions, reviews.byPath),
     [listedQuestions, reviews.byPath],
@@ -2236,6 +2312,12 @@ export const PlanningPage: React.FC = () => {
     [current],
   );
 
+  // The reader's own answers this visit, by `itemKey`: each question whose
+  // Answer… box is open here, or closed here holding text. Its box saves as
+  // they type, and what it files is never late data (P2): no Answered
+  // elsewhere mark, and no held update.
+  const [own, setOwn] = useState<ReadonlySet<string>>(() => new Set());
+
   // What the page knows of an item at its layout and now (§4.2).
   const factsOf = useCallback(
     (key: string): QuestionFacts | undefined => {
@@ -2245,21 +2327,28 @@ export const PlanningPage: React.FC = () => {
       return {
         painted,
         now,
-        answeredThen: current.answeredThen.has(key),
+        answeredThen: current.answeredThen.has(key) || own.has(key),
         answeredNow: now !== undefined && liveAnswered.has(questionKey(now)),
         repliesSeen: current.repliesSeen.get(key) ?? 0,
         repliesNow:
           now === undefined
             ? 0
             : agentReplies(liveComments.get(questionKey(now))),
-        siblingsThen: blockSiblings(shownQuestions.values(), painted),
+        siblingsThen: shownBlocks.get(blockKeyOf(painted)) ?? 0,
         siblingsNow:
-          now === undefined
-            ? undefined
-            : blockSiblings(liveQuestions.values(), now),
+          now === undefined ? undefined : liveBlocks.get(blockKeyOf(now)),
       };
     },
-    [shownQuestions, liveQuestions, current, liveAnswered, liveComments],
+    [
+      shownQuestions,
+      liveQuestions,
+      shownBlocks,
+      liveBlocks,
+      own,
+      current,
+      liveAnswered,
+      liveComments,
+    ],
   );
 
   // The data in hand, laid out under the layout's own roadmap, filter and
@@ -2304,8 +2393,9 @@ export const PlanningPage: React.FC = () => {
             freshBlocked: liveLayout.blocked,
             freshMaintenance: liveLayout.maintenance,
             facts: factsOf,
+            own,
           }),
-    [liveLayout, freshNeedsYou, shownLayout, current, factsOf],
+    [liveLayout, freshNeedsYou, shownLayout, current, factsOf, own],
   );
   const updateCount = updatesTotal(updates);
   // The groups' items in hand, by the keys their rows are drawn with: a row
@@ -2353,14 +2443,33 @@ export const PlanningPage: React.FC = () => {
     }
     return out;
   }, [shownQuestions]);
+  // Where the focus goes once the reader's own action has changed the
+  // layout under it, after the commit that does (§4.1): an action that took
+  // away the control it was pressed with leaves the focus nowhere.
+  const focusRef = useRef<FocusAfter | null>(null);
   const answeredHere = useCallback(
     (cardKey: string) => {
       const key = shownByRef.get(cardKey);
       if (key !== undefined) {
+        focusRef.current = { key, on: "row", onlyIfLost: true };
         changeInPlace((s) => shrinkCard(s.inPlace, s.needsYou, key));
       }
     },
     [shownByRef, changeInPlace],
+  );
+  const answering = useCallback(
+    (cardKey: string, on: boolean) => {
+      const key = shownByRef.get(cardKey);
+      if (key === undefined) return;
+      setOwn((prev) => {
+        if (prev.has(key) === on) return prev;
+        const next = new Set(prev);
+        if (on) next.add(key);
+        else next.delete(key);
+        return next;
+      });
+    },
+    [shownByRef],
   );
   // A New reply pressed: what it marks is open now, so the mark goes.
   // Read when pressed, so the callback is the same every render and no card
@@ -2388,7 +2497,10 @@ export const PlanningPage: React.FC = () => {
     },
     [shownByRef, seeReply],
   );
-  // Blocks fetched for rows opened into cards, which no set of inputs holds.
+  // Blocks fetched for rows opened into cards, which no set of inputs holds,
+  // by the content hash of the document they were cut from as well as their
+  // place in it: after an edit, a layout's row opens onto its document as
+  // it is, never onto a block cut from the text before.
   const [extraBlocks, setExtraBlocks] = useState<
     ReadonlyMap<string, CardBlock | null>
   >(() => new Map());
@@ -2405,16 +2517,17 @@ export const PlanningPage: React.FC = () => {
       const { question } = entry;
       const at = pageBlockKey(question.path, question.block.startLine);
       const { shown: on, extraBlocks: extra } = blocksRef.current;
+      const hash = on?.inputs.hashes[question.path];
+      const extraKey = extraBlockKey(hash, at);
       if (
         !entry.preview &&
         on !== null &&
         !on.inputs.blocks.has(at) &&
-        !extra.has(at) &&
+        !extra.has(extraKey) &&
         repo !== null
       ) {
         setOpening((prev) => new Set(prev).add(key));
         let block: CardBlock | null = null;
-        const hash = on.inputs.hashes[question.path];
         if (hash !== undefined) {
           try {
             const [answer] = await planningScanner().cards(repo, [
@@ -2432,13 +2545,14 @@ export const PlanningPage: React.FC = () => {
             block = null;
           }
         }
-        setExtraBlocks((prev) => new Map(prev).set(at, block));
+        setExtraBlocks((prev) => new Map(prev).set(extraKey, block));
         setOpening((prev) => {
           const next = new Set(prev);
           next.delete(key);
           return next;
         });
       }
+      focusRef.current = { key, on: "card", onlyIfLost: false };
       changeInPlace((s) => openRow(s.inPlace, key));
     },
     [repo, changeInPlace],
@@ -2459,10 +2573,17 @@ export const PlanningPage: React.FC = () => {
     closeBoxes(() => true);
     await Promise.all(open.map(boxSettled));
     const pane = contentRef.current;
-    placeRef.current = {
-      generation: generation + 1,
-      ...firstOnScreen(pane),
-    };
+    const place = firstOnScreen(pane);
+    placeRef.current = { generation: generation + 1, ...place };
+    // The button goes once there is nothing to apply: its focus goes to
+    // the item Refresh keeps in place, else to Needs you's heading.
+    const active = document.activeElement;
+    if (
+      active instanceof HTMLElement &&
+      active.closest("[data-planning-updates]") !== null
+    ) {
+      focusRef.current = { key: place.key, on: "kept", onlyIfLost: false };
+    }
     setPageSize(readPageSize());
     setGeneration((g) => g + 1);
   }, [generation]);
@@ -2479,10 +2600,30 @@ export const PlanningPage: React.FC = () => {
     setPageSize(size);
   }, []);
   // *… N more answered · Show*.
-  const showAnswered = useCallback(
-    () => changeInPlace((s) => ({ ...s.inPlace, allAnswered: true })),
-    [changeInPlace],
-  );
+  const showAnswered = useCallback(() => {
+    const first = needsYouView?.top.length ?? 0;
+    const key = current?.needsYou.answered[first];
+    if (key !== undefined) {
+      focusRef.current = {
+        key: itemKey(key.question),
+        on: "row",
+        onlyIfLost: false,
+      };
+    }
+    changeInPlace((s) => ({ ...s.inPlace, allAnswered: true }));
+  }, [changeInPlace, needsYouView, current]);
+  useLayoutEffect(() => {
+    const after = focusRef.current;
+    if (after === null || current === null) return;
+    // Refresh's waits for its own layout.
+    if (after.on === "kept" && placeRef.current !== null) return;
+    focusRef.current = null;
+    const active = document.activeElement;
+    const lost =
+      active === null || active === document.body || !active.isConnected;
+    if (after.onlyIfLost && !lost) return;
+    focusItem(after.key, after.on);
+  }, [current]);
 
   // The folded groups' open state, remembered per group and read once per
   // visit (§3.4).
@@ -2827,7 +2968,9 @@ export const PlanningPage: React.FC = () => {
     const block =
       shown?.inputs.blocks.has(at) === true
         ? shown.inputs.blocks.get(at)
-        : extraBlocks.get(at);
+        : extraBlocks.get(
+            extraBlockKey(shown?.inputs.hashes[question.path], at),
+          );
     // A card whose block no set holds, such as one that joined past the
     // blocks asked for ahead, is drawn as a preview card: whole once asked.
     const asPreview =
@@ -2862,6 +3005,7 @@ export const PlanningPage: React.FC = () => {
         newReply={newReply}
         onNewReply={seeCardReply}
         onAnswered={answeredHere}
+        onAnswering={answering}
       />
     );
   };
