@@ -37,7 +37,7 @@ import {
   type PlanningSources,
   type UnderstoodPlanningFilter,
 } from "../../vantage-md/src/planning/index.js";
-import { makeTree } from "./helpers.js";
+import { gitEnvScrubbed, makeTree } from "./helpers.js";
 import {
   ANSWERED,
   FULL_TOML,
@@ -2296,7 +2296,7 @@ describe("index --filter, and the checkout's space id", () => {
       execFileSync("git", ["-c", "core.excludesFile=/dev/null", ...args], {
         cwd,
         encoding: "utf8",
-        env: { ...process.env, GIT_CONFIG_NOSYSTEM: "1" },
+        env: { ...gitEnvScrubbed(), GIT_CONFIG_NOSYSTEM: "1" },
       });
     const extras: Record<string, string>[] = [
       {},
