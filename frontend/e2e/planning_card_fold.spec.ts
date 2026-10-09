@@ -12,13 +12,14 @@ import { serveFixture } from "./ownServer";
 // what the browser scores as a layout shift are measured here.
 //
 // The fixture is `fixtures/card_fold/`, served by a server of this spec's own:
-// fold.md's twelve questions in Needs you, over two pages — OQ-F1 and OQ-F11
+// Needs you holds fold.md's twelve questions — OQ-F1 and OQ-F11
 // run past the lines a folded card shows, OQ-F1 with a link in what it cuts
 // off, OQ-F2 fits with its options folded away after it, the rest fit and fold
-// nothing — then later.md's long OQ-L1 and short OQ-L2, on the second page
-// below OQ-F11, and under Not on a roadmap aside.md's long OQ-A1, in a list, and
-// OQ-A2, a paragraph outside one, which is one block the card cuts short
-// itself.
+// nothing — then later.md's long OQ-L1 and short OQ-L2, below OQ-F11, then
+// aside.md's long OQ-A1, in a list, and OQ-A2, a paragraph outside one, which
+// is one block the card cuts short itself. The page opens at twenty cards a
+// page, so every question is a card; at ten, those past OQ-F10 are not
+// (docs/design/planning-to-do-list.md §3.3).
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const EXPANDED = "vantage:planningCardsExpanded";
@@ -51,15 +52,28 @@ const focusInPane = (page: Page) =>
     const box = focused.getBoundingClientRect();
     return box.bottom > view.top && box.top < view.bottom;
   });
-const pager = (page: Page) =>
-  page.getByRole("navigation", { name: "Needs you pages", exact: true });
+/** Choose a page size on Needs you's end line. */
+const chooseSize = (page: Page, size: string) =>
+  page
+    .getByTestId("needs-you-end")
+    .getByRole("button", { name: size, exact: true })
+    .click();
 const maskOf = (el: Locator) =>
   el.evaluate((node) => {
     const style = getComputedStyle(node);
     return style.maskImage || style.webkitMaskImage;
   });
 
-async function open(page: Page, height = 900): Promise<void> {
+/** The page size this browser remembers for the next visit. */
+const PAGE_SIZE = "vantage:planningPageSize";
+
+async function open(page: Page, height = 900, size = 20): Promise<void> {
+  await page.addInitScript(
+    ([key, n]) => {
+      if (localStorage.getItem(key) === null) localStorage.setItem(key, n);
+    },
+    [PAGE_SIZE, String(size)] as const,
+  );
   await page.setViewportSize({ width: 1280, height });
   await page.goto("/.vantage/planning");
   await expect(card(page, "OQ-F1")).toBeVisible({ timeout: 30_000 });
@@ -279,6 +293,8 @@ test.describe("a question card's fold", () => {
     expect(shapes.filter((s) => s.control).map((s) => s.id)).toEqual([
       "OQ-F1",
       "OQ-F2",
+      "OQ-F11",
+      "OQ-L1",
       "OQ-A1",
       "OQ-A2",
     ]);
@@ -418,8 +434,8 @@ test.describe("a question card's fold", () => {
         el.id.replace(/OQ-F1$/, "OQ-F5"),
       );
       const target = card(page, "OQ-L1");
-      // The outline's jump to later.md flips Needs you to its second page,
-      // where OQ-F11, above OQ-L1, has a cut of its own to draw.
+      // The outline's jump to later.md goes past OQ-F11, above OQ-L1, which
+      // has a cut of its own to draw.
       await page
         .getByRole("navigation", { name: "Planning outline" })
         .locator('[data-testid=outline-document][data-path="later.md"]')
@@ -436,8 +452,8 @@ test.describe("a question card's fold", () => {
         Math.abs((await belowPaneTop(page, target)) - 16),
       ).toBeLessThanOrEqual(1);
 
-      // The same entry's link, opened afresh, and a card's on the first
-      // page, below OQ-F1's and OQ-F2's cuts.
+      // The same entry's link, opened afresh, and a card's below OQ-F1's and
+      // OQ-F2's cuts.
       const href = await page
         .getByRole("navigation", { name: "Planning outline" })
         .locator('[data-testid=outline-document][data-path="later.md"]')
@@ -458,10 +474,10 @@ test.describe("a question card's fold", () => {
     });
   }
 
-  test("Expand all unfolds every card, opens the next page and the next visit unfolded, and a card's own fold lasts until the next press", async ({
+  test("Expand all unfolds every card, opens a new layout's cards and the next visit unfolded, and a card's own fold lasts until the next press", async ({
     page,
   }) => {
-    await open(page);
+    await open(page, 900, 10);
     const toggle = page.getByRole("button", { name: "Expand all" });
     // At the end of the section bar's line.
     const bar = (await page
@@ -484,17 +500,16 @@ test.describe("a question card's fold", () => {
       page.getByRole("button", { name: "Show full question" }),
     ).toHaveCount(0);
     await expect(card(page, "OQ-F2").getByText("A — Fold them.")).toBeVisible();
-    // Another section's card too.
-    await expect(collapse(card(page, "OQ-A1"))).toBeVisible();
 
     // The reader folds one card back.
     await collapse(card(page, "OQ-F1")).click();
     await expect(expand(card(page, "OQ-F1"))).toBeVisible();
 
-    // The next page opens unfolded, and the page before as it was left.
-    await pager(page).getByRole("button", { name: "Next ›" }).click();
+    // A larger page size brings cards in unfolded, and leaves the rest as
+    // they were left.
+    await chooseSize(page, "20");
     await expect(collapse(card(page, "OQ-F11"))).toBeVisible();
-    await pager(page).getByRole("button", { name: "‹ Previous" }).click();
+    await expect(collapse(card(page, "OQ-A1"))).toBeVisible();
     await expect(expand(card(page, "OQ-F1"))).toBeVisible();
     await expect(collapse(card(page, "OQ-F2"))).toBeVisible();
 
@@ -525,18 +540,18 @@ test.describe("a question card's fold", () => {
     ).toHaveCount(0);
   });
 
-  test("moves nothing painted on a load, folded or unfolded, or on a page flip", async ({
+  test("moves nothing painted on a load, folded or unfolded, or on a page size chosen", async ({
     page,
   }) => {
     await watchPaint(page);
-    await open(page);
+    await open(page, 900, 10);
     // Long enough for the reviews, and anything late.
     await page.waitForTimeout(1500);
     expect(await shiftsSince(page, 0)).toEqual([]);
     expect(await movedCards(page)).toEqual([]);
 
     const flipped = await page.evaluate(() => performance.now());
-    await pager(page).getByRole("button", { name: "Next ›" }).click();
+    await chooseSize(page, "20");
     await expect(card(page, "OQ-F11")).toBeVisible();
     await page.waitForTimeout(1500);
     expect(await shiftsSince(page, flipped)).toEqual([]);

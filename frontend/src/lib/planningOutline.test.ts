@@ -18,11 +18,7 @@ import {
   planningRowId,
   type OutlineSection,
 } from "./planningOutline";
-import {
-  layoutPlanningPage,
-  sectionsOf,
-  type SectionId,
-} from "./planningPages";
+import { sectionsOf, type SectionId } from "./planningPages";
 
 afterEach(() => setPlanningLimitsForTests(null));
 
@@ -66,11 +62,9 @@ function outlineOf(tree: Record<string, string>) {
 const sectionOf = (outline: OutlineSection[], id: SectionId) =>
   outline.find((s) => s.id === id)!;
 
-/** Each document of a section, as `path questions page`. */
+/** Each document of a section, as `path questions`. */
 const listed = (outline: OutlineSection[], id: SectionId) =>
-  sectionOf(outline, id).documents.map(
-    (d) => `${d.path} ${d.questions} p${d.page}`,
-  );
+  sectionOf(outline, id).documents.map((d) => `${d.path} ${d.questions}`);
 
 describe("the planning outline", () => {
   it("names each non-empty section with its count, in the page's order", () => {
@@ -104,37 +98,7 @@ describe("the planning outline", () => {
       "a.md": doc("stage: DESIGN", questions("OQ-A", 1)),
     });
     // Not on a roadmap orders by path, then line.
-    expect(listed(outline, "unrouted")).toEqual(["a.md 1 p1", "b.md 3 p1"]);
-  });
-
-  it("names the page of the section that holds a document's first entry", () => {
-    setPlanningLimitsForTests({ pageEntries: 2 });
-    const { index, sections, outline } = outlineOf({
-      "a.md": doc("stage: DESIGN", questions("OQ-A", 3)),
-      "b.md": doc("stage: DESIGN", questions("OQ-B", 2)),
-      "c.md": doc("stage: DESIGN", questions("OQ-C", 1)),
-    });
-    // a.md fills page 1 and starts page 2; b.md starts on page 2; c.md on 3.
-    expect(listed(outline, "unrouted")).toEqual([
-      "a.md 3 p1",
-      "b.md 2 p2",
-      "c.md 1 p3",
-    ]);
-    // The page the outline names is the one the layout shows the
-    // document's first card on.
-    for (const document of sectionOf(outline, "unrouted").documents) {
-      const layout = layoutPlanningPage(index, sections, {
-        unrouted: String(document.page),
-      });
-      const shown = layout.sections.find((s) => s.id === "unrouted")!;
-      const cards =
-        shown.kind === "cards"
-          ? shown.items.flatMap((item) =>
-              item.kind === "question" ? [item.question] : [],
-            )
-          : [];
-      expect(cards).toContain(document.question);
-    }
+    expect(listed(outline, "unrouted")).toEqual(["a.md 1", "b.md 3"]);
   });
 
   it("goes to a document's first card by the card's id, and to a row by the row's", () => {
@@ -182,7 +146,7 @@ describe("the planning outline", () => {
     const { outline } = outlineOf({
       "d.md": doc("stage: DECIDED", questions("OQ-D", 2)),
     });
-    expect(listed(outline, "disagrees")).toEqual(["d.md 2 p1"]);
+    expect(listed(outline, "disagrees")).toEqual(["d.md 2"]);
   });
 
   it("lists no documents under Too large", () => {

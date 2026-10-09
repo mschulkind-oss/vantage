@@ -129,6 +129,11 @@ test.describe("question and fallback directives", () => {
   }) => {
     await page.goto("/.vantage/planning");
     const card = (title: string) => page.getByRole("article", { name: title });
+    // A blocked question is a row of the folded Blocked group, never a card
+    // (docs/design/planning-to-do-list.md §3.4).
+    await page
+      .getByRole("button", { name: /^Blocked/, expanded: false })
+      .click();
     for (const title of [
       "OQ-1: Does the open question take a leaning?",
       "OQ-4: Does an open question under the new name take a leaning?",
@@ -137,13 +142,11 @@ test.describe("question and fallback directives", () => {
         card(title).getByRole("button", { name: "Take this leaning" }),
       ).toBeVisible();
     }
-    const blocked = card(
-      "OQ-2: Is the blocked question waiting on the load test?",
-    );
+    const blocked = page.getByRole("listitem", {
+      name: "OQ-2: Is the blocked question waiting on the load test?",
+    });
     await expect(blocked).toBeVisible();
-    await expect(
-      blocked.getByRole("button", { name: "Take this leaning" }),
-    ).toHaveCount(0);
+    await expect(blocked.getByRole("button")).toHaveCount(0);
     await expect(
       page.getByRole("button", { name: "Take this leaning" }),
     ).toHaveCount(2);
@@ -271,24 +274,34 @@ test.describe("question and fallback directives", () => {
     await page.goto("/.vantage/planning");
     const card = (id: string) =>
       page.getByRole("article", { name: new RegExp(`^${id}:`) });
+    const rowOf = (id: string) =>
+      page.getByRole("group", { name: new RegExp(`^${id}:`) });
+    // Answered, it is a row of Needs you with its card's chip
+    // (docs/design/planning-to-do-list.md §3.3); Show opens its card.
+    await expect(rowOf("OQ-4").getByText(ANSWERED, { exact: true })).toBeVisible();
+    await rowOf("OQ-4").getByRole("button", { name: /^Show/ }).click();
     await expect(card("OQ-4").getByText(ANSWERED)).toBeVisible();
     await expect(
       card("OQ-4").getByRole("button", { name: "Take this leaning" }),
     ).toHaveCount(0);
-    // Still listed, with the comment as its answer.
+    // Its comment is its answer.
     await expect(
       card("OQ-4").getByRole("list", { name: "Comments on this question" }),
     ).toContainText("The first way, after all.");
     await expect(page.getByTestId("pending-answers")).toHaveText("1");
-    await expect(page.getByTestId("nothing-needs-you")).toHaveCount(0);
+    await expect(page.getByTestId("needs-you-end")).not.toContainText(
+      "Nothing needs you",
+    );
 
     // Answering the last open one from its card leaves nothing needing you.
     await card("OQ-1")
       .getByRole("button", { name: "Take this leaning" })
       .click();
-    await expect(card("OQ-1").getByText("Leaning taken")).toBeVisible();
-    await expect(page.getByTestId("nothing-needs-you")).toContainText(
-      "Every open question has your answer, waiting on the agent.",
+    await expect(
+      rowOf("OQ-1").getByText("Leaning taken", { exact: true }),
+    ).toBeVisible();
+    await expect(page.getByTestId("needs-you-end")).toHaveText(
+      "Nothing needs you",
     );
     await expect(page.getByTestId("pending-answers")).toHaveText("2");
     await clearReview(page);
@@ -368,6 +381,11 @@ test.describe("a question written as paragraphs", () => {
     await page.goto("/.vantage/planning");
     const card = (id: string) =>
       page.getByRole("article", { name: new RegExp(`^${id}:`) });
+    // Answered, it is a row of Needs you, with its card's chip
+    // (docs/design/planning-to-do-list.md §3.3); Show opens the card.
+    const row = page.getByRole("group", { name: /^OQ-P1:/ });
+    await expect(row.getByText(ANSWERED, { exact: true })).toBeVisible();
+    await row.getByRole("button", { name: /^Show/ }).click();
     await expect(card("OQ-P1").getByText(ANSWERED)).toBeVisible();
     await expect(
       card("OQ-P1").getByRole("button", { name: "Take this leaning" }),

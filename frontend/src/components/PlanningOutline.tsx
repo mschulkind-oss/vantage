@@ -9,7 +9,7 @@
  * the line under the section's heading as its tooltip, and, under it, the
  * documents the section lists, each with its questions there.
  * A section goes to its heading; a document goes to its first card or row
- * in the section, flipping the section to the page that holds it first.
+ * in the section, opening the folded group that holds it first.
  *
  * Every entry is a real link, so it takes the focus with Tab and follows
  * with Enter, and a modifier-click opens it in a tab of its own: a
@@ -41,15 +41,10 @@ interface PlanningOutlineProps {
    * only with the outline, so it must be known by the time the outline is.
    */
   picker: React.ReactNode;
-  /** The URL of a document's entry: the section on its page, at its card. */
+  /** The URL of a document's entry: the page, at its card or row. */
   hrefOf: (section: SectionId, document: OutlineDocument) => string;
   onSection: (id: SectionId) => void;
   onDocument: (id: SectionId, document: OutlineDocument) => void;
-  /**
-   * Ask ahead for the inputs of the page a document's entry flips to, when
-   * the pointer or the focus reaches it, as a pager does.
-   */
-  onPrefetch?: (id: SectionId, page: number) => void;
 }
 
 export const PlanningOutline: React.FC<PlanningOutlineProps> = ({
@@ -59,7 +54,6 @@ export const PlanningOutline: React.FC<PlanningOutlineProps> = ({
   hrefOf,
   onSection,
   onDocument,
-  onPrefetch,
 }) => (
   <aside
     data-testid="planning-outline"
@@ -108,10 +102,6 @@ export const PlanningOutline: React.FC<PlanningOutlineProps> = ({
                           active.path === document.path
                         }
                         onGo={() => onDocument(section.id, document)}
-                        onReach={
-                          onPrefetch &&
-                          (() => onPrefetch(section.id, document.page))
-                        }
                       />
                     </li>
                   ))}

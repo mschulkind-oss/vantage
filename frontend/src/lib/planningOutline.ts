@@ -4,7 +4,8 @@
  * (`docs/reference/planning-index.md` §6.9). Each non-empty section, with its
  * count, and under a section of cards or document rows the documents it
  * lists, in the section's own order, each with the number of its questions
- * there and the page of the section that holds its first entry.
+ * there. *Needs you* lists its open questions' documents: a ✅ question has
+ * left it (`docs/design/planning-to-do-list.md` §3.3). There are no pages.
  *
  * Pure functions of the index and the sections, as the page's layout is, so
  * the outline and the pages it flips to always agree.
@@ -19,7 +20,6 @@ import {
 import { planningLimits } from "../planningScan/limits";
 import { planningCardId } from "./planningCardId";
 import {
-  pageBounds,
   SECTION_TITLES,
   sectionEntries,
   type SectionId,
@@ -34,8 +34,6 @@ export interface OutlineDocument {
    * holds none of its questions, as a stage row or a waiting document.
    */
   questions: number;
-  /** The page of the section that holds the document's first entry, 1-based. */
-  page: number;
   /**
    * The document's first entry in the section: the question of its first
    * card, or `null` when that is the document's own row.
@@ -66,58 +64,60 @@ export function planningOutline(
   index: PlanningIndex,
   sections: PlanningSections,
 ): OutlineSection[] {
-  return sectionEntries(index, sections).map((section) => {
-    const bounds = pageBounds(section);
-    // Page `p` holds entries `bounds[p - 1]` up to `bounds[p]`.
-    let page = 1;
-    const pageOf = (at: number): number => {
-      while (page < bounds.length - 1 && at >= bounds[page]) page++;
-      return page;
-    };
-    const byPath = new Map<string, OutlineDocument>();
-    const add = (
-      at: number,
-      path: string,
-      question: PlanningQuestion | null,
-      counts: number,
-    ) => {
-      const listed = byPath.get(path);
-      if (listed !== undefined) {
-        listed.questions += counts;
-        return;
-      }
-      byPath.set(path, { path, questions: counts, page: pageOf(at), question });
-    };
-    if (section.kind === "cards") {
-      section.entries.forEach((entry, at) => {
-        if (entry.kind === "question") {
-          add(at, entry.question.path, entry.question, 1);
-        } else {
-          add(at, entry.path, null, 0);
+  return sectionEntries(index, sections)
+    .map((section) => {
+      const byPath = new Map<string, OutlineDocument>();
+      const add = (
+        path: string,
+        question: PlanningQuestion | null,
+        counts: number,
+      ) => {
+        const listed = byPath.get(path);
+        if (listed !== undefined) {
+          listed.questions += counts;
+          return;
         }
-      });
-    } else if (section.kind === "rows") {
-      section.entries.forEach((path, at) => {
-        const open =
-          section.id === "disagrees"
-            ? (findDocument(index, path)?.questions.filter(
-                (q) => q.state === "open",
-              ).length ?? 0)
-            : 0;
-        add(at, path, null, open);
-      });
-    }
-    const documents = [...byPath.values()];
-    const shown = Math.max(0, planningLimits.outlineDocuments);
-    return {
-      id: section.id,
-      title: SECTION_TITLES[section.id],
-      explanation: sectionExplanation(section.id, sections),
-      total: section.entries.length,
-      documents: documents.slice(0, shown),
-      more: Math.max(0, documents.length - shown),
-    };
-  });
+        byPath.set(path, { path, questions: counts, question });
+      };
+      if (section.kind === "cards") {
+        for (const entry of section.entries) {
+          if (entry.kind === "question") {
+            if (section.id === "needs-you" && entry.question.state !== "open") {
+              continue;
+            }
+            add(entry.question.path, entry.question, 1);
+          } else {
+            add(entry.path, null, 0);
+          }
+        }
+      } else if (section.kind === "rows") {
+        section.entries.forEach((path) => {
+          const open =
+            section.id === "disagrees"
+              ? (findDocument(index, path)?.questions.filter(
+                  (q) => q.state === "open",
+                ).length ?? 0)
+              : 0;
+          add(path, null, open);
+        });
+      }
+      const documents = [...byPath.values()];
+      const shown = Math.max(0, planningLimits.outlineDocuments);
+      return {
+        id: section.id,
+        title: SECTION_TITLES[section.id],
+        explanation: sectionExplanation(section.id, sections),
+        total:
+          section.id === "needs-you" && section.kind === "cards"
+            ? section.entries.filter(
+                (e) => e.kind === "question" && e.question.state === "open",
+              ).length
+            : section.entries.length,
+        documents: documents.slice(0, shown),
+        more: Math.max(0, documents.length - shown),
+      };
+    })
+    .filter((section) => section.total > 0);
 }
 
 /**

@@ -3,10 +3,10 @@ status: draft
 stage: DESIGN
 ---
 
-# An aside the roadmap does not mention
+# An aside the roadmap mentions last
 
-Its question is open and nothing routes it, so the planning page lists it
-under Not on a roadmap, a section of its own below Needs you.
+Its questions are open and the roadmap routes them last, so the planning page
+shows their cards at the end of Needs you.
 
 1. 💬 **OQ-A1: Does a card in another section open the same way?** Its first
    paragraph runs well past the three lines a folded card shows, so the card

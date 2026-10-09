@@ -1,22 +1,12 @@
 /**
- * The planning page's pages (`docs/reference/planning-index.md` §6.4):
- * which run of each section's entries is shown, from the index alone and the
- * page each section's URL parameter asks for.
- *
- * | Sections | A page holds |
- * | :--- | :--- |
- * | Needs you, Not on a roadmap, Blocked | `pageEntries` entries, stopping early before its cards' Markdown passes `pageMarkdownChars` |
- * | Ready to build, Ready to graduate, Stage conflict | `pageRows` document rows |
- * | Too large, Unreadable | `pageLines` lines |
- *
- * A card's Markdown is its question's `cardChars`, so page boundaries are
- * known before anything is fetched. A Blocked document row counts as one entry
- * and no Markdown, and so does a preview card, whose block is not rendered
- * (§6.6). A page always holds at least one entry.
- *
- * The URL carries the pages, `?needs-you=3&waiting=2`, 1-based, with page 1
- * left out. A page past the end is clamped to the last, and a value that is not
- * a page number reads as 1; `pageSearch` says how the URL is to be rewritten.
+ * The planning page's layout (`docs/design/planning-to-do-list.md` §3): what
+ * *Needs you* and the two folded groups list, from the index alone, the
+ * chosen roadmap, the applied filter and the page size. *Needs you* holds the
+ * open questions the roadmap routes, in its order; which of them are answered
+ * rows and which full cards is the page's to say, from the reviews it holds
+ * (`lib/planningLayout.ts`). There are no pages (§7): a section-id parameter
+ * in an address, such as `needs-you=3`, is ignored, and the in-place rewrite
+ * drops it.
  *
  * With two or more roadmaps that route, the URL carries the chosen one too, as
  * `?roadmap=docs/plans/roadmap.md` (`docs/reference/planning-index.md` §6.8):
@@ -43,9 +33,11 @@ import {
   PLANNING_SPACE_PARAM,
   PLANNING_SECTION_IDS,
   PLANNING_SECTION_TITLES,
+  answeredQuestions,
   applyPlanningFilter,
   derivePlanningSections,
   encodePlanningQueryValue,
+  filterKeepsQuestion,
   parsePlanningFilter,
   questionFor,
   sectionExplanation,
@@ -78,48 +70,74 @@ export type SectionId = PlanningSectionId;
 export const SECTION_TITLES: Readonly<Record<SectionId, string>> =
   PLANNING_SECTION_TITLES;
 
-/** One entry of Needs you, Not on a roadmap or Blocked. */
-export type CardEntry =
-  | {
-      kind: "question";
-      question: PlanningQuestion;
-      /** Its block is past `cardChars`, so its card is a preview card. */
-      preview: boolean;
-    }
-  | { kind: "document"; path: string; waitingOn: readonly DependsOn[] };
-
-interface SectionPage {
-  id: SectionId;
-  title: string;
-  /** The line under its heading: what its entries are, and what to do. */
-  explanation: string;
-  /** Entries in the whole section. */
-  total: number;
-  pageCount: number;
-  /** The page shown, 1-based. */
-  page: number;
-  /** The shown page's first entry, 0-based, and one past its last. */
-  start: number;
-  end: number;
+/** A question the page lists, and whether its card is a preview card. */
+export interface QuestionEntry {
+  kind: "question";
+  question: PlanningQuestion;
+  /** Its block is past `cardChars`, so its card is a preview card. */
+  preview: boolean;
 }
 
-/** One non-empty section, with the page of it that is shown. */
-export type LaidOutSection =
-  | (SectionPage & { kind: "cards"; items: readonly CardEntry[] })
-  | (SectionPage & { kind: "rows"; items: readonly string[] })
-  | (SectionPage & {
+/** One entry of Needs you, Not on a roadmap or Blocked. */
+export type CardEntry =
+  | QuestionEntry
+  | { kind: "document"; path: string; waitingOn: readonly DependsOn[] };
+
+/**
+ * The kinds *Maintenance* lists, in the order it lists them
+ * (`planning-to-do-list.md` §3.4): each agent section, the ✅ questions to
+ * fold into the ledger (`compact`, a request and not a section of the
+ * index), and the files the index could not read.
+ */
+export const MAINTENANCE_KIND_IDS = [
+  "unrouted",
+  "ready",
+  "graduate",
+  "disagrees",
+  "compact",
+  "skipped",
+  "could-not-read",
+] as const;
+export type MaintenanceKindId = (typeof MAINTENANCE_KIND_IDS)[number];
+
+/** Each kind's sub-heading. */
+export const MAINTENANCE_TITLES: Readonly<Record<MaintenanceKindId, string>> = {
+  unrouted: PLANNING_SECTION_TITLES.unrouted,
+  ready: PLANNING_SECTION_TITLES.ready,
+  graduate: PLANNING_SECTION_TITLES.graduate,
+  disagrees: PLANNING_SECTION_TITLES.disagrees,
+  compact: "To fold into the ledger",
+  skipped: PLANNING_SECTION_TITLES.skipped,
+  "could-not-read": PLANNING_SECTION_TITLES["could-not-read"],
+};
+
+/** One non-empty kind of *Maintenance*, with every item it lists. */
+export type MaintenanceKind =
+  | {
+      id: "unrouted" | "compact";
+      kind: "questions";
+      items: readonly QuestionEntry[];
+    }
+  | {
+      id: "ready" | "graduate" | "disagrees";
+      kind: "documents";
+      items: readonly string[];
+    }
+  | {
+      id: "skipped";
       kind: "skipped";
       items: readonly { path: string; size: number }[];
-    })
-  | (SectionPage & {
+    }
+  | {
+      id: "could-not-read";
       kind: "unreadable";
       items: readonly { path: string; reason: string }[];
-    });
+    };
 
 export interface PlanningLayout {
   /**
    * The chosen roadmap its *Needs you* follows, `null` when no roadmap
-   * routes. Part of what names a layout, with `pages`.
+   * routes. Part of what names a layout.
    */
   roadmap: string | null;
   /**
@@ -128,79 +146,43 @@ export interface PlanningLayout {
    * filter does (§6.16). Part of what names a layout.
    */
   filter: string;
-  /** The non-empty sections, top to bottom. */
-  sections: readonly LaidOutSection[];
-  /**
-   * The shown pages, canonically: `needs-you=2&waiting=3`, sections in order,
-   * page 1 left out, `""` when every section is on its first page. Two layouts
-   * of one index with the same `roadmap`, `filter` and `pages` show the same
-   * entries.
-   */
-  pages: string;
+  /** How many questions that need you are full cards. Part of its name. */
+  pageSize: number;
+  /** *Needs you*'s open questions, in the roadmap's order; ✅ ones leave it. */
+  needsYou: readonly QuestionEntry[];
+  /** The line under *Needs you*'s heading. */
+  needsYouExplanation: string;
+  /** What *Blocked* holds: 🔒 questions and documents that still wait. */
+  blocked: readonly CardEntry[];
+  /** *Maintenance*'s non-empty kinds, in `MAINTENANCE_KIND_IDS` order. */
+  maintenance: readonly MaintenanceKind[];
 }
 
-/** What the URL asks for: each section's raw parameter, or `null`. */
-export type PageRequest = Readonly<Partial<Record<SectionId, string | null>>>;
-
-/** The page a raw parameter asks for: a positive integer, else page 1. */
-function pageAsked(raw: string | null | undefined): number {
-  return raw !== null && raw !== undefined && /^[1-9]\d{0,8}$/.test(raw)
-    ? Number(raw)
-    : 1;
+/**
+ * The page size this browser remembers, else the default: one of
+ * `planningLimits.pageSizes` (`planning-to-do-list.md` §3.3). Read at every
+ * layout the page makes, never followed live: a size another tab chose
+ * applies here at the next one.
+ */
+export function readPageSize(): number {
+  const raw = Number(readPreference(PAGE_SIZE_PREFERENCE));
+  return planningLimits.pageSizes.includes(raw)
+    ? raw
+    : planningLimits.defaultPageSize;
 }
 
-/** Each section's parameter in `search`. */
-export function readPageRequest(search: URLSearchParams): PageRequest {
-  const out: Partial<Record<SectionId, string | null>> = {};
-  for (const id of SECTION_IDS) out[id] = search.get(id);
-  return out;
+/** Remember a page size the reader chose. */
+export function rememberPageSize(size: number): void {
+  writePreference(PAGE_SIZE_PREFERENCE, String(size));
 }
+
+const PAGE_SIZE_PREFERENCE = "vantage:planningPageSize";
 
 /** Whether a question's card is a preview card (§6.6). */
 export const isPreview = (question: PlanningQuestion): boolean =>
   question.cardChars > planningLimits.cardChars;
 
-/** The Markdown a card entry puts on its page, in characters. */
-const markdownOf = (entry: CardEntry): number =>
-  entry.kind === "question" && !entry.preview ? entry.question.cardChars : 0;
-
-/**
- * Where each page of a card section starts: `bounds[i]` is page `i + 1`'s
- * first entry, and the last bound is the section's length.
- */
-function cardBounds(entries: readonly CardEntry[]): number[] {
-  const bounds = [0];
-  let count = 0;
-  let chars = 0;
-  entries.forEach((entry, at) => {
-    const size = markdownOf(entry);
-    // An entry with no Markdown never passes the budget, whatever the page
-    // already holds.
-    if (
-      count > 0 &&
-      (count >= planningLimits.pageEntries ||
-        (size > 0 && chars + size > planningLimits.pageMarkdownChars))
-    ) {
-      bounds.push(at);
-      count = 0;
-      chars = 0;
-    }
-    count += 1;
-    chars += size;
-  });
-  bounds.push(entries.length);
-  return bounds;
-}
-
-/** The bounds of a section whose pages hold `size` entries each. */
-function fixedBounds(length: number, size: number): number[] {
-  const bounds = [0];
-  for (let at = size; at < length; at += size) bounds.push(at);
-  bounds.push(length);
-  return bounds;
-}
-
-const questionEntry = (question: PlanningQuestion): CardEntry => ({
+const questionEntry = (question: PlanningQuestion): QuestionEntry => ({
   kind: "question",
   question,
   preview: isPreview(question),
@@ -209,7 +191,7 @@ const questionEntry = (question: PlanningQuestion): CardEntry => ({
 function questionsOf(
   index: PlanningIndex,
   refs: readonly QuestionRef[],
-): CardEntry[] {
+): QuestionEntry[] {
   return refs.flatMap((ref) => {
     const question = questionFor(index, ref);
     return question === undefined ? [] : [questionEntry(question)];
@@ -232,15 +214,17 @@ export function sectionEntries(
   index: PlanningIndex,
   sections: PlanningSections,
 ): SectionEntries[] {
-  const waiting: CardEntry[] = sections.waiting.flatMap((entry) => {
-    if (entry.kind === "document") {
-      return [
-        { kind: "document", path: entry.path, waitingOn: entry.waitingOn },
-      ];
-    }
-    const question = questionFor(index, entry.question);
-    return question === undefined ? [] : [questionEntry(question)];
-  });
+  const waiting: CardEntry[] = sections.waiting.flatMap(
+    (entry): CardEntry[] => {
+      if (entry.kind === "document") {
+        return [
+          { kind: "document", path: entry.path, waitingOn: entry.waitingOn },
+        ];
+      }
+      const question = questionFor(index, entry.question);
+      return question === undefined ? [] : [questionEntry(question)];
+    },
+  );
   const all = [
     {
       id: "needs-you",
@@ -265,60 +249,85 @@ export function sectionEntries(
 }
 
 /**
- * Where each page of a section starts: `bounds[i]` is page `i + 1`'s first
- * entry, and the last bound is the section's length.
+ * The ✅ questions *Maintenance* lists to fold into the ledger
+ * (`planning-to-do-list.md` §3.4): the ones the `compact` request lists,
+ * from the same function (`answeredQuestions`, P7), so the page and
+ * `vantage-check index --request compact` name the same questions. They wait
+ * only for compaction, so they leave *Needs you*.
  */
-export function pageBounds(section: SectionEntries): number[] {
-  return section.kind === "cards"
-    ? cardBounds(section.entries)
-    : fixedBounds(
-        section.entries.length,
-        section.kind === "rows"
-          ? planningLimits.pageRows
-          : planningLimits.pageLines,
-      );
+export function compactEntries(
+  index: PlanningIndex,
+  filter: string,
+): QuestionEntry[] {
+  const parsed = understoodFilter(filter);
+  return questionsOf(
+    index,
+    answeredQuestions(
+      index,
+      parsed === null ? undefined : (q) => filterKeepsQuestion(parsed, q),
+    ),
+  );
 }
 
 /**
- * Lay the page out: every non-empty section, with the page `request` asks
- * for, clamped to the section's last. `sections` are `sectionsOf(index,
+ * Lay the page out (`planning-to-do-list.md` §3): *Needs you*'s open
+ * questions, *Blocked* and *Maintenance*. `sections` are `sectionsOf(index,
  * roadmap, filter)`, and `filter` the canonical text they were filtered by,
- * which the layout names: a filtered link's page parameters are read against
- * the filtered sections (§6.16).
+ * which the layout names, as it names `pageSize`.
  */
 export function layoutPlanningPage(
   index: PlanningIndex,
   sections: PlanningSections,
-  request: PageRequest,
+  pageSize: number,
   filter = "",
 ): PlanningLayout {
-  const laid: LaidOutSection[] = [];
-  const pages: string[] = [];
-  for (const section of sectionEntries(index, sections)) {
-    const bounds = pageBounds(section);
-    const pageCount = bounds.length - 1;
-    const page = Math.min(pageAsked(request[section.id]), pageCount);
-    const start = bounds[page - 1] ?? 0;
-    const end = bounds[page] ?? section.entries.length;
-    if (page > 1) pages.push(`${section.id}=${page}`);
-    laid.push({
-      id: section.id,
-      title: SECTION_TITLES[section.id],
-      explanation: sectionExplanation(section.id, sections),
-      total: section.entries.length,
-      pageCount,
-      page,
-      start,
-      end,
-      kind: section.kind,
-      items: section.entries.slice(start, end),
-    } as LaidOutSection);
+  const entries = new Map(
+    sectionEntries(index, sections).map((section) => [section.id, section]),
+  );
+  const cardsOf = (id: SectionId): CardEntry[] => {
+    const section = entries.get(id);
+    return section?.kind === "cards" ? section.entries : [];
+  };
+  const needsYou = cardsOf("needs-you").filter(
+    (entry): entry is QuestionEntry =>
+      entry.kind === "question" && entry.question.state === "open",
+  );
+  const maintenance: MaintenanceKind[] = [];
+  for (const id of MAINTENANCE_KIND_IDS) {
+    if (id === "compact") {
+      const items = compactEntries(index, filter);
+      if (items.length > 0) maintenance.push({ id, kind: "questions", items });
+      continue;
+    }
+    const section = entries.get(id);
+    if (section === undefined) continue;
+    if (id === "unrouted" && section.kind === "cards") {
+      maintenance.push({
+        id,
+        kind: "questions",
+        items: section.entries.filter(
+          (entry): entry is QuestionEntry => entry.kind === "question",
+        ),
+      });
+    } else if (
+      (id === "ready" || id === "graduate" || id === "disagrees") &&
+      section.kind === "rows"
+    ) {
+      maintenance.push({ id, kind: "documents", items: section.entries });
+    } else if (id === "skipped" && section.kind === "skipped") {
+      maintenance.push({ id, kind: "skipped", items: section.entries });
+    } else if (id === "could-not-read" && section.kind === "unreadable") {
+      maintenance.push({ id, kind: "unreadable", items: section.entries });
+    }
   }
   return {
     roadmap: sections.chosenRoadmap,
     filter,
-    sections: laid,
-    pages: pages.join("&"),
+    pageSize,
+    needsYou,
+    needsYouExplanation: sectionExplanation("needs-you", sections),
+    blocked: cardsOf("waiting"),
+    maintenance,
   };
 }
 
@@ -505,11 +514,10 @@ export function rememberRoadmap(repo: string, path: string): void {
 }
 
 /**
- * `search` rewritten to name exactly `layout`'s pages, roadmap and filter, or
- * `null` when it already does. The pages are `pageSearch`'s. The roadmap is
- * named when two or more roadmaps route, so the address always says which
- * one is shown, and removed when fewer do, as a page parameter naming page 1
- * is. An applied filter is named by its canonical text as one parameter, an
+ * `search` rewritten to name exactly `layout`'s roadmap and filter, with no
+ * page parameter (`withoutPages`), or `null` when it already does. The
+ * roadmap is named when two or more roadmaps route, so the address always
+ * says which one is shown, and removed when fewer do. An applied filter is named by its canonical text as one parameter, an
  * empty one is removed, and one that is not understood is left exactly as
  * written, so it can be fixed (§6.16, §6.14). With `dropSpace`, every
  * `space` parameter goes too: the page has no use for a space id it has
@@ -521,7 +529,7 @@ export function planningSearch(
   sections: PlanningSections,
   dropSpace = false,
 ): URLSearchParams | null {
-  let next = pageSearch(search, layout);
+  let next = withoutPages(search);
   const edit = (): URLSearchParams => (next ??= new URLSearchParams(search));
   const want =
     routingRoadmaps(sections.roadmaps).length >= 2 ? layout.roadmap : null;
@@ -576,9 +584,9 @@ export function filterValue(text: string): string {
 /**
  * `search` with the filter `text` applied, by Enter, ✕ or a pasted link
  * (§6.16): `filter` set to `filterValue(text)`, first, as
- * a planning link writes it, or removed when that is empty; every section's
- * page parameter deleted, as a roadmap pick deletes Needs you's, since the
- * pages were another filter's; and `roadmap` set to the one a pasted link
+ * a planning link writes it, or removed when that is empty; every
+ * section-id parameter deleted, which names no page any more; and `roadmap`
+ * set to the one a pasted link
  * names, if it names one. Every other parameter stays, in its order after
  * `filter`, `roadmap` and unknown ones included. So the address after Enter
  * is the agent's link for the same filter and roadmap (§13.5).
@@ -625,9 +633,8 @@ export function planningQuery(search: URLSearchParams): string {
 }
 
 /**
- * `search` with `roadmap` picked: the roadmap replaced, and *Needs you* back
- * on its first page, since its order is another roadmap's now. Every other
- * parameter stays.
+ * `search` with `roadmap` picked: the roadmap replaced, and any old page
+ * parameter of *Needs you* gone. Every other parameter stays.
  */
 export function withRoadmap(
   search: URLSearchParams,
@@ -640,48 +647,17 @@ export function withRoadmap(
 }
 
 /**
- * `search` rewritten to name exactly `layout`'s pages, or `null` when it
- * already does: a clamped page, a malformed value, an explicit page 1 and a
- * section that is not shown all go. Every other parameter, and the order of
- * those it keeps, is left as it is.
+ * `search` without any section-id parameter, or `null` when it holds none:
+ * the parameters that named a page before the page had none
+ * (`planning-to-do-list.md` §7). An old link's pages are ignored, and the
+ * in-place rewrite drops them. Every other parameter, and the order of those
+ * it keeps, is left as it is.
  */
-export function pageSearch(
-  search: URLSearchParams,
-  layout: PlanningLayout,
-): URLSearchParams | null {
-  const shown = new Map(layout.sections.map((s) => [s.id, s.page]));
+export function withoutPages(search: URLSearchParams): URLSearchParams | null {
+  if (!SECTION_IDS.some((id) => search.has(id))) return null;
   const next = new URLSearchParams(search);
-  let changed = false;
-  for (const id of SECTION_IDS) {
-    const page = shown.get(id) ?? 1;
-    const want = page > 1 ? String(page) : null;
-    if (search.get(id) === want && search.getAll(id).length <= 1) continue;
-    changed = true;
-    if (want === null) next.delete(id);
-    else next.set(id, want);
-  }
-  return changed ? next : null;
-}
-
-/** `search` with section `id` on `page`. */
-export function withPage(
-  search: URLSearchParams,
-  id: SectionId,
-  page: number,
-): URLSearchParams {
-  const next = new URLSearchParams(search);
-  if (page > 1) next.set(id, String(page));
-  else next.delete(id);
+  for (const id of SECTION_IDS) next.delete(id);
   return next;
-}
-
-/** `request` with section `id` on `page`, for laying out a page not shown. */
-export function requestWithPage(
-  request: PageRequest,
-  id: SectionId,
-  page: number,
-): PageRequest {
-  return { ...request, [id]: page > 1 ? String(page) : null };
 }
 
 /**

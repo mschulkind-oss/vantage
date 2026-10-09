@@ -58,27 +58,23 @@ export interface PlanningLimits {
 
   /* ---- The planning page (§6) ---- */
 
-  /** Entries per page of Needs you, Not on a roadmap and Blocked. */
-  pageEntries: number;
   /**
-   * Card Markdown per page of those sections, in characters (`cardChars`): a
-   * page stops before its cards pass it, and always holds at least one entry.
+   * The page sizes the reader can choose for *Needs you*: how many questions
+   * that need you it shows as full cards (`planning-to-do-list.md` §3.3).
    */
-  pageMarkdownChars: number;
-  /** Document rows per page of Ready to build, Ready to graduate and Stage conflict. */
-  pageRows: number;
-  /** Lines per page of Too large and Unreadable. */
-  pageLines: number;
+  pageSizes: readonly number[];
+  /** The page size before the reader has chosen one. */
+  defaultPageSize: number;
+  /** Answered rows shown at the top of *Needs you* before *… N more answered*. */
+  answeredRowsShown: number;
+  /** Rows an opened folded group's list shows before *Show all N*. */
+  groupRows: number;
   /**
-   * Pages in a section from which its pager also offers a page select. The
-   * design said only "a long section" (§6.4 still does), so this number is
-   * coined here, not taken from it.
+   * Questions past the page size whose blocks a layout fetches too, so that a
+   * card answering into a row is followed by a full card joining at the end.
+   * The design names no number, so this one is coined here.
    */
-  pageSelectFrom: number;
-  /** The most cards one commit of the sections renders. */
-  commitCards: number;
-  /** The most card Markdown one commit renders, in characters. */
-  commitMarkdownChars: number;
+  cardsAhead: number;
   /** How long the page inputs may take before a spinner shows, in ms. */
   spinnerMs: number;
   /**
@@ -101,7 +97,7 @@ export interface PlanningLimits {
   mermaidDeadlineMs: number;
   /** The fixed height a diagram drawn past its deadline is fitted into, in px. */
   mermaidFramePx: number;
-  /** Sets of page inputs kept, by repository, index version and pages. */
+  /** Sets of page inputs kept, by repository, index version, filter and page size. */
   pageInputsKept: number;
   /** Digits the header's pending count reserves room for. */
   pendingCountDigits: number;
@@ -135,13 +131,11 @@ export const DEFAULT_PLANNING_LIMITS: Readonly<PlanningLimits> = Object.freeze({
   maxHelpers: 3,
   helperReservedCores: 2,
 
-  pageEntries: 10,
-  pageMarkdownChars: 32 * 1024,
-  pageRows: 25,
-  pageLines: 50,
-  pageSelectFrom: 5,
-  commitCards: 30,
-  commitMarkdownChars: 96 * 1024,
+  pageSizes: Object.freeze([10, 20, 30, 50]),
+  defaultPageSize: 10,
+  answeredRowsShown: 5,
+  groupRows: 100,
+  cardsAhead: 5,
   spinnerMs: 150,
   filterIdleMs: 300,
   filterSpeechMs: 1000,

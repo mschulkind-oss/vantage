@@ -1,5 +1,5 @@
 /**
- * The planning page's pages (`docs/reference/planning-index.md` §6.4),
+ * The planning page's layout (`docs/design/planning-to-do-list.md` §3),
  * laid out from the index alone. Every limit is proven by configuring it down
  * in the limits module, never by growing a tree to a default.
  */
@@ -9,6 +9,7 @@ import {
   PLANNING_SECTION_IDS,
   PLANNING_SECTION_TITLES,
   planningLink,
+  sectionExplanation,
   readPastedPlanningLink,
   type PlanningConfig,
 } from "vantage-md/planning";
@@ -19,27 +20,23 @@ import {
   filterSummaryOf,
   filterValue,
   filteredSectionsOf,
-  isPreview,
+  MAINTENANCE_TITLES,
   layoutPlanningPage,
   listedDocuments,
   placeComment,
   listedQuestions,
-  pageSearch,
   planningQuery,
   planningSearch,
   readFilterRequest,
-  readPageRequest,
   readRememberedRoadmap,
   readRoadmapRequest,
   rememberRoadmap,
   sectionsOf,
   understoodFilter,
   withFilter,
-  withPage,
+  withoutPages,
   withRoadmap,
   type CardEntry,
-  type LaidOutSection,
-  type PageRequest,
 } from "./planningPages";
 import { setPlanningLimitsForTests } from "../planningScan/limits";
 import {
@@ -90,246 +87,92 @@ const ROADMAP = { "roadmap.md": "# Roadmap\n" };
 
 function layoutOf(
   tree: Record<string, string>,
-  request: PageRequest = {},
   config: Partial<PlanningConfig> = { stages: STAGES },
+  pageSize = 10,
 ) {
   const index = indexOf({ ...ROADMAP, ...tree }, config);
-  return layoutPlanningPage(index, sectionsOf(index), request);
+  return layoutPlanningPage(index, sectionsOf(index), pageSize);
 }
 
-const section = (
-  layout: ReturnType<typeof layoutOf>,
-  id: LaidOutSection["id"],
-): LaidOutSection => {
-  const found = layout.sections.find((s) => s.id === id);
-  if (found === undefined) throw new Error(`no ${id}`);
-  return found;
-};
+const ids = (entries: readonly CardEntry[]) =>
+  entries.map((e) => (e.kind === "question" ? e.question.id : `doc ${e.path}`));
 
-const titles = (s: LaidOutSection) =>
-  (s.items as CardEntry[]).map((e) =>
-    e.kind === "question" ? e.question.id : `doc ${e.path}`,
-  );
-
-describe("each section's title and explanation", () => {
-  it("are the shared planning module's, which vantage-check index prints", () => {
+describe("each section's title", () => {
+  it("is the shared planning module's, which vantage-check index prints", () => {
     expect(SECTION_IDS).toBe(PLANNING_SECTION_IDS);
     expect(SECTION_TITLES).toBe(PLANNING_SECTION_TITLES);
+    expect(SECTION_TITLES.graduate).toBe(PLANNING_SECTION_GUIDE.graduate.title);
+  });
+});
+
+describe("the layout (planning-to-do-list.md §3)", () => {
+  const routed = (ids: string[], marker = OPEN) => ({
+    "roadmap.md": `# Roadmap\n\n${ids.map((id) => `- [It](a.md#${id})`).join("\n")}\n`,
+    "a.md": doc("stage: DESIGN", separate("OQ-A", ids.length, 0, marker)),
+  });
+
+  it("lists Needs you's open questions in the roadmap's order, whatever the page size, and names the size", () => {
+    const tree = routed(["OQ-A1", "OQ-A2", "OQ-A3"]);
+    const index = indexOf(tree, { stages: STAGES });
+    const layout = layoutPlanningPage(index, sectionsOf(index), 2);
+    expect(ids(layout.needsYou)).toEqual(["OQ-A1", "OQ-A2", "OQ-A3"]);
+    expect(layout.pageSize).toBe(2);
+    expect(layout.needsYouExplanation).toBe(
+      sectionExplanation("needs-you", sectionsOf(index)),
+    );
+  });
+
+  it("puts a ✅ question under Maintenance, to fold into the ledger, by document and line", () => {
+    const tree = {
+      "roadmap.md": "# Roadmap\n\n- [B](b.md)\n- [A](a.md)\n",
+      "a.md": doc("stage: DESIGN", separate("OQ-A", 2, 0, "✅")),
+      "b.md": doc("stage: DESIGN", separate("OQ-B", 1, 0, "✅")),
+    };
+    const index = indexOf(tree, { stages: STAGES });
+    const layout = layoutPlanningPage(index, sectionsOf(index), 10);
+    expect(layout.needsYou).toEqual([]);
+    const compact = layout.maintenance.find((k) => k.id === "compact")!;
+    expect(compact.kind).toBe("questions");
+    expect(ids(compact.items as CardEntry[])).toEqual([
+      "OQ-A1",
+      "OQ-A2",
+      "OQ-B1",
+    ]);
+  });
+
+  it("puts Blocked, and Maintenance's kinds in their order, leaving out an empty one", () => {
     const layout = layoutOf({
       "a.md": doc("stage: DESIGN", separate("OQ-A", 1)),
+      "b.md": doc("stage: DESIGN", separate("OQ-B", 1, 0, BLOCKED)),
       "built.md": doc("stage: BUILT", "Built."),
+      "ready.md": doc("stage: DECIDED", "Decided."),
     });
-    expect(
-      layout.sections.map(({ id, title, explanation }) => ({
-        id,
-        title,
-        explanation,
-      })),
-    ).toEqual(
-      (["unrouted", "graduate"] as const).map((id) => ({
-        id,
-        title: PLANNING_SECTION_GUIDE[id].title,
-        explanation: PLANNING_SECTION_GUIDE[id].explanation,
-      })),
+    expect(ids(layout.blocked)).toEqual(["OQ-B1"]);
+    expect(layout.maintenance.map((k) => k.id)).toEqual([
+      "unrouted",
+      "ready",
+      "graduate",
+    ]);
+    expect(MAINTENANCE_TITLES.compact).toBe("To fold into the ledger");
+  });
+
+  it("keeps every entry of a long list: the groups have no pages", () => {
+    const layout = layoutOf(
+      { "a.md": doc("stage: DESIGN", separate("OQ-A", 30)) },
+      { stages: STAGES },
+      10,
     );
-    expect(section(layout, "graduate").title).toBe("Ready to graduate");
-  });
-});
-
-describe("a card section's pages", () => {
-  const TREE = {
-    "a.md": doc("stage: DESIGN", separate("OQ-A", 5)),
-  };
-
-  it("holds pageEntries cards a page, and the rest on the last", () => {
-    setPlanningLimitsForTests({ pageEntries: 2 });
-    const unrouted = section(layoutOf(TREE), "unrouted");
-    expect(unrouted).toMatchObject({
-      total: 5,
-      pageCount: 3,
-      page: 1,
-      start: 0,
-      end: 2,
-    });
-    expect(titles(unrouted)).toEqual(["OQ-A1", "OQ-A2"]);
-    const last = section(layoutOf(TREE, { unrouted: "3" }), "unrouted");
-    expect(last).toMatchObject({ page: 3, start: 4, end: 5 });
-    expect(titles(last)).toEqual(["OQ-A5"]);
+    const unrouted = layout.maintenance.find((k) => k.id === "unrouted")!;
+    expect(unrouted.items).toHaveLength(30);
   });
 
-  it("puts a whole section on one page under the defaults", () => {
-    const unrouted = section(layoutOf(TREE), "unrouted");
-    expect(unrouted.pageCount).toBe(1);
-    expect(unrouted.items).toHaveLength(5);
-  });
-
-  it("stops a page early before its cards' Markdown passes the budget", () => {
-    const index = indexOf({ ...ROADMAP, ...TREE }, { stages: STAGES });
-    const sizes = listedQuestions(index, sectionsOf(index)).map(
-      (q) => q.cardChars,
-    );
-    // Room for two cards and not three.
-    setPlanningLimitsForTests({
-      pageMarkdownChars: sizes[0]! + sizes[1]! + sizes[2]! - 1,
-    });
-    const unrouted = section(layoutOf(TREE), "unrouted");
-    expect(unrouted.end).toBe(2);
-    expect(unrouted.pageCount).toBe(3);
-  });
-
-  it("always holds at least one entry, however large its card", () => {
-    setPlanningLimitsForTests({ pageMarkdownChars: 1 });
-    const unrouted = section(layoutOf(TREE), "unrouted");
-    expect(unrouted.pageCount).toBe(5);
-    expect(unrouted.items).toHaveLength(1);
-  });
-
-  it("counts a preview card as no Markdown, and as one entry", () => {
-    const tree = {
-      "a.md": doc(
-        "stage: DESIGN",
-        separate("OQ-A", 1, 40),
-        separate("OQ-B", 3),
-      ),
-    };
-    const index = indexOf({ ...ROADMAP, ...tree }, { stages: STAGES });
-    const [big, ...rest] = listedQuestions(index, sectionsOf(index));
-    // The first card is a preview; the budget fits the other three and not it.
-    setPlanningLimitsForTests({
-      cardChars: big!.cardChars - 1,
-      pageMarkdownChars: rest.reduce((n, q) => n + q.cardChars, 0),
-      pageEntries: 4,
-    });
-    expect(isPreview(big!)).toBe(true);
-    const unrouted = section(layoutOf(tree), "unrouted");
-    expect(unrouted.pageCount).toBe(1);
+  it("drops every section-id parameter, which names no page any more (§7)", () => {
+    expect(withoutPages(new URLSearchParams("a=1&b=2"))).toBeNull();
     expect(
-      (unrouted.items[0] as CardEntry & { preview: boolean }).preview,
-    ).toBe(true);
-    expect(unrouted.items).toHaveLength(4);
-  });
-
-  it("counts a Blocked document row as one entry and no Markdown", () => {
-    const tree = {
-      "blocked.md": doc("stage: DESIGN", separate("OQ-B", 2, 0, BLOCKED)),
-      "open.md": doc("stage: DESIGN", separate("OQ-O", 1)),
-      "waits.md": doc("stage: DESIGN\ndepends-on:\n  - open.md", "Waits."),
-    };
-    setPlanningLimitsForTests({ pageMarkdownChars: 1, pageEntries: 2 });
-    const waiting = section(layoutOf(tree), "waiting");
-    // Each blocked card fills a page of its own; the row, with no Markdown,
-    // joins the last card's page.
-    expect(waiting.total).toBe(3);
-    expect(waiting.pageCount).toBe(2);
-    expect(titles(waiting)).toEqual(["OQ-B1"]);
-    expect(
-      titles(section(layoutOf(tree, { waiting: "2" }), "waiting")),
-    ).toEqual(["OQ-B2", "doc waits.md"]);
-  });
-});
-
-describe("the other sections' pages", () => {
-  it("holds pageRows document rows a page", () => {
-    const tree = Object.fromEntries(
-      Array.from({ length: 5 }, (_, i) => [
-        `r${i}.md`,
-        doc("status: accepted\nstage: DECIDED", "Decided."),
-      ]),
-    );
-    setPlanningLimitsForTests({ pageRows: 2 });
-    const ready = section(layoutOf(tree, { ready: "2" }), "ready");
-    expect(ready).toMatchObject({ total: 5, pageCount: 3, page: 2 });
-    expect(ready.items).toEqual(["r2.md", "r3.md"]);
-  });
-
-  it("holds pageLines lines a page of Too large and Unreadable", () => {
-    const index = indexOf({});
-    const skipped = Array.from({ length: 3 }, (_, i) => ({
-      path: `big${i}.md`,
-      size: 2_000_000,
-    }));
-    const unreadable = [{ path: "bad.md", reason: "not UTF-8" }];
-    setPlanningLimitsForTests({ pageLines: 2 });
-    const withLists = { ...index, skipped, unreadable };
-    const layout = layoutPlanningPage(withLists, sectionsOf(withLists), {
-      skipped: "2",
-    });
-    expect(section(layout, "skipped")).toMatchObject({
-      pageCount: 2,
-      page: 2,
-      items: [skipped[2]],
-    });
-    expect(section(layout, "could-not-read").pageCount).toBe(1);
-  });
-});
-
-describe("the page the URL asks for", () => {
-  const TREE = { "a.md": doc("stage: DESIGN", separate("OQ-A", 5)) };
-
-  it("clamps a page past the end to the last one", () => {
-    setPlanningLimitsForTests({ pageEntries: 2 });
-    expect(section(layoutOf(TREE, { unrouted: "9" }), "unrouted").page).toBe(3);
-  });
-
-  it.each(["0", "-1", "2.5", "abc", "", "02", "1e1"])(
-    "reads %j as page 1",
-    (raw) => {
-      setPlanningLimitsForTests({ pageEntries: 2 });
-      expect(section(layoutOf(TREE, { unrouted: raw }), "unrouted").page).toBe(
-        1,
-      );
-    },
-  );
-
-  it("names its pages canonically, page 1 left out", () => {
-    setPlanningLimitsForTests({ pageEntries: 2 });
-    expect(layoutOf(TREE).pages).toBe("");
-    expect(layoutOf(TREE, { unrouted: "2" }).pages).toBe("unrouted=2");
-    expect(layoutOf(TREE, { unrouted: "99" }).pages).toBe("unrouted=3");
-  });
-
-  it("reads each section's parameter from the URL", () => {
-    expect(
-      readPageRequest(new URLSearchParams("needs-you=3&waiting=x&other=1")),
-    ).toMatchObject({ "needs-you": "3", waiting: "x", unrouted: null });
-  });
-});
-
-describe("rewriting the URL", () => {
-  const TREE = { "a.md": doc("stage: DESIGN", separate("OQ-A", 5)) };
-  const rewrite = (query: string) => {
-    const search = new URLSearchParams(query);
-    const layout = layoutOf(TREE, readPageRequest(search));
-    return pageSearch(search, layout)?.toString() ?? null;
-  };
-
-  it("leaves a URL that names its pages alone", () => {
-    setPlanningLimitsForTests({ pageEntries: 2 });
-    expect(rewrite("")).toBeNull();
-    expect(rewrite("unrouted=2")).toBeNull();
-    expect(rewrite("q=1&unrouted=3")).toBeNull();
-  });
-
-  it("clamps, drops a malformed page, an explicit page 1 and a section not shown", () => {
-    setPlanningLimitsForTests({ pageEntries: 2 });
-    expect(rewrite("unrouted=9")).toBe("unrouted=3");
-    expect(rewrite("unrouted=abc")).toBe("");
-    expect(rewrite("unrouted=1")).toBe("");
-    expect(rewrite("ready=2&unrouted=2")).toBe("unrouted=2");
-  });
-
-  it("keeps every other parameter where it was", () => {
-    setPlanningLimitsForTests({ pageEntries: 2 });
-    expect(rewrite("a=1&unrouted=9&b=2")).toBe("a=1&unrouted=3&b=2");
-  });
-
-  it("moves one section to a page", () => {
-    const search = new URLSearchParams("a=1&unrouted=3");
-    expect(withPage(search, "unrouted", 2).toString()).toBe("a=1&unrouted=2");
-    expect(withPage(search, "unrouted", 1).toString()).toBe("a=1");
-    expect(withPage(search, "waiting", 4).toString()).toBe(
-      "a=1&unrouted=3&waiting=4",
-    );
+      withoutPages(
+        new URLSearchParams("needs-you=3&a=1&waiting=2&unrouted=x"),
+      )?.toString(),
+    ).toBe("a=1");
   });
 });
 
@@ -404,11 +247,10 @@ describe("the chosen roadmap (planning-index.md §6.8)", () => {
 
   it("lays Needs you out in the chosen roadmap's order, and names it in the layout", () => {
     const chosen = sectionsOf(index, NESTED);
-    const layout = layoutPlanningPage(index, chosen, {});
+    const layout = layoutPlanningPage(index, chosen, 10);
     expect(layout.roadmap).toBe(NESTED);
-    const needsYou = layout.sections.find((s) => s.id === "needs-you")!;
-    expect(titles(needsYou)).toEqual(["OQ-B1", "OQ-B2", "OQ-B3", "OQ-A2"]);
-    expect(layoutPlanningPage(index, sectionsOf(index), {}).roadmap).toBe(
+    expect(ids(layout.needsYou)).toEqual(["OQ-B1", "OQ-B2", "OQ-B3", "OQ-A2"]);
+    expect(layoutPlanningPage(index, sectionsOf(index), 10).roadmap).toBe(
       "roadmap.md",
     );
     // One derivation per index and chosen roadmap, the default's by name too.
@@ -457,7 +299,7 @@ describe("the chosen roadmap (planning-index.md §6.8)", () => {
       null,
     );
     const sections = sectionsOf(at, chosen);
-    const layout = layoutPlanningPage(at, sections, readPageRequest(search));
+    const layout = layoutPlanningPage(at, sections, 10);
     return planningSearch(search, layout, sections)?.toString() ?? null;
   };
 
@@ -472,12 +314,8 @@ describe("the chosen roadmap (planning-index.md §6.8)", () => {
     );
   });
 
-  it("rewrites the pages and the roadmap in one", () => {
-    // roadmap.md's Needs you holds two cards: two pages of one.
-    setPlanningLimitsForTests({ pageEntries: 1 });
-    expect(rewrite("needs-you=9&roadmap=c.md")).toBe(
-      "needs-you=2&roadmap=roadmap.md",
-    );
+  it("drops an old page parameter and rewrites the roadmap in one", () => {
+    expect(rewrite("needs-you=9&roadmap=c.md")).toBe("roadmap=roadmap.md");
   });
 
   it("removes the roadmap from the URL with fewer than two", () => {
@@ -487,7 +325,7 @@ describe("the chosen roadmap (planning-index.md §6.8)", () => {
     expect(rewrite("a=1", one)).toBeNull();
   });
 
-  it("picks a roadmap: replaced, Needs you back on page 1, the rest kept", () => {
+  it("picks a roadmap: replaced, an old Needs you page gone, the rest kept", () => {
     const search = new URLSearchParams(
       "a=1&needs-you=3&roadmap=roadmap.md&waiting=2",
     );
@@ -580,12 +418,13 @@ describe("the planning filter (planning-index.md §6.16)", () => {
     const layout = layoutPlanningPage(
       index,
       sectionsOf(index, null, DESIGN),
-      {},
+      10,
       DESIGN,
     );
     expect(layout.filter).toBe(DESIGN);
-    expect(layout.sections.map((s) => s.id)).toEqual(["needs-you", "waiting"]);
-    expect(layoutPlanningPage(index, sectionsOf(index), {}).filter).toBe("");
+    expect(layout.needsYou.length).toBeGreaterThan(0);
+    expect(layout.blocked.length).toBeGreaterThan(0);
+    expect(layoutPlanningPage(index, sectionsOf(index), 10).filter).toBe("");
   });
 
   it("reads every filter value, joined with a space", () => {
@@ -616,12 +455,7 @@ describe("the planning filter (planning-index.md §6.16)", () => {
       const asked = filterValue(readFilterRequest(search));
       const applied = understoodFilter(asked) === null ? "" : asked;
       const sections = sectionsOf(index, null, applied);
-      const layout = layoutPlanningPage(
-        index,
-        sections,
-        readPageRequest(search),
-        applied,
-      );
+      const layout = layoutPlanningPage(index, sections, 10, applied);
       const next = planningSearch(search, layout, sections);
       return next === null ? null : planningQuery(next);
     };
@@ -667,12 +501,7 @@ describe("the planning filter (planning-index.md §6.16)", () => {
         const asked = filterValue(readFilterRequest(search));
         const applied = understoodFilter(asked) === null ? "" : asked;
         const sections = sectionsOf(index, null, applied);
-        const layout = layoutPlanningPage(
-          index,
-          sections,
-          readPageRequest(search),
-          applied,
-        );
+        const layout = layoutPlanningPage(index, sections, 10, applied);
         const next = planningSearch(search, layout, sections, dropSpace);
         return next === null ? null : planningQuery(next);
       };
@@ -694,14 +523,12 @@ describe("the planning filter (planning-index.md §6.16)", () => {
       ).toBeNull();
     });
 
-    it("clamps the pages against the filtered sections, in the same rewrite", () => {
-      setPlanningLimitsForTests({ pageEntries: 1 });
-      // docs/design/a.md: four cards under Needs you, one under Blocked.
+    it("drops the pages in the same rewrite as the filter", () => {
       expect(
         rewrite(
           "filter=path:/docs/design/a.md&needs-you=9&waiting=2&roadmap=roadmap.md",
         ),
-      ).toBe("filter=path:/docs/design/a.md&needs-you=4&roadmap=roadmap.md");
+      ).toBe("filter=path:/docs/design/a.md&roadmap=roadmap.md");
     });
   });
 

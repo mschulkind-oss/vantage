@@ -232,6 +232,16 @@ const TREE: Record<string, string> = {
   "plans/gone.md": doc("stage: GONE", q("OQ-G1", OPEN)),
 };
 
+/**
+ * The corpus with OQ-U1's document on the roadmap too, so it is a card of
+ * Needs you in a document of its own: what the suites of a card's inputs
+ * read, since Not on a roadmap lists rows (planning-to-do-list.md §3.4).
+ */
+const ROUTED: Record<string, string> = {
+  ...TREE,
+  "roadmap.md": `${TREE["roadmap.md"]}3. [The other](plans/unrouted.md) next.\n`,
+};
+
 const STAGES: PlanningConfig["stages"] = {
   DESIGN: "open",
   DECIDED: "ready",
@@ -392,6 +402,9 @@ async function releaseFrames(): Promise<void> {
 let frameSpies: { mockRestore(): void }[] = [];
 
 beforeEach(() => {
+  // Most suites read the folded groups' rows, so their visits open them;
+  // the suite of the groups themselves clears this.
+  openGroups();
   frames.held = false;
   frames.pending.clear();
   frameSpies = [
@@ -551,6 +564,33 @@ const cardsIn = (name: string) =>
   within(section(name))
     .queryAllByRole("article")
     .map((a) => a.getAttribute("aria-label"));
+/**
+ * Every question a section lists, as a card or as a one-line row, by the
+ * question each names: *Needs you*'s answered rows, and the folded groups'
+ * rows (planning-to-do-list.md §3.3, §3.4).
+ */
+const listedIn = (name: string) =>
+  Array.from(
+    section(name).querySelectorAll(
+      "article, [data-planning-row], [data-planning-group-question]",
+    ),
+    (el) => el.getAttribute("aria-label"),
+  );
+/** *Needs you*'s answered rows, by the question each names. */
+const rowsIn = () =>
+  Array.from(
+    section("Needs you").querySelectorAll("[data-planning-row]"),
+    (el) => el.getAttribute("aria-label"),
+  );
+/** Open both folded groups for the visits that follow, as a reader would. */
+const openGroups = () => {
+  localStorage.setItem("vantage:planningBlockedOpen", "true");
+  localStorage.setItem("vantage:planningMaintenanceOpen", "true");
+};
+/** The page size the visits that follow lay *Needs you* out with. */
+const pageSize = (n: number) => {
+  setPlanningLimitsForTests({ pageSizes: [n, 20, 30, 50], defaultPageSize: n });
+};
 const cardFor = (id: string) =>
   screen.getByRole("article", { name: `${id}: Question ${id}?` });
 /**
@@ -574,18 +614,20 @@ const documentsIn = (name: string) =>
 describe("the sections, top to bottom (§6.2)", () => {
   beforeEach(() => seed());
 
-  it("lists routed questions under Needs you, in roadmap order, answered ones included", async () => {
+  it("lists routed open questions under Needs you, in roadmap order, and a ✅ one under Maintenance (planning-to-do-list.md §3.3)", async () => {
     await renderPage();
     expect(cardsIn("Needs you")).toEqual([
       "OQ-D1: Question OQ-D1?",
       "OQ-D3: Question OQ-D3?",
+    ]);
+    expect(listedIn("To fold into the ledger")).toEqual([
       "OQ-A1: Question OQ-A1?",
     ]);
   });
 
   it("lists open questions nothing routes under Not on a roadmap, a done document's aside", async () => {
     await renderPage();
-    expect(cardsIn("Not on a roadmap")).toEqual([
+    expect(listedIn("Not on a roadmap")).toEqual([
       "OQ-X1: Question OQ-X1?",
       "OQ-U1: Question OQ-U1?",
     ]);
@@ -596,7 +638,7 @@ describe("the sections, top to bottom (§6.2)", () => {
 
   it("lists blocked questions and waiting documents under Blocked", async () => {
     await renderPage();
-    expect(cardsIn("Blocked")).toEqual(["OQ-D2: Question OQ-D2?"]);
+    expect(listedIn("Blocked")).toEqual(["OQ-D2: Question OQ-D2?"]);
     expect(documentsIn("Blocked")).toEqual(["plans/deps.md"]);
     const waits = within(section("Blocked")).getByText(/blocked on/);
     expect(
@@ -660,7 +702,7 @@ describe("the sections, top to bottom (§6.2)", () => {
     expect(section("Unreadable")).toHaveTextContent("docs/latin1.md not UTF-8");
   });
 
-  it("puts the sections in the reference's order", async () => {
+  it("puts Needs you first, then the folded groups, Maintenance's kinds in their order (planning-to-do-list.md §3.4)", async () => {
     seed(
       TREE,
       { stages: STAGES },
@@ -673,14 +715,18 @@ describe("the sections, top to bottom (§6.2)", () => {
     expect(
       screen
         .getAllByRole("heading", { level: 2 })
+        .map((h) => h.textContent?.replace(/ [\d,]+(?: .*)?$/, "")),
+    ).toEqual(["Needs you", "Blocked", "Maintenance"]);
+    expect(
+      within(section("Maintenance"))
+        .getAllByRole("heading", { level: 3 })
         .map((h) => h.textContent?.replace(/ [\d,]+$/, "")),
     ).toEqual([
-      "Needs you",
       "Not on a roadmap",
-      "Blocked",
       "Ready to build",
       "Ready to graduate",
       "Stage conflict",
+      "To fold into the ledger",
       "Too large",
       "Unreadable",
     ]);
@@ -712,7 +758,7 @@ describe("empty and degenerate states", () => {
     }
   });
 
-  it("says Nothing needs you, above a Needs you holding only answered questions", async () => {
+  it("says Nothing needs you, with only ✅ questions left, which Maintenance lists to fold into the ledger", async () => {
     seed({
       "roadmap.md": "# Roadmap\n\n- [Settled](plans/answered.md)\n",
       "plans/answered.md": TREE["plans/answered.md"],
@@ -720,11 +766,10 @@ describe("empty and degenerate states", () => {
     await renderPage();
     const line = screen.getByTestId("nothing-needs-you");
     expect(line).toHaveTextContent(PLANNING_NOTICES.nothingNeedsYou);
-    expect(cardsIn("Needs you")).toEqual(["OQ-A1: Question OQ-A1?"]);
-    expect(
-      line.compareDocumentPosition(section("Needs you")) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
+    expect(querySection("Needs you")).toBeNull();
+    expect(listedIn("To fold into the ledger")).toEqual([
+      "OQ-A1: Question OQ-A1?",
+    ]);
   });
 
   it("without a roadmap, lists every open question under Needs you by document, and drops Not on a roadmap", async () => {
@@ -813,7 +858,6 @@ describe("empty and degenerate states", () => {
     expect(cardsIn("Needs you")).toEqual([
       "OQ-D1: Question OQ-D1?",
       "OQ-D3: Question OQ-D3?",
-      "OQ-A1: Question OQ-A1?",
     ]);
     expect(screen.queryByRole("combobox", { name: "Roadmap" })).toBeNull();
   });
@@ -892,7 +936,7 @@ describe("empty and degenerate states", () => {
     await settle();
     expect(inPage().queryByRole("status")).toBeNull();
     expect(screen.getByRole("navigation", { name: "Sections" })).toBeTruthy();
-    expect(cardsIn("Not on a roadmap")).toHaveLength(2);
+    expect(listedIn("Not on a roadmap")).toHaveLength(2);
   });
 
   // D6 (planning-index.md §6.10, §18): the pipeline's first run in a
@@ -922,317 +966,696 @@ describe("empty and degenerate states", () => {
     expect(screen.queryAllByRole("article")).toHaveLength(0);
     await act(async () => warmed());
     await settle();
-    expect(cardsIn("Not on a roadmap")).toHaveLength(2);
+    expect(listedIn("Not on a roadmap")).toHaveLength(2);
     expect(warming.runs).toBe(1);
   });
 
   it("runs no warm-up on a page opened with its index ready", async () => {
     seed();
     await renderPage();
-    expect(cardsIn("Not on a roadmap")).toHaveLength(2);
+    expect(listedIn("Not on a roadmap")).toHaveLength(2);
     expect(warming.runs).toBe(0);
   });
 });
 
-describe("pages (planning-index.md §6.4)", () => {
-  // Needs you holds three cards, and Not on a roadmap two, so at two a page Needs you
-  // has two pages and Not on a roadmap one.
-  beforeEach(() => {
-    setPlanningLimitsForTests({ pageEntries: 2 });
-    seed();
-  });
-
-  const pager = (name: string, place: "top" | "bottom" = "top") =>
-    screen.getByRole("navigation", {
-      name: place === "top" ? `${name} pages` : `${name} pages, below`,
-    });
-  const flip = async (label: "Next ›" | "‹ Previous", place?: "bottom") => {
-    await act(async () => {
-      fireEvent.click(
-        within(pager("Needs you", place)).getByRole("button", { name: label }),
-      );
-    });
-    await settle();
+/**
+ * A pending comment typed on `id`'s title in its document, the first line
+ * of its unit — not the leaning's block, which a take anchors on.
+ */
+function typedOnTitle(
+  tree: Record<string, string>,
+  id: string,
+  patch: Partial<ReviewComment> = {},
+): { path: string; comment: ReviewComment } {
+  const question = readyOf(tree)
+    .index.documents.flatMap((d) => d.questions)
+    .find((x) => x.id === id)!;
+  expect(question.unitLine).not.toBe(question.line);
+  return {
+    path: question.path,
+    comment: {
+      id: `typed-${id}`,
+      comment: `My answer to ${id}.`,
+      created_at: 0,
+      reactions: [],
+      anchor: {
+        source_line: question.unitLine,
+        block_text_hash: "00000000",
+        selection_offset: 0,
+        selection_length: 0,
+      },
+      ...patch,
+    },
   };
+}
 
-  it("shows one page of a section, with its range above and below it", async () => {
+/** A pending comment of yours on each of `ids`, in the review store. */
+function answer(tree: Record<string, string>, ...ids: string[]): void {
+  for (const id of ids) {
+    const { path, comment } = typedOnTitle(tree, id);
+    reviews[path] = [...(reviews[path] ?? []), comment];
+  }
+}
+
+/** A review change pushed for `path`, as the socket says one landed. */
+async function reviewPushed(path: string): Promise<void> {
+  act(() => usePlanningStore.getState().noteReviewChanged("", path));
+  await settle();
+}
+
+/* ------------------------------------------------------------------ *
+ * Needs you as a to-do list (planning-to-do-list.md §3.3, §7)
+ * ------------------------------------------------------------------ */
+
+/** A roadmap routing `count` open questions of one document, OQ-T1 on. */
+function todoTree(count: number, extra: Record<string, string> = {}) {
+  const ids = Array.from({ length: count }, (_, i) => `OQ-T${i + 1}`);
+  return {
+    "roadmap.md": "# Roadmap\n\n1. [The list](plans/todo.md)\n",
+    "plans/todo.md": doc("stage: DESIGN", ...ids.map((id) => q(id, OPEN))),
+    ...extra,
+  };
+}
+
+const cardIds = () =>
+  cardsIn("Needs you").map((name) => name!.replace(/: .*/, ""));
+const rowIds = () => rowsIn().map((name) => name!.replace(/: .*/, ""));
+const endLine = () => screen.getByTestId("needs-you-end");
+const updatesButton = () =>
+  document.querySelector<HTMLButtonElement>("[data-planning-updates]")!;
+const updatesCount = () => screen.getByTestId("planning-updates-count");
+const refresh = async () => {
+  await act(async () => {
+    fireEvent.click(updatesButton());
+  });
+  await settle();
+};
+
+describe("Needs you as a to-do list (planning-to-do-list.md §3.3)", () => {
+  it("shows the page size of questions that need you as cards, and counts the rest on the end line", async () => {
+    pageSize(2);
+    seed(todoTree(5));
     await renderPage();
-    expect(cardsIn("Needs you")).toEqual([
-      "OQ-D1: Question OQ-D1?",
-      "OQ-D3: Question OQ-D3?",
-    ]);
-    for (const place of ["top", "bottom"] as const) {
-      const nav = pager("Needs you", place);
-      expect(nav).toHaveTextContent("1–2 of 3");
-      expect(
-        within(nav).getByRole("button", { name: "‹ Previous" }),
-      ).toHaveAttribute("aria-disabled", "true");
-      expect(
-        within(nav).getByRole("button", { name: "Next ›" }),
-      ).not.toHaveAttribute("aria-disabled");
-    }
-    // The heading's count is the section's, not the page's, and a word of
-    // its name of its own.
+    expect(cardIds()).toEqual(["OQ-T1", "OQ-T2"]);
+    expect(endLine()).toHaveTextContent(
+      /^3 more need you · show 2 \| 20 \| 30 \| 50$/,
+    );
+    // The heading counts every question that needs you, whatever the size.
     expect(
       within(section("Needs you")).getByRole("heading", { level: 2 }),
-    ).toHaveAccessibleName("Needs you 3");
-    expect(section("Needs you")).toHaveAccessibleName("Needs you 3");
+    ).toHaveTextContent(/^Needs you 5$/);
   });
 
-  it("gives a section of one page no pager", async () => {
+  it("defaults to 10 a page, from the sizes 10, 20, 30 and 50", async () => {
+    seed(todoTree(12));
     await renderPage();
-    expect(cardsIn("Not on a roadmap")).toHaveLength(2);
+    expect(cardIds()).toHaveLength(10);
     expect(
-      screen.queryByRole("navigation", { name: /^Not on a roadmap pages/ }),
-    ).toBeNull();
-  });
-
-  it("flips to the next page in place of the history entry", async () => {
-    await renderPage("/.vantage/planning", ["/plans/roadmap.md"]);
-    await flip("Next ›");
-    expect(cardsIn("Needs you")).toEqual(["OQ-A1: Question OQ-A1?"]);
-    expect(router.location).toBe("/.vantage/planning?needs-you=2");
-    const nav = pager("Needs you");
-    expect(nav).toHaveTextContent("3–3 of 3");
-    expect(within(nav).getByRole("button", { name: "Next ›" })).toHaveAttribute(
-      "aria-disabled",
-      "true",
-    );
-    // Back leaves the page rather than stepping back through its pages.
-    act(() => router.navigate!(-1));
-    expect(router.location).toBe("/plans/roadmap.md");
-  });
-
-  // A focused button that becomes disabled drops the focus to the body, and
-  // in a section of two pages every flip ends on an end.
-  it("keeps an end's button focusable, and inert, so a flip onto the last page keeps the focus", async () => {
-    await renderPage();
-    const next = () =>
-      within(pager("Needs you")).getByRole("button", { name: "Next ›" });
-    next().focus();
-    await flip("Next ›");
-    expect(router.location).toBe("/.vantage/planning?needs-you=2");
-    expect(next()).not.toBeDisabled();
-    expect(next()).toHaveAttribute("aria-disabled", "true");
-    expect(document.activeElement).toBe(next());
-    // Pressed again, it does nothing.
-    await flip("Next ›");
-    expect(router.location).toBe("/.vantage/planning?needs-you=2");
-    expect(cardsIn("Needs you")).toEqual(["OQ-A1: Question OQ-A1?"]);
-  });
-
-  it("says where a flip landed in a polite live region, once it lands, and nothing before", async () => {
-    await renderPage();
-    const said = () =>
-      section("Needs you").querySelector('[aria-live="polite"][aria-atomic]');
-    expect(said()).not.toBeNull();
-    expect(said()).toHaveTextContent(/^$/);
-    await flip("Next ›");
-    expect(said()).toHaveTextContent(
-      "Needs you, page 2 of 2, entries 3–3 of 3",
-    );
-    await flip("‹ Previous");
-    expect(said()).toHaveTextContent(
-      "Needs you, page 1 of 2, entries 1–2 of 3",
-    );
-  });
-
-  it("clamps a page past the end to the last, and rewrites the URL in place", async () => {
-    await renderPage("/.vantage/planning?needs-you=9&other=x");
-    expect(cardsIn("Needs you")).toEqual(["OQ-A1: Question OQ-A1?"]);
-    expect(router.location).toBe("/.vantage/planning?needs-you=2&other=x");
-  });
-
-  it.each(["abc", "0", "1"])(
-    "reads needs-you=%s as page 1, and leaves it out of the URL",
-    async (raw) => {
-      await renderPage(`/.vantage/planning?needs-you=${raw}`);
-      expect(cardsIn("Needs you")).toHaveLength(2);
-      expect(router.location).toBe("/.vantage/planning");
-    },
-  );
-
-  it("brings the section's heading into view from the bottom pager, and leaves the scroll alone from the top", async () => {
-    const scrolled = vi.fn();
-    Element.prototype.scrollIntoView = scrolled;
-    try {
-      await renderPage();
-      const top = within(pager("Needs you")).getByRole("button", {
-        name: "Next ›",
-      });
-      top.focus();
-      await flip("Next ›");
-      expect(scrolled).not.toHaveBeenCalled();
-      expect(document.activeElement).toBe(top);
-      // The focus goes with the heading: left on the bottom pager, it would
-      // be far below the viewport.
-      within(pager("Needs you", "bottom"))
-        .getByRole("button", { name: "‹ Previous" })
-        .focus();
-      await flip("‹ Previous", "bottom");
-      expect(scrolled).toHaveBeenCalledTimes(1);
-      const heading = within(section("Needs you")).getByRole("heading", {
-        level: 2,
-      });
-      expect(scrolled.mock.contexts[0]).toBe(heading);
-      expect(document.activeElement).toBe(heading);
-    } finally {
-      delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
-    }
-  });
-
-  it("asks for the next page's inputs when the pointer or the focus reaches a pager", async () => {
-    const asked: CardWant[][] = [];
-    serveTree(TREE, "/api", (inline) => ({
-      cards: (repo, want, options) => {
-        asked.push(want);
-        return inline.cards(repo, want, options);
-      },
-    }));
-    await renderPage();
-    const a1Asked = () =>
-      asked.some((want) => want.some((w) => w.path === "plans/answered.md"));
-    expect(a1Asked()).toBe(false);
-    fireEvent.pointerEnter(pager("Needs you"));
-    await settle();
-    expect(a1Asked()).toBe(true);
-    // The flip then has its page in hand, and asks nothing more.
-    const before = asked.length;
-    await flip("Next ›");
-    expect(cardsIn("Needs you")).toEqual(["OQ-A1: Question OQ-A1?"]);
-    expect(asked).toHaveLength(before);
-    // On the last page there is no next page to ask for.
-    fireEvent.focus(
-      within(pager("Needs you", "bottom")).getByRole("button", {
-        name: "‹ Previous",
-      }),
-    );
-    await settle();
-    expect(asked).toHaveLength(before);
-  });
-
-  // While a flip waits for its page, the pager goes on from the page asked
-  // for: a second Next is not lost, and the select does not jump back.
-  it("goes on from the page asked for while the one shown waits", async () => {
-    // Not on a roadmap holds four questions of four documents, so each page asks
-    // for a block no other page holds.
-    const tree = {
-      ...TREE,
-      "plans/u2.md": doc("stage: DESIGN", q("OQ-U2", OPEN)),
-      "plans/u3.md": doc("stage: DESIGN", q("OQ-U3", OPEN)),
-    };
-    setPlanningLimitsForTests({ pageEntries: 1, pageSelectFrom: 3 });
-    let hold = false;
-    const releases: (() => void)[] = [];
-    serveTree(tree, "/api", (inline) => ({
-      cards: (repo, want, options) =>
-        hold
-          ? new Promise<CardAnswer[]>((resolve) => {
-              releases.push(() => resolve(inline.cards(repo, want, options)));
-            })
-          : inline.cards(repo, want, options),
-    }));
-    setLoad(readyOf(tree));
-    await renderPage();
-    const first = cardsIn("Not on a roadmap");
-    hold = true;
-    const select = () =>
-      within(pager("Not on a roadmap")).getByRole<HTMLSelectElement>(
-        "combobox",
-        {
-          name: "Not on a roadmap page",
-        },
-      );
-    const next = async () => {
-      await act(async () => {
-        fireEvent.click(
-          within(pager("Not on a roadmap")).getByRole("button", {
-            name: "Next ›",
-          }),
-        );
-      });
-      await settle();
-    };
-    await next();
-    expect(router.location).toBe("/.vantage/planning?unrouted=2");
-    // Still page 1 on screen, and page 2 in the select.
-    expect(cardsIn("Not on a roadmap")).toEqual(first);
-    expect(pager("Not on a roadmap")).toHaveTextContent("1–1 of 4");
-    expect(select().value).toBe("2");
-    await next();
-    expect(router.location).toBe("/.vantage/planning?unrouted=3");
-    expect(select().value).toBe("3");
-    for (const release of releases) release();
-    await settle();
-    expect(pager("Not on a roadmap")).toHaveTextContent("3–3 of 4");
-    expect(select().value).toBe("3");
-  });
-
-  it("offers a page select in a long section", async () => {
-    setPlanningLimitsForTests({ pageEntries: 1, pageSelectFrom: 3 });
-    await renderPage();
-    const select = within(pager("Needs you")).getByRole("combobox", {
-      name: "Needs you page",
-    });
+      within(endLine())
+        .getAllByRole("button")
+        .map((b) => b.textContent),
+    ).toEqual(["10", "20", "30", "50"]);
     expect(
-      within(select)
-        .getAllByRole("option")
-        .map((o) => o.textContent),
-    ).toEqual(["Page 1", "Page 2", "Page 3"]);
+      within(endLine()).getByRole("button", { name: "10" }),
+    ).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("takes a size chosen on the end line at once, and remembers it in this browser", async () => {
+    pageSize(2);
+    seed(todoTree(5));
+    await renderPage();
     await act(async () => {
-      fireEvent.change(select, { target: { value: "3" } });
+      fireEvent.click(within(endLine()).getByRole("button", { name: "20" }));
     });
     await settle();
-    expect(cardsIn("Needs you")).toEqual(["OQ-A1: Question OQ-A1?"]);
-    // Not on a roadmap has two pages, fewer than a select is offered from.
+    expect(cardIds()).toHaveLength(5);
+    expect(endLine()).toHaveTextContent(/^show 2 \| 20 \| 30 \| 50$/);
+    expect(readPreference("vantage:planningPageSize")).toBe("20");
+    cleanup();
+    await renderPage();
+    expect(cardIds()).toHaveLength(5);
+  });
+
+  it("puts the answered rows first, the first five shown, and … N more answered opens the rest in place", async () => {
+    pageSize(2);
+    const tree = todoTree(9);
+    seed(tree);
+    answer(tree, "OQ-T2", "OQ-T3", "OQ-T4", "OQ-T5", "OQ-T6", "OQ-T7");
+    await renderPage();
+    expect(rowIds()).toEqual(["OQ-T2", "OQ-T3", "OQ-T4", "OQ-T5", "OQ-T6"]);
+    expect(cardIds()).toEqual(["OQ-T1", "OQ-T8"]);
     expect(
-      within(pager("Not on a roadmap")).queryByRole("combobox"),
-    ).toBeNull();
-  });
-
-  it("returns from a card's document name to the same pages, at the same scroll", async () => {
-    await renderPage();
-    await flip("Next ›");
-    scroller().scrollTop = 640;
-    fireEvent.click(nameLink("OQ-A1", "plans/answered.md"));
-    expect(screen.getByTestId("viewer")).toBeTruthy();
-    act(() => router.navigate!(-1));
+      within(section("Needs you")).getByRole("heading", { level: 2 }),
+    ).toHaveTextContent("Needs you 3 · 6 answered");
+    expect(section("Needs you")).toHaveTextContent("… 1 more answered · Show");
+    // Each row is one line: its id, title, chip and Show.
+    const row = screen.getByRole("group", { name: "OQ-T2: Question OQ-T2?" });
+    expect(row).toHaveTextContent("Answered — waiting on the agent");
+    expect(within(row).getByRole("button", { name: /^Show/ })).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(
+        section("Needs you").querySelector("[data-planning-more-answered]")!,
+      );
+    });
     await settle();
-    expect(router.location).toBe("/.vantage/planning?needs-you=2");
-    expect(cardsIn("Needs you")).toEqual(["OQ-A1: Question OQ-A1?"]);
-    // The pane the page came back with, not the one it left.
-    expect(scroller().scrollTop).toBe(640);
-  });
-});
-
-describe("a flip's scroll position", () => {
-  beforeEach(() => {
-    setPlanningLimitsForTests({ pageEntries: 2 });
-    seed();
+    expect(rowIds()).toHaveLength(6);
+    expect(section("Needs you")).not.toHaveTextContent("more answered");
   });
 
-  // A replaced entry has a key of its own, so the position the reader flipped
-  // at goes with it: Back from any link on the new page returns there, not
-  // only from a card's document name, which saves as it leaves.
-  it("carries over to the replaced history entry", async () => {
+  it("opens an answered row into its card where it stands on Show", async () => {
+    pageSize(2);
+    const tree = todoTree(3);
+    seed(tree);
+    answer(tree, "OQ-T1");
     await renderPage();
-    scroller().scrollTop = 300;
+    expect(rowIds()).toEqual(["OQ-T1"]);
     await act(async () => {
       fireEvent.click(
         within(
-          screen.getByRole("navigation", { name: "Needs you pages" }),
-        ).getByRole("button", { name: "Next ›" }),
+          screen.getByRole("group", { name: "OQ-T1: Question OQ-T1?" }),
+        ).getByRole("button", { name: /^Show/ }),
       );
     });
     await settle();
-    // A link that saves nothing on its way out.
-    fireEvent.click(
-      within(section("Blocked")).getByRole("link", { name: "design.md#OQ-D1" }),
+    expect(rowIds()).toEqual([]);
+    expect(cardIds()).toEqual(["OQ-T1", "OQ-T2", "OQ-T3"]);
+    expect(
+      within(cardFor("OQ-T1")).getByText(/My answer to OQ-T1/),
+    ).toBeTruthy();
+  });
+
+  it("ignores an old address's page parameters, and the in-place rewrite drops them (§7)", async () => {
+    pageSize(2);
+    seed(todoTree(5));
+    await renderPage("/.vantage/planning?needs-you=2&other=x");
+    expect(cardIds()).toEqual(["OQ-T1", "OQ-T2"]);
+    expect(router.location).toBe("/.vantage/planning?other=x");
+  });
+
+  it("paints every full card of a layout in one commit, whatever the page size (§7)", async () => {
+    pageSize(5);
+    const tree = todoTree(8);
+    let release: () => void = () => {};
+    serveTree(tree, "/api", (inline) => ({
+      cards: (repo, want, options) =>
+        new Promise<CardAnswer[]>((resolve) => {
+          release = () => resolve(inline.cards(repo, want, options));
+        }),
+    }));
+    setLoad(readyOf(tree));
+    await renderPage();
+    expect(screen.queryAllByRole("article")).toHaveLength(0);
+    const counts: number[] = [];
+    const observer = new MutationObserver(() =>
+      counts.push(document.querySelectorAll("article").length),
     );
-    expect(screen.getByTestId("viewer")).toBeTruthy();
-    act(() => router.navigate!(-1));
+    observer.observe(document.body, { childList: true, subtree: true });
+    release();
     await settle();
-    expect(scroller().scrollTop).toBe(300);
+    observer.disconnect();
+    expect(cardIds()).toHaveLength(5);
+    // No commit painted some of the cards and not the rest.
+    expect(counts.filter((n) => n > 0 && n < 5)).toEqual([]);
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * What moves, and who moves it (planning-to-do-list.md §4)
+ * ------------------------------------------------------------------ */
+
+describe("your own actions (planning-to-do-list.md §4.1)", () => {
+  it("shrinks a card answered here to a row where it was, and the next question joins the cards", async () => {
+    pageSize(2);
+    const tree = todoTree(4);
+    seed(tree);
+    await renderPage();
+    await act(async () => {
+      fireEvent.click(
+        within(cardFor("OQ-T1")).getByRole("button", {
+          name: "Take this leaning",
+        }),
+      );
+    });
+    await settle();
+    // Nothing reorders: the row stands where its card was.
+    expect(
+      Array.from(
+        section("Needs you").querySelectorAll("[data-planning-item]"),
+        (el) => el.getAttribute("aria-label")!.replace(/: .*/, ""),
+      ),
+    ).toEqual(["OQ-T1", "OQ-T2", "OQ-T3"]);
+    expect(rowIds()).toEqual(["OQ-T1"]);
+    expect(cardIds()).toEqual(["OQ-T2", "OQ-T3"]);
+    expect(
+      screen.getByRole("group", { name: "OQ-T1: Question OQ-T1?" }),
+    ).toHaveTextContent("Leaning taken");
+    expect(endLine()).toHaveTextContent(/^1 more needs you/);
+    // An action of your own is no held update.
+    expect(updatesButton()).toHaveAttribute("aria-hidden", "true");
+  });
+
+  it("shrinks a card when its Answer… box closes holding text, never as it is typed in", async () => {
+    pageSize(2);
+    seed(todoTree(3));
+    await renderPage();
+    await act(async () => {
+      fireEvent.click(
+        within(cardFor("OQ-T1")).getByRole("button", { name: "Answer…" }),
+      );
+    });
+    const box = await screen.findByPlaceholderText(/comment/i);
+    fireEvent.change(box, { target: { value: "The second way." } });
+    await settle();
+    // Typing never shrinks it.
+    expect(cardIds()).toEqual(["OQ-T1", "OQ-T2"]);
+    await act(async () => {
+      fireEvent.click(screen.getAllByRole("button", { name: "Close" })[0]!);
+    });
+    await settle();
+    expect(rowIds()).toEqual(["OQ-T1"]);
+    expect(cardIds()).toEqual(["OQ-T2", "OQ-T3"]);
+  });
+
+  it("opens the row back into its card on Undo, and keeps the card that joined", async () => {
+    pageSize(2);
+    const tree = todoTree(4);
+    seed(tree);
+    vi.mocked(axios.delete).mockImplementation(async (url, config) => {
+      const path = (config?.params as { path: string }).path;
+      const id = String(url).split("/").pop();
+      reviews[path] = (reviews[path] ?? []).filter((c) => c.id !== id);
+      return { data: { file_path: path, comments: reviews[path] } };
+    });
+    await renderPage();
+    await act(async () => {
+      fireEvent.click(
+        within(cardFor("OQ-T1")).getByRole("button", {
+          name: "Take this leaning",
+        }),
+      );
+    });
+    await settle();
+    await act(async () => {
+      fireEvent.click(
+        within(
+          screen.getByRole("group", { name: "OQ-T1: Question OQ-T1?" }),
+        ).getByRole("button", { name: /Undo/ }),
+      );
+    });
+    await settle();
+    expect(rowIds()).toEqual([]);
+    expect(cardIds()).toEqual(["OQ-T1", "OQ-T2", "OQ-T3"]);
+    expect(
+      within(cardFor("OQ-T1")).getByRole("button", {
+        name: "Take this leaning",
+      }),
+    ).toBeTruthy();
+  });
+
+  it("makes a new layout on Refresh, gathering the answered rows at the top", async () => {
+    pageSize(2);
+    const tree = todoTree(4);
+    seed(tree);
+    await renderPage();
+    await act(async () => {
+      fireEvent.click(
+        within(cardFor("OQ-T2")).getByRole("button", {
+          name: "Take this leaning",
+        }),
+      );
+    });
+    await settle();
+    await refresh();
+    expect(rowIds()).toEqual(["OQ-T2"]);
+    expect(cardIds()).toEqual(["OQ-T1", "OQ-T3"]);
+    expect(
+      section("Needs you").querySelector("[data-planning-item]"),
+    ).toHaveAttribute("data-planning-row");
+  });
+
+  it("opens and closes a folded group in place, closed until opened and remembered per group (§3.4)", async () => {
+    localStorage.clear();
+    seed();
+    await renderPage();
+    const toggle = (name: RegExp) =>
+      screen.getByRole("button", { name, expanded: false });
+    expect(querySection("Not on a roadmap")).toBeNull();
+    expect(screen.queryByRole("group", { name: /OQ-D2/ })).toBeNull();
+    await act(async () => {
+      fireEvent.click(toggle(/^Maintenance/));
+    });
+    await settle();
+    expect(listedIn("Not on a roadmap")).toEqual([
+      "OQ-X1: Question OQ-X1?",
+      "OQ-U1: Question OQ-U1?",
+    ]);
+    expect(readPreference("vantage:planningMaintenanceOpen")).toBe("true");
+    expect(readPreference("vantage:planningBlockedOpen")).toBeNull();
+    // The next visit opens it as it was left, and Blocked still closed.
+    cleanup();
+    await renderPage();
+    expect(listedIn("Not on a roadmap")).toHaveLength(2);
+    expect(toggle(/^Blocked/)).toBeTruthy();
+  });
+});
+
+describe("what arrives late (planning-to-do-list.md §4.2)", () => {
+  /** A reply of the agent's on your comment on `id`. */
+  function agentReplied(tree: Record<string, string>, id: string): string {
+    const { path } = typedOnTitle(tree, id);
+    reviews[path] = (reviews[path] ?? []).map((c) =>
+      c.id === `typed-${id}`
+        ? {
+            ...c,
+            reactions: [
+              {
+                actor: "agent",
+                kind: "addressed",
+                timestamp: 1,
+                summary: `Which way for ${id}?`,
+              },
+            ] as ReviewComment["reactions"],
+          }
+        : c,
+    );
+    return path;
+  }
+  const heights = () =>
+    Array.from(
+      section("Needs you").querySelectorAll("[data-planning-item]"),
+      (el) => `${el.getAttribute("aria-label")}:${el.tagName}`,
+    );
+
+  it("marks a reply New reply, moves nothing, opens the reply on the mark, and Refresh brings it back as a card", async () => {
+    pageSize(2);
+    const tree = todoTree(3);
+    seed(tree);
+    answer(tree, "OQ-T1");
+    await renderPage();
+    const before = heights();
+    const path = agentReplied(tree, "OQ-T1");
+    await reviewPushed(path);
+    expect(heights()).toEqual(before);
+    const row = screen.getByRole("group", { name: "OQ-T1: Question OQ-T1?" });
+    expect(row.querySelector("[data-planning-new-reply-bar]")).not.toBeNull();
+    // The reply, and OQ-T3, which the card it becomes would put past the
+    // page size.
+    expect(updatesCount()).toHaveTextContent("2");
+    expect(updatesButton()).toHaveAttribute(
+      "title",
+      expect.stringContaining("1 new reply"),
+    );
+    // Pressing the mark opens the reply in place: your action.
+    await act(async () => {
+      fireEvent.click(within(row).getByRole("button", { name: "New reply" }));
+    });
+    await settle();
+    expect(within(cardFor("OQ-T1")).getByText(/Agent: Which way/)).toBeTruthy();
+    expect(
+      cardFor("OQ-T1").querySelector("[data-planning-new-reply-bar]"),
+    ).toBeNull();
+    // It needs you again, which the next layout says with a card.
+    await refresh();
+    expect(rowIds()).toEqual([]);
+    expect(cardIds()).toEqual(["OQ-T1", "OQ-T2"]);
+  });
+
+  it("keeps a card's comment list as it painted it until the reader opens it", async () => {
+    pageSize(2);
+    const tree = todoTree(2);
+    seed(tree);
+    const { path, comment } = typedOnTitle(tree, "OQ-T2", {
+      resolved: true,
+    });
+    reviews[path] = [comment];
+    await renderPage();
+    const list = () =>
+      within(cardFor("OQ-T2")).queryByRole("list", {
+        name: "Comments on this question",
+      });
+    const listed = list()?.textContent;
+    reviews[path] = [
+      {
+        ...comment,
+        reactions: [
+          { actor: "agent", kind: "addressed", timestamp: 1, summary: "Done." },
+        ] as ReviewComment["reactions"],
+      },
+    ];
+    await reviewPushed(path);
+    expect(list()?.textContent).toBe(listed);
+  });
+
+  it("marks a card answered elsewhere, and the next layout makes it a row", async () => {
+    pageSize(2);
+    const tree = todoTree(3);
+    seed(tree);
+    await renderPage();
+    answer(tree, "OQ-T1");
+    await reviewPushed("plans/todo.md");
+    expect(cardIds()).toEqual(["OQ-T1", "OQ-T2"]);
+    expect(
+      within(cardFor("OQ-T1")).getByText("Answered elsewhere"),
+    ).toBeTruthy();
+    // Its controls stay as they were painted: the mark says what changed.
+    expect(
+      within(cardFor("OQ-T1")).getByRole("button", {
+        name: "Take this leaning",
+      }),
+    ).toBeTruthy();
+    // The heading's count changed live; the layout waits.
+    expect(screen.getByTestId("needs-you-count")).toHaveTextContent("2");
+    await refresh();
+    expect(rowIds()).toEqual(["OQ-T1"]);
+    expect(cardIds()).toEqual(["OQ-T2", "OQ-T3"]);
+  });
+
+  it("marks Done a question that became ✅, keeps it, and the next layout lists it under Maintenance", async () => {
+    pageSize(2);
+    const tree = todoTree(3);
+    seed(tree);
+    await renderPage();
+    const after = {
+      ...tree,
+      "plans/todo.md": doc(
+        "stage: DESIGN",
+        q("OQ-T1", ANSWERED),
+        q("OQ-T2", OPEN),
+        q("OQ-T3", OPEN),
+      ),
+    };
+    serveTree(after);
+    setLoad(readyOf(after));
+    await settle();
+    expect(cardIds()).toEqual(["OQ-T1", "OQ-T2"]);
+    expect(within(cardFor("OQ-T1")).getByText("Done")).toBeTruthy();
+    expect(updatesButton()).toHaveAttribute(
+      "title",
+      expect.stringContaining("1 done"),
+    );
+    // Maintenance's count changed live; its list waits.
+    expect(screen.getByTestId("maintenance-count")).toHaveTextContent("1");
+    await refresh();
+    expect(cardIds()).toEqual(["OQ-T2", "OQ-T3"]);
+    expect(listedIn("To fold into the ledger")).toEqual([
+      "OQ-T1: Question OQ-T1?",
+    ]);
+  });
+
+  it("keeps a changed question's card as it painted it, marked, until the next layout", async () => {
+    pageSize(2);
+    const tree = todoTree(2);
+    seed(tree);
+    await renderPage();
+    const after = {
+      ...tree,
+      "plans/todo.md": tree["plans/todo.md"]!.replace(
+        "_Leaning:_ Yes.",
+        "_Leaning:_ Yes, and more besides.",
+      ),
+    };
+    serveTree(after);
+    setLoad(readyOf(after, { stages: STAGES }));
+    await settle();
+    expect(
+      within(cardFor("OQ-T1")).getByText("Changed in the document"),
+    ).toBeTruthy();
+    expect(cardFor("OQ-T1")).not.toHaveTextContent("and more besides");
+    await refresh();
+    expect(cardFor("OQ-T1")).toHaveTextContent("and more besides");
+    expect(
+      within(cardFor("OQ-T1")).queryByText("Changed in the document"),
+    ).toBeNull();
+  });
+
+  it("counts a new question in the updates slot only, and Refresh places it in roadmap order", async () => {
+    pageSize(2);
+    const tree = todoTree(2);
+    seed(tree);
+    await renderPage();
+    const before = heights();
+    const after = {
+      ...tree,
+      "roadmap.md":
+        "# Roadmap\n\n1. [First](plans/first.md)\n2. [The list](plans/todo.md)\n",
+      "plans/first.md": doc("stage: DESIGN", q("OQ-F1", OPEN)),
+    };
+    serveTree(after);
+    setLoad(readyOf(after));
+    await settle();
+    expect(heights()).toEqual(before);
+    expect(updatesButton()).toHaveAttribute(
+      "title",
+      expect.stringContaining("1 new question"),
+    );
+    expect(screen.getByTestId("needs-you-count")).toHaveTextContent("3");
+    await refresh();
+    expect(cardIds()).toEqual(["OQ-F1", "OQ-T1"]);
+    expect(updatesButton()).toHaveAttribute("aria-hidden", "true");
+  });
+
+  it("counts a reordered roadmap once", async () => {
+    pageSize(2);
+    const tree = {
+      "roadmap.md": "# Roadmap\n\n1. [A](plans/a.md)\n2. [B](plans/b.md)\n",
+      "plans/a.md": doc("stage: DESIGN", q("OQ-A1", OPEN)),
+      "plans/b.md": doc("stage: DESIGN", q("OQ-B1", OPEN)),
+    };
+    seed(tree);
+    await renderPage();
+    const after = {
+      ...tree,
+      "roadmap.md": "# Roadmap\n\n1. [B](plans/b.md)\n2. [A](plans/a.md)\n",
+    };
+    serveTree(after);
+    setLoad(readyOf(after));
+    await settle();
+    expect(cardIds()).toEqual(["OQ-A1", "OQ-B1"]);
+    expect(updatesCount()).toHaveTextContent("1");
+    expect(updatesButton()).toHaveAttribute(
+      "title",
+      expect.stringContaining("1 roadmap reordered"),
+    );
+    await refresh();
+    expect(cardIds()).toEqual(["OQ-B1", "OQ-A1"]);
+  });
+
+  it("changes a group's count when a maintenance item comes or goes, marking a gone row Done", async () => {
+    seed();
+    await renderPage();
+    const after = { ...TREE };
+    delete after["plans/unrouted.md"];
+    after["plans/more.md"] = doc("stage: DESIGN", q("OQ-M1", OPEN));
+    after["plans/more2.md"] = doc("stage: DESIGN", q("OQ-M2", OPEN));
+    serveTree(after);
+    setLoad(readyOf(after));
+    await settle();
+    // Listed as painted, the gone one marked, the count the data in hand's.
+    expect(listedIn("Not on a roadmap")).toEqual([
+      "OQ-X1: Question OQ-X1?",
+      "OQ-U1: Question OQ-U1?",
+    ]);
+    expect(
+      screen
+        .getByRole("listitem", { name: "OQ-U1: Question OQ-U1?" })
+        .querySelector('[data-planning-mark="done"]'),
+    ).not.toBeNull();
+    expect(section("Not on a roadmap")).toHaveAccessibleName(
+      /^Not on a roadmap 3/,
+    );
+    expect(updatesCount()).toHaveTextContent("3");
+    await refresh();
+    expect(listedIn("Not on a roadmap")).toEqual([
+      "OQ-X1: Question OQ-X1?",
+      "OQ-M1: Question OQ-M1?",
+      "OQ-M2: Question OQ-M2?",
+    ]);
+  });
+
+  it("applies nothing on its own: an index update, a review or a rescan only marks and counts", async () => {
+    pageSize(2);
+    const tree = todoTree(4);
+    seed(tree);
+    await renderPage();
+    answer(tree, "OQ-T1", "OQ-T2");
+    await reviewPushed("plans/todo.md");
+    setLoad(readyOf(tree));
+    await settle();
+    expect(cardIds()).toEqual(["OQ-T1", "OQ-T2"]);
+    expect(rowIds()).toEqual([]);
+    expect(updatesCount()).toHaveTextContent("4");
+  });
+});
+
+describe("Refresh (planning-to-do-list.md §4.3)", () => {
+  it("keeps the room of its slot from the first paint, and shows N updates only while some are held", async () => {
+    pageSize(2);
+    seed(todoTree(3));
+    await renderPage();
+    const button = updatesButton();
+    expect(button).toBeTruthy();
+    expect(button).toHaveAttribute("aria-hidden", "true");
+    expect(button).toHaveClass("invisible");
+    // Never folded into the ⋯.
+    expect(button.closest(".hdr-overflow")).toBeNull();
+  });
+
+  it("keeps the first item on screen at the same height through the new layout", async () => {
+    pageSize(2);
+    const tree = todoTree(4);
+    seed(tree);
+    await renderPage();
+    answer(tree, "OQ-T2");
+    await reviewPushed("plans/todo.md");
+    // Lay the page out by hand: each item 100 px tall, in DOM order, under
+    // the pane's scroll.
+    const pane = scroller();
+    pane.scrollTop = 150;
+    const rect = (top: number) =>
+      ({ top, bottom: top + 100, height: 100 }) as DOMRect;
+    const spy = vi
+      .spyOn(Element.prototype, "getBoundingClientRect")
+      .mockImplementation(function (this: Element) {
+        if (this === pane) return rect(0);
+        const items = [...pane.querySelectorAll("[data-planning-item]")];
+        const at = items.indexOf(this);
+        return rect(at === -1 ? 0 : at * 100 - pane.scrollTop);
+      });
+    const top = watchScrollTop();
+    try {
+      // OQ-T2, the second card, is the first item on screen, its top 50 px
+      // above the pane's.
+      await refresh();
+      // The new layout puts OQ-T2's row first: the pane scrolls up by one
+      // item to keep it where it was.
+      expect(rowIds()).toEqual(["OQ-T2"]);
+      expect(top.mock.calls.filter(([el]) => el === pane).at(-1)?.[1]).toBe(50);
+    } finally {
+      top.restore();
+      spy.mockRestore();
+    }
+  });
+
+  it("closes an open comment box first, keeping its text, which the new layout shows as an answered row", async () => {
+    pageSize(2);
+    seed(todoTree(3));
+    await renderPage();
+    await act(async () => {
+      fireEvent.click(
+        within(cardFor("OQ-T2")).getByRole("button", { name: "Answer…" }),
+      );
+    });
+    const box = await screen.findByPlaceholderText(/comment/i);
+    fireEvent.change(box, { target: { value: "Go the second way." } });
+    // Something late, so there is an update to apply.
+    setLoad(readyOf(todoTree(3)));
+    await settle();
+    await refresh();
+    expect(screen.queryByPlaceholderText(/comment/i)).toBeNull();
+    expect(reviews["plans/todo.md"]?.map((c) => c.comment)).toEqual([
+      "Go the second way.",
+    ]);
+    expect(rowIds()).toEqual(["OQ-T2"]);
   });
 });
 
@@ -1241,21 +1664,45 @@ describe("the section bar (planning-index.md §6.3)", () => {
 
   const bar = () => screen.getByRole("navigation", { name: "Sections" });
 
-  it("names each non-empty section with its exact count, whatever the page", async () => {
-    setPlanningLimitsForTests({ pageEntries: 1 });
+  it("names each non-empty section with its exact count, whatever the page size", async () => {
+    pageSize(1);
     await renderPage();
     expect(
       within(bar())
         .getAllByRole("link")
         .map((a) => a.textContent),
     ).toEqual([
-      "Needs you 3",
-      "Not on a roadmap 2",
+      "Needs you 2",
       "Blocked 2",
+      "Not on a roadmap 2",
       "Ready to build 1",
       "Ready to graduate 1",
       "Stage conflict 1",
+      "To fold into the ledger 1",
     ]);
+  });
+
+  it("opens a folded group on a jump into it, then brings its heading into view", async () => {
+    localStorage.clear();
+    const scrolled = vi.fn();
+    Element.prototype.scrollIntoView = scrolled;
+    try {
+      await renderPage();
+      expect(querySection("Ready to build")).toBeNull();
+      await act(async () => {
+        fireEvent.click(
+          within(bar()).getByRole("link", { name: /^Ready to build/ }),
+        );
+      });
+      await settle();
+      const heading = within(section("Ready to build")).getByRole("heading", {
+        level: 3,
+      });
+      expect(scrolled.mock.contexts.at(-1)).toBe(heading);
+      expect(document.activeElement).toBe(heading);
+    } finally {
+      delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+    }
   });
 
   it("jumps to a section without adding a history entry, and takes the focus there", async () => {
@@ -1285,7 +1732,7 @@ describe("the section bar (planning-index.md §6.3)", () => {
       await renderPage("/.vantage/planning#graduate");
       expect(scrolled).toHaveBeenCalledTimes(1);
       expect(scrolled.mock.contexts[0]).toBe(
-        within(section("Ready to graduate")).getByRole("heading", { level: 2 }),
+        within(section("Ready to graduate")).getByRole("heading", { level: 3 }),
       );
       expect(
         within(bar()).getByRole("link", { name: /^Ready to graduate/ }),
@@ -1295,9 +1742,9 @@ describe("the section bar (planning-index.md §6.3)", () => {
     }
   });
 
-  // §6.5: the page on screen stays until an index update's inputs are
-  // ready, then changes in one commit — the frame with it.
-  it("changes its counts in the commit that changes the sections, not before", async () => {
+  // planning-to-do-list.md §4.2: an index update is late data. The bar is
+  // the layout's, so it changes with the next layout, in its commit.
+  it("keeps its counts through an index update, and changes them with the next layout", async () => {
     await renderPage();
     const unroutedCount = () =>
       within(bar()).getByRole("link", { name: /^Not on a roadmap/ })
@@ -1317,20 +1764,18 @@ describe("the section bar (planning-index.md §6.3)", () => {
     }));
     setLoad(readyOf(tree));
     await settle();
-    expect(section("Not on a roadmap")).toHaveAccessibleName(
-      "Not on a roadmap 2",
-    );
-    expect(unroutedCount()).toBe("Not on a roadmap 2");
     release();
     await settle();
+    expect(unroutedCount()).toBe("Not on a roadmap 2");
+    // The group's own count is the data in hand's.
     expect(section("Not on a roadmap")).toHaveAccessibleName(
-      "Not on a roadmap 3",
+      /^Not on a roadmap 3/,
     );
+    await refresh();
     expect(unroutedCount()).toBe("Not on a roadmap 3");
   });
 
   it("writes every count in one number format, in the heading's name too", async () => {
-    setPlanningLimitsForTests({ pageLines: 5 });
     seed(
       TREE,
       { stages: STAGES },
@@ -1346,11 +1791,14 @@ describe("the section bar (planning-index.md §6.3)", () => {
       within(bar()).getByRole("link", { name: /^Too large/ }),
     ).toHaveTextContent("Too large 1,200");
     expect(
-      within(section("Too large")).getByRole("heading", { level: 2 }),
+      within(section("Too large")).getByRole("heading", { level: 3 }),
     ).toHaveAccessibleName("Too large 1,200");
+    // The first rows of a long list, then Show all.
     expect(
-      screen.getByRole("navigation", { name: "Too large pages" }),
-    ).toHaveTextContent("1–5 of 1,200");
+      within(section("Too large")).getByRole("button", {
+        name: "Show all 1,200 of Too large",
+      }),
+    ).toHaveTextContent("Show all 1,200");
   });
 });
 
@@ -1358,7 +1806,7 @@ describe("the cards' blocks, from the scanner client (planning-index.md §10.4)"
   /** The tree with every file changed, so nothing an earlier test held fits. */
   const edited = (label: string) =>
     Object.fromEntries(
-      Object.entries(TREE).map(([path, content]) => [
+      Object.entries(ROUTED).map(([path, content]) => [
         path,
         `${content}\n<!-- ${label} -->\n`,
       ]),
@@ -1378,13 +1826,9 @@ describe("the cards' blocks, from the scanner client (planning-index.md §10.4)"
     expect(asked).toHaveLength(1);
     // Within the size a card renders unasked, so not in full.
     expect(asked[0]?.full).toBeFalsy();
+    // Needs you's cards: no row, nor a ✅ question, has a card.
     expect(new Set(asked[0]?.want.map((w) => w.path))).toEqual(
-      new Set([
-        "plans/design.md",
-        "plans/answered.md",
-        "plans/unrouted.md",
-        "plans/disagrees.md",
-      ]),
+      new Set(["plans/design.md", "plans/unrouted.md"]),
     );
     for (const want of asked[0]?.want ?? []) {
       expect(want.hash).toBe(contentHash(tree[want.path] ?? ""));
@@ -1416,8 +1860,9 @@ describe("the cards' blocks, from the scanner client (planning-index.md §10.4)"
     expect(screen.queryByLabelText("Loading this page's cards")).toBeNull();
     release();
     await settle();
-    expect(cardsIn("Not on a roadmap")).toEqual([
-      "OQ-X1: Question OQ-X1?",
+    expect(cardsIn("Needs you")).toEqual([
+      "OQ-D1: Question OQ-D1?",
+      "OQ-D3: Question OQ-D3?",
       "OQ-U1: Question OQ-U1?",
     ]);
   });
@@ -1490,7 +1935,7 @@ describe("the cards' blocks, from the scanner client (planning-index.md §10.4)"
 });
 
 describe("the reviews, in one request (planning-index.md §9.3)", () => {
-  beforeEach(() => seed());
+  beforeEach(() => seed(ROUTED));
 
   const reviewRequests = () =>
     vi
@@ -1500,22 +1945,22 @@ describe("the reviews, in one request (planning-index.md §9.3)", () => {
   const pathsOf = (at: number) =>
     (reviewRequests()[at]?.[1] as { paths: string[] }).paths;
 
-  it("reads the shown pages' documents with their inputs, in one POST, and none with a GET", async () => {
+  it("reads the cards' documents, and every one holding a question that needs you, with their inputs, in one POST, and none with a GET", async () => {
     await renderPage();
-    // Every section fits on its page, so the one request holds every listed
-    // document, and every row's.
-    expect(reviewRequests()).toHaveLength(1);
     expect(new Set(pathsOf(0))).toEqual(
       new Set([
         "plans/design.md",
         "plans/answered.md",
         "plans/unrouted.md",
         "plans/disagrees.md",
-        "plans/deps.md",
-        "plans/ready.md",
-        "plans/built.md",
       ]),
     );
+    // The rows' documents, which show no comment, come once the sections
+    // have painted.
+    expect(new Set(pathsOf(1))).toEqual(
+      new Set(["plans/deps.md", "plans/ready.md", "plans/built.md"]),
+    );
+    expect(reviewRequests()).toHaveLength(2);
     expect(reviewGets()).toEqual([]);
   });
 
@@ -1526,18 +1971,17 @@ describe("the reviews, in one request (planning-index.md §9.3)", () => {
       ...TREE,
       "plans/waits.md": doc("stage: DESIGN", q("OQ-W9", BLOCKED)),
     });
-    setPlanningLimitsForTests({ pageEntries: 1 });
+    pageSize(1);
     await renderPage();
     expect(reviewRequests()).toHaveLength(2);
     const first = new Set(pathsOf(0));
     const rest = pathsOf(1);
     expect(rest.filter((path) => first.has(path))).toEqual([]);
-    // The first holds the shown pages' documents and every one holding a
-    // question that needs you, on any page: plans/answered.md's OQ-A1 is on
-    // Needs you's second page, and its answers are what the need-you numbers
-    // painted with the sections read.
+    // The first holds the cards' documents and every one holding a question
+    // that needs you: plans/answered.md's OQ-A1 has no card, and its answers
+    // are what the need-you numbers painted with the sections read.
     expect(first.has("plans/answered.md")).toBe(true);
-    expect(rest).toEqual(["plans/waits.md"]);
+    expect(rest).toContain("plans/waits.md");
     expect(new Set([...first, ...rest])).toEqual(
       new Set([
         "plans/design.md",
@@ -1550,56 +1994,58 @@ describe("the reviews, in one request (planning-index.md §9.3)", () => {
         "plans/built.md",
       ]),
     );
-    // And a flip asks nothing more: its documents are in hand.
+    // And a larger page size asks nothing more: its documents are in hand.
     await act(async () => {
       fireEvent.click(
-        within(
-          screen.getByRole("navigation", { name: "Needs you pages" }),
-        ).getByRole("button", { name: "Next ›" }),
+        within(screen.getByTestId("needs-you-end")).getByRole("button", {
+          name: "20",
+        }),
       );
     });
     await settle();
-    expect(cardsIn("Needs you")).toEqual(["OQ-D3: Question OQ-D3?"]);
+    expect(cardsIn("Needs you")).toHaveLength(2);
     expect(reviewRequests()).toHaveLength(2);
     expect(reviewGets()).toEqual([]);
   });
 });
 
 describe("page inputs, and one commit (planning-index.md §6.5)", () => {
-  beforeEach(() => seed());
+  beforeEach(() => seed(ROUTED));
 
-  /** The reviews request, held until `release` answers it. */
+  /** Every reviews request, held until `release` answers them all. */
   function holdReviews(): { release: () => void; fail: () => void } {
     const real = vi.mocked(axios.post).getMockImplementation()!;
-    const held: { release: () => void; fail: () => void } = {
-      release: () => {},
-      fail: () => {},
-    };
+    const waiting: { release: () => void; fail: () => void }[] = [];
     vi.mocked(axios.post).mockImplementation((url, body, config) => {
       if (!String(url).endsWith("/planning/reviews")) {
         return real(url, body, config);
       }
       return new Promise((resolve, reject) => {
-        held.release = () => resolve(real(url, body, config));
-        held.fail = () => reject(new Error("down"));
+        waiting.push({
+          release: () => resolve(real(url, body, config)),
+          fail: () => reject(new Error("down")),
+        });
       });
     });
-    return held;
+    return {
+      release: () => {
+        for (const w of waiting.splice(0)) w.release();
+      },
+      fail: () => {
+        for (const w of waiting.splice(0)) w.fail();
+      },
+    };
   }
 
-  /** A pending take on OQ-U1, filed from its own card, so its card lists it. */
+  /**
+   * A comment on OQ-U1 that answers nothing, dismissed, so its card lists it
+   * and stays a card.
+   */
   async function fileOnU1(): Promise<void> {
-    await renderPage();
-    await act(async () => {
-      fireEvent.click(
-        within(cardFor("OQ-U1")).getByRole("button", {
-          name: "Take this leaning",
-        }),
-      );
+    const { path, comment } = typedOnTitle(ROUTED, "OQ-U1", {
+      resolved: true,
     });
-    cleanup();
-    resetPlanningReviews();
-    resetPlanningPageInputs();
+    reviews[path] = [comment];
   }
 
   const commentsOn = (id: string) =>
@@ -1614,7 +2060,7 @@ describe("page inputs, and one commit (planning-index.md §6.5)", () => {
     expect(screen.queryAllByRole("region")).toHaveLength(0);
     held.release();
     await settle();
-    expect(commentsOn("OQ-U1")).toHaveTextContent("Yes.");
+    expect(commentsOn("OQ-U1")).toHaveTextContent("My answer to OQ-U1.");
   });
 
   it("past the reviews deadline, paints without comments, and puts those that come later only in the card's count", async () => {
@@ -1626,7 +2072,7 @@ describe("page inputs, and one commit (planning-index.md §6.5)", () => {
       await new Promise((resolve) => setTimeout(resolve, 30));
     });
     await settle();
-    expect(cardsIn("Not on a roadmap")).toHaveLength(2);
+    expect(cardsIn("Needs you")).toHaveLength(3);
     expect(commentsOn("OQ-U1")).toBeNull();
 
     held.release();
@@ -1638,7 +2084,7 @@ describe("page inputs, and one commit (planning-index.md §6.5)", () => {
     expect(commentsOn("OQ-U1")).toBeNull();
     // The reader opens it.
     fireEvent.click(count);
-    expect(commentsOn("OQ-U1")).toHaveTextContent("Yes.");
+    expect(commentsOn("OQ-U1")).toHaveTextContent("My answer to OQ-U1.");
   });
 
   it("paints without comments, says so, and disables Copy answers when the reviews request fails", async () => {
@@ -1650,7 +2096,7 @@ describe("page inputs, and one commit (planning-index.md §6.5)", () => {
     await settle();
     const region = screen.getByRole("alert");
     expect(region).toHaveTextContent("Comments could not be loaded.");
-    expect(cardsIn("Not on a roadmap")).toHaveLength(2);
+    expect(cardsIn("Needs you")).toHaveLength(3);
     expect(screen.getByRole("button", { name: /Copy answers/ })).toBeDisabled();
     expect(screen.getByTestId("pending-answers")).toHaveTextContent("–");
   });
@@ -1662,7 +2108,6 @@ describe("page inputs, and one commit (planning-index.md §6.5)", () => {
       ...TREE,
       "plans/waits.md": doc("stage: DESIGN", q("OQ-W9", BLOCKED)),
     });
-    setPlanningLimitsForTests({ pageEntries: 1 });
     const real = vi.mocked(axios.post).getMockImplementation()!;
     let requests = 0;
     vi.mocked(axios.post).mockImplementation((url, body, config) => {
@@ -1709,11 +2154,16 @@ describe("page inputs, and one commit (planning-index.md §6.5)", () => {
     expect(screen.getByLabelText("Loading this page's cards")).toBeTruthy();
   });
 
-  it("keeps the old page on a flip until the new page's inputs are ready", async () => {
-    setPlanningLimitsForTests({ pageEntries: 2, spinnerMs: 0 });
+  it("keeps the old layout on a page size chosen until the new layout's inputs are ready", async () => {
+    pageSize(2);
+    setPlanningLimitsForTests({
+      pageSizes: [2, 20, 30, 50],
+      defaultPageSize: 2,
+      cardsAhead: 0,
+    });
     let hold = false;
     let release: () => void = () => {};
-    serveTree(TREE, "/api", (inline) => ({
+    serveTree(ROUTED, "/api", (inline) => ({
       cards: (repo, want, options) =>
         hold
           ? new Promise<CardAnswer[]>((resolve) => {
@@ -1725,26 +2175,23 @@ describe("page inputs, and one commit (planning-index.md §6.5)", () => {
     hold = true;
     await act(async () => {
       fireEvent.click(
-        within(
-          screen.getByRole("navigation", { name: "Needs you pages" }),
-        ).getByRole("button", { name: "Next ›" }),
+        within(screen.getByTestId("needs-you-end")).getByRole("button", {
+          name: "20",
+        }),
       );
     });
     await settle();
-    expect(router.location).toBe("/.vantage/planning?needs-you=2");
     expect(cardsIn("Needs you")).toEqual([
       "OQ-D1: Question OQ-D1?",
       "OQ-D3: Question OQ-D3?",
     ]);
-    // Its pager says it is on its way.
-    expect(
-      within(
-        screen.getByRole("navigation", { name: "Needs you pages" }),
-      ).getByLabelText("Loading the page"),
-    ).toBeTruthy();
     release();
     await settle();
-    expect(cardsIn("Needs you")).toEqual(["OQ-A1: Question OQ-A1?"]);
+    expect(cardsIn("Needs you")).toEqual([
+      "OQ-D1: Question OQ-D1?",
+      "OQ-D3: Question OQ-D3?",
+      "OQ-U1: Question OQ-U1?",
+    ]);
   });
 
   it("renders a returned-to page's frame and sections in one commit when its inputs are cached", async () => {
@@ -1764,7 +2211,7 @@ describe("page inputs, and one commit (planning-index.md §6.5)", () => {
     expect(screen.getByTestId("viewer")).toBeTruthy();
     // No settling: what the first render commits.
     act(() => router.navigate!(-1));
-    expect(cardsIn("Not on a roadmap")).toHaveLength(2);
+    expect(cardsIn("Needs you")).toHaveLength(3);
   });
 
   // D1 (§6.3, §18): on `g p`, the `g` has asked for page 1's inputs, which
@@ -1790,7 +2237,7 @@ describe("page inputs, and one commit (planning-index.md §6.5)", () => {
     expect(screen.getByRole("navigation", { name: "Sections" })).toBeTruthy();
     expect(screen.queryAllByRole("article")).toHaveLength(0);
     await releaseFrames();
-    expect(cardsIn("Not on a roadmap")).toHaveLength(2);
+    expect(cardsIn("Needs you")).toHaveLength(3);
     expect(warming.runs).toBe(0);
   });
 
@@ -1812,7 +2259,7 @@ describe("page inputs, and one commit (planning-index.md §6.5)", () => {
     expect(vi.mocked(axios.post).mock.calls.length).toBeLessThanOrEqual(
       posts + 1,
     );
-    expect(cardsIn("Not on a roadmap")).toHaveLength(2);
+    expect(cardsIn("Needs you")).toHaveLength(3);
   });
 
   it("reserves the pending count four digits, and shows – until every listed document is counted", async () => {
@@ -1833,7 +2280,7 @@ describe("page inputs, and one commit (planning-index.md §6.5)", () => {
 describe("Mermaid, drawn before the cards commit (planning-index.md §6.5)", () => {
   const DIAGRAM = "graph LR\n  A --> B";
   const tree = {
-    ...TREE,
+    ...ROUTED,
     "plans/unrouted.md": doc(
       "stage: DESIGN",
       q("OQ-U1", OPEN) +
@@ -1889,7 +2336,7 @@ describe("Mermaid, drawn before the cards commit (planning-index.md §6.5)", () 
 });
 
 describe("memoized cards (planning-index.md §6.6)", () => {
-  beforeEach(() => seed());
+  beforeEach(() => seed(ROUTED));
 
   it("renders no card of another document when one document's reviews answer", async () => {
     await renderPage();
@@ -1927,7 +2374,7 @@ describe("a preview card (planning-index.md §6.6)", () => {
   // OQ-U1's card, 150-odd characters, is past a limit configured down to
   // 100; every other card of the tree is within it.
   const tree = {
-    ...TREE,
+    ...ROUTED,
     "plans/unrouted.md": doc(
       "stage: DESIGN",
       q("OQ-U1", OPEN).replace(
@@ -2118,11 +2565,10 @@ describe("several roadmaps (§6.8)", () => {
     expect(cardsIn("Needs you")).toEqual([
       "OQ-D1: Question OQ-D1?",
       "OQ-D3: Question OQ-D3?",
-      "OQ-A1: Question OQ-A1?",
     ]);
     // OQ-U1 is routed, by the other roadmap: neither Needs you here nor
     // Not on a roadmap, and counted on the line instead.
-    expect(cardsIn("Not on a roadmap")).toEqual(["OQ-X1: Question OQ-X1?"]);
+    expect(listedIn("Not on a roadmap")).toEqual(["OQ-X1: Question OQ-X1?"]);
     expect(screen.getByTestId("other-roadmaps")).toHaveTextContent(
       PLANNING_NOTICES.otherRoadmaps(1),
     );
@@ -2166,11 +2612,13 @@ describe("several roadmaps (§6.8)", () => {
     expect(progressBox.isConnected).toBe(false);
   });
 
-  it("follows a pick: the URL rewritten in place, Needs you back on page 1, and the other count", async () => {
-    setPlanningLimitsForTests({ pageEntries: 2 });
+  it("follows a pick: the URL rewritten in place, a new layout of Needs you, and the other count", async () => {
     seed(TWO);
-    await renderPage("/.vantage/planning?needs-you=2&x=1", ["/plans/a.md"]);
-    expect(cardsIn("Needs you")).toEqual(["OQ-A1: Question OQ-A1?"]);
+    await renderPage("/.vantage/planning?x=1", ["/plans/a.md"]);
+    expect(cardsIn("Needs you")).toEqual([
+      "OQ-D1: Question OQ-D1?",
+      "OQ-D3: Question OQ-D3?",
+    ]);
     await pick(NESTED);
     expect(picker().value).toBe(NESTED);
     expect(search().get("roadmap")).toBe(NESTED);
@@ -2180,7 +2628,7 @@ describe("several roadmaps (§6.8)", () => {
       "OQ-U1: Question OQ-U1?",
       "OQ-D3: Question OQ-D3?",
     ]);
-    expect(cardsIn("Not on a roadmap")).toEqual(["OQ-X1: Question OQ-X1?"]);
+    expect(listedIn("Not on a roadmap")).toEqual(["OQ-X1: Question OQ-X1?"]);
     expect(screen.getByTestId("other-roadmaps")).toHaveTextContent(
       PLANNING_NOTICES.otherRoadmaps(2),
     );
@@ -2279,10 +2727,14 @@ describe("several roadmaps (§6.8)", () => {
     serveTree(retired);
     setLoad(readyOf(retired));
     await settle();
+    // Late data (planning-to-do-list.md §4.2): held until the next layout.
+    expect(picker().value).toBe(NESTED);
+    expect(cardsIn("Needs you")[0]).toBe("OQ-U1: Question OQ-U1?");
+    await refresh();
     expect(screen.queryByRole("combobox", { name: "Roadmap" })).toBeNull();
     expect(search().has("roadmap")).toBe(false);
     expect(cardsIn("Needs you")[0]).toBe("OQ-D1: Question OQ-D1?");
-    expect(cardsIn("Not on a roadmap")).toEqual([
+    expect(listedIn("Not on a roadmap")).toEqual([
       "OQ-X1: Question OQ-X1?",
       "OQ-U1: Question OQ-U1?",
     ]);
@@ -2381,7 +2833,10 @@ describe("several roadmaps (§6.8)", () => {
     ).toHaveAttribute("href", `/plans/unrouted.md#L${line}`);
     fireEvent.keyDown(document, { key: "Escape" });
     await pick(NESTED);
-    expect(cardFor("OQ-U1")).toBeTruthy();
+    // Answered: a row of Needs you under this roadmap.
+    expect(
+      screen.getByRole("group", { name: "OQ-U1: Question OQ-U1?" }),
+    ).toBeTruthy();
     expect(screen.getByTestId("pending-answers")).toHaveTextContent("1");
   });
 });
@@ -2431,30 +2886,27 @@ describe("in daemon mode", () => {
 describe("each card's controls follow its state (Plan Q5)", () => {
   beforeEach(() => seed());
 
-  it("gives a blocked card under Blocked Open document alone", async () => {
+  it("lists a blocked question under Blocked as one row, answered from its document (planning-to-do-list.md §3.4)", async () => {
     await renderPage();
-    const card = within(section("Blocked")).getByRole("article");
-    expect(card).toHaveAccessibleName("OQ-D2: Question OQ-D2?");
-    expect(
-      within(card).getByRole("link", { name: OPEN_DOCUMENT }),
-    ).toBeTruthy();
-    expect(
-      within(card).queryByRole("button", { name: "Take this leaning" }),
-    ).toBe(null);
-    expect(within(card).queryByRole("button", { name: "Answer…" })).toBe(null);
+    expect(within(section("Blocked")).queryByRole("article")).toBeNull();
+    const row = screen.getByRole("listitem", {
+      name: "OQ-D2: Question OQ-D2?",
+    });
+    expect(within(row).getByRole("link", { name: "OQ-D2" })).toHaveAttribute(
+      "href",
+      "/plans/design.md#OQ-D2",
+    );
+    expect(within(row).queryByRole("button")).toBeNull();
   });
 
-  it("gives an answered card under Needs you Answer… and Open document, and no Take", async () => {
+  it("lists a ✅ question under To fold into the ledger as one row, never a card (planning-to-do-list.md §3.3)", async () => {
     await renderPage();
-    const card = cardFor("OQ-A1");
-    expect(section("Needs you")).toContainElement(card);
-    expect(within(card).getByRole("button", { name: "Answer…" })).toBeTruthy();
     expect(
-      within(card).getByRole("link", { name: OPEN_DOCUMENT }),
-    ).toBeTruthy();
-    expect(
-      within(card).queryByRole("button", { name: "Take this leaning" }),
-    ).toBe(null);
+      screen.queryByRole("article", { name: "OQ-A1: Question OQ-A1?" }),
+    ).toBeNull();
+    expect(listedIn("To fold into the ledger")).toEqual([
+      "OQ-A1: Question OQ-A1?",
+    ]);
   });
 
   it("gives an open card all three", async () => {
@@ -2473,7 +2925,7 @@ describe("each card's controls follow its state (Plan Q5)", () => {
 describe("filing from the page", () => {
   beforeEach(() => seed());
 
-  it("files on the question's own document, and shows it waiting on the agent", async () => {
+  it("files on the question's own document, and shows it taken on the row it shrinks to", async () => {
     await renderPage();
     await act(async () => {
       fireEvent.click(
@@ -2487,11 +2939,10 @@ describe("filing from the page", () => {
       expect.objectContaining({ comment: "Yes." }),
       { params: { path: "plans/design.md" } },
     );
-    const comments = within(cardFor("OQ-D3")).getByRole("list", {
-      name: "Comments on this question",
-    });
-    expect(comments).toHaveTextContent("Yes.");
-    expect(comments).toHaveTextContent("waiting on the agent");
+    await settle();
+    expect(
+      screen.getByRole("group", { name: "OQ-D3: Question OQ-D3?" }),
+    ).toHaveTextContent("Leaning taken");
     // Its sibling in the same document and the same list lists nothing.
     expect(
       within(cardFor("OQ-D1")).queryByRole("list", {
@@ -2502,9 +2953,12 @@ describe("filing from the page", () => {
 
   it("does not reorder the page", async () => {
     await renderPage();
-    const before = screen
-      .getAllByRole("article")
-      .map((a) => a.getAttribute("aria-label"));
+    const items = () =>
+      Array.from(
+        section("Needs you").querySelectorAll("[data-planning-item]"),
+        (el) => el.getAttribute("aria-label"),
+      );
+    const before = items();
     await act(async () => {
       fireEvent.click(
         within(cardFor("OQ-D3")).getByRole("button", {
@@ -2512,9 +2966,8 @@ describe("filing from the page", () => {
         }),
       );
     });
-    expect(
-      screen.getAllByRole("article").map((a) => a.getAttribute("aria-label")),
-    ).toEqual(before);
+    await settle();
+    expect(items()).toEqual(before);
   });
 
   it("opens the document without touching its review-mode preference", async () => {
@@ -2536,7 +2989,7 @@ describe("filing from the page", () => {
  * ------------------------------------------------------------------ */
 
 describe("Copy answers (§6.7)", () => {
-  beforeEach(() => seed());
+  beforeEach(() => seed(ROUTED));
 
   const copyButton = () => screen.getByRole("button", { name: /Copy answers/ });
   const pendingCount = () => screen.getByTestId("pending-answers").textContent;
@@ -2602,7 +3055,7 @@ describe("Copy answers (§6.7)", () => {
         {
           path: "plans/unrouted.md",
           comments,
-          lines: linesOfText(TREE["plans/unrouted.md"] ?? null),
+          lines: linesOfText(ROUTED["plans/unrouted.md"] ?? null),
         },
       ]),
     );
@@ -2610,7 +3063,7 @@ describe("Copy answers (§6.7)", () => {
   });
 
   it("waits for the quoted lines before it copies", async () => {
-    serveTree(TREE, "/api", () => ({
+    serveTree(ROUTED, "/api", () => ({
       quotes: () => new Promise(() => {}),
     }));
     await renderPage();
@@ -2672,11 +3125,21 @@ describe("Copy answers (§6.7)", () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
     expect(pendingCount()).toBe("0");
+    // Its row is marked; the mark opens the reply in place.
+    const row = screen.getByRole("group", { name: "OQ-D1: Question OQ-D1?" });
+    await act(async () => {
+      fireEvent.click(within(row).getByRole("button", { name: "New reply" }));
+    });
+    await settle();
     expect(within(cardFor("OQ-D1")).getByText("Agent: Done.")).toBeTruthy();
   });
 });
 
 describe("Copy answers across pages (planning-index.md §6.7)", () => {
+  // Sizes a test can choose from on the end line.
+  beforeEach(() =>
+    setPlanningLimitsForTests({ pageSizes: [1, 10, 20], defaultPageSize: 10 }),
+  );
   const copyButton = () => screen.getByRole("button", { name: /Copy answers/ });
   const pendingCount = () => screen.getByTestId("pending-answers").textContent;
 
@@ -2699,13 +3162,36 @@ describe("Copy answers across pages (planning-index.md §6.7)", () => {
     },
   });
 
+  /** Show on an answered row: it opens into its card. */
+  async function showRow(id: string): Promise<void> {
+    await act(async () => {
+      fireEvent.click(
+        within(
+          screen.getByRole("group", { name: `${id}: Question ${id}?` }),
+        ).getByRole("button", { name: /^Show/ }),
+      );
+    });
+    await settle();
+  }
+
+  /** A page size chosen on Needs you's end line, from 1, 10 and 20. */
+  async function choose(size: string): Promise<void> {
+    await act(async () => {
+      fireEvent.click(
+        within(screen.getByTestId("needs-you-end")).getByRole("button", {
+          name: size,
+        }),
+      );
+    });
+    await settle();
+  }
+
   const lineOf = (tree: Record<string, string>, id: string) =>
     readyOf(tree)
       .index.documents.flatMap((d) => d.questions)
       .find((x) => x.id === id)!.line;
 
   it("lets the reader find an off-page answer's document without copying it", async () => {
-    setPlanningLimitsForTests({ pageEntries: 2 });
     seed();
     const line = lineOf(TREE, "OQ-A1");
     reviews["plans/answered.md"] = [
@@ -2728,9 +3214,8 @@ describe("Copy answers across pages (planning-index.md §6.7)", () => {
   });
 
   it("counts and copies a pending comment on a question no page shows", async () => {
-    setPlanningLimitsForTests({ pageEntries: 2 });
     seed();
-    // OQ-A1 is on Needs you's second page, so its card never renders.
+    // OQ-A1 is ✅, so its card never renders.
     reviews["plans/answered.md"] = [
       pendingAt("placed-0001", "Ruled on page two", lineOf(TREE, "OQ-A1")),
     ];
@@ -2760,6 +3245,7 @@ describe("Copy answers across pages (planning-index.md §6.7)", () => {
   // placement, by line alone, would have put it on the question.
   const SCOPED = {
     ...TREE,
+    "roadmap.md": `${TREE["roadmap.md"]}3. [Scoped](plans/scoped.md) last.\n`,
     "plans/scoped.md": doc(
       "stage: DESIGN",
       [
@@ -2797,6 +3283,10 @@ describe("Copy answers across pages (planning-index.md §6.7)", () => {
     ];
     seed(SCOPED);
     await renderPage();
+    // Placed by its line before any card read it, the comment made OQ-S1 an
+    // answered row; its card, opened, reads it on the note.
+    expect(pendingCount()).toBe("1");
+    await showRow("OQ-S1");
     expect(cardFor("OQ-S1")).toBeTruthy();
     expect(pendingCount()).toBe("0");
   });
@@ -2806,41 +3296,30 @@ describe("Copy answers across pages (planning-index.md §6.7)", () => {
     reviews["plans/scoped.md"] = [
       pendingAt("moved-0001", "On the note", lineOf(SCOPED, "OQ-S1"), hash),
     ];
-    // Not on a roadmap is OQ-X1, OQ-S1, OQ-U1: at one a page, OQ-S1 is on page 2.
-    setPlanningLimitsForTests({ pageEntries: 1 });
+    // Needs you is OQ-D1, OQ-D3, OQ-S1: at one a page, OQ-S1 has no card.
+    pageSize(1);
     seed(SCOPED);
     await renderPage();
     expect(screen.queryByRole("article", { name: /OQ-S1/ })).toBeNull();
     expect(pendingCount()).toBe("1");
   });
 
-  // "A card rendered this visit reports its exact scoping": flipping away
-  // does not make the comment it found on the note OQ-S1's again, so Copy
-  // answers holds the same comments on either page.
-  it("keeps a card's own scoping after it is flipped off the page", async () => {
+  // "A card rendered this visit reports its exact scoping": a smaller page
+  // size taking its card away does not make the comment it found on the
+  // note OQ-S1's again, so Copy answers holds the same comments either way.
+  it("keeps a card's own scoping after a new layout takes its card away", async () => {
     const hash = await noteHash();
     reviews["plans/scoped.md"] = [
       pendingAt("moved-0001", "On the note", lineOf(SCOPED, "OQ-S1"), hash),
     ];
-    // Not on a roadmap's first page is OQ-X1 and OQ-S1, its second OQ-U1.
-    setPlanningLimitsForTests({ pageEntries: 2 });
     seed(SCOPED);
     await renderPage();
+    await showRow("OQ-S1");
     expect(pendingCount()).toBe("0");
-    const flipUnrouted = async (label: "Next ›" | "‹ Previous") => {
-      await act(async () => {
-        fireEvent.click(
-          within(
-            screen.getByRole("navigation", { name: "Not on a roadmap pages" }),
-          ).getByRole("button", { name: label }),
-        );
-      });
-      await settle();
-    };
-    await flipUnrouted("Next ›");
+    await choose("1");
     expect(screen.queryByRole("article", { name: /OQ-S1/ })).toBeNull();
     expect(pendingCount()).toBe("0");
-    await flipUnrouted("‹ Previous");
+    await choose("10");
     expect(cardFor("OQ-S1")).toBeTruthy();
     expect(pendingCount()).toBe("0");
   });
@@ -2850,17 +3329,10 @@ describe("Copy answers across pages (planning-index.md §6.7)", () => {
     reviews["plans/scoped.md"] = [
       pendingAt("moved-0001", "On the note", lineOf(SCOPED, "OQ-S1"), hash),
     ];
-    setPlanningLimitsForTests({ pageEntries: 2 });
     seed(SCOPED);
     await renderPage();
-    await act(async () => {
-      fireEvent.click(
-        within(
-          screen.getByRole("navigation", { name: "Not on a roadmap pages" }),
-        ).getByRole("button", { name: "Next ›" }),
-      );
-    });
-    await settle();
+    await showRow("OQ-S1");
+    await choose("1");
     expect(pendingCount()).toBe("0");
     // Another comment on the document, which the card never saw: what it
     // read is no longer what the document has, so placement decides.
@@ -2942,10 +3414,9 @@ describe("each section's explanation, and Copy agent request", () => {
       const about = region.querySelector("[data-planning-section-about]")!;
       expect(about.textContent, id).toBe(explanation);
       expect(
-        about.previousElementSibling?.contains(
-          within(region).getByRole("heading", { level: 2 }),
-        ),
-      ).toBe(true);
+        about.compareDocumentPosition(region.querySelector("h2, h3")!) &
+          Node.DOCUMENT_POSITION_PRECEDING,
+      ).toBeTruthy();
       // And the section bar's entry says it on hover.
       expect(
         within(screen.getByRole("navigation", { name: "Sections" })).getByRole(
@@ -2996,6 +3467,7 @@ describe("each section's explanation, and Copy agent request", () => {
       "Copy agent request for Ready to build",
       "Copy agent request for Ready to graduate",
       "Copy agent request for Stage conflict",
+      "Copy agent request for To fold into the ledger",
     ]);
     for (const title of ["Needs you", "Blocked"]) {
       expect(
@@ -3020,10 +3492,8 @@ describe("each section's explanation, and Copy agent request", () => {
   });
 
   it("copies the request for every entry of its section, on every page, with nothing selected and no network", async () => {
-    // One entry a page, so Not on a roadmap's second question is not shown.
-    setPlanningLimitsForTests({ pageEntries: 1 });
     await renderPage();
-    expect(cardsIn("Not on a roadmap")).toHaveLength(1);
+    expect(listedIn("Not on a roadmap")).toHaveLength(2);
     // Nothing more is fetched for it.
     vi.mocked(axios.get).mockRejectedValue(new Error("offline"));
     vi.mocked(axios.post).mockRejectedValue(new Error("offline"));
@@ -3372,7 +3842,7 @@ describe("each section's explanation, and Copy agent request", () => {
 });
 
 describe("a card's document name, then Back (§6.6)", () => {
-  beforeEach(() => seed());
+  beforeEach(() => seed(ROUTED));
 
   function BackButton() {
     const navigate = useNavigate();
@@ -3449,7 +3919,7 @@ describe("a card's document name, then Back (§6.6)", () => {
 });
 
 describe("Open document (§6.6)", () => {
-  beforeEach(() => seed());
+  beforeEach(() => seed(ROUTED));
 
   // Its icon is the one for a link that opens elsewhere, and a reader who
   // clicked it expected a new tab (user direction, 2026-10-01). The page
@@ -3497,13 +3967,30 @@ describe("scoping a comment to its question, over agent-bootstrap.md", () => {
       );
     });
 
-    for (const id of ["OQ-B1", "OQ-B2", "OQ-B3", "OQ-B4", "OQ-B5"]) {
+    await settle();
+    // Answered here, its card is a row now (planning-to-do-list.md §4.1).
+    expect(bootstrapCard("OQ-B3")).toBeUndefined();
+    for (const id of ["OQ-B1", "OQ-B2", "OQ-B4", "OQ-B5"]) {
       const list = within(bootstrapCard(id)).queryByRole("list", {
         name: "Comments on this question",
       });
-      if (id === "OQ-B3") expect(list, id).not.toBeNull();
-      else expect(list, id).toBeNull();
+      expect(list, id).toBeNull();
     }
+    // Shown again, its card lists the take.
+    await act(async () => {
+      fireEvent.click(
+        within(screen.getByRole("group", { name: /^OQ-B3:/ })).getByRole(
+          "button",
+          { name: /^Show/ },
+        ),
+      );
+    });
+    await settle();
+    expect(
+      within(bootstrapCard("OQ-B3")).getByRole("list", {
+        name: "Comments on this question",
+      }),
+    ).toHaveTextContent("Both, and stop there.");
 
     expect(screen.getByTestId("pending-answers")).toHaveTextContent("1");
     await act(async () => {
@@ -3640,6 +4127,16 @@ describe("the planning outline (§6.9)", () => {
       `[data-testid=outline-document][data-path="${path}"]`,
     )!;
 
+  /** OQ-D1's card id (`planningCardId`), from the index seeded. */
+  const d1Id = () => {
+    const load = usePlanningStore.getState().byRepo[""];
+    const index = load?.status === "ready" ? load.index : null;
+    const question = index!.documents
+      .find((d) => d.path === "plans/design.md")!
+      .questions.find((x) => x.id === "OQ-D1")!;
+    return planningCardId("plans/design.md", "OQ-D1", question.unitLine);
+  };
+
   it("is the contents column, which the header's toggle shows and hides", async () => {
     localStorage.removeItem("vantage:tocOpen");
     seed();
@@ -3658,16 +4155,16 @@ describe("the planning outline (§6.9)", () => {
     seed();
     await renderPage();
     expect(outlineSections()).toEqual([
-      "Needs you 3",
+      "Needs you 2",
       "Not on a roadmap 2",
       "Blocked 2",
       "Ready to build 1",
       "Ready to graduate 1",
       "Stage conflict 1",
     ]);
+    // A ✅ question has left Needs you (planning-to-do-list.md §3.3).
     expect(outlineDocuments("Needs you")).toEqual([
       "plans/design.md, 2 questions",
-      "plans/answered.md, 1 question",
     ]);
     expect(outlineDocuments("Not on a roadmap")).toEqual([
       "plans/disagrees.md, 1 question",
@@ -3708,49 +4205,42 @@ describe("the planning outline (§6.9)", () => {
     }
   });
 
-  it("flips a section to the page holding a document's first entry, in place of the history entry, and brings it into view", async () => {
-    setPlanningLimitsForTests({ pageRows: 1 });
-    seed({
-      ...TREE,
-      "plans/ready2.md": doc("status: accepted\nstage: DECIDED", "Decided."),
-    });
+  it("opens the folded group holding a document's row, then brings the row into view, with no history entry", async () => {
+    localStorage.removeItem("vantage:planningMaintenanceOpen");
+    seed();
     const scrolled = vi.fn();
     Element.prototype.scrollIntoView = scrolled;
     try {
       await renderPage("/.vantage/planning", ["/plans/roadmap.md"]);
-      expect(documentsIn("Ready to build")).toEqual(["plans/ready.md"]);
+      expect(querySection("Ready to build")).toBeNull();
       scrolled.mockClear();
       await act(async () => {
-        fireEvent.click(outlineDocument("Ready to build", "plans/ready2.md"));
+        fireEvent.click(outlineDocument("Ready to build", "plans/ready.md"));
       });
       await settle();
-      expect(router.location).toBe("/.vantage/planning?ready=2");
-      expect(documentsIn("Ready to build")).toEqual(["plans/ready2.md"]);
+      expect(router.location).toBe("/.vantage/planning");
       const row = section("Ready to build").querySelector(
-        '[data-planning-document="plans/ready2.md"]',
+        '[data-planning-document="plans/ready.md"]',
       )!;
-      expect(row.id).toBe(planningRowId("ready", "plans/ready2.md"));
+      expect(row.id).toBe(planningRowId("ready", "plans/ready.md"));
       expect(scrolled.mock.contexts).toContain(row);
       // The focus goes with it, onto the row's first control.
       expect(document.activeElement).toBe(
         within(row as HTMLElement).getByRole("link", {
-          name: "plans/ready2.md",
+          name: "plans/ready.md",
         }),
       );
-      // Already on its page, a document is brought into view at once.
+      // The group open, a document is brought into view at once.
       scrolled.mockClear();
-      fireEvent.click(outlineDocument("Ready to build", "plans/ready2.md"));
+      fireEvent.click(outlineDocument("Ready to build", "plans/ready.md"));
       expect(scrolled.mock.contexts).toContain(row);
-      // The flip replaced the entry it was on.
       act(() => router.navigate!(-1));
       expect(router.location).toBe("/plans/roadmap.md");
     } finally {
       delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
     }
   });
-
-  it("flips a section of cards to the page holding a document's first card", async () => {
-    setPlanningLimitsForTests({ pageEntries: 1 });
+  it("brings a document's first card into view, and the focus to its first control", async () => {
     seed();
     const scrolled = vi.fn();
     Element.prototype.scrollIntoView = scrolled;
@@ -3758,22 +4248,12 @@ describe("the planning outline (§6.9)", () => {
       await renderPage();
       scrolled.mockClear();
       await act(async () => {
-        fireEvent.click(outlineDocument("Needs you", "plans/answered.md"));
+        fireEvent.click(outlineDocument("Needs you", "plans/design.md"));
       });
       await settle();
-      expect(router.location).toBe("/.vantage/planning?needs-you=3");
-      expect(cardsIn("Needs you")).toEqual(["OQ-A1: Question OQ-A1?"]);
-      // The card itself, by the id the card carries (`planningCardId`), is
-      // brought into view, and the focus goes to its first control.
-      const card = cardFor("OQ-A1");
-      const load = usePlanningStore.getState().byRepo[""];
-      const index = load?.status === "ready" ? load.index : null;
-      const [question] = index!.documents.find(
-        (d) => d.path === "plans/answered.md",
-      )!.questions;
-      expect(card.id).toBe(
-        planningCardId("plans/answered.md", "OQ-A1", question!.unitLine),
-      );
+      expect(router.location).toBe("/.vantage/planning");
+      const card = cardFor("OQ-D1");
+      expect(card.id).toBe(d1Id());
       expect(scrolled.mock.contexts).toContain(card);
       expect(card.contains(document.activeElement)).toBe(true);
       expect(document.activeElement).not.toBe(card);
@@ -3781,108 +4261,45 @@ describe("the planning outline (§6.9)", () => {
       delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
     }
   });
-
   it("scrolls to the card a link's fragment names once the sections are in", async () => {
     seed();
-    const load = () => usePlanningStore.getState().byRepo[""];
     const scrolled = vi.fn();
     Element.prototype.scrollIntoView = scrolled;
     try {
       // The index is seeded, so the card's id is known before the page opens.
-      const ready = load();
-      const index = ready?.status === "ready" ? ready.index : null;
-      const [question] = index!.documents.find(
-        (d) => d.path === "plans/answered.md",
-      )!.questions;
-      const id = planningCardId(
-        "plans/answered.md",
-        "OQ-A1",
-        question!.unitLine,
-      );
-      await renderPage(`/.vantage/planning#${id}`);
+      await renderPage(`/.vantage/planning#${d1Id()}`);
       expect(scrolled).toHaveBeenCalledTimes(1);
-      expect(scrolled.mock.contexts[0]).toBe(cardFor("OQ-A1"));
+      expect(scrolled.mock.contexts[0]).toBe(cardFor("OQ-D1"));
     } finally {
       delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
     }
   });
-
-  // A link whose query the page rewrites in place (an explicit page 1 here;
-  // a missing roadmap= where two route) still goes where its fragment points:
-  // the rewrite keeps the fragment.
   it("keeps a link's fragment through the rewrite of its query, and scrolls to its card", async () => {
     seed();
-    const load = () => usePlanningStore.getState().byRepo[""];
     const scrolled = vi.fn();
     Element.prototype.scrollIntoView = scrolled;
     try {
-      const ready = load();
-      const index = ready?.status === "ready" ? ready.index : null;
-      const [question] = index!.documents.find(
-        (d) => d.path === "plans/answered.md",
-      )!.questions;
-      const id = planningCardId(
-        "plans/answered.md",
-        "OQ-A1",
-        question!.unitLine,
-      );
+      const id = d1Id();
+      // An old page parameter, which the rewrite drops.
       await renderPage(`/.vantage/planning?unrouted=1#${id}`);
       expect(router.location).toBe("/.vantage/planning");
       expect(router.hash).toBe(`#${id}`);
       expect(scrolled).toHaveBeenCalledTimes(1);
-      expect(scrolled.mock.contexts[0]).toBe(cardFor("OQ-A1"));
+      expect(scrolled.mock.contexts[0]).toBe(cardFor("OQ-D1"));
     } finally {
       delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
     }
   });
-
-  it("asks for a document's page ahead when the pointer or the focus reaches its entry", async () => {
-    setPlanningLimitsForTests({ pageEntries: 1 });
-    const asked: CardWant[][] = [];
-    serveTree(TREE, "/api", (inline) => ({
-      cards: (repo, want, options) => {
-        asked.push(want);
-        return inline.cards(repo, want, options);
-      },
-    }));
-    setLoad(readyOf(TREE));
-    await renderPage();
-    const a1Asked = () =>
-      asked.some((want) => want.some((w) => w.path === "plans/answered.md"));
-    expect(a1Asked()).toBe(false);
-    fireEvent.pointerEnter(outlineDocument("Needs you", "plans/answered.md"));
-    await settle();
-    expect(a1Asked()).toBe(true);
-    // The jump then has its page in hand, and asks nothing more.
-    const before = asked.length;
-    await act(async () => {
-      fireEvent.click(outlineDocument("Needs you", "plans/answered.md"));
-    });
-    await settle();
-    expect(cardsIn("Needs you")).toEqual(["OQ-A1: Question OQ-A1?"]);
-    expect(asked).toHaveLength(before);
-  });
-
-  it("links each document to its page and its first card, and leaves a modified click to the browser", async () => {
-    setPlanningLimitsForTests({ pageEntries: 1 });
+  it("links each document to its first card, and leaves a modified click to the browser", async () => {
     seed();
     await renderPage();
-    const answered = outlineDocument("Needs you", "plans/answered.md");
-    const load = usePlanningStore.getState().byRepo[""];
-    const index = load?.status === "ready" ? load.index : null;
-    const [question] = index!.documents.find(
-      (d) => d.path === "plans/answered.md",
-    )!.questions;
-    expect(answered).toHaveAttribute(
-      "href",
-      `/.vantage/planning?needs-you=3#${planningCardId("plans/answered.md", "OQ-A1", question!.unitLine)}`,
-    );
+    const design = outlineDocument("Needs you", "plans/design.md");
+    expect(design).toHaveAttribute("href", `/.vantage/planning#${d1Id()}`);
     expect(outlineEntry("Blocked")).toHaveAttribute("href", "#waiting");
-    fireEvent.click(answered, { ctrlKey: true });
+    fireEvent.click(design, { ctrlKey: true });
     await settle();
     expect(router.location).toBe("/.vantage/planning");
   });
-
   it("scrolls to the row a link's fragment names once the sections are in", async () => {
     seed();
     const scrolled = vi.fn();
@@ -3925,7 +4342,7 @@ describe("the planning outline (§6.9)", () => {
           outline().querySelectorAll("[aria-current=location]"),
           (a) => a.getAttribute("aria-label") ?? a.textContent,
         );
-      expect(current()).toEqual(["Needs you 3"]);
+      expect(current()).toEqual(["Needs you 2"]);
 
       const placed = Array.from(
         document.querySelectorAll("[data-planning-sections] [id]"),
@@ -3956,11 +4373,11 @@ describe("the planning outline (§6.9)", () => {
     setPlanningLimitsForTests({ outlineDocuments: 1 });
     seed();
     await renderPage();
-    expect(outlineDocuments("Needs you")).toEqual([
-      "plans/design.md, 2 questions",
+    expect(outlineDocuments("Not on a roadmap")).toEqual([
+      "plans/disagrees.md, 1 question",
     ]);
     expect(
-      within(outlineEntry("Needs you").parentElement!).getByTestId(
+      within(outlineEntry("Not on a roadmap").parentElement!).getByTestId(
         "outline-more",
       ),
     ).toHaveTextContent("and 1 more document");
@@ -3998,9 +4415,9 @@ describe("Expand all and Collapse all (planning-index.md §6.6)", () => {
     "plans/unrouted.md": doc("stage: DESIGN", long("OQ-U1")),
   };
 
-  // Needs you on two pages, of two cards and one, and Not on a roadmap on one.
+  // Needs you at two cards, and a larger page size that brings in OQ-L3.
   beforeEach(() => {
-    setPlanningLimitsForTests({ pageEntries: 2 });
+    pageSize(2);
     seed(FOLDING);
   });
 
@@ -4026,11 +4443,12 @@ describe("Expand all and Collapse all (planning-index.md §6.6)", () => {
     within(cardFor(id)).getByRole("button", {
       name: /^Show (full question|less)$/,
     });
-  const flip = async (label: "Next ›" | "‹ Previous") =>
+  /** A page size chosen on the end line: a new layout. */
+  const size = async (n: "2" | "20") =>
     press(
-      within(
-        screen.getByRole("navigation", { name: "Needs you pages" }),
-      ).getByRole("button", { name: label }),
+      within(screen.getByTestId("needs-you-end")).getByRole("button", {
+        name: n,
+      }),
     );
 
   it("sits at the end of the section bar's line, and folds and unfolds every card on the page", async () => {
@@ -4043,24 +4461,24 @@ describe("Expand all and Collapse all (planning-index.md §6.6)", () => {
     expect(
       bar.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
-    expect(folds()).toEqual({ "OQ-L1": false, "OQ-L2": false, "OQ-U1": false });
+    expect(folds()).toEqual({ "OQ-L1": false, "OQ-L2": false });
 
     await press(button);
-    expect(folds()).toEqual({ "OQ-L1": true, "OQ-L2": true, "OQ-U1": true });
+    expect(folds()).toEqual({ "OQ-L1": true, "OQ-L2": true });
     expect(toggle()).toHaveTextContent("Collapse all");
     expect(readPreference(KEY)).toBe("true");
 
     await press(toggle());
-    expect(folds()).toEqual({ "OQ-L1": false, "OQ-L2": false, "OQ-U1": false });
+    expect(folds()).toEqual({ "OQ-L1": false, "OQ-L2": false });
     expect(toggle()).toHaveTextContent("Expand all");
     expect(readPreference(KEY)).toBe("false");
   });
 
-  it("opens every card rendered later its way: another page, and the next visit, from its first render", async () => {
+  it("opens every card rendered later its way: a new layout, and the next visit, from its first render", async () => {
     const view = await renderPage();
     await press(toggle());
-    await flip("Next ›");
-    expect(folds()).toEqual({ "OQ-L3": true, "OQ-U1": true });
+    await size("20");
+    expect(folds()).toEqual({ "OQ-L1": true, "OQ-L2": true, "OQ-L3": true });
     view.unmount();
 
     // The next visit: every card is unfolded when it is put on the page, so
@@ -4077,33 +4495,29 @@ describe("Expand all and Collapse all (planning-index.md §6.6)", () => {
     await renderPage();
     flipped.push(...observer.takeRecords());
     observer.disconnect();
-    expect(folds()).toEqual({ "OQ-L1": true, "OQ-L2": true, "OQ-U1": true });
+    expect(folds()).toEqual({ "OQ-L1": true, "OQ-L2": true, "OQ-L3": true });
     expect(flipped).toEqual([]);
     expect(toggle()).toHaveTextContent("Collapse all");
   });
-
-  it("lets a card's own fold win until the next Expand all or Collapse all, across a flip away and back", async () => {
+  it("lets a card's own fold win until the next Expand all or Collapse all, across a new layout", async () => {
     await renderPage();
     await press(toggle());
     await press(foldOf("OQ-L1"));
-    expect(folds()).toEqual({ "OQ-L1": false, "OQ-L2": true, "OQ-U1": true });
+    expect(folds()).toEqual({ "OQ-L1": false, "OQ-L2": true });
 
-    // Flipped away and back, it is as the reader left it.
-    await flip("Next ›");
-    await flip("‹ Previous");
-    expect(folds()).toEqual({ "OQ-L1": false, "OQ-L2": true, "OQ-U1": true });
+    // Through a new layout, it is as the reader left it.
+    await size("20");
+    expect(folds()).toEqual({ "OQ-L1": false, "OQ-L2": true, "OQ-L3": true });
 
     // The next press brings every card to the page's, its own included.
     await press(toggle());
-    expect(folds()).toEqual({ "OQ-L1": false, "OQ-L2": false, "OQ-U1": false });
+    expect(folds()).toEqual({ "OQ-L1": false, "OQ-L2": false, "OQ-L3": false });
     await press(toggle());
-    expect(folds()).toEqual({ "OQ-L1": true, "OQ-L2": true, "OQ-U1": true });
+    expect(folds()).toEqual({ "OQ-L1": true, "OQ-L2": true, "OQ-L3": true });
     // And forgets the card's own fold.
-    await flip("Next ›");
-    await flip("‹ Previous");
-    expect(folds()).toEqual({ "OQ-L1": true, "OQ-L2": true, "OQ-U1": true });
+    await size("2");
+    expect(folds()).toEqual({ "OQ-L1": true, "OQ-L2": true });
   });
-
   it("follows another tab's choice for the cards it renders later, and moves none on screen", async () => {
     await renderPage();
     localStorage.setItem(KEY, "true");
@@ -4117,20 +4531,20 @@ describe("Expand all and Collapse all (planning-index.md §6.6)", () => {
       );
     });
     await settle();
-    expect(folds()).toEqual({ "OQ-L1": false, "OQ-L2": false, "OQ-U1": false });
+    expect(folds()).toEqual({ "OQ-L1": false, "OQ-L2": false });
     // Named for what a press does to the cards on screen, which the other
     // tab's choice left folded.
     expect(toggle()).toHaveTextContent("Expand all");
-    await flip("Next ›");
-    expect(folds()).toEqual({ "OQ-L3": true, "OQ-U1": false });
+    await size("20");
+    expect(folds()).toEqual({ "OQ-L1": false, "OQ-L2": false, "OQ-L3": true });
     expect(toggle()).toHaveTextContent("Expand all");
     // So the first press here does what it says.
     await press(toggle());
-    expect(folds()).toEqual({ "OQ-L3": true, "OQ-U1": true });
+    expect(folds()).toEqual({ "OQ-L1": true, "OQ-L2": true, "OQ-L3": true });
     expect(toggle()).toHaveTextContent("Collapse all");
     expect(readPreference(KEY)).toBe("true");
     await press(toggle());
-    expect(folds()).toEqual({ "OQ-L3": false, "OQ-U1": false });
+    expect(folds()).toEqual({ "OQ-L1": false, "OQ-L2": false, "OQ-L3": false });
     expect(readPreference(KEY)).toBe("false");
   });
 
@@ -4165,64 +4579,18 @@ describe("Expand all and Collapse all (planning-index.md §6.6)", () => {
  * ------------------------------------------------------------------ */
 
 describe("a comment on a question is its answer (§6.7)", () => {
-  /**
-   * A pending comment typed on `id`'s title in its document, the first line
-   * of its unit — not the leaning's block, which a take anchors on.
-   */
-  function typedOnTitle(
-    tree: Record<string, string>,
-    id: string,
-    patch: Partial<ReviewComment> = {},
-  ): { path: string; comment: ReviewComment } {
-    const question = readyOf(tree)
-      .index.documents.flatMap((d) => d.questions)
-      .find((x) => x.id === id)!;
-    expect(question.unitLine).not.toBe(question.line);
-    return {
-      path: question.path,
-      comment: {
-        id: `typed-${id}`,
-        comment: `My answer to ${id}.`,
-        created_at: 0,
-        reactions: [],
-        anchor: {
-          source_line: question.unitLine,
-          block_text_hash: "00000000",
-          selection_offset: 0,
-          selection_length: 0,
-        },
-        ...patch,
-      },
-    };
-  }
-
-  function answer(tree: Record<string, string>, ...ids: string[]): void {
-    for (const id of ids) {
-      const { path, comment } = typedOnTitle(tree, id);
-      reviews[path] = [...(reviews[path] ?? []), comment];
-    }
-  }
-
   const ANSWERED_CHIP = "Answered — waiting on the agent";
 
-  it("marks the card answered where Take stood, keeps it listed, and copies it", async () => {
+  it("lists a question your comment answers as an answered row with its card's chip, and copies it (planning-to-do-list.md §3.3)", async () => {
     seed();
     answer(TREE, "OQ-D1");
     await renderPage();
-
-    const card = cardFor("OQ-D1");
-    expect(within(card).getByText(ANSWERED_CHIP)).toHaveClass(
+    const row = screen.getByRole("group", { name: "OQ-D1: Question OQ-D1?" });
+    expect(within(row).getByText(ANSWERED_CHIP)).toHaveClass(
       "review-oq-answered",
     );
-    expect(
-      within(card).queryByRole("button", { name: "Take this leaning" }),
-    ).toBeNull();
-    // Still listed, where it was: the human sees what they answered.
-    expect(cardsIn("Needs you")).toEqual([
-      "OQ-D1: Question OQ-D1?",
-      "OQ-D3: Question OQ-D3?",
-      "OQ-A1: Question OQ-A1?",
-    ]);
+    expect(rowIds()).toEqual(["OQ-D1"]);
+    expect(cardsIn("Needs you")).toEqual(["OQ-D3: Question OQ-D3?"]);
     // Its sibling in the same list is not answered by it.
     expect(
       within(cardFor("OQ-D3")).getByRole("button", {
@@ -4232,7 +4600,6 @@ describe("a comment on a question is its answer (§6.7)", () => {
     // And Copy answers holds it.
     expect(screen.getByTestId("pending-answers")).toHaveTextContent("1");
   });
-
   it("does not take a comment the agent has answered for the human's answer", async () => {
     seed();
     const { path, comment } = typedOnTitle(TREE, "OQ-D1", {
@@ -4253,71 +4620,46 @@ describe("a comment on a question is its answer (§6.7)", () => {
     expect(screen.getByTestId("pending-answers")).toHaveTextContent("0");
   });
 
-  it("says Nothing needs you at the head of the sections once every open question has its answer", async () => {
+  it("says Nothing needs you on Needs you's end line once the last card is answered here", async () => {
     seed();
-    // Every open question outside the done role, but one.
-    answer(TREE, "OQ-D1", "OQ-D3", "OQ-U1");
+    answer(TREE, "OQ-D1");
     await renderPage();
-    expect(screen.queryByTestId("nothing-needs-you")).toBeNull();
-
-    // The last one, answered from its card: filed here, so it counts at once.
+    expect(screen.getByTestId("needs-you-end")).toHaveTextContent(/^show /);
     await act(async () => {
       fireEvent.click(
-        within(cardFor("OQ-X1")).getByRole("button", {
+        within(cardFor("OQ-D3")).getByRole("button", {
           name: "Take this leaning",
         }),
       );
     });
     await settle();
-    const line = screen.getByTestId("nothing-needs-you");
-    expect(line).toHaveTextContent(PLANNING_NOTICES.nothingNeedsYou);
-    expect(line).toHaveTextContent(
-      "Every open question has your answer, waiting on the agent.",
+    expect(screen.getByTestId("needs-you-end")).toHaveTextContent(
+      "Nothing needs you",
     );
-    // In the sections' region, which fills in one commit, never among the
-    // notices the frame painted before the sections.
+    // Every row still listed, each with its chip.
+    expect(rowIds()).toEqual(["OQ-D1", "OQ-D3"]);
     expect(
-      document.querySelector("[data-planning-sections]")!.firstElementChild,
-    ).toBe(line);
-    // Every card is still listed, each marked.
-    expect(cardsIn("Needs you")).toHaveLength(3);
-    expect(screen.getAllByText(ANSWERED_CHIP)).toHaveLength(3);
-    expect(within(cardFor("OQ-X1")).getByText("Leaning taken")).toBeTruthy();
+      screen.getByRole("group", { name: "OQ-D3: Question OQ-D3?" }),
+    ).toHaveTextContent("Leaning taken");
   });
-
   it("draws it with the first sections when every answer is in their documents' reviews", async () => {
     seed();
-    answer(TREE, "OQ-D1", "OQ-D3", "OQ-U1", "OQ-X1");
+    answer(TREE, "OQ-D1", "OQ-D3");
     await renderPage();
-    expect(screen.getByTestId("nothing-needs-you")).toBeTruthy();
-    // One line, not the index's and this one both.
-    expect(screen.getAllByTestId("nothing-needs-you")).toHaveLength(1);
+    expect(screen.getByTestId("needs-you-end")).toHaveTextContent(
+      "Nothing needs you",
+    );
+    // The index's own line is for no open question at all.
+    expect(screen.queryByTestId("nothing-needs-you")).toBeNull();
   });
-
-  it("says beside each section's count how many of its entries are answered", async () => {
-    // So "Nothing needs you" above a section titled Needs you 3 reads as
-    // three answered, not three waiting.
+  it("says in Needs you's heading how many need you, live, and how many answered rows it lists", async () => {
     seed();
-    answer(TREE, "OQ-D1", "OQ-D3", "OQ-U1", "OQ-X1");
+    answer(TREE, "OQ-D1", "OQ-D3");
     await renderPage();
-    const heading = (name: string) =>
-      screen.getByRole("heading", { level: 2, name: new RegExp(`^${name}`) });
-    expect(heading("Needs you")).toHaveTextContent(
-      /Needs you\s*3\s*\(2 answered\)/,
-    );
-    expect(heading("Not on a roadmap")).toHaveTextContent(
-      /Not on a roadmap\s*2\s*\(2 answered\)/,
-    );
-    const bar = screen.getByRole("navigation", { name: "Sections" });
     expect(
-      within(bar).getByRole("link", { name: /^Needs you/ }),
-    ).toHaveTextContent(/Needs you\s*3\s*\(2 answered\)/);
-    // A section none of whose entries is answered says nothing more.
-    expect(
-      within(bar).getByRole("link", { name: /^Blocked/ }),
-    ).not.toHaveTextContent("answered");
+      screen.getByRole("heading", { level: 2, name: /^Needs you/ }),
+    ).toHaveTextContent(/^Needs you\s*0\s*·\s*2 answered$/);
   });
-
   describe("with several roadmaps", () => {
     const NESTED = "docs/plans/roadmap.md";
     const TWO: Record<string, string> = {
@@ -4369,9 +4711,12 @@ describe("a comment on a question is its answer (§6.7)", () => {
         "data-reserve",
         PLANNING_NOTICES.otherRoadmaps(1),
       );
-      // Both still listed where they were, each marked answered.
-      expect(cardsIn("Needs you")).toContain("OQ-D1: Question OQ-D1?");
-      expect(within(cardFor("OQ-D1")).getByText(ANSWERED_CHIP)).toBeTruthy();
+      // Listed as an answered row, with its chip.
+      expect(
+        within(
+          screen.getByRole("group", { name: "OQ-D1: Question OQ-D1?" }),
+        ).getByText(ANSWERED_CHIP),
+      ).toBeTruthy();
     });
 
     it("says nothing matches, and not that nothing needs you, for a filter that keeps none of the answered questions' entries", async () => {
@@ -4460,7 +4805,9 @@ describe("a comment on a question is its answer (§6.7)", () => {
         fireEvent.change(picker(), { target: { value: NESTED } });
       });
       await settle();
-      expect(screen.getByTestId("nothing-needs-you")).toBeTruthy();
+      expect(screen.getByTestId("needs-you-end")).toHaveTextContent(
+        "Nothing needs you",
+      );
     });
   });
 });
@@ -4667,15 +5014,15 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       await renderPage("/.vantage/planning?filter=&x=1&filter=+");
       expect(router.location).toBe("/.vantage/planning?x=1");
       expect(notice()).toBeNull();
-      expect(cardsIn("Needs you")).toHaveLength(3);
+      expect(cardsIn("Needs you")).toHaveLength(2);
     });
 
     it("applies nothing it cannot read, shows every entry, names the term and leaves the address as written", async () => {
       const url =
         "/.vantage/planning?filter=path:plans/design.md+is:closed+is:open";
       await renderPage(url);
-      expect(cardsIn("Needs you")).toHaveLength(3);
-      expect(cardsIn("Not on a roadmap")).toHaveLength(2);
+      expect(cardsIn("Needs you")).toHaveLength(2);
+      expect(listedIn("Not on a roadmap")).toHaveLength(2);
       expect(querySection("Blocked")).not.toBeNull();
       expect(noticeLines()).toEqual([
         `Not filtered: this Vantage cannot read is:closed. It reads words, "quoted phrases", path: and is:open terms, and a - before any of them to leave out what it matches, such as generator path:docs/design/*.md is:open. Every entry is shown.`,
@@ -4782,19 +5129,20 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       expect(box().value).toBe("path:plans/unrouted.md");
     });
 
-    it("reads a filtered link's page parameters against the filtered sections", async () => {
-      setPlanningLimitsForTests({ pageEntries: 1 });
+    it("drops a filtered link's page parameters, which name no page (planning-to-do-list.md §7)", async () => {
       await renderPage(
         "/.vantage/planning?filter=path:plans/design.md&needs-you=2&waiting=4",
       );
-      expect(cardsIn("Needs you")).toEqual(["OQ-D3: Question OQ-D3?"]);
-      // Blocked holds one entry under this filter, so page 4 is clamped.
+      expect(cardsIn("Needs you")).toEqual([
+        "OQ-D1: Question OQ-D1?",
+        "OQ-D3: Question OQ-D3?",
+      ]);
       expect(router.location).toBe(
-        "/.vantage/planning?filter=path:plans/design.md&needs-you=2",
+        "/.vantage/planning?filter=path:plans/design.md",
       );
     });
 
-    it("applies the same text to the next index", async () => {
+    it("applies the same text to the next index at the next layout", async () => {
       await renderPage(
         "/.vantage/planning?filter=path:plans/design.md+is:open",
       );
@@ -4811,6 +5159,13 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       serveTree(grown);
       setLoad(readyOf(grown));
       await settle();
+      // Held (planning-to-do-list.md §4.2): counted, and laid out on Refresh.
+      expect(cardsIn("Needs you")).toEqual([
+        "OQ-D1: Question OQ-D1?",
+        "OQ-D3: Question OQ-D3?",
+      ]);
+      expect(updatesCount()).toHaveTextContent("1");
+      await refresh();
       expect(cardsIn("Needs you")).toEqual([
         "OQ-D1: Question OQ-D1?",
         "OQ-D3: Question OQ-D3?",
@@ -4980,7 +5335,6 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       expect(cardsIn("Needs you")).toEqual([
         "OQ-D1: Question OQ-D1?",
         "OQ-D3: Question OQ-D3?",
-        "OQ-A1: Question OQ-A1?",
       ]);
       expect(status()).toHaveTextContent(
         "The filter is cleared. Every entry is shown.",
@@ -4994,7 +5348,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       await renderPage("/.vantage/planning?filter=zz+is:closed");
       expect(noticeLines()[0]).toMatch(/^Not filtered: /);
       expect(nothingMatches()).toBeNull();
-      expect(cardsIn("Needs you")).toHaveLength(3);
+      expect(cardsIn("Needs you")).toHaveLength(2);
       // Nor on a page with no entry at all, where a filter that is
       // understood says there was none to match.
       const gone = { "plans/gone.md": TREE["plans/gone.md"]! };
@@ -5030,12 +5384,9 @@ describe("the planning filter (planning-index.md §6.11)", () => {
   describe("the box", () => {
     it("applies on Enter in one replace: page parameters gone, the roadmap and the rest kept, the fragment dropped", async () => {
       seed(TWO);
-      setPlanningLimitsForTests({ pageEntries: 2 });
-      await renderPage(
-        "/.vantage/planning?needs-you=2&roadmap=roadmap.md&x=1#needs-you",
-        ["/plans/roadmap.md"],
-      );
-      expect(cardsIn("Needs you")).toEqual(["OQ-A1: Question OQ-A1?"]);
+      await renderPage("/.vantage/planning?roadmap=roadmap.md&x=1#needs-you", [
+        "/plans/roadmap.md",
+      ]);
       await enter("path:./plans/design.md");
       expect(router.location).toBe(
         "/.vantage/planning?filter=path:/plans/design.md&roadmap=roadmap.md&x=1",
@@ -5068,11 +5419,18 @@ describe("the planning filter (planning-index.md §6.11)", () => {
     });
 
     it("keeps the old page up until the new one's inputs are in, with a spinner in its own slot past spinnerMs", async () => {
-      // OQ-A1 is on Needs you's second page, so its block is not in hand.
-      setPlanningLimitsForTests({ pageEntries: 2, spinnerMs: 0 });
+      // One card a page, and no block asked for ahead: OQ-U1's block is not
+      // in hand.
+      setPlanningLimitsForTests({
+        pageSizes: [1, 20, 30, 50],
+        defaultPageSize: 1,
+        cardsAhead: 0,
+        spinnerMs: 0,
+      });
+      seed(ROUTED);
       let hold = false;
       let release: () => void = () => {};
-      serveTree(TREE, "/api", (inline) => ({
+      serveTree(ROUTED, "/api", (inline) => ({
         cards: (repo, want, options) =>
           hold
             ? new Promise<CardAnswer[]>((resolve) => {
@@ -5082,25 +5440,22 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       }));
       await renderPage();
       hold = true;
-      await enter("path:plans/answered.md");
+      await enter("path:plans/unrouted.md");
       expect(router.location).toBe(
-        "/.vantage/planning?filter=path:plans/answered.md",
+        "/.vantage/planning?filter=path:plans/unrouted.md",
       );
       // The page on screen, its frame included, is still the unfiltered one.
-      expect(cardsIn("Needs you")).toEqual([
-        "OQ-D1: Question OQ-D1?",
-        "OQ-D3: Question OQ-D3?",
-      ]);
+      expect(cardsIn("Needs you")).toEqual(["OQ-D1: Question OQ-D1?"]);
       expect(bar()).toHaveTextContent(/^Needs you 3/);
       expect(notice()).toBeNull();
       expect(spinning()).toBe(true);
-      expect(box().value).toBe("path:plans/answered.md");
+      expect(box().value).toBe("path:plans/unrouted.md");
       release();
       await settle();
-      expect(cardsIn("Needs you")).toEqual(["OQ-A1: Question OQ-A1?"]);
+      expect(cardsIn("Needs you")).toEqual(["OQ-U1: Question OQ-U1?"]);
       expect(bar()).toHaveTextContent(/^Needs you 1$/);
       expect(noticeLines()[0]).toMatch(
-        /^Filtered by path:plans\/answered\.md:/,
+        /^Filtered by path:plans\/unrouted\.md:/,
       );
       expect(spinning()).toBe(false);
     });
@@ -5109,17 +5464,23 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       // Rendering the new page is a transition, and in a browser no later
       // commit lands until it does: a spinner a timer asks for would show
       // only once it is no longer needed (planning-index.md §6.16).
-      setPlanningLimitsForTests({ pageEntries: 2, spinnerMs: 150 });
-      serveTree(TREE, "/api", (inline) => ({
+      setPlanningLimitsForTests({
+        pageSizes: [1, 20, 30, 50],
+        defaultPageSize: 1,
+        cardsAhead: 0,
+        spinnerMs: 150,
+      });
+      seed(ROUTED);
+      serveTree(ROUTED, "/api", (inline) => ({
         cards: (repo, want, options) =>
-          want.some((w) => w.path === "plans/answered.md")
+          want.some((w) => w.path === "plans/unrouted.md")
             ? new Promise<CardAnswer[]>(() => {})
             : inline.cards(repo, want, options),
       }));
       await renderPage();
       const spinner = () => screen.queryByTestId("planning-filter-spinner");
       expect(spinner()).toBeNull();
-      await type("path:plans/answered.md");
+      await type("path:plans/unrouted.md");
       await act(async () => {
         fireEvent.submit(form());
       });
@@ -5127,10 +5488,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       expect(spinner()).toHaveClass("planning-reveal");
       expect(spinner()!.style.animationDelay).toBe("150ms");
       // The old page is still the one on screen.
-      expect(cardsIn("Needs you")).toEqual([
-        "OQ-D1: Question OQ-D1?",
-        "OQ-D3: Question OQ-D3?",
-      ]);
+      expect(cardsIn("Needs you")).toEqual(["OQ-D1: Question OQ-D1?"]);
     });
 
     it("never shows its spinner at once for a page that was slow once before", async () => {
@@ -5181,125 +5539,17 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       expect(delays).not.toContain("0ms");
     });
 
-    it("leaves the old page's pagers as they were while the filter's page is on its way, with no spinner of theirs", async () => {
-      // A filter applied is no flip (planning-index.md §6.16, §6.17): the old
-      // page stays up whole, its pagers included, and only the filter
-      // line's slot says it is on its way. Needs you is on page 2 of 3, and
-      // `path:plans/answered.md` keeps one entry, OQ-A1, whose block is not
-      // in hand.
-      setPlanningLimitsForTests({ pageEntries: 1, spinnerMs: 0 });
-      let hold = false;
-      let release: () => void = () => {};
-      serveTree(TREE, "/api", (inline) => ({
-        cards: (repo, want, options) =>
-          hold
-            ? new Promise<CardAnswer[]>((resolve) => {
-                release = () => resolve(inline.cards(repo, want, options));
-              })
-            : inline.cards(repo, want, options),
-      }));
-      await renderPage("/.vantage/planning?needs-you=2");
-      const pager = () =>
-        screen.getByRole("navigation", { name: "Needs you pages" });
-      const controls = () => ({
-        text: pager().textContent,
-        previous: within(pager())
-          .getByRole("button", { name: "‹ Previous" })
-          .getAttribute("aria-disabled"),
-        next: within(pager())
-          .getByRole("button", { name: "Next ›" })
-          .getAttribute("aria-disabled"),
-        loading: within(pager()).queryByLabelText("Loading the page") !== null,
-      });
-      const before = controls();
-      expect(before).toEqual({
-        text: "2–2 of 3·‹ Previous·Next ›",
-        previous: null,
-        next: null,
-        loading: false,
-      });
-      hold = true;
-      await enter("path:plans/answered.md");
-      expect(cardsIn("Needs you")).toEqual(["OQ-D3: Question OQ-D3?"]);
-      expect(spinning()).toBe(true);
-      expect(controls()).toEqual(before);
-      release();
-      await settle();
-      expect(cardsIn("Needs you")).toEqual(["OQ-A1: Question OQ-A1?"]);
-      expect(
-        screen.queryByRole("navigation", { name: "Needs you pages" }),
-      ).toBeNull();
-    });
-
-    it("flips nothing from the old page while another filter's page is on its way", async () => {
-      // The old page's pagers are another filter's: a click on one would
-      // send the reader to that page number of the filter just applied,
-      // which Enter put back on its first page (planning-index.md §6.16).
-      // Needs you is on page 3 of 3, OQ-A1, and `path:plans/design.md`
-      // keeps two pages of it, OQ-D1 and OQ-D3, neither in hand.
-      setPlanningLimitsForTests({ pageEntries: 1, spinnerMs: 0 });
-      let hold = false;
-      const releases: (() => void)[] = [];
-      const asked: CardWant[][] = [];
-      serveTree(TREE, "/api", (inline) => ({
-        cards: (repo, want, options) => {
-          asked.push(want);
-          return hold
-            ? new Promise<CardAnswer[]>((resolve) => {
-                releases.push(() => resolve(inline.cards(repo, want, options)));
-              })
-            : inline.cards(repo, want, options);
-        },
-      }));
-      await renderPage("/.vantage/planning?needs-you=3");
-      expect(cardsIn("Needs you")).toEqual(["OQ-A1: Question OQ-A1?"]);
-      hold = true;
-      await enter("path:plans/design.md");
-      expect(cardsIn("Needs you")).toEqual(["OQ-A1: Question OQ-A1?"]);
-      expect(spinning()).toBe(true);
-      const pager = screen.getByRole("navigation", { name: "Needs you pages" });
-      const before = asked.length;
-      await act(async () => {
-        fireEvent.pointerEnter(pager);
-        fireEvent.click(
-          within(pager).getByRole("button", { name: "‹ Previous" }),
-        );
-      });
-      await settle();
-      expect(router.location).toBe(
-        "/.vantage/planning?filter=path:plans/design.md",
-      );
-      expect(asked).toHaveLength(before);
-      hold = false;
-      for (const release of releases) release();
-      await settle();
-      expect(router.location).toBe(
-        "/.vantage/planning?filter=path:plans/design.md",
-      );
-      expect(cardsIn("Needs you")).toEqual(["OQ-D1: Question OQ-D1?"]);
-      // Once it is in, its pagers flip it.
-      await act(async () => {
-        fireEvent.click(
-          within(
-            screen.getByRole("navigation", { name: "Needs you pages" }),
-          ).getByRole("button", { name: "Next ›" }),
-        );
-      });
-      await settle();
-      expect(cardsIn("Needs you")).toEqual(["OQ-D3: Question OQ-D3?"]);
-    });
-
     it("does nothing on Enter with the text already applied", async () => {
-      setPlanningLimitsForTests({ pageEntries: 1 });
-      await renderPage(
-        "/.vantage/planning?filter=path:plans/design.md&needs-you=2",
-      );
+      await renderPage("/.vantage/planning?filter=path:plans/design.md&x=1");
       await enter("  path:plans/design.md ");
       expect(router.location).toBe(
-        "/.vantage/planning?filter=path:plans/design.md&needs-you=2",
+        "/.vantage/planning?filter=path:plans/design.md&x=1",
       );
       expect(box().value).toBe("path:plans/design.md");
-      expect(cardsIn("Needs you")).toEqual(["OQ-D3: Question OQ-D3?"]);
+      expect(cardsIn("Needs you")).toEqual([
+        "OQ-D1: Question OQ-D1?",
+        "OQ-D3: Question OQ-D3?",
+      ]);
     });
 
     it("applies text it cannot read as typed, and shows every entry", async () => {
@@ -5310,7 +5560,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       );
       expect(box().value).toBe("path:plans/design.md is:Open");
       expect(box()).toHaveAttribute("aria-invalid", "true");
-      expect(cardsIn("Needs you")).toHaveLength(3);
+      expect(cardsIn("Needs you")).toHaveLength(2);
       expect(noticeLines()[0]).toMatch(
         /^Not filtered: this Vantage cannot read is:Open\./,
       );
@@ -5342,7 +5592,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       expect(box().value).toBe("");
       expect(document.activeElement).toBe(box());
       expect(notice()).toBeNull();
-      expect(cardsIn("Needs you")).toHaveLength(3);
+      expect(cardsIn("Needs you")).toHaveLength(2);
       // Its slot stays, empty while there is no text.
       expect(
         screen.queryByRole("button", { name: "Clear the filter" }),
@@ -5402,27 +5652,6 @@ describe("the planning filter (planning-index.md §6.11)", () => {
         "The filter is cleared. Every entry is shown.",
       );
       expect(box()).not.toHaveAttribute("aria-describedby");
-    });
-
-    it("does not say a section put back on page 1 by a filter is a flip", async () => {
-      setPlanningLimitsForTests({ pageEntries: 1 });
-      await renderPage("/.vantage/planning?needs-you=3");
-      expect(cardsIn("Needs you")).toEqual(["OQ-A1: Question OQ-A1?"]);
-      const said = () =>
-        section("Needs you").querySelector('[aria-live="polite"][aria-atomic]');
-      await enter("path:plans/design.md");
-      expect(cardsIn("Needs you")).toEqual(["OQ-D1: Question OQ-D1?"]);
-      expect(said()).toHaveTextContent(/^$/);
-      // A flip after it still is.
-      await act(async () => {
-        fireEvent.click(
-          within(
-            screen.getByRole("navigation", { name: "Needs you pages" }),
-          ).getByRole("button", { name: "Next ›" }),
-        );
-      });
-      await settle();
-      expect(said()).toHaveTextContent("Needs you, page 2 of 2");
     });
 
     it("says that nothing matches a filter that keeps no entry, after the notice, and describes the box with it", async () => {
@@ -5502,6 +5731,15 @@ describe("the planning filter (planning-index.md §6.11)", () => {
     // only when a test runs it out, and advancing with real time besides, so
     // the page's other waits pass as they do outside a test.
     const IDLE = 60_000;
+    /**
+     * One card a page and no block asked for ahead, over the corpus with
+     * OQ-U1 routed: `oq-u` lays out a card whose block is not in hand, so its
+     * page waits on the scanner.
+     */
+    const oneCard = () => {
+      limits({ pageSizes: [1, 20, 30, 50], defaultPageSize: 1, cardsAhead: 0 });
+      seed(ROUTED);
+    };
     const limits = (more: Parameters<typeof setPlanningLimitsForTests>[0]) =>
       setPlanningLimitsForTests({ filterIdleMs: IDLE, ...more });
     beforeEach(() => {
@@ -5545,13 +5783,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
         await settle();
         seen.push(cardsIn("Needs you"));
       }
-      expect(seen).toEqual([
-        [D1, D3, A1],
-        [D1, D3, A1],
-        [D1, D3, A1],
-        [D1, D3],
-        [D3],
-      ]);
+      expect(seen).toEqual([[D1, D3], [D1, D3], [D1, D3], [D1, D3], [D3]]);
       // Rows hold no id, so a word only an id holds leaves them out.
       expect(querySection("Ready to build")).toBeNull();
       expect(noticeLines()[0]).toMatch(/^Filtered by oq-d3: 1 of 10 entries,/);
@@ -5586,7 +5818,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       expect(hint()).toBe(FILTER_HINT);
       await enter();
       expect(filterOf()).toBe('path:plans/design.md "is');
-      expect(cardsIn("Needs you")).toEqual([D1, D3, A1]);
+      expect(cardsIn("Needs you")).toEqual([D1, D3]);
       expect(noticeLines()[0]).toMatch(
         /^Not filtered: this Vantage cannot read an unclosed quote\./,
       );
@@ -5651,7 +5883,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       for (const text of ["-", "-m"]) {
         await type(text);
         await settle();
-        expect(cardsIn("Needs you"), text).toEqual([D1, D3, A1]);
+        expect(cardsIn("Needs you"), text).toEqual([D1, D3]);
         expect(notice(), text).toBeNull();
       }
       // `-mz` drops nothing, and applies with no pause.
@@ -5690,7 +5922,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       box().focus();
       // `z` is in no field of the tree's entries.
       await typeKeys("zz");
-      expect(cardsIn("Needs you")).toEqual([D1, D3, A1]);
+      expect(cardsIn("Needs you")).toEqual([D1, D3]);
       await enter();
       expect(router.location).toBe("/.vantage/planning?filter=zz");
       expect(querySection("Needs you")).toBeNull();
@@ -5699,7 +5931,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
         fireEvent.click(clearX());
       });
       await settle();
-      expect(cardsIn("Needs you")).toEqual([D1, D3, A1]);
+      expect(cardsIn("Needs you")).toEqual([D1, D3]);
       // A paste that is no planning link is typing written at once.
       await act(async () => {
         fireEvent.paste(box(), { clipboardData: { getData: () => "qq" } });
@@ -5713,7 +5945,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       });
       await settle();
       await typeKeys("zz");
-      expect(cardsIn("Needs you")).toEqual([D1, D3, A1]);
+      expect(cardsIn("Needs you")).toEqual([D1, D3]);
       act(() => scroller().focus());
       await settle();
       expect(router.location).toBe("/.vantage/planning?filter=zz");
@@ -5768,7 +6000,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       await settle();
       expect(router.location).toBe("/.vantage/planning");
       expect(router.keys).toHaveLength(keys + 1);
-      expect(cardsIn("Needs you")).toEqual([D1, D3, A1]);
+      expect(cardsIn("Needs you")).toEqual([D1, D3]);
       keys = router.keys.length;
       await idle();
       expect(router.keys).toHaveLength(keys);
@@ -5796,7 +6028,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
         "/.vantage/planning?filter=path:/plans/answered.md",
       );
       expect(box().value).toBe("path:./plans/answered.md");
-      expect(cardsIn("Needs you")).toEqual([A1]);
+      expect(listedIn("To fold into the ledger")).toEqual([A1]);
       box().focus();
       await enter();
       expect(box().value).toBe("path:/plans/answered.md");
@@ -5808,7 +6040,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       ]);
       box().focus();
       await typeKeys("oq-a");
-      expect(cardsIn("Needs you")).toEqual([A1]);
+      expect(listedIn("To fold into the ledger")).toEqual([A1]);
       act(() => router.navigate!(-1));
       await settle();
       expect(router.location).toBe(
@@ -5825,7 +6057,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       await settle();
       expect(router.location).toBe("/.vantage/planning");
       expect(box().value).toBe("");
-      expect(cardsIn("Needs you")).toEqual([D1, D3, A1]);
+      expect(cardsIn("Needs you")).toEqual([D1, D3]);
     });
 
     it("drops a write still owed on a push", async () => {
@@ -5838,7 +6070,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       expect(box().value).toBe("");
       await idle();
       expect(router.location).toBe("/.vantage/planning?x=1");
-      expect(cardsIn("Needs you")).toEqual([D1, D3, A1]);
+      expect(cardsIn("Needs you")).toEqual([D1, D3]);
     });
 
     it("speaks the notice once the URL takes the text, never per keystroke", async () => {
@@ -5859,31 +6091,6 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       expect(status().textContent).toMatch(
         /^Filtered by oq-d3: 1 of 10 entries/,
       );
-    });
-
-    it("carries a filter still owed into a flip, in one replace, and owes nothing after", async () => {
-      limits({ pageEntries: 1 });
-      await renderPage();
-      box().focus();
-      await typeKeys("oq-d");
-      expect(cardsIn("Needs you")).toEqual([D1]);
-      expect(router.location).toBe("/.vantage/planning");
-      const keys = router.keys.length;
-      await act(async () => {
-        fireEvent.click(
-          within(
-            screen.getByRole("navigation", { name: "Needs you pages" }),
-          ).getByRole("button", { name: "Next ›" }),
-        );
-      });
-      await settle();
-      expect(router.location).toBe(
-        "/.vantage/planning?filter=oq-d&needs-you=2",
-      );
-      expect(router.keys).toHaveLength(keys + 1);
-      expect(cardsIn("Needs you")).toEqual([D3]);
-      await idle();
-      expect(router.keys).toHaveLength(keys + 1);
     });
 
     it("carries a filter still owed into a roadmap pick", async () => {
@@ -5912,11 +6119,15 @@ describe("the planning filter (planning-index.md §6.11)", () => {
     });
 
     it("keeps the old page up while a typed text's page is on its way, with the spinner drawn for past spinnerMs", async () => {
-      // OQ-U1 is on Not on a roadmap's second page, so its block is not in
-      // hand.
-      limits({ spinnerMs: 150, pageEntries: 1 });
+      oneCard();
+      limits({
+        pageSizes: [1, 20, 30, 50],
+        defaultPageSize: 1,
+        cardsAhead: 0,
+        spinnerMs: 150,
+      });
       let hold = false;
-      serveTree(TREE, "/api", (inline) => ({
+      serveTree(ROUTED, "/api", (inline) => ({
         cards: (repo, want, options) =>
           hold
             ? new Promise<CardAnswer[]>(() => {})
@@ -5967,9 +6178,8 @@ describe("the planning filter (planning-index.md §6.11)", () => {
             String(url).endsWith("/planning/reviews"),
           )
           .map(([, body]) => (body as { paths: string[] }).paths);
-      // Rows past the first page of Ready to build: the first request holds
-      // the first pages' documents and those needing the human, and leaves
-      // these for the second.
+      // Rows of Ready to build: the first request holds the cards' documents
+      // and those needing the human, and leaves the rows' for the second.
       const ROWS: Record<string, string> = { ...TREE };
       for (let i = 0; i < 3; i++) {
         ROWS[`plans/r${i}.md`] = doc(
@@ -5978,7 +6188,6 @@ describe("the planning filter (planning-index.md §6.11)", () => {
         );
       }
       seed(ROWS);
-      limits({ pageRows: 1 });
       let hold = true;
       const releases: (() => void)[] = [];
       serveTree(ROWS, "/api", (inline) => ({
@@ -5999,7 +6208,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       hold = false;
       for (const release of releases) release();
       await settle();
-      expect(cardsIn("Not on a roadmap")).toEqual(["OQ-U1: Question OQ-U1?"]);
+      expect(listedIn("Not on a roadmap")).toEqual(["OQ-U1: Question OQ-U1?"]);
       expect(reviewRequests()[1]).toEqual(
         expect.arrayContaining(["plans/r1.md", "plans/r2.md"]),
       );
@@ -6007,7 +6216,12 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       await type("");
       await settle();
       await idle();
-      expect(documentsIn("Ready to build")).toEqual(["plans/r0.md"]);
+      expect(documentsIn("Ready to build")).toEqual([
+        "plans/r0.md",
+        "plans/r1.md",
+        "plans/r2.md",
+        "plans/ready.md",
+      ]);
       expect(reviewRequests()).toHaveLength(2);
       expect(reviewGets()).toEqual([]);
     });
@@ -6017,7 +6231,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       await renderPage("/.vantage/planning?filter=path:plans/design.md");
       act(() => router.navigate!("/.vantage/planning"));
       await settle();
-      expect(cardsIn("Needs you")).toEqual([D1, D3, A1]);
+      expect(cardsIn("Needs you")).toEqual([D1, D3]);
       const held = () => heldPlanningPageInputs().cached.join("|");
       expect(held()).toContain("\npath:plans/design.md\n");
       box().focus();
@@ -6053,7 +6267,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       await renderPage("/.vantage/planning?filter=path:plans/design.md");
       box().focus();
       await typeKeys("path:plans/unrouted.md");
-      expect(cardsIn("Not on a roadmap")).toEqual(["OQ-U1: Question OQ-U1?"]);
+      expect(listedIn("Not on a roadmap")).toEqual(["OQ-U1: Question OQ-U1?"]);
       expect(hint()).toBe("");
       await type('path:plans/unrouted.md "x');
       expect(hint()).toBe(FILTER_HINT);
@@ -6071,33 +6285,38 @@ describe("the planning filter (planning-index.md §6.11)", () => {
     });
 
     it("leaves a text it cannot read in the box with its hint when the focus leaves, and the URL holds what is applied", async () => {
-      setPlanningLimitsForTests({ pageEntries: 1, filterIdleMs: IDLE });
+      setPlanningLimitsForTests({ filterIdleMs: IDLE });
       await renderPage("/.vantage/planning?filter=path:plans/design.md");
       await type('x"');
-      // A flip, a replace the box did not cause, with the focus elsewhere.
-      await act(async () => {
-        fireEvent.click(
-          within(
-            screen.getByRole("navigation", { name: "Needs you pages" }),
-          ).getByRole("button", { name: "Next ›" }),
-        );
-      });
+      // A replace the box did not cause, with the focus elsewhere.
+      act(() =>
+        router.navigate!(
+          { search: "?filter=path:plans/design.md&x=1" },
+          { replace: true },
+        ),
+      );
       await settle();
       expect(router.location).toBe(
-        "/.vantage/planning?filter=path:plans/design.md&needs-you=2",
+        "/.vantage/planning?filter=path:plans/design.md&x=1",
       );
       expect(box().value).toBe('x"');
       expect(hint()).toBe(FILTER_HINT);
-      expect(cardsIn("Needs you")).toEqual([D3]);
+      expect(cardsIn("Needs you")).toEqual([D1, D3]);
     });
 
     it("puts the spinner away once the page of a text typed after an Enter is on screen, though the entered text's page never came", async () => {
-      limits({ pageEntries: 2, spinnerMs: 150 });
+      oneCard();
+      limits({
+        pageSizes: [1, 20, 30, 50],
+        defaultPageSize: 1,
+        cardsAhead: 0,
+        spinnerMs: 150,
+      });
       let held = true;
       let release: () => void = () => {};
-      serveTree(TREE, "/api", (inline) => ({
+      serveTree(ROUTED, "/api", (inline) => ({
         cards: (repo, want, options) =>
-          held && want.some((w) => w.path === "plans/answered.md")
+          held && want.some((w) => w.path === "plans/unrouted.md")
             ? new Promise<CardAnswer[]>((resolve) => {
                 release = () => resolve(inline.cards(repo, want, options));
               })
@@ -6105,27 +6324,33 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       }));
       await renderPage();
       box().focus();
-      await enter("path:plans/answered.md");
+      await enter("path:plans/unrouted.md");
       expect(spinning()).toBe(true);
       // Typed past the entered text before its page came.
       await type("path:plans/design.md");
       await settle();
-      expect(cardsIn("Needs you")).toEqual([D1, D3]);
+      expect(cardsIn("Needs you")).toEqual([D1]);
       expect(spinning()).toBe(false);
       held = false;
       release();
       await settle();
       await idle();
       expect(filterOf()).toBe("path:plans/design.md");
-      expect(cardsIn("Needs you")).toEqual([D1, D3]);
+      expect(cardsIn("Needs you")).toEqual([D1]);
       expect(spinning()).toBe(false);
     });
 
     it("puts the spinner away once the page of a text typed after a cold ✕ is on screen", async () => {
-      limits({ pageEntries: 2, spinnerMs: 150 });
+      oneCard();
+      limits({
+        pageSizes: [1, 20, 30, 50],
+        defaultPageSize: 1,
+        cardsAhead: 0,
+        spinnerMs: 150,
+      });
       let held = false;
       const releases: (() => void)[] = [];
-      serveTree(TREE, "/api", (inline) => ({
+      serveTree(ROUTED, "/api", (inline) => ({
         cards: (repo, want, options) =>
           held
             ? new Promise<CardAnswer[]>((resolve) => {
@@ -6133,8 +6358,9 @@ describe("the planning filter (planning-index.md §6.11)", () => {
               })
             : inline.cards(repo, want, options),
       }));
-      await renderPage("/.vantage/planning?filter=path:plans/design.md");
-      expect(cardsIn("Needs you")).toEqual([D1, D3]);
+      // OQ-U1's card alone, so the bare page's OQ-D1 is not in hand.
+      await renderPage("/.vantage/planning?filter=path:plans/unrouted.md");
+      expect(cardsIn("Needs you")).toEqual(["OQ-U1: Question OQ-U1?"]);
       box().focus();
       held = true;
       await act(async () => {
@@ -6154,32 +6380,6 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       await idle();
       expect(filterOf()).toBe("oq-u");
       expect(spinning()).toBe(false);
-    });
-
-    it("writes the newest text typed when a pager is pressed before that keystroke's render commits, and flips no page of the old filter's", async () => {
-      limits({ pageEntries: 1 });
-      await renderPage();
-      box().focus();
-      await typeKeys("oq-d");
-      await idle();
-      expect(router.location).toBe("/.vantage/planning?filter=oq-d");
-      const next = within(
-        screen.getByRole("navigation", { name: "Needs you pages" }),
-      ).getByRole("button", { name: "Next ›" });
-      // One more key, then a press on Next: in one act scope, so React
-      // renders the keystroke's transition only once both are handled, as a
-      // press landing during a slow render does.
-      await act(async () => {
-        fireEvent.change(box(), { target: { value: "oq-d3" } });
-        fireEvent.mouseDown(next);
-        fireEvent.blur(box());
-        fireEvent.click(next);
-      });
-      await settle();
-      await idle();
-      expect(router.location).toBe("/.vantage/planning?filter=oq-d3");
-      expect(noticeLines()[0]).toMatch(/^Filtered by oq-d3:/);
-      expect(cardsIn("Needs you")).toEqual([D3]);
     });
 
     it("carries the newest text typed into a roadmap pick made before that keystroke's render commits", async () => {
@@ -6241,10 +6441,10 @@ describe("the planning filter (planning-index.md §6.11)", () => {
     });
 
     it("never shows the page of a text typed past, though its inputs come in before the newer text's render commits (§6.16)", async () => {
-      limits({ pageEntries: 1 });
+      oneCard();
       let held = false;
       let release: () => void = () => {};
-      serveTree(TREE, "/api", (inline) => ({
+      serveTree(ROUTED, "/api", (inline) => ({
         cards: (repo, want, options) =>
           held
             ? new Promise<CardAnswer[]>((resolve) => {
@@ -6288,10 +6488,10 @@ describe("the planning filter (planning-index.md §6.11)", () => {
     });
 
     it("never shows the page of a text typed past, though its inputs came in while it was the newest, before React rendered them (§6.16)", async () => {
-      limits({ pageEntries: 1 });
+      oneCard();
       let held = false;
       let release: () => void = () => {};
-      serveTree(TREE, "/api", (inline) => ({
+      serveTree(ROUTED, "/api", (inline) => ({
         cards: (repo, want, options) =>
           held
             ? new Promise<CardAnswer[]>((resolve) => {
@@ -6332,10 +6532,10 @@ describe("the planning filter (planning-index.md §6.11)", () => {
     });
 
     it("shows the page of the text it applied last, when the next keeps no entry and that page comes in before React renders it (§6.16)", async () => {
-      limits({ pageEntries: 1 });
+      oneCard();
       let held = false;
       let release: () => void = () => {};
-      serveTree(TREE, "/api", (inline) => ({
+      serveTree(ROUTED, "/api", (inline) => ({
         cards: (repo, want, options) =>
           held
             ? new Promise<CardAnswer[]>((resolve) => {
@@ -6362,18 +6562,18 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       });
       await settle();
       expect(noticeLines()[0]).toMatch(/^Filtered by oq-u:/);
-      expect(cardsIn("Not on a roadmap")).toEqual(["OQ-U1: Question OQ-U1?"]);
+      expect(cardsIn("Needs you")).toEqual(["OQ-U1: Question OQ-U1?"]);
       expect(spinning()).toBe(false);
       await idle();
       expect(router.location).toBe("/.vantage/planning?filter=oq-uz");
-      expect(querySection("Not on a roadmap")).toBeNull();
+      expect(querySection("Needs you")).toBeNull();
     });
 
     it("shows the page of the text it applied last, when the next keeps no entry and that page comes in after", async () => {
-      limits({ pageEntries: 1 });
+      oneCard();
       let held = false;
       let release: () => void = () => {};
-      serveTree(TREE, "/api", (inline) => ({
+      serveTree(ROUTED, "/api", (inline) => ({
         cards: (repo, want, options) =>
           held
             ? new Promise<CardAnswer[]>((resolve) => {
@@ -6393,7 +6593,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       release();
       await settle();
       expect(noticeLines()[0]).toMatch(/^Filtered by oq-u:/);
-      expect(cardsIn("Not on a roadmap")).toEqual(["OQ-U1: Question OQ-U1?"]);
+      expect(cardsIn("Needs you")).toEqual(["OQ-U1: Question OQ-U1?"]);
       expect(spinning()).toBe(false);
     });
 
@@ -6402,10 +6602,10 @@ describe("the planning filter (planning-index.md §6.11)", () => {
     // applying is still the one to show when it comes in, and so it stays
     // while the reader types on into a quote that is not understood.
     it("shows the page of the text it applied last when it comes in after a key that keeps the held text as it was", async () => {
-      limits({ pageEntries: 1 });
+      oneCard();
       let held = false;
       let release: () => void = () => {};
-      serveTree(TREE, "/api", (inline) => ({
+      serveTree(ROUTED, "/api", (inline) => ({
         cards: (repo, want, options) =>
           held
             ? new Promise<CardAnswer[]>((resolve) => {
@@ -6427,7 +6627,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       release();
       await settle();
       expect(noticeLines()[0]).toMatch(/^Filtered by oq-u:/);
-      expect(cardsIn("Not on a roadmap")).toEqual(["OQ-U1: Question OQ-U1?"]);
+      expect(cardsIn("Needs you")).toEqual(["OQ-U1: Question OQ-U1?"]);
       expect(spinning()).toBe(false);
       for (const text of ['oq-uz "', 'oq-uz "a', "oq-uz  "]) {
         await type(text);
@@ -6470,7 +6670,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       });
       await settle();
       expect(noticeLines()[0]).toMatch(/^Filtered by oq-u:/);
-      expect(cardsIn("Not on a roadmap")).toEqual(["OQ-U1: Question OQ-U1?"]);
+      expect(listedIn("Not on a roadmap")).toEqual(["OQ-U1: Question OQ-U1?"]);
       expect(spinning()).toBe(false);
     });
 
@@ -6480,7 +6680,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       box().focus();
       await typeKeys("zz");
       // Held back: the last results stay, and nothing says nothing matches.
-      expect(cardsIn("Needs you")).toEqual([D1, D3, A1]);
+      expect(cardsIn("Needs you")).toEqual([D1, D3]);
       expect(nothingMatches()).toBeNull();
       await idle(300);
       expect(filterOf()).toBe("zz");
@@ -6506,7 +6706,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       await settle();
       expect(filterOf()).toBeNull();
       expect(box().value).toBe("");
-      expect(cardsIn("Needs you")).toEqual([D1, D3, A1]);
+      expect(cardsIn("Needs you")).toEqual([D1, D3]);
       await idle();
       expect(filterOf()).toBeNull();
     });
@@ -6669,7 +6869,13 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       await settle();
       expect(router.location).toBe("/.vantage/planning");
       expect(noticeLines()[0]).toMatch(/^Filtered by oq-d: /);
+      // Late data (planning-to-do-list.md §4.2): counted, and laid out by
+      // the reader's next layout, under the same text.
+      expect(cardsIn("Needs you")).toEqual([D1, D3]);
+      expect(updatesCount()).toHaveTextContent("1");
+      await refresh();
       expect(cardsIn("Needs you")).toEqual([D1, D3, "OQ-D4: Question OQ-D4?"]);
+      expect(noticeLines()[0]).toMatch(/^Filtered by oq-d: /);
       expect(box().value).toBe("oq-d");
       await idle();
       expect(filterOf()).toBe("oq-d");
@@ -6798,7 +7004,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       expect(router.location).toBe("/.vantage/planning");
       expect(box().value).toBe("");
       expect(notice()).toBeNull();
-      expect(cardsIn("Needs you")).toHaveLength(3);
+      expect(cardsIn("Needs you")).toHaveLength(2);
       // With the focus in the box and text unapplied: Back still wins.
       await press("/");
       await type("unapplied");
@@ -6841,29 +7047,17 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       expect(router.hash).toBe("");
     });
 
-    it("reads back whole the address a flip, a roadmap pick and an outline link write", async () => {
+    it("reads back whole the address a roadmap pick and an outline link write", async () => {
       // Each writes the filter as Enter does, `*` as %2A, so a copy of the
       // address bar pasted into the box applies the same filter, a later
       // term and all (planning-index.md §6.17, §13.5).
       seed(TWO);
       localStorage.setItem("vantage:tocOpen", "true");
-      setPlanningLimitsForTests({ pageEntries: 1 });
       await renderPage();
       const text = "path:plans/*.md is:open";
       await enter(text);
       expect(router.location).toBe(
         "/.vantage/planning?filter=path:plans/%2A.md+is:open&roadmap=roadmap.md",
-      );
-      await act(async () => {
-        fireEvent.click(
-          within(
-            screen.getByRole("navigation", { name: "Needs you pages" }),
-          ).getByRole("button", { name: "Next ›" }),
-        );
-      });
-      await settle();
-      expect(router.location).toBe(
-        "/.vantage/planning?filter=path:plans/%2A.md+is:open&roadmap=roadmap.md&needs-you=2",
       );
       const outlineLink = screen
         .getByRole("navigation", { name: "Planning outline" })
@@ -6871,9 +7065,9 @@ describe("the planning filter (planning-index.md §6.11)", () => {
           '[data-testid=outline-document][data-path="plans/design.md"]',
         )!;
       expect(outlineLink.getAttribute("href")).toMatch(
-        /^\/\.vantage\/planning\?filter=path:plans\/%2A\.md\+is:open&roadmap=roadmap\.md(&needs-you=\d+)?#/,
+        /^\/\.vantage\/planning\?filter=path:plans\/%2A\.md\+is:open&roadmap=roadmap\.md#/,
       );
-      const flipped = `http://localhost:8000${router.location}`;
+      const entered = `http://localhost:8000${router.location}`;
       await act(async () => {
         fireEvent.change(screen.getByRole("combobox", { name: "Roadmap" }), {
           target: { value: NESTED },
@@ -6883,7 +7077,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       expect(router.location).toBe(
         "/.vantage/planning?filter=path:plans/%2A.md+is:open&roadmap=docs%2Fplans%2Froadmap.md",
       );
-      for (const address of [flipped, outlineLink.href]) {
+      for (const address of [entered, outlineLink.href]) {
         cleanup();
         resetPlanningPageInputs();
         await renderPage();
@@ -6921,7 +7115,11 @@ describe("the planning filter (planning-index.md §6.11)", () => {
           .value,
       ).toBe(NESTED);
       expect(cardsIn("Needs you")).toEqual(["OQ-U1: Question OQ-U1?"]);
-      expect(localStorage.length).toBe(0);
+      expect(
+        Object.keys(localStorage).filter((key) =>
+          key.startsWith("vantage:planningRoadmap"),
+        ),
+      ).toEqual([]);
     });
 
     // A paste applies its link's filter as Enter does (planning-index.md

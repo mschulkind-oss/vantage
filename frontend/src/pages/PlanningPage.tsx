@@ -6,19 +6,27 @@
  * Built entirely from the index and the review comments Vantage already keeps,
  * and storing nothing of its own — no snooze, no assignment, no read state.
  * The order is `derivePlanningSections`' alone, so filing an answer never
- * reorders the page; the page changes only when the documents do.
+ * reorders the page.
  *
- * Paged (`docs/reference/planning-index.md` §6.4): a section bar names
- * every section with its exact count, and each section shows one page of its
- * entries, with the page in the URL (`lib/planningPages.ts`). A flip replaces
- * the history entry, so Back from a document returns to the same pages.
+ * A to-do list (`docs/design/planning-to-do-list.md`): *Needs you* shows the
+ * questions you have answered as one-line rows, then the page size of those
+ * that need you as cards, then a count of the rest; *Blocked* and
+ * *Maintenance* are folded groups of one-line rows. There are no pages.
+ *
+ * The movement rule (§4 of that design): the page lays out the load it last
+ * made a layout from, never the newest one, and only the reader's own
+ * actions make a layout — opening the page, a filter, a roadmap, a page size,
+ * Refresh. Everything that arrives after a layout marks and counts what it
+ * concerns (`lib/planningLayout.ts`), and the header's *N updates · Refresh*
+ * applies it. What the reader does in place — answering a card, Show on a
+ * row, Undo — changes only the item they acted on.
  *
  * Every section says under its heading what its entries are and who acts on
  * them, in the shared planning module's words (`vantage-md/planning`'s guide),
- * which `vantage-check index` prints too. A section that is an agent's work
- * has Copy agent request, and the section bar's line Copy all agent requests:
- * the request for every entry of the section, or of every such section, on
- * every page, generated from the index on screen when it is pressed.
+ * which `vantage-check index` prints too. A kind of *Maintenance* that is an
+ * agent's work has Copy agent request, and the section bar's line Copy all
+ * agent requests: the request for every entry of the kind, or of every such
+ * kind, generated from the index on screen when it is pressed.
  *
  * Filtered (`docs/reference/planning-index.md` §6.11): a filter line at the
  * top of the column holds the Filter box, whose text is the URL's `filter=`,
@@ -41,8 +49,7 @@
  * Several roadmaps (`planning-index.md` §6.8): when two or more route, the
  * roadmap line above the section bar offers a picker, and *Needs you* follows
  * the chosen one. The choice is in the URL as `?roadmap=`, and a pick is
- * remembered for the repository in this browser; picking is a flip of
- * *Needs you* to its first page.
+ * remembered for the repository in this browser; picking makes a new layout.
  *
  * Frame first (§6.3, §6.5): the route's first render is the header, the
  * section bar and the notices, with no card in it. The sections fill the
@@ -50,8 +57,8 @@
  * blocks, reviews and diagrams (`hooks/usePlanningPageInputs.ts`) — and a set
  * stays on screen until the next one is complete. Nothing that arrives after
  * that moves what is painted: late comments go into each card's reserved
- * count, a late diagram into a fixed frame, and the pending count into a slot
- * kept for four digits (§12.2).
+ * count, a late diagram into a fixed frame, the pending count into a slot
+ * kept for four digits (§12.2), and the held updates into the header's slot.
  *
  * Its URL is `/.vantage/planning`, and `/.vantage/planning/<repo>` in daemon
  * mode. Viewer URLs are `/<path>` and `/<repo>/<path>`, and the server never
@@ -93,21 +100,20 @@ import {
   PLANNING_SPACE_PARAM,
   badgeFor,
   filterKeepsQuestion,
-  findDocument,
-  isPlanningAgentSectionId,
+  isPlanningRequestId,
   isPlanningSpaceId,
   parsePlanningFilter,
   planningAgentRequest,
+  sectionExplanation,
   type CardBlock,
-  type DependsOn,
   type NotUnderstoodPlanningFilter,
   type PlanningBadge,
-  type PlanningAgentSectionId,
   type PlanningConfig,
   type PlanningFilterSummary,
   type PlanningIndex,
   type PlanningNoticeLine,
   type PlanningQuestion,
+  type PlanningRequestId,
   type PlanningRoadmap,
   type PlanningSections,
   type QuestionRef,
@@ -120,11 +126,13 @@ import {
 } from "../components/AppShell";
 import { CollapsedFolders } from "../components/CollapsedFolders";
 import { HeaderOverflow } from "../components/HeaderOverflow";
-import { PlanningBadgeChip } from "../components/PlanningBadge";
 import { PlanningFilterLine } from "../components/PlanningFilterLine";
 import { PlanningOutline } from "../components/PlanningOutline";
 import { PlanningPendingAnswers } from "../components/PlanningPendingAnswers";
-import { PlanningPager, type PagerPlace } from "../components/PlanningPager";
+import { AnsweredRow, PlanningNeedsYou } from "../components/PlanningNeedsYou";
+import { PlanningGroups, type GroupId } from "../components/PlanningGroups";
+import { PlanningUpdates } from "../components/PlanningUpdates";
+import { CopyRequestButton } from "../components/CopyRequestButton";
 import {
   PlanningQuestionCard,
   type CardFolds,
@@ -132,7 +140,7 @@ import {
 } from "../components/PlanningQuestionCard";
 import { RESERVED_ICON_SIZE, ReservedLabel } from "../components/ReservedLabel";
 import { useWebSocket } from "../hooks/useWebSocket";
-import { focusIsIdle, useShellPage } from "../hooks/useShellPage";
+import { useShellPage } from "../hooks/useShellPage";
 import { useHeaderFit } from "../hooks/useHeaderFit";
 import {
   usePlanningOutlineActive,
@@ -159,7 +167,6 @@ import { cn } from "../lib/utils";
 import {
   blockKey as pageBlockKey,
   predrawDiagrams,
-  prefetchPlanningPage,
   usePlanningPageInputs,
 } from "../hooks/usePlanningPageInputs";
 import {
@@ -172,19 +179,21 @@ import {
   planningQuery,
   planningSearch,
   readFilterRequest,
-  readPageRequest,
+  readPageSize,
   readRememberedRoadmap,
   readRoadmapRequest,
   rememberRoadmap,
-  requestWithPage,
+  rememberPageSize,
   routingRoadmaps,
   sectionsOf,
   understoodFilter,
   withFilter,
-  withPage,
   withRoadmap,
+  MAINTENANCE_KIND_IDS,
+  MAINTENANCE_TITLES,
   type CardEntry,
-  type LaidOutSection,
+  type MaintenanceKindId,
+  type QuestionEntry,
   type PlanningLayout,
   type SectionId,
 } from "../lib/planningPages";
@@ -204,6 +213,7 @@ import {
 } from "../planningScan/client";
 import { planningLimits } from "../planningScan/limits";
 import type { OnSaved } from "../lib/reviewBoxes";
+import { closeBoxes, liveBoxes, type CommentBox } from "../lib/commentAutosave";
 import { useRepoStore } from "../stores/useRepoStore";
 import {
   usePlanningIndex,
@@ -221,12 +231,48 @@ import {
 } from "../stores/useReviewStore";
 import { VIEWER_RELEASE } from "../lib/viewerRelease";
 import {
-  answeredPerSection,
   needYou,
   pendingAnswers,
+  questionKey,
   type KeepsQuestion,
 } from "../lib/planningAnswers";
 import type { ReviewComment } from "../types";
+import {
+  NOTHING_IN_PLACE,
+  agentReplies,
+  blockSiblings,
+  commentsByQuestion,
+  groupKeys,
+  heldUpdates,
+  itemKey,
+  layoutNeedsYou,
+  maintenanceKeys,
+  marksOf,
+  openRow,
+  rowAnswer,
+  shrinkCard,
+  updatesTitle,
+  updatesTotal,
+  viewNeedsYou,
+  type HeldUpdates,
+  type InPlace,
+  type Mark,
+  type NeedsYouItem,
+  type NeedsYouLayout,
+  type QuestionFacts,
+} from "../lib/planningLayout";
+import { readPreference, writePreference } from "../lib/preferences";
+import { OQ_DEFAULT_LEANING } from "../hooks/useOpenQuestionButtons";
+
+/** No marks: one object, so a card's props stay equal render to render. */
+const NO_MARKS: readonly Mark[] = Object.freeze([]);
+
+/**
+ * The line under *To fold into the ledger*: the ✅ questions the `compact`
+ * request lists (planning-to-do-list.md §3.4, §5.2).
+ */
+const COMPACT_EXPLANATION =
+  "Ruled, and waiting to be folded into the body they govern. An agent compacts each.";
 
 /**
  * Each visit's scroll position, by history entry. Module state, so it outlives
@@ -361,18 +407,6 @@ const USER_SCROLL_EVENTS = [
   "mousedown",
 ] as const;
 
-/**
- * What a Stage conflict row's stage claims, in the checker's word for the same
- * finding (`planning/stage-disagrees`): Stage conflict holds both the `ready`
- * and the `built` role (§6.2).
- */
-function builtOrDecided(index: PlanningIndex | null, path: string): string {
-  const stages = index?.config.stages;
-  const stage = index ? findDocument(index, path)?.stage : undefined;
-  if (!stages || !stage || !Object.hasOwn(stages, stage)) return "decided";
-  return stages[stage] === "built" ? "built" : "decided";
-}
-
 /** A key for one question, stable across index versions. */
 const refKey = (ref: QuestionRef): string => `${ref.path}\n${ref.line}`;
 
@@ -468,215 +502,12 @@ function badgeOf(index: PlanningIndex, path: string): PlanningBadge | null {
   return badge;
 }
 
-/** A size in the units the limits are written in. */
-function formatSize(bytes: number): string {
-  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`;
-  if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KiB`;
-  return `${bytes} bytes`;
-}
-
-/** Flip a section to a page, from the pager at `place`. */
-type OnFlip = (id: SectionId, page: number, place: PagerPlace) => void;
-/** Ask for the inputs of a section's page ahead of a flip to it. */
-type OnPrefetch = (id: SectionId, page: number) => void;
 /**
  * The agent request for the agent sections `ids` names, every one when it is
  * absent, generated from the index on screen at the moment it is asked for;
  * `null` when none of them holds an entry.
  */
-type AgentRequestOf = (
-  ids?: readonly PlanningAgentSectionId[],
-) => string | null;
-
-/** How long Copied stands in for a copy button's label. */
-const COPIED_MS = 2000;
-
-/**
- * Copy agent request, or Copy all agent requests: copies the text `request`
- * generates when pressed, from the index already on screen, so it needs no
- * network and nothing selected. Confirmed as Copy answers is, its label
- * turning to Copied for two seconds in room kept for the longer of the two,
- * so the confirmation moves nothing, and said once to a screen reader, since
- * a button's new label is not read out. Never printed.
- */
-const CopyRequestButton: React.FC<{
-  label: string;
-  /** Its accessible name: the label, and what it copies. */
-  name: string;
-  /** Its tooltip. */
-  hint: string;
-  /** What a screen reader is told once it has copied. */
-  done: string;
-  request: () => string | null;
-  className?: string;
-}> = ({ label, name, hint, done, request, className }) => {
-  const [copied, setCopied] = useState(false);
-  useEffect(() => {
-    if (!copied) return;
-    const timer = setTimeout(() => setCopied(false), COPIED_MS);
-    return () => clearTimeout(timer);
-  }, [copied]);
-  return (
-    <>
-      <button
-        type="button"
-        data-planning-agent-request
-        aria-label={name}
-        title={hint}
-        onClick={() => {
-          const text = request();
-          if (text === null) return;
-          void copyTextOrWarn(text).then((ok) => {
-            if (ok) setCopied(true);
-          });
-        }}
-        className={cn(
-          "inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100 print:hidden dark:text-slate-300 dark:hover:bg-slate-700",
-          className,
-        )}
-      >
-        {/* As wide as its label, so Copied moves nothing. */}
-        <ReservedLabel
-          icon={
-            copied ? (
-              <Check size={RESERVED_ICON_SIZE} aria-hidden="true" />
-            ) : (
-              <ClipboardCopy size={RESERVED_ICON_SIZE} aria-hidden="true" />
-            )
-          }
-          label={copied ? "Copied" : label}
-          reserve={[label, "Copied"]}
-        />
-      </button>
-      <span className="sr-only" aria-live="polite" aria-atomic="true">
-        {copied && done}
-      </span>
-    </>
-  );
-};
-
-const Section: React.FC<{
-  /** The section as it is on screen. */
-  section: LaidOutSection;
-  /**
-   * The same section as the URL asks for it, which its pagers' controls go
-   * on from; the one on screen except while a flip waits for its page.
-   */
-  asked?: LaidOutSection;
-  onFlip: OnFlip;
-  onPrefetch?: OnPrefetch;
-  /** A flip of this section is still waiting for its page. */
-  busy?: boolean;
-  /** The agent request of an agent section, which has Copy agent request. */
-  requestOf?: AgentRequestOf;
-  /** How many of its entries a pending comment answers (§6.7). */
-  answered?: number;
-  /** The filter it is laid out under, as `PlanningLayout.filter` names it. */
-  filter: string;
-  children: React.ReactNode;
-}> = ({
-  section,
-  filter,
-  asked = section,
-  onFlip,
-  onPrefetch,
-  busy,
-  requestOf,
-  answered = 0,
-  children,
-}) => {
-  const { id, title, explanation, total, pageCount } = section;
-  // Said once a flip of this section lands, and not for the page it opened
-  // on: a reader who flipped hears where it went, and focus left on Next
-  // says nothing of the entries that changed below it. A filter applied is
-  // no flip, whatever page it puts the section on: the filter's own live
-  // region speaks its notice (§6.17).
-  const [landed, setLanded] = useState({
-    page: section.page,
-    filter,
-    flipped: false,
-  });
-  if (landed.page !== section.page || landed.filter !== filter) {
-    setLanded({
-      page: section.page,
-      filter,
-      flipped: landed.filter === filter,
-    });
-  }
-  const pager = (place: PagerPlace) =>
-    pageCount > 1 && (
-      <PlanningPager
-        title={title}
-        page={asked.page}
-        pageCount={asked.pageCount}
-        start={section.start}
-        end={section.end}
-        total={total}
-        place={place}
-        onFlip={(page, from) => onFlip(id, page, from)}
-        onPrefetch={onPrefetch && ((page) => onPrefetch(id, page))}
-        busy={busy}
-      />
-    );
-  const aboutId = `about-${id}`;
-  return (
-    <section aria-labelledby={id} aria-describedby={aboutId} className="mb-10">
-      <div className="flex flex-wrap items-center gap-x-3">
-        {/* Focusable from script alone: a jump from the section bar, or a
-            flip from the bottom pager, brings the focus here with the
-            scroll. */}
-        <h2
-          id={id}
-          tabIndex={-1}
-          className="scroll-mt-4 text-sm font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400"
-        >
-          {title}{" "}
-          <span className="ml-1 font-normal tabular-nums">
-            {total.toLocaleString("en-US")}
-          </span>
-          {answered > 0 && (
-            <>
-              {" "}
-              <span
-                data-planning-section-answered
-                className="font-normal tracking-normal normal-case tabular-nums"
-              >
-                {answeredCount(answered)}
-              </span>
-            </>
-          )}
-        </h2>
-        {requestOf !== undefined && isPlanningAgentSectionId(id) && (
-          <CopyRequestButton
-            label="Copy agent request"
-            name={`Copy agent request for ${title}`}
-            hint={`Copy an instruction for an agent covering ${total === 1 ? "the 1 entry" : `all ${total.toLocaleString("en-US")} entries`} of ${title}, on every page`}
-            done={`Copied the agent request for ${title}.`}
-            request={() => requestOf([id])}
-            // Taller than the heading, and kept from making its line so.
-            className="-my-1 ml-auto"
-          />
-        )}
-      </div>
-      <p
-        id={aboutId}
-        data-planning-section-about
-        className="mt-0.5 mb-3 text-[13px] text-slate-500 dark:text-slate-400"
-      >
-        {explanation}
-      </p>
-      {pageCount > 1 && (
-        <span className="sr-only" aria-live="polite" aria-atomic="true">
-          {landed.flipped &&
-            `${title}, page ${section.page.toLocaleString("en-US")} of ${pageCount.toLocaleString("en-US")}, entries ${(section.start + 1).toLocaleString("en-US")}–${section.end.toLocaleString("en-US")} of ${total.toLocaleString("en-US")}`}
-        </span>
-      )}
-      {pager("top")}
-      <div className="space-y-3">{children}</div>
-      {pager("bottom")}
-    </section>
-  );
-};
+type AgentRequestOf = (ids?: readonly PlanningRequestId[]) => string | null;
 
 /**
  * One line naming each non-empty section with its exact count, from the index
@@ -687,16 +518,20 @@ const Section: React.FC<{
  * tab opened on it scrolls to once the sections are in.
  */
 const SectionBar: React.FC<{
-  layout: PlanningLayout;
-  /** How many of each section's entries a pending comment answers, by id. */
-  answered?: ReadonlyMap<string, number>;
-}> = ({ layout, answered }) => (
+  entries: readonly {
+    id: string;
+    title: string;
+    total: number;
+    about?: string;
+  }[];
+  onGo: (id: string) => void;
+}> = ({ entries, onGo }) => (
   <nav
     aria-label="Sections"
     className="flex flex-wrap items-center gap-x-2 text-sm text-slate-600 dark:text-slate-300"
   >
-    {layout.sections.map((section, at) => (
-      <React.Fragment key={section.id}>
+    {entries.map((entry, at) => (
+      <React.Fragment key={entry.id}>
         {at > 0 && (
           <span
             aria-hidden="true"
@@ -706,26 +541,18 @@ const SectionBar: React.FC<{
           </span>
         )}
         <a
-          href={`#${section.id}`}
-          title={section.explanation}
+          href={`#${entry.id}`}
+          title={entry.about}
           onClick={(e) => {
             e.preventDefault();
-            bringSectionIntoView(section.id);
+            onGo(entry.id);
           }}
           className="text-blue-600 no-underline hover:underline dark:text-blue-400"
         >
-          {section.title}{" "}
+          {entry.title}{" "}
           <span className="tabular-nums">
-            {section.total.toLocaleString("en-US")}
+            {entry.total.toLocaleString("en-US")}
           </span>
-          {(answered?.get(section.id) ?? 0) > 0 && (
-            <>
-              {" "}
-              <span className="tabular-nums">
-                {answeredCount(answered?.get(section.id) ?? 0)}
-              </span>
-            </>
-          )}
         </a>
       </React.Fragment>
     ))}
@@ -787,7 +614,7 @@ const CardsToggle: React.FC<{ expanded: boolean; onToggle: () => void }> = ({
 };
 
 /** Scroll to a section's heading, and give the heading the focus. */
-function bringSectionIntoView(id: SectionId): void {
+function bringSectionIntoView(id: string): void {
   const heading = document.getElementById(id);
   heading?.scrollIntoView?.({ block: "start" });
   heading?.focus({ preventScroll: true });
@@ -1078,14 +905,6 @@ const NothingMatches: React.FC<{
   );
 };
 
-/**
- * `(3 answered)`: beside a section's count of entries, how many of them a
- * comment pending for the agent answers, so a section that still lists them
- * does not read as saying they need you (§6.7).
- */
-const answeredCount = (n: number): string =>
-  `(${n.toLocaleString("en-US")} answered)`;
-
 /** `1 answer`, `3 answers`: pending answers a filter leaves out of Copy answers. */
 const leftOutAnswers = (n: number): string =>
   `${n.toLocaleString("en-US")} ${n === 1 ? "answer" : "answers"}`;
@@ -1273,7 +1092,148 @@ const RoadmapLine: React.FC<{
   );
 };
 
-const NO_SECTIONS: ReadonlySet<SectionId> = new Set();
+/**
+ * *Needs you* on screen (planning-to-do-list.md §4): the layout a set of
+ * inputs was laid out into when it came on screen, or at a Refresh, and
+ * what the reader has done to it in place since.
+ */
+interface Screen {
+  /** The set of inputs it was laid out from, and the Refresh it was for. */
+  inputsKey: string;
+  generation: number;
+  needsYou: NeedsYouLayout;
+  /** The items a pending comment answered when it was made, by `itemKey`. */
+  answeredThen: ReadonlySet<string>;
+  /** The agent's replies on each item it painted, or since opened, by key. */
+  repliesSeen: ReadonlyMap<string, number>;
+  /** The reviews it painted: what each card's comment list shows. */
+  painted: Readonly<Record<string, readonly ReviewComment[]>>;
+  inPlace: InPlace;
+}
+
+/** Every question of `index`, by `itemKey`. */
+function questionsByItem(
+  index: PlanningIndex | null,
+): ReadonlyMap<string, PlanningQuestion> {
+  const out = new Map<string, PlanningQuestion>();
+  if (index === null) return out;
+  for (const document of index.documents) {
+    for (const question of document.questions) {
+      out.set(itemKey(question), question);
+    }
+  }
+  return out;
+}
+
+/**
+ * The first item of the page at least partly in the pane, and how far below
+ * the pane's top it starts: the place Refresh keeps (§4.3).
+ */
+function firstOnScreen(pane: HTMLElement | null): {
+  key: string | null;
+  top: number;
+} {
+  if (pane === null) return { key: null, top: 0 };
+  const paneTop = pane.getBoundingClientRect().top;
+  for (const el of pane.querySelectorAll<HTMLElement>("[data-planning-item]")) {
+    const rect = el.getBoundingClientRect();
+    if (rect.bottom > paneTop) {
+      return { key: el.dataset.planningItem ?? null, top: rect.top - paneTop };
+    }
+  }
+  return { key: null, top: 0 };
+}
+
+/**
+ * Scroll the pane so the item `place` names starts as far below its top as
+ * it did; with that item gone, so *Needs you*'s heading is at its top.
+ */
+function keepPlace(
+  pane: HTMLElement | null,
+  place: { key: string | null; top: number },
+): void {
+  if (pane === null) return;
+  const paneTop = pane.getBoundingClientRect().top;
+  const item = [
+    ...pane.querySelectorAll<HTMLElement>("[data-planning-item]"),
+  ].find((el) => el.dataset.planningItem === place.key);
+  if (place.key !== null && item !== undefined) {
+    const now = item.getBoundingClientRect().top - paneTop;
+    scrollPaneTo(pane, pane.scrollTop + now - place.top);
+    return;
+  }
+  const heading = document.getElementById("needs-you");
+  scrollPaneTo(
+    pane,
+    heading === null
+      ? 0
+      : Math.max(
+          0,
+          pane.scrollTop + heading.getBoundingClientRect().top - paneTop,
+        ),
+  );
+}
+
+/**
+ * Once `box`'s last save has landed, failed into its retries, or the reviews
+ * deadline has passed: Refresh lays out after the boxes it closed have saved
+ * (planning-to-do-list.md §4.3).
+ */
+function boxSettled(box: CommentBox): Promise<void> {
+  return new Promise((resolve) => {
+    const done = () => {
+      const { status } = box.getState();
+      return status !== "saving";
+    };
+    if (done()) {
+      resolve();
+      return;
+    }
+    const timer = setTimeout(finish, planningLimits.reviewsDeadlineMs);
+    const unsubscribe = box.subscribe(() => {
+      if (done()) finish();
+    });
+    function finish() {
+      clearTimeout(timer);
+      unsubscribe();
+      resolve();
+    }
+  });
+}
+
+/** Which folded group a heading's or a row's id is in, if any. */
+function groupOf(
+  target: string,
+  layout: PlanningLayout | null,
+): GroupId | null {
+  if (target === "waiting") return "blocked";
+  if (target === "maintenance") return "maintenance";
+  if ((MAINTENANCE_KIND_IDS as readonly string[]).includes(target)) {
+    return "maintenance";
+  }
+  if (layout === null) return null;
+  const ids = (entries: readonly CardEntry[], section: string) =>
+    entries.map((entry) =>
+      entry.kind === "question"
+        ? planningCardId(
+            entry.question.path,
+            entry.question.id,
+            entry.question.unitLine,
+          )
+        : planningRowId(section as SectionId, entry.path),
+    );
+  if (ids(layout.blocked, "waiting").includes(target)) return "blocked";
+  for (const kind of layout.maintenance) {
+    const rows =
+      kind.kind === "questions"
+        ? ids(kind.items, kind.id)
+        : kind.kind === "documents"
+          ? kind.items.map((path) => planningRowId(kind.id, path))
+          : [];
+    if (rows.includes(target)) return "maintenance";
+  }
+  return null;
+}
 
 /** The served projects' names, in the order the server lists them. */
 const repoNames = (repos: readonly { name: string }[]): string[] =>
@@ -1540,37 +1500,67 @@ export const PlanningPage: React.FC = () => {
     () => (layoutLeads ? parsePlanningFilter(appliedFilter) : urlFilter),
     [layoutLeads, appliedFilter, urlFilter],
   );
-  // The whole index's sections under the chosen roadmap (F2), and what the
-  // filter keeps of them.
+  // The whole index's sections under the chosen roadmap (F2), from the data
+  // in hand: what Copy answers and the live counts read.
   const unfilteredSections = useMemo(
     () =>
       index === null || index.refused ? null : sectionsOf(index, chosenRoadmap),
     [index, chosenRoadmap],
   );
+
+  // The page size: the one this browser remembers, read again at each
+  // layout the reader makes, and set by a choice on the end line (§3.3).
+  const [pageSize, setPageSize] = useState(readPageSize);
+  // Refresh's count: each press is a new layout from the data in hand (§4.3).
+  const [generation, setGeneration] = useState(0);
+
+  // The movement rule (planning-to-do-list.md §4): the page lays out the
+  // load it last made a layout from, its *basis* (a term this page coins),
+  // never the newest one. A new layout takes the load in hand: opening the
+  // page, a filter applied, a roadmap picked, a page size chosen, Refresh.
+  // Every other load that arrives is late data, which the page marks and
+  // counts (`lib/planningLayout.ts`) but does not lay out. Until a layout is
+  // on screen, and while one the reader asked for is on its way, there is
+  // nothing painted to protect, so the basis follows the load.
+  const layoutAsked = `${pageRepo ?? ""}\n${askedRoadmap ?? ""}\n${rememberedRoadmap ?? ""}\n${appliedFilter}\n${pageSize}\n${generation}`;
+  const [basis, setBasis] = useState(() => ({
+    load: ready,
+    asked: layoutAsked,
+  }));
+  // Whether the layout asked for is on screen, as the last render saw it.
+  const [layoutSettled, setLayoutSettled] = useState(false);
+  const holds = layoutSettled && basis.asked === layoutAsked;
+  if (!holds && (basis.load !== ready || basis.asked !== layoutAsked)) {
+    setBasis({ load: ready, asked: layoutAsked });
+  }
+  const layoutLoad = holds ? basis.load : ready;
+  const layoutIndex = layoutLoad?.index ?? null;
+  const layoutRoadmap =
+    layoutIndex === null || layoutIndex.refused
+      ? null
+      : chooseRoadmap(
+          sectionsOf(layoutIndex).roadmaps,
+          askedRoadmap,
+          rememberedRoadmap,
+        );
   const sections = useMemo(
     () =>
-      index === null || index.refused
+      layoutIndex === null || layoutIndex.refused
         ? null
-        : sectionsOf(index, chosenRoadmap, appliedFilter),
-    [index, chosenRoadmap, appliedFilter],
-  );
-
-  // The pages, from the URL (§6.4), read against the filtered sections.
-  const request = useMemo(
-    () => readPageRequest(appliedSearch),
-    [appliedSearch],
+        : sectionsOf(layoutIndex, layoutRoadmap, appliedFilter),
+    [layoutIndex, layoutRoadmap, appliedFilter],
   );
   const layout = useMemo(
     () =>
-      index === null || sections === null
+      layoutIndex === null || sections === null
         ? null
-        : layoutPlanningPage(index, sections, request, appliedFilter),
-    [index, sections, request, appliedFilter],
+        : layoutPlanningPage(layoutIndex, sections, pageSize, appliedFilter),
+    [layoutIndex, sections, pageSize, appliedFilter],
   );
-  // A page past a section's end, a malformed page and an explicit page 1 are
-  // rewritten in place, and so is the roadmap: named when two or more route,
-  // gone when fewer do; and an understood filter, as its canonical text, in
-  // the link encoding (§6.16). The fragment stays: a link
+  // The roadmap, the filter and an understood filter's canonical text are
+  // rewritten in place: the roadmap named when two or more route, gone when
+  // fewer do; the filter in the link encoding (§6.16); and every old page
+  // parameter dropped (planning-to-do-list.md §7). The fragment stays: a link
   // to a card or a section that needs its query rewritten still goes where
   // it points, once the sections are in (below). Setting the query alone
   // would drop it.
@@ -1617,17 +1607,12 @@ export const PlanningPage: React.FC = () => {
     dropSpace,
   ]);
 
-  /** A section to bring into view once its new page is on screen. */
-  const scrollToRef = useRef<SectionId | null>(null);
   /**
-   * An outline document to bring into view once the page of its section that
-   * holds it is on screen: the section, that page, and what to go to.
+   * What a jump into a folded group brings into view once the group it opened
+   * has rendered: a heading's or a row's id, and whether it is a heading,
+   * which takes the focus itself.
    */
-  const jumpRef = useRef<{
-    section: SectionId;
-    page: number;
-    target: string;
-  } | null>(null);
+  const jumpRef = useRef<{ target: string; heading: boolean } | null>(null);
   // The idle pause's write still owed (§6.16), and the
   // newest understood text typed, as its canonical text: set at once, as
   // the reader types, ahead of the render that applies it, so a write made
@@ -1726,7 +1711,6 @@ export const PlanningPage: React.FC = () => {
     if (text === null || text === urlValue) return;
     const next = withFilter(search, text);
     const query = planningQuery(next);
-    scrollToRef.current = null;
     jumpRef.current = null;
     speechRef.current = { filter: readFilterRequest(next), from: key };
     startTransition(() => {
@@ -1783,14 +1767,12 @@ export const PlanningPage: React.FC = () => {
         : null,
     [appliedFilter],
   );
-  // Picking a roadmap is a flip (§6.8): the URL's roadmap replaced with no
-  // history entry, Needs you back on its first page, and the pick
-  // remembered for the repository.
+  // Picking a roadmap is a new layout (§6.8): the URL's roadmap replaced
+  // with no history entry, and the pick remembered for the repository.
   const pickRoadmap = useCallback(
     (path: string) => {
       if (pageRepo !== null) rememberRoadmap(pageRepo, path);
       setRemembered({ repo: pageRepo, path });
-      scrollToRef.current = null;
       jumpRef.current = null;
       const past = typedPast();
       replaceSearch(
@@ -1805,13 +1787,14 @@ export const PlanningPage: React.FC = () => {
     [pageRepo, replaceSearch, appliedSearch, typedPast],
   );
 
-  // The inputs of the pages shown (§6.5). The sections render only from a
-  // complete set, and keep the last one on screen until the next is complete.
-  // A layout the box leads with is laid out for a text the reader may type
-  // past at once, so its inputs never take a place Back relies on (§6.16).
+  // The inputs of the layout (§6.5): the full cards' blocks, the reviews and
+  // the diagrams. The sections render only from a complete set, and keep the
+  // last one on screen until the next is complete. A layout the box leads
+  // with is laid out for a text the reader may type past at once, so its
+  // inputs never take a place Back relies on (§6.16).
   const inputs = usePlanningPageInputs(
     onThisRepo ? repo : null,
-    ready,
+    layoutLoad,
     layout,
     layoutLeads,
   );
@@ -1819,6 +1802,10 @@ export const PlanningPage: React.FC = () => {
     inputs.shown !== null && ready !== null && inputs.shown.inputs.repo === repo
       ? inputs.shown
       : null;
+  // The layout asked for is on screen: from the next render on, a load that
+  // arrives is late data and the basis holds (above).
+  const settledNow = shown !== null && !inputs.waiting;
+  if (settledNow !== layoutSettled) setLayoutSettled(settledNow);
   // Told the filter each change of the reader's asks for, as they make it,
   // so a set laid out for a text they have typed past is never shown
   // (§6.16); and, once a push or a pop has committed, that
@@ -1834,74 +1821,13 @@ export const PlanningPage: React.FC = () => {
   useLayoutEffect(() => {
     if (held) followFilter(appliedFilter);
   }, [held, typed, appliedFilter, followFilter]);
-  // The layout the URL asks for is a flip of the one on screen while both
-  // are laid out under one filter. Another filter's is no flip: the old page
-  // stays up whole, its pagers included, until the new page's inputs are in,
-  // and only the filter line's own slot says it is on its way
-  // (§6.16, §6.17).
+  // The layout asked for is under the filter on screen. Another filter's
+  // keeps the old page up whole until its inputs are in, and only the filter
+  // line's own slot says it is on its way (§6.16, §6.17).
   const askedIsFlip =
     shown === null ||
     layout === null ||
     shown.inputs.layout.filter === layout.filter;
-  // A flip, and a pager's prefetch, go on from the URL's layout. While
-  // another filter's page is on its way, the pagers on screen are the old
-  // filter's, and the URL's sections are all on their first page (§6.16), so
-  // the old page's pagers flip and prefetch nothing until the new page is in.
-  const flip = useCallback<OnFlip>(
-    (id, page, place) => {
-      if (!askedIsFlip) return;
-      // A keystroke this render has not applied: its text is the filter
-      // now, and this pager's page is the old filter's.
-      if (typedPast() !== null) {
-        writeNow();
-        return;
-      }
-      // The bottom pager brings its section's heading back into view, and
-      // the focus with it; the top one leaves both alone.
-      scrollToRef.current = place === "bottom" ? id : null;
-      jumpRef.current = null;
-      replaceSearch(withPage(appliedSearch, id, page));
-    },
-    [replaceSearch, appliedSearch, askedIsFlip, typedPast, writeNow],
-  );
-  // A pager the pointer or the focus reaches asks for the next page ahead.
-  const prefetch = useCallback<OnPrefetch>(
-    (id, page) => {
-      if (onThisRepo && repo !== null && askedIsFlip) {
-        prefetchPlanningPage(
-          repo,
-          requestWithPage(request, id, page),
-          chosenRoadmap,
-          appliedFilter,
-        );
-      }
-    },
-    [onThisRepo, repo, request, chosenRoadmap, appliedFilter, askedIsFlip],
-  );
-  // The sections whose page is still on its way, once that is worth saying.
-  const busy = useMemo(() => {
-    if (!inputs.slow || shown === null || layout === null || !askedIsFlip) {
-      return NO_SECTIONS;
-    }
-    const on = new Map(
-      shown.inputs.layout.sections.map((s) => [s.id, s.page] as const),
-    );
-    return new Set(
-      layout.sections.filter((s) => on.get(s.id) !== s.page).map((s) => s.id),
-    );
-  }, [inputs.slow, shown, layout, askedIsFlip]);
-  // Each section as the URL asks for it, which its pager goes on from; none
-  // while another filter's page is on its way, so that each pager goes on
-  // from its section as it is on screen.
-  const asked = useMemo(
-    () =>
-      new Map(
-        (askedIsFlip ? (layout?.sections ?? []) : []).map(
-          (s) => [s.id, s] as const,
-        ),
-      ),
-    [layout, askedIsFlip],
-  );
   // The filter the page on screen is laid out under: the shown set's, until
   // the next one is in, as the frame is (below), so what Copy answers and the
   // need-you numbers count is what is on screen (§6.7).
@@ -2221,8 +2147,8 @@ export const PlanningPage: React.FC = () => {
     [frameUnfiltered],
   );
   const pickerValue =
-    chosenRoadmap !== null && frameRoutes.some((r) => r.path === chosenRoadmap)
-      ? chosenRoadmap
+    layoutRoadmap !== null && frameRoutes.some((r) => r.path === layoutRoadmap)
+      ? layoutRoadmap
       : (frameSections?.chosenRoadmap ?? null);
   const roadmapSwapSlow =
     inputs.slow &&
@@ -2236,35 +2162,368 @@ export const PlanningPage: React.FC = () => {
     layout !== null &&
     shown.inputs.layout.filter !== layout.filter;
 
-  const shownPages = shown?.inputs.layout.pages ?? null;
+  // *Needs you* as the layout on screen made it, and what the reader has
+  // done to it since (planning-to-do-list.md §4). Made when a set of inputs
+  // the reader asked for comes on screen, and on each Refresh, from the
+  // reviews in hand then; never from late data, which only marks it.
   const shownLayout = shown?.inputs.layout ?? null;
+  const shownIndex = shown?.inputs.index ?? null;
+  const shownQuestions = useMemo(
+    () => questionsByItem(shownIndex),
+    [shownIndex],
+  );
+  const liveQuestions = useMemo(() => questionsByItem(index), [index]);
+  const liveComments = useMemo(
+    () => commentsByQuestion(listedQuestions, reviews.byPath),
+    [listedQuestions, reviews.byPath],
+  );
+  const liveAnswered = useMemo(
+    () => pendingAnswers(listedQuestions, reviews.byPath, scoped).answered,
+    [listedQuestions, reviews.byPath, scoped],
+  );
+  const [screen, setScreen] = useState<Screen | null>(null);
+  let current = screen;
+  if (
+    settledNow &&
+    shown !== null &&
+    (current === null ||
+      current.inputsKey !== shown.inputs.key ||
+      current.generation !== generation)
+  ) {
+    const then = shown.inputs.index;
+    const listedThen = listedQuestionsOf(
+      then,
+      sectionsOf(then, shown.inputs.layout.roadmap),
+    );
+    const answered = pendingAnswers(
+      listedThen,
+      reviews.byPath,
+      scoped,
+    ).answered;
+    const commentsThen = commentsByQuestion(listedThen, reviews.byPath);
+    const repliesSeen = new Map<string, number>();
+    const answeredThen = new Set<string>();
+    for (const question of listedThen) {
+      const key = itemKey(question);
+      const n = agentReplies(commentsThen.get(questionKey(question)));
+      if (n > 0) repliesSeen.set(key, n);
+      if (answered.has(questionKey(question))) answeredThen.add(key);
+    }
+    current = {
+      inputsKey: shown.inputs.key,
+      generation,
+      needsYou: layoutNeedsYou(
+        shown.inputs.layout.needsYou,
+        answered,
+        shown.inputs.layout.pageSize,
+      ),
+      answeredThen,
+      repliesSeen,
+      painted: reviews.byPath,
+      inPlace: NOTHING_IN_PLACE,
+    };
+    setScreen(current);
+  }
+  const needsYouView = useMemo(
+    () =>
+      current === null
+        ? null
+        : viewNeedsYou(
+            current.needsYou,
+            current.inPlace,
+            planningLimits.answeredRowsShown,
+          ),
+    [current],
+  );
+
+  // What the page knows of an item at its layout and now (§4.2).
+  const factsOf = useCallback(
+    (key: string): QuestionFacts | undefined => {
+      const painted = shownQuestions.get(key) ?? liveQuestions.get(key);
+      if (painted === undefined || current === null) return undefined;
+      const now = liveQuestions.get(key);
+      return {
+        painted,
+        now,
+        answeredThen: current.answeredThen.has(key),
+        answeredNow: now !== undefined && liveAnswered.has(questionKey(now)),
+        repliesSeen: current.repliesSeen.get(key) ?? 0,
+        repliesNow:
+          now === undefined
+            ? 0
+            : agentReplies(liveComments.get(questionKey(now))),
+        siblingsThen: blockSiblings(shownQuestions.values(), painted),
+        siblingsNow:
+          now === undefined
+            ? undefined
+            : blockSiblings(liveQuestions.values(), now),
+      };
+    },
+    [shownQuestions, liveQuestions, current, liveAnswered, liveComments],
+  );
+
+  // The data in hand, laid out under the layout's own roadmap, filter and
+  // page size: what a new layout would show, which the live counts and the
+  // held updates read.
+  const liveLayout = useMemo(
+    () =>
+      index === null || index.refused || shownLayout === null
+        ? null
+        : layoutPlanningPage(
+            index,
+            sectionsOf(index, shownLayout.roadmap, shownLayout.filter),
+            shownLayout.pageSize,
+            shownLayout.filter,
+          ),
+    [index, shownLayout],
+  );
+  const freshNeedsYou = useMemo(
+    () =>
+      liveLayout === null
+        ? null
+        : layoutNeedsYou(
+            liveLayout.needsYou,
+            liveAnswered,
+            liveLayout.pageSize,
+          ),
+    [liveLayout, liveAnswered],
+  );
+  const updates = useMemo(
+    () =>
+      liveLayout === null ||
+      freshNeedsYou === null ||
+      shownLayout === null ||
+      current === null
+        ? (new Map() as HeldUpdates)
+        : heldUpdates({
+            layout: shownLayout,
+            needsYou: current.needsYou,
+            inPlace: current.inPlace,
+            fresh: freshNeedsYou,
+            freshOrder: liveLayout.needsYou,
+            freshBlocked: liveLayout.blocked,
+            freshMaintenance: liveLayout.maintenance,
+            facts: factsOf,
+          }),
+    [liveLayout, freshNeedsYou, shownLayout, current, factsOf],
+  );
+  const updateCount = updatesTotal(updates);
+  // The groups' items in hand, by the keys their rows are drawn with: a row
+  // whose item is gone is marked Done (§4.2).
+  const liveGroupKeys = useMemo(
+    () =>
+      liveLayout === null
+        ? null
+        : new Set([
+            ...groupKeys(liveLayout.blocked),
+            ...maintenanceKeys(liveLayout.maintenance),
+          ]),
+    [liveLayout],
+  );
+  const groupGone = useCallback(
+    (key: string) => liveGroupKeys !== null && !liveGroupKeys.has(key),
+    [liveGroupKeys],
+  );
+  const groupCounts = useMemo(
+    () => ({
+      blocked: liveLayout?.blocked.length ?? 0,
+      kinds: new Map(
+        (liveLayout?.maintenance ?? []).map(
+          (kind) => [kind.id, kind.items.length] as const,
+        ),
+      ),
+    }),
+    [liveLayout],
+  );
+
+  // What the reader does in place (§4.1). Each reads the screen as it is
+  // when it lands, so two quick presses both count.
+  const changeInPlace = useCallback(
+    (change: (screen: Screen) => InPlace) =>
+      setScreen((prev) =>
+        prev === null ? prev : { ...prev, inPlace: change(prev) },
+      ),
+    [],
+  );
+  // A card's key is its question's `questionKey` on the shown index.
+  const shownByRef = useMemo(() => {
+    const out = new Map<string, string>();
+    for (const [key, question] of shownQuestions) {
+      out.set(questionKey(question), key);
+    }
+    return out;
+  }, [shownQuestions]);
+  const answeredHere = useCallback(
+    (cardKey: string) => {
+      const key = shownByRef.get(cardKey);
+      if (key !== undefined) {
+        changeInPlace((s) => shrinkCard(s.inPlace, s.needsYou, key));
+      }
+    },
+    [shownByRef, changeInPlace],
+  );
+  // A New reply pressed: what it marks is open now, so the mark goes.
+  // Read when pressed, so the callback is the same every render and no card
+  // renders again because a review elsewhere changed the facts (§6.6).
+  const factsRef = useRef(factsOf);
   useLayoutEffect(() => {
-    // An outline document, once its page is the one on screen.
+    factsRef.current = factsOf;
+  });
+  const seeReply = useCallback((key: string) => {
+    const facts = factsRef.current(key);
+    if (facts === undefined) return;
+    setScreen((prev) =>
+      prev === null
+        ? prev
+        : {
+            ...prev,
+            repliesSeen: new Map(prev.repliesSeen).set(key, facts.repliesNow),
+          },
+    );
+  }, []);
+  const seeCardReply = useCallback(
+    (cardKey: string) => {
+      const key = shownByRef.get(cardKey);
+      if (key !== undefined) seeReply(key);
+    },
+    [shownByRef, seeReply],
+  );
+  // Blocks fetched for rows opened into cards, which no set of inputs holds.
+  const [extraBlocks, setExtraBlocks] = useState<
+    ReadonlyMap<string, CardBlock | null>
+  >(() => new Map());
+  const [opening, setOpening] = useState<ReadonlySet<string>>(() => new Set());
+  const blocksRef = useRef({ shown, extraBlocks });
+  useLayoutEffect(() => {
+    blocksRef.current = { shown, extraBlocks };
+  });
+  // Show on an answered row, Undo on its take, or its New reply: the row
+  // opens into its card where it stands, once the card's block is in hand,
+  // so the card paints whole (§4.1).
+  const openItem = useCallback(
+    async (key: string, entry: QuestionEntry) => {
+      const { question } = entry;
+      const at = pageBlockKey(question.path, question.block.startLine);
+      const { shown: on, extraBlocks: extra } = blocksRef.current;
+      if (
+        !entry.preview &&
+        on !== null &&
+        !on.inputs.blocks.has(at) &&
+        !extra.has(at) &&
+        repo !== null
+      ) {
+        setOpening((prev) => new Set(prev).add(key));
+        let block: CardBlock | null = null;
+        const hash = on.inputs.hashes[question.path];
+        if (hash !== undefined) {
+          try {
+            const [answer] = await planningScanner().cards(repo, [
+              {
+                path: question.path,
+                hash,
+                startLine: question.block.startLine,
+              },
+            ]);
+            if (answer !== undefined && "block" in answer) {
+              block = answer.block;
+              await predrawDiagrams([block.markdown]);
+            }
+          } catch {
+            block = null;
+          }
+        }
+        setExtraBlocks((prev) => new Map(prev).set(at, block));
+        setOpening((prev) => {
+          const next = new Set(prev);
+          next.delete(key);
+          return next;
+        });
+      }
+      changeInPlace((s) => openRow(s.inPlace, key));
+    },
+    [repo, changeInPlace],
+  );
+
+  // Refresh (§4.3): every open comment box closed first, which saves what it
+  // holds (`lib/commentAutosave.ts`), and its saves waited for, at most the
+  // reviews deadline; then a new layout from the data in hand, with the first
+  // item on screen kept at the same height, or Needs you's top when it is
+  // gone. A card whose box closed holding text is an answered row in it.
+  const placeRef = useRef<{
+    generation: number;
+    key: string | null;
+    top: number;
+  } | null>(null);
+  const refresh = useCallback(async () => {
+    const open = liveBoxes().filter((box) => box.isOpen);
+    closeBoxes(() => true);
+    await Promise.all(open.map(boxSettled));
+    const pane = contentRef.current;
+    placeRef.current = {
+      generation: generation + 1,
+      ...firstOnScreen(pane),
+    };
+    setPageSize(readPageSize());
+    setGeneration((g) => g + 1);
+  }, [generation]);
+  useLayoutEffect(() => {
+    const place = placeRef.current;
+    if (place === null || current === null) return;
+    if (current.generation < place.generation) return;
+    placeRef.current = null;
+    keepPlace(contentRef.current, place);
+  }, [current]);
+  // A page size chosen on the end line: the setting and its effect (§3.3).
+  const choosePageSize = useCallback((size: number) => {
+    rememberPageSize(size);
+    setPageSize(size);
+  }, []);
+  // *… N more answered · Show*.
+  const showAnswered = useCallback(
+    () => changeInPlace((s) => ({ ...s.inPlace, allAnswered: true })),
+    [changeInPlace],
+  );
+
+  // The folded groups' open state, remembered per group and read once per
+  // visit (§3.4).
+  const [groupsOpen, setGroupsOpen] = useState(() => ({
+    blocked: readPreference("vantage:planningBlockedOpen") === "true",
+    maintenance: readPreference("vantage:planningMaintenanceOpen") === "true",
+  }));
+  const toggleGroup = useCallback((group: GroupId) => {
+    setGroupsOpen((prev) => {
+      const next = { ...prev, [group]: !prev[group] };
+      writePreference(
+        group === "blocked"
+          ? "vantage:planningBlockedOpen"
+          : "vantage:planningMaintenanceOpen",
+        String(next[group]),
+      );
+      return next;
+    });
+  }, []);
+  // A heading or a row in a group: the group opened first, then brought into
+  // view once it has rendered.
+  const goTo = useCallback(
+    (target: string, heading: boolean) => {
+      const group = groupOf(target, shownLayout);
+      if (group !== null && !groupsOpen[group]) {
+        jumpRef.current = { target, heading };
+        toggleGroup(group);
+        return;
+      }
+      if (heading) bringSectionIntoView(target);
+      else bringTargetIntoView(target, contentRef.current);
+    },
+    [shownLayout, groupsOpen, toggleGroup],
+  );
+  useLayoutEffect(() => {
     const jump = jumpRef.current;
-    const landed =
-      jump !== null &&
-      shownLayout?.sections.find((s) => s.id === jump.section)?.page ===
-        jump.page;
-    if (jump !== null && landed) {
-      jumpRef.current = null;
-      bringTargetIntoView(jump.target, contentRef.current);
-    }
-    const id = scrollToRef.current;
-    if (id === null || shownPages === null) return;
-    scrollToRef.current = null;
-    // The focus goes too, unless the reader has taken it somewhere else in
-    // the meantime: left on the bottom pager, it would be far below the
-    // viewport, and a second Enter would flip a page the reader cannot see.
-    const active = document.activeElement;
-    const section = document.getElementById(id)?.closest("section");
-    if (focusIsIdle(active) || section?.contains(active) === true) {
-      bringSectionIntoView(id);
-    } else {
-      document.getElementById(id)?.scrollIntoView?.({ block: "start" });
-    }
-    // The layout is what a landed flip changes, and `shownPages` says when.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shownPages]);
+    if (jump === null || document.getElementById(jump.target) === null) return;
+    jumpRef.current = null;
+    if (jump.heading) bringSectionIntoView(jump.target);
+    else bringTargetIntoView(jump.target, contentRef.current);
+  }, [groupsOpen]);
 
   // A link to a section (`#graduate`, the section bar's own link), or to a
   // card or a row (an outline entry's), opened in a new tab or pasted: the
@@ -2285,19 +2544,20 @@ export const PlanningPage: React.FC = () => {
     }
   }, [sectionsIn, location.hash, location.key]);
 
-  // A filter applied puts the sections' box back where it stands, in the
-  // commit that changes the sections and before the browser paints them
-  // (§6.16, and T4 of §18). Re-inserted, every box in it is a new
-  // one to the browser, as a box drawn anew is, so the cards a filter keeps
-  // move up into the room of those it hides as an insertion, which scores
+  // A filter applied, or a new layout, puts the sections' box back where it
+  // stands, in the commit that changes the sections and before the browser
+  // paints them (§6.16, and T4 of §18). Re-inserted, every box in it is a
+  // new one to the browser, as a box drawn anew is, so the cards a layout
+  // keeps move into the room of those it drops as an insertion, which scores
   // no layout shift, rather than as a move, which would. Unlike drawing them
-  // anew, it keeps every card the new filter still shows mounted, so a
+  // anew, it keeps every card the new layout still shows mounted, so a
   // keystroke renders only the cards it brings in (§6.16). The focus, were it
   // in the box, is put back where it was.
-  const placedFor = useRef(frameFilterKey);
+  const placedKey = `${frameFilterKey}\n\n${current?.generation ?? 0}`;
+  const placedFor = useRef(placedKey);
   useLayoutEffect(() => {
-    if (placedFor.current === frameFilterKey) return;
-    placedFor.current = frameFilterKey;
+    if (placedFor.current === placedKey) return;
+    placedFor.current = placedKey;
     const box = sectionsRef.current;
     const parent = box?.parentNode ?? null;
     if (box == null || parent === null) return;
@@ -2306,7 +2566,7 @@ export const PlanningPage: React.FC = () => {
       active instanceof HTMLElement && box.contains(active) ? active : null;
     parent.insertBefore(box, box.nextSibling);
     focused?.focus({ preventScroll: true });
-  }, [frameFilterKey]);
+  }, [placedKey]);
 
   // The planning outline (§6.9): drawn from the frame's index, so it paints
   // with the section bar and changes when it does.
@@ -2337,25 +2597,13 @@ export const PlanningPage: React.FC = () => {
       pendingAnswers(listed, reviews.byPath, scoped, frameKeeps).answered,
       frameKeeps,
     );
-    const countedAnswered = pendingAnswers(
-      listed,
-      countedReviews,
-      scoped,
-      frameKeeps,
-    ).answered;
     const counted = needYou(
       frameIndex,
       frameSections,
-      countedAnswered,
+      pendingAnswers(listed, countedReviews, scoped, frameKeeps).answered,
       frameKeeps,
     );
-    return {
-      ...held,
-      nothing: counted.nothing,
-      // Beside each section's count of entries: how many a comment answers.
-      // Counted, as the line is, so a late answer moves nothing painted.
-      sections: answeredPerSection(frameSections, countedAnswered),
-    };
+    return { ...held, nothing: counted.nothing };
   }, [
     frameIndex,
     frameSections,
@@ -2365,14 +2613,6 @@ export const PlanningPage: React.FC = () => {
     countedReviews,
     scoped,
   ]);
-  // *Nothing needs you* because every open question is answered: drawn at
-  // the head of the sections, in the commit that draws them, rather than
-  // among the notices the frame painted before them, which it would move.
-  const answeredAll =
-    frameSections !== null &&
-    !frameSections.nothingNeedsYou &&
-    frameNeedYou?.nothing === true &&
-    frameSummary?.nothingMatches == null;
 
   // The agent requests, generated when a Copy agent request button is
   // pressed, from the frame's index and sections, which are the ones on
@@ -2427,93 +2667,93 @@ export const PlanningPage: React.FC = () => {
         : null,
     [outlineShown, frameReady, frameIndex, frameSections],
   );
-  // What the outline follows as the page scrolls: each section's heading,
-  // and the cards and rows on screen, in page order.
-  const outlineTargets = useMemo(
-    (): OutlineTarget[] =>
-      !outlineShown || shownLayout === null
-        ? []
-        : shownLayout.sections.flatMap((section): OutlineTarget[] => [
-            { section: section.id, path: null, id: section.id },
-            ...(section.kind === "cards"
-              ? section.items.map((item) =>
-                  item.kind === "question"
-                    ? {
-                        section: section.id,
-                        path: item.question.path,
-                        id: planningCardId(
-                          item.question.path,
-                          item.question.id,
-                          item.question.unitLine,
-                        ),
-                      }
-                    : {
-                        section: section.id,
-                        path: item.path,
-                        id: planningRowId(section.id, item.path),
-                      },
-                )
-              : section.kind === "rows"
-                ? section.items.map((path) => ({
-                    section: section.id,
-                    path,
-                    id: planningRowId(section.id, path),
-                  }))
-                : []),
-          ]),
-    [outlineShown, shownLayout],
-  );
+  // What the outline follows as the page scrolls: each heading, and the
+  // items of *Needs you* and of the opened groups, in page order.
+  const outlineTargets = useMemo((): OutlineTarget[] => {
+    if (!outlineShown || shownLayout === null || needsYouView === null) {
+      return [];
+    }
+    const question = (
+      section: SectionId,
+      q: PlanningQuestion,
+    ): OutlineTarget => ({
+      section,
+      path: q.path,
+      id: planningCardId(q.path, q.id, q.unitLine),
+    });
+    const out: OutlineTarget[] = [
+      { section: "needs-you", path: null, id: "needs-you" },
+      ...[...needsYouView.top, ...needsYouView.list].map((item) =>
+        question("needs-you", item.entry.question),
+      ),
+    ];
+    if (shownLayout.blocked.length > 0) {
+      out.push({ section: "waiting", path: null, id: "waiting" });
+      if (groupsOpen.blocked) {
+        for (const entry of shownLayout.blocked) {
+          out.push(
+            entry.kind === "question"
+              ? question("waiting", entry.question)
+              : {
+                  section: "waiting",
+                  path: entry.path,
+                  id: planningRowId("waiting", entry.path),
+                },
+          );
+        }
+      }
+    }
+    if (groupsOpen.maintenance) {
+      for (const kind of shownLayout.maintenance) {
+        if (kind.id === "compact") continue;
+        out.push({ section: kind.id, path: null, id: kind.id });
+        if (kind.kind === "questions") {
+          for (const entry of kind.items) {
+            out.push(question(kind.id, entry.question));
+          }
+        } else if (kind.kind === "documents") {
+          for (const path of kind.items) {
+            out.push({
+              section: kind.id,
+              path,
+              id: planningRowId(kind.id, path),
+            });
+          }
+        }
+      }
+    }
+    return out;
+  }, [outlineShown, shownLayout, needsYouView, groupsOpen]);
   const outlineActive = usePlanningOutlineActive(
     pane,
     outlineTargets,
     outlineShown && sectionsIn,
   );
-  // A document in the outline: its section flipped to the page holding its
-  // first entry, with no history entry, as a flip is, and that entry brought
-  // into view once the page is on screen — at once when it already is.
+  // A document in the outline: its first card or row brought into view, its
+  // group opened first if it is folded.
   const jumpToDocument = useCallback(
     (id: SectionId, document: OutlineDocument) => {
       // The outline is the old filter's while another's page is on its way,
-      // and goes nowhere until it is in, as the pagers do (above); so is it
-      // when a keystroke this render has not applied is.
+      // and goes nowhere until it is in; so is it when a keystroke this
+      // render has not applied is.
       if (!askedIsFlip) return;
       if (typedPast() !== null) {
         writeNow();
         return;
       }
-      const target = outlineTargetId(id, document);
-      const onScreen = shownLayout?.sections.find((s) => s.id === id)?.page;
-      const asked = layout?.sections.find((s) => s.id === id)?.page;
-      scrollToRef.current = null;
-      if (asked !== document.page) {
-        replaceSearch(withPage(appliedSearch, id, document.page));
-      }
-      if (onScreen === document.page) {
-        jumpRef.current = null;
-        bringTargetIntoView(target, contentRef.current);
-      } else {
-        jumpRef.current = { section: id, page: document.page, target };
-      }
+      goTo(outlineTargetId(id, document), false);
     },
-    [
-      shownLayout,
-      layout,
-      replaceSearch,
-      appliedSearch,
-      askedIsFlip,
-      typedPast,
-      writeNow,
-    ],
+    [askedIsFlip, typedPast, writeNow, goTo],
   );
-  // Its link, for a modified click and a new tab: the page it flips to, and
-  // the entry it goes to as the fragment.
+  // Its link, for a modified click and a new tab: the entry as the fragment.
   const outlineHref = useCallback(
     (id: SectionId, document: OutlineDocument): string => {
-      const query = planningQuery(withPage(appliedSearch, id, document.page));
+      const query = planningQuery(appliedSearch);
       return `${location.pathname}${query === "" ? "" : `?${query}`}#${outlineTargetId(id, document)}`;
     },
     [appliedSearch, location.pathname],
   );
+  const goToSection = useCallback((id: string) => goTo(id, true), [goTo]);
 
   // Show question on a preview card: the whole block, which only a request
   // naming it in full is answered with (§6.6), with its diagrams drawn.
@@ -2534,20 +2774,80 @@ export const PlanningPage: React.FC = () => {
     [repo, shownHashes],
   );
 
-  const shownIndex = shown?.inputs.index ?? null;
-  const card = (question: PlanningQuestion, preview: boolean) => {
+  // One item of *Needs you*: a full card, or an answered row (§3.3), with the
+  // marks late data put on it (§4.2).
+  const needsYouItem = (item: NeedsYouItem) => {
+    const { question } = item.entry;
+    const facts = factsOf(item.key);
+    const { marks, newReply } =
+      facts === undefined
+        ? { marks: NO_MARKS, newReply: false }
+        : marksOf(facts, item.as);
+    if (item.as === "row") {
+      const now = liveQuestions.get(item.key);
+      return (
+        <AnsweredRow
+          key={item.key}
+          question={question}
+          itemKey={item.key}
+          href={`${buildPath(question.path)}${question.id === null ? "" : `#${question.id}`}`}
+          answer={rowAnswer(
+            now === undefined ? undefined : liveComments.get(questionKey(now)),
+            question.leaning ?? OQ_DEFAULT_LEANING,
+          )}
+          marks={marks}
+          newReply={newReply}
+          opening={opening.has(item.key)}
+          onShow={() => void openItem(item.key, item.entry)}
+          onUndo={() => {
+            const answer =
+              now === undefined
+                ? null
+                : rowAnswer(
+                    liveComments.get(questionKey(now)),
+                    question.leaning ?? OQ_DEFAULT_LEANING,
+                  );
+            if (answer === null || answer.kind === "answered") return;
+            void undoComment(question.path, answer.comment.id).then(() =>
+              openItem(item.key, item.entry),
+            );
+          }}
+          onNewReply={() => {
+            seeReply(item.key);
+            void openItem(item.key, item.entry);
+          }}
+          onOpenHere={saveScroll}
+        />
+      );
+    }
     const key = refKey(question);
     const at = pageBlockKey(question.path, question.block.startLine);
-    const asPreview = preview || shown?.inputs.previews.has(at) === true;
+    // `null` is a block the scanner could not give, which the card says;
+    // `undefined`, one no set asked for.
+    const block =
+      shown?.inputs.blocks.has(at) === true
+        ? shown.inputs.blocks.get(at)
+        : extraBlocks.get(at);
+    // A card whose block no set holds, such as one that joined past the
+    // blocks asked for ahead, is drawn as a preview card: whole once asked.
+    const asPreview =
+      item.entry.preview ||
+      shown?.inputs.previews.has(at) === true ||
+      block === undefined;
     return (
       <PlanningQuestionCard
         key={key}
         question={question}
-        card={asPreview ? null : (shown?.inputs.blocks.get(at) ?? null)}
+        card={asPreview ? null : block}
         preview={asPreview}
         onShowQuestion={showQuestion}
         badge={shownIndex === null ? null : badgeOf(shownIndex, question.path)}
         comments={reviews.byPath[question.path]}
+        listComments={
+          current?.inPlace.opened.has(item.key)
+            ? undefined
+            : current?.painted[question.path]
+        }
         commentsLate={shown?.reviewed.has(question.path) !== true}
         href={buildPath(question.path)}
         onOpenHere={saveScroll}
@@ -2558,25 +2858,67 @@ export const PlanningPage: React.FC = () => {
         onScoped={reportScoped}
         unfoldedByDefault={cardsExpanded}
         folds={folds}
+        marks={marks.length === 0 ? NO_MARKS : marks}
+        newReply={newReply}
+        onNewReply={seeCardReply}
+        onAnswered={answeredHere}
       />
     );
   };
 
-  const documentRow = (
-    section: SectionId,
-    path: string,
-    extra?: React.ReactNode,
-  ) => (
-    <DocumentRow
-      key={path}
-      section={section}
-      path={path}
-      index={shownIndex!}
-      href={buildPath(path)}
-      onOpen={saveScroll}
-    >
-      {extra}
-    </DocumentRow>
+  // The section bar's entries (§6.3): *Needs you*, then each group and kind
+  // the layout on screen lists.
+  const barEntries = useMemo(
+    () =>
+      frameLayout === null
+        ? []
+        : [
+            ...(frameLayout.needsYou.length > 0
+              ? [
+                  {
+                    id: "needs-you",
+                    title: "Needs you",
+                    total: frameLayout.needsYou.length,
+                    about: frameLayout.needsYouExplanation,
+                  },
+                ]
+              : []),
+            ...(frameLayout.blocked.length > 0
+              ? [
+                  {
+                    id: "waiting",
+                    title: "Blocked",
+                    total: frameLayout.blocked.length,
+                    about:
+                      frameSections === null
+                        ? undefined
+                        : sectionExplanation("waiting", frameSections),
+                  },
+                ]
+              : []),
+            ...frameLayout.maintenance.map((kind) => ({
+              id: kind.id,
+              title: MAINTENANCE_TITLES[kind.id],
+              total: kind.items.length,
+              about:
+                kind.id === "compact"
+                  ? COMPACT_EXPLANATION
+                  : frameSections === null
+                    ? undefined
+                    : sectionExplanation(kind.id, frameSections),
+            })),
+          ],
+    [frameLayout, frameSections],
+  );
+  // Each kind's line under its sub-heading: the shared guide's.
+  const explanationOf = useCallback(
+    (id: MaintenanceKindId | "waiting") =>
+      id === "compact"
+        ? COMPACT_EXPLANATION
+        : frameSections === null
+          ? ""
+          : sectionExplanation(id, frameSections),
+    [frameSections],
   );
 
   const headerRef = useHeaderFit();
@@ -2711,7 +3053,6 @@ export const PlanningPage: React.FC = () => {
       // Emptied first, so that a notice the same as the last one said is
       // still a change, and is said.
       setAnnouncement("");
-      scrollToRef.current = null;
       jumpRef.current = null;
       // With the URL, in one render, so the page never shows the URL's old
       // filter between the box's and the new one.
@@ -2969,6 +3310,12 @@ export const PlanningPage: React.FC = () => {
           spacePending && "invisible",
         )}
       >
+        {/* Never in the "⋯", where an update would be hidden (§3.1). */}
+        <PlanningUpdates
+          count={updateCount}
+          title={updatesTitle(updates)}
+          onRefresh={() => void refresh()}
+        />
         <HeaderOverflow
           extra={
             <ViewTogglesPanel
@@ -3078,9 +3425,8 @@ export const PlanningPage: React.FC = () => {
                 active={outlineActive}
                 picker={picker?.(true) ?? null}
                 hrefOf={outlineHref}
-                onSection={bringSectionIntoView}
+                onSection={goToSection}
                 onDocument={jumpToDocument}
-                onPrefetch={prefetch}
               />
             )}
             <main
@@ -3222,16 +3568,13 @@ export const PlanningPage: React.FC = () => {
                     >
                       {frameReady && frameLayout !== null ? (
                         <>
-                          <SectionBar
-                            layout={frameLayout}
-                            answered={frameNeedYou?.sections}
-                          />
+                          <SectionBar entries={barEntries} onGo={goToSection} />
                           {/* The page's controls over its sections, at the
                             end of the line, or of a line of their own when
                             the section bar leaves no room for them. */}
                           <div className="ml-auto flex shrink-0 items-center gap-1 print:hidden">
-                            {frameLayout.sections.some((s) =>
-                              isPlanningAgentSectionId(s.id),
+                            {frameLayout.maintenance.some((kind) =>
+                              isPlanningRequestId(kind.id),
                             ) && (
                               <CopyRequestButton
                                 label="Copy all agent requests"
@@ -3241,9 +3584,7 @@ export const PlanningPage: React.FC = () => {
                                 request={() => requestOf()}
                               />
                             )}
-                            {frameLayout.sections.some(
-                              (s) => s.kind === "cards",
-                            ) && (
+                            {frameLayout.needsYou.length > 0 && (
                               <CardsToggle
                                 expanded={cardsBrought}
                                 onToggle={toggleCards}
@@ -3319,20 +3660,6 @@ export const PlanningPage: React.FC = () => {
                               Comments could not be loaded.
                             </p>
                           )}
-                          {answeredAll && (
-                            <p
-                              data-testid="nothing-needs-you"
-                              className="mb-6 text-base font-medium text-slate-700 dark:text-slate-200"
-                            >
-                              {frameFilter !== ""
-                                ? PLANNING_NOTICES.nothingFilteredNeedsYou
-                                : PLANNING_NOTICES.nothingNeedsYou}{" "}
-                              <span className="text-sm font-normal text-slate-500 dark:text-slate-400">
-                                Every open question has your answer, waiting on
-                                the agent.
-                              </span>
-                            </p>
-                          )}
                           {nothingMatches !== null ? (
                             <NothingMatches
                               id={nothingMatchesId}
@@ -3343,19 +3670,41 @@ export const PlanningPage: React.FC = () => {
                               onClear={clearFilter}
                             />
                           ) : (
-                            <Sections
-                              layout={shown.inputs.layout}
-                              index={shown.inputs.index}
-                              card={card}
-                              documentRow={documentRow}
-                              buildPath={buildPath}
-                              asked={asked}
-                              onFlip={flip}
-                              onPrefetch={prefetch}
-                              busy={busy}
-                              requestOf={requestOf}
-                              answered={frameNeedYou?.sections}
-                            />
+                            <>
+                              {needsYouView !== null &&
+                                (needsYouView.top.length > 0 ||
+                                  needsYouView.list.length > 0) && (
+                                  <PlanningNeedsYou
+                                    explanation={
+                                      shown.inputs.layout.needsYouExplanation
+                                    }
+                                    needYou={
+                                      freshNeedsYou === null
+                                        ? 0
+                                        : freshNeedsYou.cards.length +
+                                          freshNeedsYou.more.length
+                                    }
+                                    view={needsYouView}
+                                    pageSize={shown.inputs.layout.pageSize}
+                                    pageSizes={planningLimits.pageSizes}
+                                    item={needsYouItem}
+                                    onShowAnswered={showAnswered}
+                                    onPageSize={choosePageSize}
+                                  />
+                                )}
+                              <PlanningGroups
+                                layout={shown.inputs.layout}
+                                index={shown.inputs.index}
+                                href={buildPath}
+                                open={groupsOpen}
+                                onToggle={toggleGroup}
+                                counts={groupCounts}
+                                gone={groupGone}
+                                explanationOf={explanationOf}
+                                requestOf={requestOf}
+                                onOpenHere={saveScroll}
+                              />
+                            </>
                           )}
                         </>
                       ) : inputs.slow ? (
@@ -3409,183 +3758,3 @@ const ProjectPlanningLinks: React.FC<{
       ))}
     </ul>
   );
-
-/** One document, by name, with its badge and whatever the section adds. */
-const DocumentRow: React.FC<{
-  /** The section it is a row of, which names it for the outline. */
-  section: SectionId;
-  path: string;
-  index: PlanningIndex;
-  href: string;
-  onOpen: () => void;
-  children?: React.ReactNode;
-}> = ({ section, path, index, href, onOpen, children }) => {
-  const badge = badgeFor(index, "", { path, fragment: null });
-  return (
-    <div
-      id={planningRowId(section, path)}
-      data-planning-document={path}
-      className="rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm dark:border-slate-700 dark:bg-slate-800"
-    >
-      <div className="flex flex-wrap items-baseline gap-x-2">
-        <AppLink
-          to={href}
-          onBeforeNavigate={() => {
-            onOpen();
-          }}
-          className="font-medium text-blue-600 no-underline hover:underline dark:text-blue-400"
-        >
-          {path}
-        </AppLink>
-        {badge !== null && <PlanningBadgeChip badge={badge} />}
-      </div>
-      {children}
-    </div>
-  );
-};
-
-/** What a blocked document waits on: each entry, linked, with its badge. */
-const WaitingOn: React.FC<{
-  from: string;
-  entries: readonly DependsOn[];
-  index: PlanningIndex;
-  buildPath: (path: string) => string;
-}> = ({ from, entries, index, buildPath }) => (
-  <ul className="mt-1 text-[13px] text-slate-600 dark:text-slate-400">
-    {entries.map((entry) => {
-      const badge =
-        entry.target === null
-          ? null
-          : badgeFor(index, from, {
-              path: entry.target,
-              fragment: entry.fragment,
-            });
-      return (
-        <li key={`${entry.raw}\n${entry.line}`}>
-          blocked on{" "}
-          {entry.target === null ? (
-            <code>{entry.raw}</code>
-          ) : (
-            <AppLink
-              to={`${buildPath(entry.target)}${entry.fragment ? `#${entry.fragment}` : ""}`}
-              className="text-blue-600 no-underline hover:underline dark:text-blue-400"
-            >
-              {entry.raw}
-            </AppLink>
-          )}
-          {badge !== null && <PlanningBadgeChip badge={badge} />}
-        </li>
-      );
-    })}
-  </ul>
-);
-
-/** The sections, top to bottom (§6.2); an empty one is not shown. */
-const Sections: React.FC<{
-  layout: PlanningLayout;
-  /** Each section as the URL asks for it, by id. */
-  asked: ReadonlyMap<SectionId, LaidOutSection>;
-  index: PlanningIndex;
-  card: (question: PlanningQuestion, preview: boolean) => React.ReactNode;
-  documentRow: (
-    section: SectionId,
-    path: string,
-    extra?: React.ReactNode,
-  ) => React.ReactNode;
-  buildPath: (path: string) => string;
-  onFlip: OnFlip;
-  onPrefetch?: OnPrefetch;
-  busy: ReadonlySet<SectionId>;
-  requestOf: AgentRequestOf;
-  /** How many of each section's entries a pending comment answers, by id. */
-  answered?: ReadonlyMap<string, number>;
-}> = ({
-  layout,
-  asked,
-  index,
-  card,
-  documentRow,
-  buildPath,
-  onFlip,
-  onPrefetch,
-  busy,
-  requestOf,
-  answered,
-}) => {
-  const entry = (section: SectionId, item: CardEntry) =>
-    item.kind === "question" ? (
-      <React.Fragment key={`question\n${refKey(item.question)}`}>
-        {card(item.question, item.preview)}
-      </React.Fragment>
-    ) : (
-      <React.Fragment key={`doc\n${item.path}`}>
-        {documentRow(
-          section,
-          item.path,
-          <WaitingOn
-            from={item.path}
-            entries={item.waitingOn}
-            index={index}
-            buildPath={buildPath}
-          />,
-        )}
-      </React.Fragment>
-    );
-  return (
-    <>
-      {layout.sections.map((section) => (
-        <Section
-          key={section.id}
-          section={section}
-          filter={layout.filter}
-          asked={asked.get(section.id)}
-          onFlip={onFlip}
-          onPrefetch={onPrefetch}
-          busy={busy.has(section.id)}
-          requestOf={requestOf}
-          answered={answered?.get(section.id)}
-        >
-          {section.kind === "cards" ? (
-            section.items.map((item) => entry(section.id, item))
-          ) : section.kind === "rows" ? (
-            section.items.map((path) =>
-              documentRow(
-                section.id,
-                path,
-                section.id === "disagrees" ? (
-                  <p className="mt-1 text-[13px] text-slate-600 dark:text-slate-400">
-                    Its stage says it is {builtOrDecided(index, path)}, and it
-                    still has open questions.
-                  </p>
-                ) : undefined,
-              ),
-            )
-          ) : section.kind === "skipped" ? (
-            <ul className="space-y-1 text-sm">
-              {section.items.map(({ path, size }) => (
-                <li key={path}>
-                  <code>{path}</code>{" "}
-                  <span className="text-slate-500 dark:text-slate-400">
-                    {formatSize(size)}, over max-file-bytes (
-                    {formatSize(index.config.maxFileBytes)})
-                  </span>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <ul className="space-y-1 text-sm">
-              {section.items.map(({ path, reason }) => (
-                <li key={path}>
-                  <code>{path}</code>{" "}
-                  <span className="text-slate-500 dark:text-slate-400">
-                    {reason}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Section>
-      ))}
-    </>
-  );
-};

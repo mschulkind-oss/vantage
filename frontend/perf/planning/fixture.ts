@@ -349,7 +349,8 @@ export function writeFixture(size: number, parent = tmpdir()): FixtureReport {
   }
 
   const failures: string[] = [];
-  const { pageEntries } = DEFAULT_PLANNING_LIMITS;
+  // The default page size: Needs you shows that many cards (planning-to-do-list.md §3.3).
+  const { defaultPageSize: pageEntries } = DEFAULT_PLANNING_LIMITS;
   check(
     failures,
     documents.every((d) => d.cards >= 0),
