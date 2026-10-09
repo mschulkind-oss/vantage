@@ -490,6 +490,11 @@ the box closes before the request answers, so a failure loses the text
   how many comments are not saved, with a way to reopen each; it does not
   flash for an ordinary pause or a save in flight. Leaving or reloading the
   tab asks first whenever any text is unsaved, a pause's included. No text is ever dropped without the reader being told.
+- **A save the server can never accept is not retried.** When an edit or a
+  reply gets a 404 because its comment no longer exists, the box and the
+  shell's notice say *This comment was deleted* and offer *Copy text* and
+  *Post as a new comment*. Leaving the tab still asks first until the text
+  has been copied or posted. Every other failure keeps retrying.
 - **Two tabs editing one comment:** the last save wins, as it does today
   ([`review-state-architecture.md` §6.1](review-state-architecture.md#61-reviewer-writes-become-commands)).
 
