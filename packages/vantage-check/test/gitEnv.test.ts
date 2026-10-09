@@ -10,6 +10,19 @@ describe("gitEnvScrubbed", () => {
   const git = (cwd: string, env: NodeJS.ProcessEnv, ...args: string[]) =>
     execFileSync("git", args, { cwd, encoding: "utf8", env }).trim();
 
+  it("leaves no test a repository location to inherit", () => {
+    // test/setup.ts runs first, so a test that forgets gitEnvScrubbed still
+    // cannot reach the repository a hook names.
+    for (const name of [
+      "GIT_DIR",
+      "GIT_INDEX_FILE",
+      "GIT_WORK_TREE",
+      "GIT_COMMON_DIR",
+    ]) {
+      expect(process.env[name]).toBeUndefined();
+    }
+  });
+
   it("drops every variable that locates a repository, and keeps the rest", () => {
     const env = gitEnvScrubbed({
       GIT_DIR: "/x/.git",
