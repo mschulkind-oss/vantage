@@ -391,11 +391,17 @@ test.describe("the planning filter", () => {
     await box(page).click();
     await page.keyboard.type("is:open");
     await expect(counts(page)).toBeVisible();
-    // Scrolled down the results with the focus still in the box.
-    await pane.evaluate((node) => {
-      node.scrollTop = 600;
-    });
-    expect(await top()).toBeGreaterThan(0);
+    // Scrolled down the results with the focus still in the box, once the
+    // filtered page is tall enough to scroll: under load its layout can
+    // still be landing when the counts first show.
+    await expect
+      .poll(async () => {
+        await pane.evaluate((node) => {
+          node.scrollTop = 600;
+        });
+        return top();
+      })
+      .toBeGreaterThan(0);
     await page.keyboard.press("Enter");
     await expect(pane).toBeFocused();
     await expect(box(page)).not.toBeFocused();
