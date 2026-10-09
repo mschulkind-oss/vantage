@@ -17,6 +17,14 @@
  */
 
 /**
+ * How a ruled question is compacted: the one copy, in the style guide's
+ * *Record rulings before downstream work* bullet and in the planning
+ * `compact` request, so the two cannot word it differently (P7).
+ */
+export const COMPACTION_RULE =
+  "Fold the ruling into the body it governs, then compact the settled question into a Decision Ledger row retaining its exact ID, decision, date, and a link to the governing section. Remove the question's directive only with that compaction; repair inbound Markdown links to its former anchor in the same update. Keep question-specific `depends-on` fragments when the ledger retains their IDs. Preserve the decision, not the discarded options and leaning.";
+
+/**
  * Shared by the style guide and every review clipboard payload. These are
  * authoring instructions, not a claim that the checker measures agent latency.
  */
@@ -25,7 +33,7 @@ export const ANSWER_PROCESSING_GUIDE = `### Record rulings before downstream wor
 Vantage derives planning state from saved Markdown. Pending review comments can show an answer waiting on the agent, but an agent reply does not settle the question in the document; replying first can make it need the human again.
 
 - **Record a clear ruling first**, in the checkout Vantage serves, before launching or continuing downstream work based on it. Do not wait for a larger rewrite, implementation, independent review, a full test suite, or a commit. A saved edit in another worktree does not update this interface.
-- **Finish a small, coherent document update.** Fold the ruling into the body it governs, then compact the settled question into a Decision Ledger row retaining its exact ID, decision, date, and a link to the governing section. Remove the question's directive only with that compaction; repair inbound Markdown links to its former anchor in the same update. Keep question-specific \`depends-on\` fragments when the ledger retains their IDs. Preserve the decision, not the discarded options and leaning.
+- **Finish a small, coherent document update.** ${COMPACTION_RULE}
 - **Keep unfinished work visible.** A decision is not evidence that it has been implemented. Update \`status\`, \`stage\`, \`next\`, and dependencies only as warranted; do not claim \`accepted\` while any question remains unanswered, including blocked ones, or use a \`done\` stage to hide work. A clarification request is not a ruling: reply without closing the question. For a partial answer, record the settled part and retain a narrower open question with its directive.
 - **Save each coherent update promptly**, rather than waiting for every document in the batch. The coordinator records rulings before handing those documents to a writer. Do not overwrite another writer's changes; if the served checkout is unavailable or the edit conflicts, report that obstacle explicitly instead of claiming the interface has updated.
 - **Then check the affected documents and deliver the comment responses.** Deliver responses for recorded rulings promptly, without waiting for downstream work or the rest of the batch. A response says what was recorded and what remains unbuilt. Do not claim the question is settled while its document is still open. Missing checker tooling does not justify postponing the saved update. Vantage cannot verify from prose alone that a ruling was incorporated correctly or enforce this ordering on an external agent.

@@ -6,17 +6,24 @@
  * function, byte for byte.
  */
 import { describe, expect, it } from "vitest";
+import { ANSWER_PROCESSING_GUIDE, COMPACTION_RULE } from "vantage-md";
 import {
   PLANNING_AGENT_SECTION_IDS,
   PLANNING_NOTICES,
+  PLANNING_REQUEST_IDS,
+  PLANNING_REQUEST_TITLES,
   PLANNING_SECTION_GUIDE,
   PLANNING_SECTION_IDS,
   PLANNING_SECTION_TITLES,
   agentSectionCount,
   agentSectionsWithEntries,
+  answeredQuestions,
   derivePlanningSections,
   isPlanningAgentSectionId,
+  isPlanningRequestId,
   planningAgentRequest,
+  planningRequestCount,
+  planningRequestsWithEntries,
   planningSectionGuide,
   sectionExplanation,
   type PlanningConfig,
@@ -425,5 +432,136 @@ describe("agent requests", () => {
     // aside, cut to one line of 100 characters.
     const item = text.split("\n").find((line) => line.startsWith("- e.md:8"));
     expect(item).toBe(`- e.md:8  ${"word ".repeat(20).trim()}…`);
+  });
+});
+
+describe("the compact request", () => {
+  const DONE = "✅";
+  /** One ruled (✅) question, with its directive. */
+  const ruled = (id: string) =>
+    [
+      `1. ${DONE} **${id}: Question ${id}?**`,
+      "",
+      `   ${questionDirective(OPEN, id, "Yes.")}`,
+      "",
+      "   _Leaning:_ yes.",
+      "",
+    ].join("\n");
+  const TREE_WITH_RULED: Record<string, string> = {
+    ...TREE,
+    "docs/b.md": doc(
+      "status: draft\nstage: DESIGN",
+      [ruled("OQ-B1"), ruled("OQ-B2")].join("\n"),
+    ),
+  };
+  const index = indexOf(TREE_WITH_RULED, { stages: STAGES });
+  const sections = derivePlanningSections(index);
+
+  it("is a request, not a section: the section ids and the agent sections are as they were", () => {
+    expect(PLANNING_REQUEST_IDS).toEqual([
+      "unrouted",
+      "ready",
+      "graduate",
+      "disagrees",
+      "compact",
+    ]);
+    expect(PLANNING_AGENT_SECTION_IDS).not.toContain("compact");
+    expect(PLANNING_SECTION_IDS).not.toContain("compact");
+    expect(isPlanningAgentSectionId("compact")).toBe(false);
+    expect(isPlanningRequestId("compact")).toBe(true);
+    expect(isPlanningRequestId("needs-you")).toBe(false);
+    expect(PLANNING_REQUEST_TITLES.compact).toBe("Compact");
+    expect(PLANNING_REQUEST_TITLES.ready).toBe("Ready to build");
+  });
+
+  it("counts each request's items, ✅ questions for compact", () => {
+    expect(
+      Object.fromEntries(
+        PLANNING_REQUEST_IDS.map((id) => [
+          id,
+          planningRequestCount(index, sections, id),
+        ]),
+      ),
+    ).toEqual({ unrouted: 2, ready: 1, graduate: 1, disagrees: 1, compact: 2 });
+    expect(answeredQuestions(index).map((ref) => ref.id)).toEqual([
+      "OQ-B1",
+      "OQ-B2",
+    ]);
+    expect(planningRequestsWithEntries(index, sections)).toEqual([
+      ...PLANNING_REQUEST_IDS,
+    ]);
+    expect(
+      planningRequestsWithEntries(index, sections, ["compact", "ready"]),
+    ).toEqual(["ready", "compact"]);
+    // The ✅ questions stay in Needs you, which the sections never hand over.
+    expect(sections.needsYou.map((q) => q.id)).not.toContain("OQ-B1");
+  });
+
+  it("lists every ✅ question by document, line, id and title, and restates the style guide's compaction rule", () => {
+    const text = planningAgentRequest(index, sections, {
+      repository: REPO,
+      ids: ["compact"],
+    });
+
+    expect(text?.split("\n").slice(0, -1).join("\n")).toBe(
+      [
+        `Repository: ${REPO}`,
+        "",
+        `Compact (2): questions the human has ruled (✅), whose rulings are still in their question directives. Compact each in its document. ${COMPACTION_RULE} An entry is where the question's item starts.`,
+        "- docs/b.md:8  OQ-B1: Question OQ-B1?",
+        "- docs/b.md:14  OQ-B2: Question OQ-B2?",
+        "",
+      ].join("\n"),
+    );
+    expect(text?.split("\n").at(-1)).toMatch(/^Verify: /);
+    // One copy: the style guide's bullet says exactly what the request says.
+    expect(ANSWER_PROCESSING_GUIDE).toContain(COMPACTION_RULE);
+    for (const part of [
+      "Decision Ledger row",
+      "exact ID",
+      "Remove the question's directive",
+      "repair inbound Markdown links",
+      "`depends-on` fragments",
+    ]) {
+      expect(text).toContain(part);
+    }
+  });
+
+  it("comes after the sections in the default request, and ends with the same verification line", () => {
+    const all = planningAgentRequest(index, sections, { repository: REPO });
+    const only = planningAgentRequest(index, sections, {
+      repository: REPO,
+      ids: ["graduate", "compact"],
+    });
+
+    expect(all?.indexOf("Stage conflict (")).toBeLessThan(
+      all?.indexOf("Compact (") ?? -1,
+    );
+    expect(all?.split("\n").at(-1)).toBe(only?.split("\n").at(-1));
+    expect(only).toMatch(/Ready to graduate \(1\)[^]*\nCompact \(2\)/);
+  });
+
+  it("is left out when no question is ✅, as an empty section is", () => {
+    const none = indexOf(TREE, { stages: STAGES });
+    const noneSections = derivePlanningSections(none);
+
+    expect(planningRequestCount(none, noneSections, "compact")).toBe(0);
+    expect(request(none)).not.toContain("Compact");
+    expect(request(none, ["compact"])).toBeNull();
+  });
+
+  it("lists the ✅ questions a filter's test keeps, and keeps the Filter: line", () => {
+    const keeps = (q: { id: string | null }) => q.id === "OQ-B2";
+    const text = planningAgentRequest(index, sections, {
+      repository: REPO,
+      ids: ["compact"],
+      filter: { text: "OQ-B2", unfiltered: sections, keeps },
+    });
+
+    expect(text).toContain("Filter: `OQ-B2`.");
+    expect(text).toContain("Compact (1):");
+    expect(text).toContain("- docs/b.md:14  OQ-B2");
+    expect(text).not.toContain("OQ-B1");
+    expect(planningRequestCount(index, sections, "compact", keeps)).toBe(1);
   });
 });

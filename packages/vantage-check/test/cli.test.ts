@@ -183,11 +183,11 @@ describe("parseArgs", () => {
   it.each([
     [
       ["index", "--request", "needs-you"],
-      "--request takes the sections an agent works on: unrouted (Not on a roadmap), ready (Ready to build), graduate (Ready to graduate), disagrees (Stage conflict) (got needs-you)",
+      "--request takes the requests an agent is given: unrouted (Not on a roadmap), ready (Ready to build), graduate (Ready to graduate), disagrees (Stage conflict), compact (Compact) (got needs-you)",
     ],
     [
       ["index", "--request=Ready to build"],
-      "--request takes the sections an agent works on: unrouted (Not on a roadmap), ready (Ready to build), graduate (Ready to graduate), disagrees (Stage conflict) (got Ready to build)",
+      "--request takes the requests an agent is given: unrouted (Not on a roadmap), ready (Ready to build), graduate (Ready to graduate), disagrees (Stage conflict), compact (Compact) (got Ready to build)",
     ],
     [
       ["index", "--request", "--format", "json"],
@@ -203,16 +203,17 @@ describe("parseArgs", () => {
 
   // The ids are what --request takes and the titles are what the page shows,
   // and they differ (Stage conflict is `disagrees`), so the help pairs them.
-  it("lists each section --request takes by its id and its title", async () => {
+  it("lists each request --request takes by its id and its title", async () => {
     const { USAGE } = await import("../src/help.js");
 
     expect(USAGE).toContain(
       [
-        "                                     (default: all four):",
+        "                                     (default: all five):",
         "                                       unrouted   Not on a roadmap",
         "                                       ready      Ready to build",
         "                                       graduate   Ready to graduate",
         "                                       disagrees  Stage conflict",
+        "                                       compact    Compact",
         "  --roadmap <path>",
       ].join("\n"),
     );

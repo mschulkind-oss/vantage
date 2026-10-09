@@ -14,6 +14,7 @@ import { parseConfig } from "../src/core/config.js";
 import { EXIT_ENVIRONMENT, EXIT_OK, EXIT_USAGE } from "../src/exit.js";
 import { bufferIo } from "../src/io.js";
 import { VERSION } from "../src/version.js";
+import { COMPACTION_RULE } from "../../vantage-md/src/styleGuide.js";
 import {
   PLANNING_FILTER_PARAM,
   PLANNING_NOTICES,
@@ -25,6 +26,7 @@ import {
   buildPlanningIndex,
   codeSpan,
   derivePlanningSections,
+  filterKeepsQuestion,
   parsePlanningFilter,
   parsePlanningSpaceFile,
   planningAgentRequest,
@@ -748,7 +750,10 @@ describe("index, with several roadmaps", () => {
   });
 });
 
-/** The request `--request` prints for the full tree, every agent section. */
+/** The `compact` block's heading line: the style guide's compaction rule, restated. */
+const COMPACT_HEAD = `Compact (1): questions the human has ruled (✅), whose rulings are still in their question directives. Compact each in its document. ${COMPACTION_RULE} An entry is where the question's item starts.`;
+
+/** The request `--request` prints for the full tree, every request. */
 const FULL_REQUEST = (root: string) =>
   [
     `Repository: ${root}`,
@@ -767,6 +772,9 @@ const FULL_REQUEST = (root: string) =>
     "",
     "Stage conflict (1): the stage says ready or built, but questions are open. For each, find which is wrong, from the document and the code. If the stage is wrong, set it to DESIGN. If a question is a follow-up, propose moving it to a new document. Rule and answer nothing: where a question looks settled, tell the human what you found and ask for a ruling.",
     "- docs/e.md  (stage BUILT; open: OQ-E1)",
+    "",
+    COMPACT_HEAD,
+    "- docs/b.md:8  OQ-B1: Question B1?",
     "",
     "Verify: in the repository, run `vantage-check` on every Markdown file you changed, then `vantage-check index`. If the command cannot run, or exits 2 (a configuration error or a refusal), leave `.vantage.toml` as it is: the check is a quality gate, not part of the work.",
     "",
@@ -2065,6 +2073,7 @@ describe("index --request --filter", () => {
         filter: {
           text: "path:docs/c.md path:/docs/e.md",
           unfiltered: sections,
+          keeps: (q) => filterKeepsQuestion(understood(text), q),
         },
       });
 
@@ -2083,13 +2092,13 @@ describe("index --request --filter", () => {
       fullTree(),
       "--request",
       "--filter",
-      "path:docs/b.md",
+      "is:open path:docs/b.md",
     );
 
     expect(code).toBe(EXIT_OK);
     expect(stdout).toBe("");
     expect(stderr).toBe(
-      "vantage-check: nothing to ask an agent: Not on a roadmap, Ready to build, Ready to graduate and Stage conflict have no entries the filter keeps\n",
+      "vantage-check: nothing to ask an agent: Not on a roadmap, Ready to build, Ready to graduate, Stage conflict and Compact have no entries the filter keeps\n",
     );
   });
 });
@@ -2148,7 +2157,11 @@ describe("index --filter over the fixture of forms", () => {
     );
     const expected = planningAgentRequest(built, applied.sections, {
       repository: root,
-      filter: { text: entry.canonical, unfiltered: sections },
+      filter: {
+        text: entry.canonical,
+        unfiltered: sections,
+        keeps: (q) => filterKeepsQuestion(understood(entry.text), q),
+      },
     });
     const request = await index(root, "--request", "--filter", entry.text);
     expect(request.code).toBe(EXIT_OK);
@@ -2425,5 +2438,128 @@ describe("index --filter, and the checkout's space id", () => {
       filter: "path:docs/b.md",
       roadmap: "roadmap.md",
     });
+  });
+});
+
+describe("index --request compact", () => {
+  it("prints only the compact request: the ✅ questions, then the verification line", async () => {
+    const root = fullTree();
+    const { code, stdout, stderr } = await index(root, "--request", "compact");
+
+    expect(code).toBe(EXIT_OK);
+    expect(stderr).toBe("");
+    expect(stdout).toBe(
+      [
+        `Repository: ${root}`,
+        "",
+        COMPACT_HEAD,
+        "- docs/b.md:8  OQ-B1: Question B1?",
+        "",
+        "Verify: in the repository, run `vantage-check` on every Markdown file you changed, then `vantage-check index`. If the command cannot run, or exits 2 (a configuration error or a refusal), leave `.vantage.toml` as it is: the check is a quality gate, not part of the work.",
+        "",
+      ].join("\n"),
+    );
+  });
+
+  it("prints exactly planningAgentRequest over the same tree", async () => {
+    const root = fullTree();
+    const built = buildPlanningIndex(fullSources());
+    const expected = planningAgentRequest(
+      built,
+      derivePlanningSections(built),
+      { repository: root, ids: ["compact"] },
+    );
+
+    expect((await index(root, "--request", "compact")).stdout).toBe(
+      `${expected}\n`,
+    );
+  });
+
+  it("comes last when asked with other sections, whatever the order", async () => {
+    const { stdout } = await index(
+      fullTree(),
+      "--request",
+      "compact",
+      "graduate",
+    );
+
+    const heads = stdout
+      .split("\n")
+      .filter((line) => /^[A-Z][a-z].* \(\d+\): /.test(line))
+      .map((line) => line.slice(0, line.indexOf(":")));
+    expect(heads).toEqual(["Ready to graduate (1)", "Compact (1)"]);
+  });
+
+  it("keeps the sections, JSON and text exactly as they were: the ✅ question stays in Needs you", async () => {
+    const root = fullTree();
+    const { payload } = await indexJson(root);
+
+    expect(
+      payload.sections.needsYou.map((q: { id: string }) => q.id),
+    ).toContain("OQ-B1");
+    expect(payload.sectionGuide.map((g: { id: string }) => g.id)).not.toContain(
+      "compact",
+    );
+    expect(Object.keys(payload.sections)).not.toContain("compact");
+    expect((await index(root)).stdout).not.toContain("Compact");
+  });
+
+  it("applies --filter to the ✅ questions it keeps", async () => {
+    const root = fullTree();
+    const kept = await index(
+      root,
+      "--request",
+      "compact",
+      "--filter",
+      "path:docs/b.md",
+    );
+    expect(kept.code).toBe(EXIT_OK);
+    expect(kept.stdout).toContain("Filter: `path:docs/b.md`.");
+    expect(kept.stdout).toContain("- docs/b.md:8  OQ-B1");
+
+    const dropped = await index(
+      root,
+      "--request",
+      "compact",
+      "--filter",
+      "path:docs/a.md",
+    );
+    expect(dropped.code).toBe(EXIT_OK);
+    expect(dropped.stdout).toBe("");
+    expect(dropped.stderr).toBe(
+      "vantage-check: nothing to ask an agent: Compact has no entries the filter keeps\n",
+    );
+
+    const open = await index(
+      root,
+      "--request",
+      "compact",
+      "--filter",
+      "is:open",
+    );
+    expect(open.stdout).toBe("");
+  });
+
+  it("prints nothing and says why when no question is ✅", async () => {
+    const root = makeTree({
+      ".git/HEAD": "",
+      ".vantage.toml": STAGES_TOML,
+      "roadmap.md": "# Roadmap\n\n- [A](a.md)\n",
+      "a.md": doc("status: draft\nstage: DESIGN", questions("A", OPEN)),
+    });
+    const { code, stdout, stderr } = await index(root, "--request", "compact");
+
+    expect(code).toBe(EXIT_OK);
+    expect(stdout).toBe("");
+    expect(stderr).toBe(
+      "vantage-check: nothing to ask an agent: Compact has no entries\n",
+    );
+  });
+
+  it("names compact among the requests an unknown one is refused for", async () => {
+    const { code, stderr } = await index(fullTree(), "--request", "nope");
+
+    expect(code).toBe(EXIT_USAGE);
+    expect(stderr).toContain("compact (Compact)");
   });
 });

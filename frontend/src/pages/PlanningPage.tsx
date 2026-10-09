@@ -2373,12 +2373,21 @@ export const PlanningPage: React.FC = () => {
               filter: {
                 text: frameSummary.requestText,
                 unfiltered: frameUnfiltered,
+                // `compact` lists ✅ questions from the whole index.
+                ...(frameKeeps === undefined ? {} : { keeps: frameKeeps }),
               },
             }
           : {}),
       });
     },
-    [frameIndex, frameSections, frameSummary, frameUnfiltered, repo],
+    [
+      frameIndex,
+      frameSections,
+      frameSummary,
+      frameUnfiltered,
+      frameKeeps,
+      repo,
+    ],
   );
   const outline = useMemo(
     () =>
