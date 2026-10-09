@@ -234,7 +234,7 @@ export function needYou(
 /**
  * How many of each question section's entries a pending comment answers, by
  * section id, for the sections that list questions: the count the section's
- * heading and the section bar show beside the section's own, which counts
+ * heading shows beside the section's own, which counts
  * entries, so the two never read as a contradiction of *Nothing needs you*.
  * A section with none answered is left out.
  */

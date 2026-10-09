@@ -1,39 +1,29 @@
 /**
- * The planning outline (`docs/reference/planning-index.md` §6.9), drawn from the
- * index alone. Every limit is proven by configuring it down in the limits
- * module, never by growing a tree to a default.
+ * The planning outline, *On this page* (`docs/design/planning-to-do-list.md`
+ * §3.5), drawn from the layout on screen. Every limit is proven by
+ * configuring it down in the limits module, never by growing a tree to a
+ * default.
  */
 import { afterEach, describe, expect, it } from "vitest";
-import {
-  buildPlanningIndex,
-  sectionExplanation,
-  type PlanningConfig,
-} from "vantage-md/planning";
+import type { PlanningQuestion } from "vantage-md/planning";
 import { setPlanningLimitsForTests } from "../planningScan/limits";
-import { indexOf, questionDirective, sourcesOf } from "../test/planning";
+import { indexOf, questionDirective } from "../test/planning";
 import { planningCardId } from "./planningCardId";
-import {
-  outlineTargetId,
-  planningOutline,
-  planningRowId,
-  type OutlineSection,
-} from "./planningOutline";
-import { sectionsOf, type SectionId } from "./planningPages";
+import { planningOutline, planningRowId } from "./planningOutline";
 
 afterEach(() => setPlanningLimitsForTests(null));
 
 const OPEN = "\u{1F4AC}";
-const BLOCKED = "\u{1F512}";
 
-/** `count` questions `${prefix}1` on, each a card of its own. */
-function questions(prefix: string, count: number, marker = OPEN) {
+/** `count` questions `${prefix}1` on. */
+function questions(prefix: string, count: number) {
   return Array.from({ length: count }, (_, i) =>
     [
       `## Part ${prefix}${i + 1}`,
       "",
-      `1. ${marker} **${prefix}${i + 1}: Question ${prefix}${i + 1}?**`,
+      `1. ${OPEN} **${prefix}${i + 1}: Question ${prefix}${i + 1}?**`,
       "",
-      `   ${questionDirective(marker, `${prefix}${i + 1}`)}`,
+      `   ${questionDirective(OPEN, `${prefix}${i + 1}`)}`,
       "",
       "   _Leaning:_ yes.",
       "",
@@ -41,141 +31,94 @@ function questions(prefix: string, count: number, marker = OPEN) {
   ).join("\n");
 }
 
-const doc = (front: string, ...body: string[]) =>
-  [`---\n${front}\n---`, "", "# Doc", "", ...body].join("\n");
+const doc = (...body: string[]) =>
+  ["---\nstage: DESIGN\n---", "", "# Doc", "", ...body].join("\n");
 
-const STAGES: PlanningConfig["stages"] = {
-  DESIGN: "open",
-  DECIDED: "ready",
-  BUILT: "built",
+const index = indexOf(
+  {
+    "roadmap.md": "# Roadmap\n",
+    "a.md": doc(questions("OQ-A", 3)),
+    "b.md": doc(questions("OQ-B", 2)),
+    "c.md": doc(questions("OQ-C", 1)),
+  },
+  { stages: { DESIGN: "open" } },
+);
+const byId = new Map<string, PlanningQuestion>(
+  index.documents.flatMap((d) => d.questions).map((q) => [q.id!, q]),
+);
+const qs = (...ids: string[]) => ids.map((id) => byId.get(id)!);
+
+const input = {
+  // The full cards in list order: a document's cards need not be adjacent.
+  cards: qs("OQ-B1", "OQ-A1", "OQ-B2"),
+  needing: qs("OQ-B1", "OQ-A1", "OQ-B2", "OQ-A2", "OQ-A3", "OQ-C1"),
+  answered: { total: 4, first: byId.get("OQ-C1")! },
+  blocked: 2,
+  blockedExplanation: "Waits on something.",
+  maintenance: 13,
 };
 
-/** A roadmap that routes nothing, so no open question is on a roadmap. */
-const ROADMAP = { "roadmap.md": "# Roadmap\n" };
+describe("the planning outline, On this page", () => {
+  it("lists the full cards' documents in list order, each with its questions that need you", () => {
+    const outline = planningOutline(input);
+    expect(outline.documents.map((d) => [d.path, d.questions])).toEqual([
+      ["b.md", 2],
+      ["a.md", 3],
+    ]);
+    // A document past the cards is not listed.
+    expect(outline.documents.some((d) => d.path === "c.md")).toBe(false);
+  });
 
-function outlineOf(tree: Record<string, string>) {
-  const index = indexOf({ ...ROADMAP, ...tree }, { stages: STAGES });
-  const sections = sectionsOf(index);
-  return { index, sections, outline: planningOutline(index, sections) };
-}
+  it("goes to a document's first card, by the card's id", () => {
+    const [b] = planningOutline(input).documents;
+    const first = byId.get("OQ-B1")!;
+    expect(b!.target).toBe(planningCardId("b.md", "OQ-B1", first.unitLine));
+  });
 
-const sectionOf = (outline: OutlineSection[], id: SectionId) =>
-  outline.find((s) => s.id === id)!;
+  it("then one line each for the answered rows, Blocked and Maintenance, with their counts", () => {
+    expect(
+      planningOutline(input).lines.map((l) => [l.title, l.total, l.target]),
+    ).toEqual([
+      [
+        "Answered",
+        4,
+        planningCardId("c.md", "OQ-C1", byId.get("OQ-C1")!.unitLine),
+      ],
+      ["Blocked", 2, "waiting"],
+      ["Maintenance", 13, "maintenance"],
+    ]);
+    expect(planningOutline(input).lines[1]!.explanation).toBe(
+      "Waits on something.",
+    );
+  });
 
-/** Each document of a section, as `path questions`. */
-const listed = (outline: OutlineSection[], id: SectionId) =>
-  sectionOf(outline, id).documents.map((d) => `${d.path} ${d.questions}`);
-
-describe("the planning outline", () => {
-  it("names each non-empty section with its count, in the page's order", () => {
-    const { outline } = outlineOf({
-      "b.md": doc("stage: DESIGN", questions("OQ-B", 2)),
-      "ready.md": doc("stage: DECIDED", "Decided."),
+  it("leaves out the answered line with no answered row, and a group the layout has not", () => {
+    const outline = planningOutline({
+      ...input,
+      answered: { total: 0, first: null },
+      blocked: undefined,
     });
-    expect(outline.map((s) => `${s.title} ${s.total}`)).toEqual([
-      "Not on a roadmap 2",
-      "Ready to build 1",
+    expect(outline.lines.map((l) => l.id)).toEqual(["maintenance"]);
+  });
+
+  it("keeps a group's line whose count fell to 0 since the layout", () => {
+    const outline = planningOutline({ ...input, blocked: 0 });
+    expect(outline.lines.map((l) => [l.id, l.total])).toContainEqual([
+      "waiting",
+      0,
     ]);
   });
 
-  it("gives each section the line under its heading, as the page's tooltip", () => {
-    const { outline, sections } = outlineOf({
-      "b.md": doc("stage: DESIGN", questions("OQ-B", 1)),
-      "ready.md": doc("stage: DECIDED", "Decided."),
-    });
-    expect(outline.map((s) => s.explanation)).toEqual([
-      sectionExplanation("unrouted", sections),
-      sectionExplanation("ready", sections),
-    ]);
-    expect(sectionOf(outline, "ready").explanation).toBe(
-      "Decided, with no open questions. An agent builds it.",
+  it("lists outlineDocuments documents, and counts the rest", () => {
+    setPlanningLimitsForTests({ outlineDocuments: 1 });
+    const outline = planningOutline(input);
+    expect(outline.documents.map((d) => d.path)).toEqual(["b.md"]);
+    expect(outline.more).toBe(1);
+  });
+
+  it("names a document's row in a section by the section and its path", () => {
+    expect(planningRowId("ready", "plans/ready.md")).toBe(
+      "pr-ready--plans%2Fready.md",
     );
-  });
-
-  it("lists a section's documents in the section's order, each with its questions there", () => {
-    const { outline } = outlineOf({
-      "b.md": doc("stage: DESIGN", questions("OQ-B", 3)),
-      "a.md": doc("stage: DESIGN", questions("OQ-A", 1)),
-    });
-    // Not on a roadmap orders by path, then line.
-    expect(listed(outline, "unrouted")).toEqual(["a.md 1", "b.md 3"]);
-  });
-
-  it("goes to a document's first card by the card's id, and to a row by the row's", () => {
-    const { outline } = outlineOf({
-      "plans/b.md": doc("stage: DESIGN", questions("OQ-B", 2)),
-      "plans/deps.md": doc(
-        "stage: DESIGN\ndepends-on:\n  - b.md#OQ-B1",
-        "Waits.",
-      ),
-      "plans/ready.md": doc("stage: DECIDED", "Decided."),
-    });
-    const b = sectionOf(outline, "unrouted").documents[0]!;
-    expect(b.question?.id).toBe("OQ-B1");
-    // The contract with the cards: the id a card's root carries.
-    expect(outlineTargetId("unrouted", b)).toBe(
-      planningCardId("plans/b.md", "OQ-B1", b.question!.unitLine),
-    );
-    expect(outlineTargetId("unrouted", b)).toBe("pq-plans%2Fb.md--OQ-B1");
-    const deps = sectionOf(outline, "waiting").documents[0]!;
-    expect(deps).toMatchObject({
-      path: "plans/deps.md",
-      questions: 0,
-      question: null,
-    });
-    expect(outlineTargetId("waiting", deps)).toBe(
-      planningRowId("waiting", "plans/deps.md"),
-    );
-    const ready = sectionOf(outline, "ready").documents[0]!;
-    expect(outlineTargetId("ready", ready)).toBe("pr-ready--plans%2Fready.md");
-  });
-
-  it("counts a Blocked document's blocked questions with its own row, which comes first", () => {
-    const { outline } = outlineOf({
-      "b.md": doc("stage: DESIGN", questions("OQ-B", 1)),
-      "w.md": doc(
-        "stage: DESIGN\ndepends-on:\n  - b.md#OQ-B1",
-        questions("OQ-W", 2, BLOCKED),
-      ),
-    });
-    const waiting = sectionOf(outline, "waiting").documents;
-    expect(waiting.map((d) => [d.path, d.questions])).toEqual([["w.md", 2]]);
-  });
-
-  it("counts the open questions that put a document under Stage conflict", () => {
-    const { outline } = outlineOf({
-      "d.md": doc("stage: DECIDED", questions("OQ-D", 2)),
-    });
-    expect(listed(outline, "disagrees")).toEqual(["d.md 2"]);
-  });
-
-  it("lists no documents under Too large", () => {
-    const index = buildPlanningIndex(
-      sourcesOf(
-        ROADMAP,
-        { skipped: [{ path: "big.md", size: 2_000_000 }] },
-        { stages: STAGES },
-      ),
-    );
-    const outline = planningOutline(index, sectionsOf(index));
-    expect(sectionOf(outline, "skipped")).toMatchObject({
-      total: 1,
-      documents: [],
-      more: 0,
-    });
-  });
-
-  it("lists outlineDocuments documents under a section, and counts the rest", () => {
-    setPlanningLimitsForTests({ outlineDocuments: 2 });
-    const { outline } = outlineOf({
-      "a.md": doc("stage: DESIGN", questions("OQ-A", 1)),
-      "b.md": doc("stage: DESIGN", questions("OQ-B", 1)),
-      "c.md": doc("stage: DESIGN", questions("OQ-C", 1)),
-      "d.md": doc("stage: DESIGN", questions("OQ-D", 1)),
-    });
-    const unrouted = sectionOf(outline, "unrouted");
-    expect(unrouted.documents.map((d) => d.path)).toEqual(["a.md", "b.md"]);
-    expect(unrouted.more).toBe(2);
-    expect(unrouted.total).toBe(4);
   });
 });

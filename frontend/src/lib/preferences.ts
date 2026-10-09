@@ -58,6 +58,13 @@ export const PREFERENCE_KEYS = [
    */
   "vantage:planningBlockedOpen",
   "vantage:planningMaintenanceOpen",
+  /**
+   * The kinds of *Maintenance* that the planning page's Copy answers +
+   * maintenance leaves out: their request ids, comma-separated, `""` for
+   * none (`lib/planningCopy.ts`, §5.1 of the same design). Absent, Ready to
+   * build alone is left out.
+   */
+  "vantage:planningCopyLeftOut",
   "vantage:sidebarCollapsed",
   /** The sidebar's width in px, as a decimal string. */
   "vantage:sidebarWidth",

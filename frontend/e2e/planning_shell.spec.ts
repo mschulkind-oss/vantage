@@ -1,7 +1,8 @@
 import { test, expect, type Page } from "@playwright/test";
 
-// The planning page in the app shell, with the planning outline in its
-// contents column (docs/reference/planning-index.md §6.9), in a real browser.
+// The planning page in the app shell, with the planning outline, On this
+// page, in its contents column (docs/design/planning-to-do-list.md §3.5), in
+// a real browser.
 // The fixture is test_repo's plans/, as planning_page.spec.ts reads it: Needs
 // you holds design.md's two questions and paged.md's twelve, ten to a page,
 // Not on a roadmap holds 27 questions over two pages, and Ready to graduate one document.
@@ -9,9 +10,10 @@ import { test, expect, type Page } from "@playwright/test";
 const section = (page: Page, name: string) =>
   page.getByRole("region", { name: new RegExp(`^${name}`) });
 const outline = (page: Page) =>
-  page.getByRole("navigation", { name: "Planning outline" });
-const outlineSection = (page: Page, title: string) =>
-  outline(page).getByRole("link", { name: new RegExp(`^${title} \\d`) });
+  page.getByRole("navigation", { name: "On this page" });
+/** A line after the documents: `answered`, `waiting` or `maintenance`. */
+const outlineLine = (page: Page, id: string) =>
+  outline(page).locator(`[data-outline-line="${id}"]`);
 const outlineDocument = (page: Page, path: string) =>
   outline(page).locator(`[data-testid=outline-document][data-path="${path}"]`);
 const pane = (page: Page) => page.locator("[data-content-scroll]");
@@ -22,7 +24,7 @@ async function openWithOutline(page: Page): Promise<void> {
     localStorage.setItem("vantage:tocOpen", "true");
   });
   await page.goto("/.vantage/planning");
-  await expect(outlineSection(page, "Needs you")).toBeVisible();
+  await expect(outlineDocument(page, "plans/design.md")).toBeVisible();
   await expect(section(page, "Needs you").getByRole("article")).toHaveCount(10);
 }
 
@@ -60,44 +62,35 @@ test.describe("the planning page in the app shell", () => {
       .toBeGreaterThan(narrow + 100);
   });
 
-  test("goes to a section and to a document from the keyboard", async ({
+  test("goes to a group and to a document from the keyboard", async ({
     page,
   }) => {
     await openWithOutline(page);
-    // A section in a folded group: the group opens, and its heading comes
-    // into view with the focus.
-    await outlineSection(page, "Ready to graduate").focus();
+    // Only the full cards' documents, then the lines; Maintenance's items
+    // are not listed (planning-to-do-list.md §3.5).
+    await expect(outline(page)).toContainText("On this page");
+    await expect(outlineDocument(page, "plans/shipped.md")).toHaveCount(0);
+    // A folded group: it opens, and its heading comes into view with the
+    // focus.
+    await outlineLine(page, "maintenance").focus();
     await page.keyboard.press("Enter");
-    const graduate = section(page, "Ready to graduate").getByRole("heading", {
-      level: 3,
-    });
-    await expect(graduate).toBeFocused();
-    await expect(graduate).toBeInViewport();
+    const maintenance = page.locator("h2#maintenance");
+    await expect(maintenance).toBeFocused();
+    await expect(maintenance).toBeInViewport();
+    await expect(section(page, "Ready to graduate")).toBeVisible();
 
-    // A document of Not on a roadmap: no pages, and no history entry.
-    await outlineDocument(page, "tree-badges/bake-images.md").focus();
+    // A document of Needs you's cards: its first card, in view, with the
+    // focus on its first control, and no history entry.
+    await outlineDocument(page, "plans/paged.md").focus();
     await page.keyboard.press("Enter");
     await expect(page).toHaveURL(/\/\.vantage\/planning$/);
-    // Its first row, found by the id its card would carry (planningCardId),
-    // is brought into view with the focus on its first link.
-    const first = section(page, "Not on a roadmap")
-      .locator('li[id^="pq-tree-badges%2Fbake-images.md--"]')
+    const first = section(page, "Needs you")
+      .locator('article[id^="pq-plans%2Fpaged.md--"]')
       .first();
     await expect(first).toBeInViewport();
     await expect
       .poll(() => first.evaluate((el) => el.contains(document.activeElement)))
       .toBe(true);
-
-    // A document's row: in view, with its link focused.
-    await outlineDocument(page, "plans/shipped.md").focus();
-    await page.keyboard.press("Enter");
-    const row = section(page, "Ready to graduate").locator(
-      '[data-planning-document="plans/shipped.md"]',
-    );
-    await expect(row).toBeInViewport();
-    await expect(
-      row.getByRole("link", { name: "plans/shipped.md" }),
-    ).toBeFocused();
   });
 
   test("marks where the reader is as the pane scrolls", async ({ page }) => {
@@ -105,24 +98,23 @@ test.describe("the planning page in the app shell", () => {
     await page
       .getByRole("button", { name: /^Maintenance/, expanded: false })
       .click();
-    await expect(outlineSection(page, "Needs you")).toHaveAttribute(
-      "aria-current",
-      "location",
-    );
-    // Scrolled to the end, the last section is the one on screen.
+    // At the top, the first card's document.
+    const marked = outline(page).locator("[aria-current=location]");
+    await expect(marked).toHaveCount(1);
+    await expect(marked).toHaveAttribute("data-testid", "outline-document");
+    // Scrolled to the end, the last group is the one on screen.
     await pane(page).evaluate((el) => el.scrollTo(0, el.scrollHeight));
-    await expect(outlineSection(page, "Ready to graduate")).toHaveAttribute(
+    await expect(outlineLine(page, "maintenance")).toHaveAttribute(
       "aria-current",
       "location",
     );
-    await expect(outlineSection(page, "Needs you")).not.toHaveAttribute(
-      "aria-current",
-    );
-    // And a section's heading at the top of the pane marks that section.
-    await section(page, "Not on a roadmap")
-      .getByRole("heading", { level: 3 })
+    await expect(marked).toHaveCount(1);
+    // And a card at the top of the pane marks its document.
+    await section(page, "Needs you")
+      .locator('article[id^="pq-plans%2Fpaged.md--"]')
+      .first()
       .evaluate((el) => el.scrollIntoView({ block: "start" }));
-    await expect(outlineSection(page, "Not on a roadmap")).toHaveAttribute(
+    await expect(outlineDocument(page, "plans/paged.md")).toHaveAttribute(
       "aria-current",
       "location",
     );

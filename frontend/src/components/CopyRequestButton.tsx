@@ -1,6 +1,6 @@
 /**
- * Copy agent request, or Copy all agent requests, on the planning page
- * (`docs/reference/planning-index.md` §6.2).
+ * Copy agent request, on each kind's sub-heading of the planning page's
+ * *Maintenance* (`docs/reference/planning-index.md` §6.2).
  */
 import React, { useEffect, useState } from "react";
 import { Check, ClipboardCopy } from "lucide-react";
@@ -12,7 +12,7 @@ import { RESERVED_ICON_SIZE, ReservedLabel } from "./ReservedLabel";
 const COPIED_MS = 2000;
 
 /**
- * Copy agent request, or Copy all agent requests: copies the text `request`
+ * Copy agent request: copies the text `request`
  * generates when pressed, from the index already on screen, so it needs no
  * network and nothing selected. Confirmed as Copy answers is, its label
  * turning to Copied for two seconds in room kept for the longer of the two,

@@ -599,6 +599,11 @@ const cardFor = (id: string) =>
  */
 const nameLink = (id: string, path: string) =>
   within(cardFor(id)).getByRole("link", { name: path });
+/**
+ * Copy answers' accessible name, and not its neighbour Copy answers +
+ * maintenance's (planning-to-do-list.md §5).
+ */
+const COPY_ANSWERS = /^(Copy answers|Copied)(?! \+)/;
 /** Open document's accessible name, which says what its icon does. */
 const OPEN_DOCUMENT = "Open document (opens in a new tab)";
 /** The documents a section lists, by path. */
@@ -896,7 +901,7 @@ describe("empty and degenerate states", () => {
     }
   });
 
-  it("shows a progress line where the section bar will be while the first scan runs", async () => {
+  it("shows a progress line where the sections will be while the first scan runs", async () => {
     setLoad({ status: "loading", warm: false, progress: null });
     await renderPage();
     expect(inPage().getByRole("status")).toHaveTextContent(
@@ -911,10 +916,9 @@ describe("empty and degenerate states", () => {
       "Scanning planning documents: 412 of 1,000",
     );
     expect(screen.queryAllByRole("region")).toHaveLength(0);
-    expect(screen.queryByRole("navigation", { name: "Sections" })).toBeNull();
   });
 
-  it("replaces the progress line with the section bar and the sections in one commit", async () => {
+  it("replaces the progress line with the sections in one commit", async () => {
     setLoad({ status: "loading", warm: false, progress: null });
     serveTree(TREE);
     let release: () => void = () => {};
@@ -931,11 +935,11 @@ describe("empty and degenerate states", () => {
     expect(inPage().getByRole("status")).toHaveTextContent(
       "Scanning planning documents",
     );
-    expect(screen.queryByRole("navigation", { name: "Sections" })).toBeNull();
     release();
     await settle();
     expect(inPage().queryByRole("status")).toBeNull();
-    expect(screen.getByRole("navigation", { name: "Sections" })).toBeTruthy();
+    // No section bar (planning-to-do-list.md §3.5).
+    expect(screen.queryByRole("navigation", { name: "Sections" })).toBeNull();
     expect(listedIn("Not on a roadmap")).toHaveLength(2);
   });
 
@@ -1872,70 +1876,26 @@ describe("Refresh (planning-to-do-list.md §4.3)", () => {
   });
 });
 
-describe("the section bar (planning-index.md §6.3)", () => {
+describe("no section bar (planning-to-do-list.md §3.5)", () => {
   beforeEach(() => seed());
 
-  const bar = () => screen.getByRole("navigation", { name: "Sections" });
-
-  it("names each non-empty section with its exact count, whatever the page size", async () => {
-    pageSize(1);
-    await renderPage();
-    expect(
-      within(bar())
-        .getAllByRole("link")
-        .map((a) => a.textContent),
-    ).toEqual([
-      "Needs you 2",
-      "Blocked 2",
-      "Not on a roadmap 2",
-      "Ready to build 1",
-      "Ready to graduate 1",
-      "Stage conflict 1",
-      "To fold into the ledger 1",
-    ]);
-  });
-
-  it("opens a folded group on a jump into it, then brings its heading into view", async () => {
+  it("has none: the page's top is the filter line, then Needs you's heading and its first card", async () => {
     localStorage.clear();
-    const scrolled = vi.fn();
-    Element.prototype.scrollIntoView = scrolled;
-    try {
-      await renderPage();
-      expect(querySection("Ready to build")).toBeNull();
-      await act(async () => {
-        fireEvent.click(
-          within(bar()).getByRole("link", { name: /^Ready to build/ }),
-        );
-      });
-      await settle();
-      const heading = within(section("Ready to build")).getByRole("heading", {
-        level: 3,
-      });
-      expect(scrolled.mock.contexts.at(-1)).toBe(heading);
-      expect(document.activeElement).toBe(heading);
-    } finally {
-      delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
-    }
-  });
-
-  it("jumps to a section without adding a history entry, and takes the focus there", async () => {
-    const scrolled = vi.fn();
-    Element.prototype.scrollIntoView = scrolled;
-    try {
-      await renderPage();
-      const link = within(bar()).getByRole("link", { name: /^Blocked/ });
-      link.focus();
-      fireEvent.click(link);
-      const heading = within(section("Blocked")).getByRole("heading", {
-        level: 2,
-      });
-      expect(scrolled.mock.contexts[0]).toBe(heading);
-      expect(router.location).toBe("/.vantage/planning");
-      // So Tab goes on from the section, not from the bar.
-      expect(document.activeElement).toBe(heading);
-    } finally {
-      delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
-    }
+    await renderPage();
+    expect(screen.queryByRole("navigation", { name: "Sections" })).toBeNull();
+    const main = screen.getByRole("main");
+    const filter = within(main).getByRole("search");
+    const heading = within(section("Needs you")).getByRole("heading", {
+      level: 2,
+    });
+    expect(
+      filter.compareDocumentPosition(heading) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    // Nothing between them but the notices' box and the sections' own.
+    expect(
+      Array.from(main.querySelectorAll("nav, [data-planning-cards-toggle]")),
+    ).toEqual([]);
   });
 
   it("scrolls to the section a link's fragment names once the sections are in", async () => {
@@ -1947,45 +1907,9 @@ describe("the section bar (planning-index.md §6.3)", () => {
       expect(scrolled.mock.contexts[0]).toBe(
         within(section("Ready to graduate")).getByRole("heading", { level: 3 }),
       );
-      expect(
-        within(bar()).getByRole("link", { name: /^Ready to graduate/ }),
-      ).toHaveAttribute("href", "#graduate");
     } finally {
       delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
     }
-  });
-
-  // planning-to-do-list.md §4.2: an index update is late data. The bar is
-  // the layout's, so it changes with the next layout, in its commit.
-  it("keeps its counts through an index update, and changes them with the next layout", async () => {
-    await renderPage();
-    const unroutedCount = () =>
-      within(bar()).getByRole("link", { name: /^Not on a roadmap/ })
-        .textContent;
-    expect(unroutedCount()).toBe("Not on a roadmap 2");
-    // One more unrouted question, whose page is held back.
-    const tree = {
-      ...TREE,
-      "plans/more.md": doc("stage: DESIGN", q("OQ-M1", OPEN)),
-    };
-    let release: () => void = () => {};
-    serveTree(tree, "/api", (inline) => ({
-      cards: (repo, want, options) =>
-        new Promise<CardAnswer[]>((resolve) => {
-          release = () => resolve(inline.cards(repo, want, options));
-        }),
-    }));
-    setLoad(readyOf(tree));
-    await settle();
-    release();
-    await settle();
-    expect(unroutedCount()).toBe("Not on a roadmap 2");
-    // The group's own count is the data in hand's.
-    expect(section("Not on a roadmap")).toHaveAccessibleName(
-      /^Not on a roadmap 3/,
-    );
-    await refresh();
-    expect(unroutedCount()).toBe("Not on a roadmap 3");
   });
 
   it("writes every count in one number format, in the heading's name too", async () => {
@@ -2000,9 +1924,9 @@ describe("the section bar (planning-index.md §6.3)", () => {
       },
     );
     await renderPage();
-    expect(
-      within(bar()).getByRole("link", { name: /^Too large/ }),
-    ).toHaveTextContent("Too large 1,200");
+    expect(screen.getByTestId("maintenance-kinds")).toHaveTextContent(
+      "1,200 too large",
+    );
     expect(
       within(section("Too large")).getByRole("heading", { level: 3 }),
     ).toHaveAccessibleName("Too large 1,200");
@@ -2064,11 +1988,10 @@ describe("the cards' blocks, from the scanner client (planning-index.md §10.4)"
     setLoad(readyOf(tree));
     await renderPage();
     expect(screen.queryAllByRole("region")).toHaveLength(0);
-    // The frame: the header, and the section bar with its exact counts.
+    // The frame: the header and the filter line, with no progress line.
     expect(screen.getByRole("heading", { name: "Planning" })).toBeTruthy();
-    expect(
-      screen.getByRole("navigation", { name: "Sections" }),
-    ).toHaveTextContent("Needs you 3");
+    expect(screen.getByRole("search")).toBeTruthy();
+    expect(inPage().queryByRole("status")).toBeNull();
     // Not past spinnerMs yet, so no spinner either.
     expect(screen.queryByLabelText("Loading this page's cards")).toBeNull();
     release();
@@ -2310,7 +2233,7 @@ describe("page inputs, and one commit (planning-index.md §6.5)", () => {
     const region = screen.getByRole("alert");
     expect(region).toHaveTextContent("Comments could not be loaded.");
     expect(cardsIn("Needs you")).toHaveLength(3);
-    expect(screen.getByRole("button", { name: /Copy answers/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: COPY_ANSWERS })).toBeDisabled();
     expect(screen.getByTestId("pending-answers")).toHaveTextContent("–");
   });
 
@@ -2331,7 +2254,7 @@ describe("page inputs, and one commit (planning-index.md §6.5)", () => {
     });
     await renderPage();
     expect(requests).toBe(2);
-    const copy = screen.getByRole("button", { name: /Copy answers/ });
+    const copy = screen.getByRole("button", { name: COPY_ANSWERS });
     expect(copy).toBeDisabled();
     expect(copy).toHaveAttribute(
       "title",
@@ -2447,7 +2370,7 @@ describe("page inputs, and one commit (planning-index.md §6.5)", () => {
     frames.held = true;
     act(() => router.navigate!("/.vantage/planning"));
     await settle();
-    expect(screen.getByRole("navigation", { name: "Sections" })).toBeTruthy();
+    expect(screen.getByRole("search")).toBeTruthy();
     expect(screen.queryAllByRole("article")).toHaveLength(0);
     await releaseFrames();
     expect(cardsIn("Needs you")).toHaveLength(3);
@@ -2706,14 +2629,14 @@ describe("several roadmaps (§6.8)", () => {
     expect(router.location).toBe("/.vantage/planning");
   });
 
-  // One picker, where the planning outline is drawn at its head, and back
-  // above the section bar when it is not (§6.9).
+  // One picker, where the planning outline is drawn at its head, and on
+  // Needs you's heading line when it is not (planning-to-do-list.md §3.5).
   it("puts the picker at the head of the planning outline while it is drawn, and only there", async () => {
     localStorage.setItem("vantage:tocOpen", "true");
     seed(TWO);
     await renderPage();
     const outline = screen.getByRole("navigation", {
-      name: "Planning outline",
+      name: "On this page",
     });
     expect(screen.getAllByRole("combobox", { name: "Roadmap" })).toHaveLength(
       1,
@@ -2723,7 +2646,7 @@ describe("several roadmaps (§6.8)", () => {
     await pick(NESTED);
     expect(search().get("roadmap")).toBe(NESTED);
 
-    // Hidden, the column gives the picker back to its line.
+    // Hidden, the column gives the picker to Needs you's heading line.
     fireEvent.click(
       within(screen.getByTestId("planning-header")).getByRole("button", {
         name: "Hide contents",
@@ -2732,14 +2655,17 @@ describe("several roadmaps (§6.8)", () => {
     expect(screen.getAllByRole("combobox", { name: "Roadmap" })).toHaveLength(
       1,
     );
-    expect(screen.getByRole("main")).toContainElement(picker());
+    expect(section("Needs you")).toContainElement(picker());
+    expect(section("Needs you").firstElementChild!.contains(picker())).toBe(
+      true,
+    );
     expect(picker().value).toBe(NESTED);
   });
 
   // Late data never moves painted content (§6.9): the picker comes with the
-  // index, so a Contents label painted before it would be pushed down by it.
-  // The outline's head comes in the commit that draws the section bar.
-  it("draws the outline's head with the section bar, never a label the picker lands above", async () => {
+  // index, so a label painted before it would be pushed down by it. The
+  // outline's head comes with the outline.
+  it("draws the outline's head with the outline, never a label the picker lands above", async () => {
     localStorage.setItem("vantage:tocOpen", "true");
     setLoad({ status: "loading", warm: false, progress: null });
     serveTree(TWO);
@@ -2750,15 +2676,14 @@ describe("several roadmaps (§6.8)", () => {
     setLoad(readyOf(TWO));
     await settle();
     const outline = screen.getByRole("navigation", {
-      name: "Planning outline",
+      name: "On this page",
     });
-    const label = within(outline).getByText("Contents");
+    const label = within(outline).getByText("On this page");
     // The picker first, then the label, both there at once.
     expect(
       picker().compareDocumentPosition(label) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
-    expect(screen.getByRole("navigation", { name: "Sections" })).toBeTruthy();
   });
 
   it("offers each roadmap that routes, nearest the root first and chosen, with its count", async () => {
@@ -2769,12 +2694,8 @@ describe("several roadmaps (§6.8)", () => {
       "docs/plans/roadmap.md (2 need you)",
     ]);
     expect(picker().value).toBe("roadmap.md");
-    // Above the section bar.
-    expect(
-      picker().compareDocumentPosition(
-        screen.getByRole("navigation", { name: "Sections" }),
-      ) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
+    // On Needs you's heading line, the list the roadmap orders.
+    expect(section("Needs you")).toContainElement(picker());
     expect(cardsIn("Needs you")).toEqual([
       "OQ-D1: Question OQ-D1?",
       "OQ-D3: Question OQ-D3?",
@@ -2806,7 +2727,7 @@ describe("several roadmaps (§6.8)", () => {
     expect(picker()).toHaveAttribute("title", NESTED);
   });
 
-  it("draws the section bar in a box of its own, so the roadmap line above it moves no painted box", async () => {
+  it("draws the sections in a box of their own, so the roadmap line on Needs you moves no painted box", async () => {
     setLoad({ status: "loading", warm: false, progress: null });
     serveTree(TWO);
     await renderPage();
@@ -2820,8 +2741,6 @@ describe("several roadmaps (§6.8)", () => {
     expect(screen.getByTestId("roadmap-line")).toBeTruthy();
     // A box reused from the progress line would be one the roadmap line,
     // inserted above it, pushed down: a layout shift on every cold load.
-    const bar = screen.getByRole("navigation", { name: "Sections" });
-    expect(bar.parentElement).not.toBe(progressBox);
     expect(progressBox.isConnected).toBe(false);
   });
 
@@ -2845,9 +2764,7 @@ describe("several roadmaps (§6.8)", () => {
     expect(screen.getByTestId("other-roadmaps")).toHaveTextContent(
       PLANNING_NOTICES.otherRoadmaps(2),
     );
-    expect(
-      screen.getByRole("navigation", { name: "Sections" }),
-    ).toHaveTextContent(/Needs you 2/);
+    expect(screen.getByTestId("needs-you-count")).toHaveTextContent("2");
     // No history entry: Back leaves the page.
     act(() => router.navigate!(-1));
     expect(router.location).toBe("/plans/a.md");
@@ -3204,7 +3121,7 @@ describe("filing from the page", () => {
 describe("Copy answers (§6.7)", () => {
   beforeEach(() => seed(ROUTED));
 
-  const copyButton = () => screen.getByRole("button", { name: /Copy answers/ });
+  const copyButton = () => screen.getByRole("button", { name: COPY_ANSWERS });
   const pendingCount = () => screen.getByTestId("pending-answers").textContent;
 
   async function take(id: string) {
@@ -3353,7 +3270,7 @@ describe("Copy answers across pages (planning-index.md §6.7)", () => {
   beforeEach(() =>
     setPlanningLimitsForTests({ pageSizes: [1, 10, 20], defaultPageSize: 10 }),
   );
-  const copyButton = () => screen.getByRole("button", { name: /Copy answers/ });
+  const copyButton = () => screen.getByRole("button", { name: COPY_ANSWERS });
   const pendingCount = () => screen.getByTestId("pending-answers").textContent;
 
   /** A pending comment anchored at `line`, with `hash` as its block's. */
@@ -3590,8 +3507,13 @@ describe("each section's explanation, and Copy agent request", () => {
 
   const copyFor = (title: string) =>
     screen.getByRole("button", { name: `Copy agent request for ${title}` });
+  /**
+   * Copy answers + maintenance, which replaced Copy all agent requests
+   * (planning-to-do-list.md §5): with every kind checked and no answer
+   * pending, what it copies is every request, as `--request` prints it.
+   */
   const copyAll = () =>
-    screen.getByRole("button", { name: "Copy all agent requests" });
+    screen.getByRole("button", { name: /^Copy answers \+ maintenance / });
   const agentButtons = () =>
     screen
       .queryAllByRole("button", { name: /agent request/ })
@@ -3607,6 +3529,8 @@ describe("each section's explanation, and Copy agent request", () => {
     resetRepoRootsForTests();
     seed();
     serveInfo(ROOT);
+    // Every kind checked, Ready to build too.
+    localStorage.setItem("vantage:planningCopyLeftOut", "");
   });
 
   it("says under each heading what its entries are and who acts, in the shared guide's words", async () => {
@@ -3630,36 +3554,23 @@ describe("each section's explanation, and Copy agent request", () => {
         about.compareDocumentPosition(region.querySelector("h2, h3")!) &
           Node.DOCUMENT_POSITION_PRECEDING,
       ).toBeTruthy();
-      // And the section bar's entry says it on hover.
-      expect(
-        within(screen.getByRole("navigation", { name: "Sections" })).getByRole(
-          "link",
-          { name: new RegExp(`^${title} \\d`) },
-        ),
-      ).toHaveAttribute("title", explanation);
     }
     expect(section("Needs you")).toHaveAccessibleDescription(
       "Open or answered questions on this roadmap, in its order. Rule each open one, then Copy answers.",
     );
   });
 
-  it("gives the contents column's section entries the same line on hover", async () => {
+  it("gives the contents column's Blocked line the same line on hover", async () => {
     localStorage.setItem("vantage:tocOpen", "true");
     await renderPage();
-    const entries = within(
-      screen.getByRole("navigation", { name: "Planning outline" }),
-    ).getAllByTestId("outline-section");
-    expect(entries.map((a) => a.getAttribute("title"))).toEqual(
-      (
-        [
-          "needs-you",
-          "unrouted",
-          "waiting",
-          "ready",
-          "graduate",
-          "disagrees",
-        ] as const
-      ).map((id) => PLANNING_SECTION_GUIDE[id].explanation),
+    const blocked = within(
+      screen.getByRole("navigation", { name: "On this page" }),
+    )
+      .getAllByTestId("outline-line")
+      .find((a) => a.getAttribute("data-outline-line") === "waiting")!;
+    expect(blocked).toHaveAttribute(
+      "title",
+      PLANNING_SECTION_GUIDE.waiting.explanation,
     );
   });
 
@@ -3672,10 +3583,9 @@ describe("each section's explanation, and Copy agent request", () => {
     );
   });
 
-  it("gives each agent section Copy agent request, and the section bar's line Copy all agent requests", async () => {
+  it("gives each agent section Copy agent request, and no Copy all agent requests (planning-to-do-list.md §5)", async () => {
     await renderPage();
     expect(agentButtons()).toEqual([
-      "Copy all agent requests",
       "Copy agent request for Not on a roadmap",
       "Copy agent request for Ready to build",
       "Copy agent request for Ready to graduate",
@@ -3692,16 +3602,9 @@ describe("each section's explanation, and Copy agent request", () => {
       /^Copy agent request$/,
     );
     expect(copyFor("Ready to graduate")).toHaveClass("print:hidden");
-    // On the section bar's line, before Expand all.
-    const bar = screen.getByRole("navigation", { name: "Sections" });
-    const toggle = screen.getByRole("button", { name: "Expand all" });
-    expect(copyAll().parentElement).toBe(toggle.parentElement);
-    expect(copyAll().parentElement?.parentElement).toBe(bar.parentElement);
     expect(
-      copyAll().compareDocumentPosition(toggle) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-    expect(copyAll().parentElement).toHaveClass("print:hidden");
+      screen.queryByRole("button", { name: "Copy all agent requests" }),
+    ).toBeNull();
   });
 
   it("copies the request for every entry of its section, on every page, with nothing selected and no network", async () => {
@@ -3740,7 +3643,7 @@ describe("each section's explanation, and Copy agent request", () => {
     );
   });
 
-  it("copies every agent section's request in one, as vantage-check index --request prints it by default", async () => {
+  it("copies every agent section's request in one with every kind checked, as vantage-check index --request prints it by default", async () => {
     await renderPage();
     const { index, sections } = shownState();
     await press(copyAll());
@@ -3756,8 +3659,95 @@ describe("each section's explanation, and Copy agent request", () => {
     ]) {
       expect(copied).toContain(title);
     }
-    expect(copyAll()).toHaveTextContent(/^Copied$/);
-    expect(screen.getByText("Copied every agent request.")).toBeTruthy();
+    expect(copyAll()).toHaveTextContent(/^Copied/);
+    expect(
+      screen.getByText("Copied your answers and the maintenance checked."),
+    ).toBeTruthy();
+  });
+
+  describe("Copy answers + maintenance (planning-to-do-list.md §5)", () => {
+    const answersButton = () =>
+      screen.getByRole("button", { name: COPY_ANSWERS });
+    const count = () => screen.getByTestId("copy-maintenance-count");
+
+    it("sits in the header beside Copy answers, counting the answers and the checked kinds' items", async () => {
+      // The default: Ready to build left out.
+      localStorage.removeItem("vantage:planningCopyLeftOut");
+      await renderPage();
+      expect(header()).toContainElement(copyAll());
+      expect(
+        answersButton().compareDocumentPosition(copyAll()) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      // Not on a roadmap 2, Stage conflict 1, To fold into the ledger 1,
+      // Ready to graduate 1; Ready to build's 1 left out.
+      expect(count()).toHaveTextContent("5");
+      await act(async () => {
+        fireEvent.click(
+          within(cardFor("OQ-D1")).getByRole("button", {
+            name: "Take this leaning",
+          }),
+        );
+      });
+      await settle();
+      expect(count()).toHaveTextContent("6");
+    });
+
+    it("copies Copy answers' text byte for byte, then the request for the checked kinds, as vantage-check index --request prints them", async () => {
+      localStorage.setItem("vantage:planningCopyLeftOut", "ready,graduate");
+      await renderPage();
+      await act(async () => {
+        fireEvent.click(
+          within(cardFor("OQ-D1")).getByRole("button", {
+            name: "Take this leaning",
+          }),
+        );
+      });
+      await settle();
+      await press(answersButton());
+      const answers = writeText.mock.calls[0][0] as string;
+      await press(copyAll());
+      const copied = writeText.mock.calls[1][0] as string;
+      const { index, sections } = shownState();
+      expect(copied).toBe(
+        `${answers}\n\n${planningAgentRequest(index, sections, {
+          repository: ROOT,
+          ids: ["unrouted", "disagrees", "compact"],
+        })}`,
+      );
+    });
+
+    it("follows the filter in its counts and in what it copies", async () => {
+      await renderPage("/.vantage/planning?filter=path:plans/ready.md");
+      expect(count()).toHaveTextContent("1");
+      await press(copyAll());
+      const { index } = shownState();
+      expect(writeText.mock.calls[0][0]).toBe(
+        planningAgentRequest(
+          index,
+          sectionsOf(index, null, "path:plans/ready.md"),
+          {
+            repository: ROOT,
+            filter: {
+              text: "path:plans/ready.md",
+              unfiltered: derivePlanningSections(index),
+              keeps: keepsOf("path:plans/ready.md"),
+            },
+          },
+        ),
+      );
+    });
+
+    it("is greyed out with nothing to copy, and copies nothing", async () => {
+      localStorage.setItem(
+        "vantage:planningCopyLeftOut",
+        "unrouted,disagrees,compact,graduate,ready",
+      );
+      await renderPage();
+      expect(copyAll()).toHaveAttribute("aria-disabled", "true");
+      await press(copyAll());
+      expect(writeText).not.toHaveBeenCalled();
+    });
   });
 
   it("shows neither button when no section is an agent's work", async () => {
@@ -4020,10 +4010,13 @@ describe("each section's explanation, and Copy agent request", () => {
           text,
         ).toBe(canonical);
         const summary = filterSummaryOf(index, "roadmap.md", canonical);
-        const button = screen.queryByRole("button", {
-          name: "Copy all agent requests",
-        });
-        if (button === null || summary?.requestText == null) continue;
+        const button = copyAll();
+        if (
+          button.getAttribute("aria-disabled") === "true" ||
+          summary?.requestText == null
+        ) {
+          continue;
+        }
         await press(button);
         const copied = writeText.mock.calls[0][0] as string;
         expect(copied, text).toBe(
@@ -4207,7 +4200,7 @@ describe("scoping a comment to its question, over agent-bootstrap.md", () => {
 
     expect(screen.getByTestId("pending-answers")).toHaveTextContent("1");
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: /Copy answers/ }));
+      fireEvent.click(screen.getByRole("button", { name: COPY_ANSWERS }));
     });
     const payload = writeText.mock.calls[0][0] as string;
     expect(payload.match(/^\*\*Comment:\*\* /gm)).toHaveLength(1);
@@ -4264,7 +4257,7 @@ describe("in the app shell (§6.1)", () => {
       within(header()).getByRole("button", { name: "Use full width" }),
     ).toHaveAttribute("aria-pressed", "false");
     expect(
-      within(header()).getByRole("button", { name: /^Copy answers/ }),
+      within(header()).getByRole("button", { name: COPY_ANSWERS }),
     ).toBeTruthy();
     // A document's controls have no meaning here.
     for (const name of ["Raw", "Path", "Review"]) {
@@ -4312,42 +4305,36 @@ describe("in the app shell (§6.1)", () => {
   });
 });
 
-describe("the planning outline (§6.9)", () => {
+describe("the planning outline, On this page (planning-to-do-list.md §3.5)", () => {
   beforeEach(() => {
     localStorage.setItem("vantage:tocOpen", "true");
   });
 
   const outline = () =>
-    screen.getByRole("navigation", { name: "Planning outline" });
-  const outlineSections = () =>
+    screen.getByRole("navigation", { name: "On this page" });
+  const outlineDocuments = () =>
     within(outline())
-      .getAllByTestId("outline-section")
+      .queryAllByTestId("outline-document")
+      .map((a) => a.getAttribute("aria-label"));
+  const outlineLines = () =>
+    within(outline())
+      .queryAllByTestId("outline-line")
       .map((a) => a.textContent);
-  /** A section's entry in the outline, and the documents listed under it. */
-  const outlineEntry = (title: string) =>
-    within(outline())
-      .getAllByTestId("outline-section")
-      .find((a) => a.textContent?.startsWith(title))!;
-  const outlineDocuments = (title: string) =>
-    Array.from(
-      outlineEntry(title).parentElement!.querySelectorAll(
-        "[data-testid=outline-document]",
-      ),
-      (a) => a.getAttribute("aria-label"),
-    );
-  const outlineDocument = (title: string, path: string) =>
-    outlineEntry(title).parentElement!.querySelector<HTMLAnchorElement>(
+  const outlineLine = (id: string) =>
+    outline().querySelector<HTMLAnchorElement>(`[data-outline-line="${id}"]`)!;
+  const outlineDocument = (path: string) =>
+    outline().querySelector<HTMLAnchorElement>(
       `[data-testid=outline-document][data-path="${path}"]`,
     )!;
 
-  /** OQ-D1's card id (`planningCardId`), from the index seeded. */
-  const d1Id = () => {
+  /** A question's card id (`planningCardId`), from the index seeded. */
+  const cardId = (path: string, id: string) => {
     const load = usePlanningStore.getState().byRepo[""];
     const index = load?.status === "ready" ? load.index : null;
     const question = index!.documents
-      .find((d) => d.path === "plans/design.md")!
-      .questions.find((x) => x.id === "OQ-D1")!;
-    return planningCardId("plans/design.md", "OQ-D1", question.unitLine);
+      .find((d) => d.path === path)!
+      .questions.find((x) => x.id === id)!;
+    return planningCardId(path, id, question.unitLine);
   };
 
   it("is the contents column, which the header's toggle shows and hides", async () => {
@@ -4355,70 +4342,71 @@ describe("the planning outline (§6.9)", () => {
     seed();
     await renderPage();
     expect(
-      screen.queryByRole("navigation", { name: "Planning outline" }),
+      screen.queryByRole("navigation", { name: "On this page" }),
     ).toBeNull();
     fireEvent.click(
       within(header()).getByRole("button", { name: "Show contents" }),
     );
     expect(outline()).toBeTruthy();
+    expect(within(outline()).getByText("On this page")).toBeTruthy();
     expect(localStorage.getItem("vantage:tocOpen")).toBe("true");
   });
 
-  it("names each section with its count, and under each its documents with their questions there", async () => {
-    seed();
+  it("lists the full cards' documents in list order, each with its questions that need you, then the answered rows, Blocked and Maintenance", async () => {
+    pageSize(2);
+    const tree = {
+      ...todoTree(4),
+      "roadmap.md":
+        "# Roadmap\n\n1. [The list](plans/todo.md)\n2. [Other](plans/other.md)\n3. [Third](plans/third.md)\n",
+      "plans/other.md": doc(
+        "stage: DESIGN",
+        q("OQ-O1", OPEN),
+        q("OQ-O2", BLOCKED),
+      ),
+      "plans/third.md": doc("stage: DESIGN", q("OQ-H1", OPEN)),
+      "plans/ready.md": doc("status: accepted\nstage: DECIDED", "Decided."),
+    };
+    seed(tree);
+    answer(tree, "OQ-T1", "OQ-T2", "OQ-T3");
     await renderPage();
-    expect(outlineSections()).toEqual([
-      "Needs you 2",
-      "Not on a roadmap 2",
-      "Blocked 2",
-      "Ready to build 1",
-      "Ready to graduate 1",
-      "Stage conflict 1",
+    expect(cardIds()).toEqual(["OQ-T4", "OQ-O1"]);
+    // The documents of the full cards only, with all their questions that
+    // need you; third.md's question is past the page size.
+    expect(outlineDocuments()).toEqual([
+      "plans/todo.md, 1 needs you",
+      "plans/other.md, 1 needs you",
     ]);
-    // A ✅ question has left Needs you (planning-to-do-list.md §3.3).
-    expect(outlineDocuments("Needs you")).toEqual([
-      "plans/design.md, 2 questions",
+    expect(outlineLines()).toEqual([
+      "Answered 3",
+      "Blocked 1",
+      "Maintenance 1",
     ]);
-    expect(outlineDocuments("Not on a roadmap")).toEqual([
-      "plans/disagrees.md, 1 question",
-      "plans/unrouted.md, 1 question",
-    ]);
-    expect(outlineDocuments("Blocked")).toEqual(
-      expect.arrayContaining(["plans/design.md, 1 question", "plans/deps.md"]),
-    );
-    expect(outlineDocuments("Ready to build")).toEqual(["plans/ready.md"]);
-    expect(outlineDocuments("Stage conflict")).toEqual([
-      "plans/disagrees.md, 1 question",
-    ]);
-    // By file name, with its folders apart from it.
-    const design = outlineDocument("Needs you", "plans/design.md");
-    expect(
-      within(design).getByTestId("outline-document-name"),
-    ).toHaveTextContent(/^design\.md$/);
-    expect(design).toHaveTextContent("plans/");
-    expect(design).toHaveAttribute("title", "plans/design.md");
+    // Maintenance's items are not listed.
+    expect(outline()).not.toHaveTextContent("ready.md");
   });
 
-  it("jumps to a section, with no history entry, and takes the focus to its heading", async () => {
+  it("goes to a document's first card, with no history entry, and the focus to its first control", async () => {
     seed();
     const scrolled = vi.fn();
     Element.prototype.scrollIntoView = scrolled;
     try {
       await renderPage();
       scrolled.mockClear();
-      fireEvent.click(outlineEntry("Blocked"));
-      const heading = within(section("Blocked")).getByRole("heading", {
-        level: 2,
+      await act(async () => {
+        fireEvent.click(outlineDocument("plans/design.md"));
       });
-      expect(scrolled.mock.contexts[0]).toBe(heading);
-      expect(document.activeElement).toBe(heading);
+      await settle();
       expect(router.location).toBe("/.vantage/planning");
+      const card = cardFor("OQ-D1");
+      expect(card.id).toBe(cardId("plans/design.md", "OQ-D1"));
+      expect(scrolled.mock.contexts).toContain(card);
+      expect(card.contains(document.activeElement)).toBe(true);
     } finally {
       delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
     }
   });
 
-  it("opens the folded group holding a document's row, then brings the row into view, with no history entry", async () => {
+  it("goes to a folded group's heading, opening the group first, with no history entry", async () => {
     localStorage.removeItem("vantage:planningMaintenanceOpen");
     seed();
     const scrolled = vi.fn();
@@ -4428,71 +4416,82 @@ describe("the planning outline (§6.9)", () => {
       expect(querySection("Ready to build")).toBeNull();
       scrolled.mockClear();
       await act(async () => {
-        fireEvent.click(outlineDocument("Ready to build", "plans/ready.md"));
+        fireEvent.click(outlineLine("maintenance"));
       });
       await settle();
       expect(router.location).toBe("/.vantage/planning");
-      const row = section("Ready to build").querySelector(
-        '[data-planning-document="plans/ready.md"]',
-      )!;
-      expect(row.id).toBe(planningRowId("ready", "plans/ready.md"));
-      expect(scrolled.mock.contexts).toContain(row);
-      // The focus goes with it, onto the row's first control.
-      expect(document.activeElement).toBe(
-        within(row as HTMLElement).getByRole("link", {
-          name: "plans/ready.md",
-        }),
-      );
-      // The group open, a document is brought into view at once.
-      scrolled.mockClear();
-      fireEvent.click(outlineDocument("Ready to build", "plans/ready.md"));
-      expect(scrolled.mock.contexts).toContain(row);
+      expect(querySection("Ready to build")).not.toBeNull();
+      const heading = document.getElementById("maintenance")!;
+      expect(scrolled.mock.contexts).toContain(heading);
+      expect(document.activeElement).toBe(heading);
       act(() => router.navigate!(-1));
       expect(router.location).toBe("/plans/roadmap.md");
     } finally {
       delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
     }
   });
-  it("brings a document's first card into view, and the focus to its first control", async () => {
-    seed();
+
+  it("goes to the first answered row", async () => {
+    pageSize(2);
+    const tree = todoTree(3);
+    seed(tree);
+    answer(tree, "OQ-T2");
     const scrolled = vi.fn();
     Element.prototype.scrollIntoView = scrolled;
     try {
       await renderPage();
-      scrolled.mockClear();
       await act(async () => {
-        fireEvent.click(outlineDocument("Needs you", "plans/design.md"));
+        fireEvent.click(outlineLine("answered"));
       });
       await settle();
-      expect(router.location).toBe("/.vantage/planning");
-      const card = cardFor("OQ-D1");
-      expect(card.id).toBe(d1Id());
-      expect(scrolled.mock.contexts).toContain(card);
-      expect(card.contains(document.activeElement)).toBe(true);
-      expect(document.activeElement).not.toBe(card);
+      const row = screen.getByRole("group", {
+        name: "OQ-T2: Question OQ-T2?",
+      });
+      expect(scrolled.mock.contexts).toContain(row);
+      expect(row.contains(document.activeElement)).toBe(true);
     } finally {
       delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
     }
   });
+
+  it("links each entry to what it goes to, and leaves a modified click to the browser", async () => {
+    seed();
+    await renderPage();
+    const design = outlineDocument("plans/design.md");
+    expect(design).toHaveAttribute(
+      "href",
+      `/.vantage/planning#${cardId("plans/design.md", "OQ-D1")}`,
+    );
+    expect(outlineLine("waiting")).toHaveAttribute(
+      "href",
+      "/.vantage/planning#waiting",
+    );
+    fireEvent.click(design, { ctrlKey: true });
+    await settle();
+    expect(router.location).toBe("/.vantage/planning");
+  });
+
   it("scrolls to the card a link's fragment names once the sections are in", async () => {
     seed();
     const scrolled = vi.fn();
     Element.prototype.scrollIntoView = scrolled;
     try {
-      // The index is seeded, so the card's id is known before the page opens.
-      await renderPage(`/.vantage/planning#${d1Id()}`);
+      await renderPage(
+        `/.vantage/planning#${cardId("plans/design.md", "OQ-D1")}`,
+      );
       expect(scrolled).toHaveBeenCalledTimes(1);
       expect(scrolled.mock.contexts[0]).toBe(cardFor("OQ-D1"));
     } finally {
       delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
     }
   });
+
   it("keeps a link's fragment through the rewrite of its query, and scrolls to its card", async () => {
     seed();
     const scrolled = vi.fn();
     Element.prototype.scrollIntoView = scrolled;
     try {
-      const id = d1Id();
+      const id = cardId("plans/design.md", "OQ-D1");
       // An old page parameter, which the rewrite drops.
       await renderPage(`/.vantage/planning?unrouted=1#${id}`);
       expect(router.location).toBe("/.vantage/planning");
@@ -4503,16 +4502,7 @@ describe("the planning outline (§6.9)", () => {
       delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
     }
   });
-  it("links each document to its first card, and leaves a modified click to the browser", async () => {
-    seed();
-    await renderPage();
-    const design = outlineDocument("Needs you", "plans/design.md");
-    expect(design).toHaveAttribute("href", `/.vantage/planning#${d1Id()}`);
-    expect(outlineEntry("Blocked")).toHaveAttribute("href", "#waiting");
-    fireEvent.click(design, { ctrlKey: true });
-    await settle();
-    expect(router.location).toBe("/.vantage/planning");
-  });
+
   it("scrolls to the row a link's fragment names once the sections are in", async () => {
     seed();
     const scrolled = vi.fn();
@@ -4532,7 +4522,7 @@ describe("the planning outline (§6.9)", () => {
     }
   });
 
-  it("marks the section and the document being read as the pane scrolls", async () => {
+  it("marks the document and the line being read as the pane scrolls", async () => {
     seed();
     // A layout of the page's own: every element of the sections that has
     // an id stands 100px below the one before it, less how far the pane has
@@ -4555,45 +4545,30 @@ describe("the planning outline (§6.9)", () => {
           outline().querySelectorAll("[aria-current=location]"),
           (a) => a.getAttribute("aria-label") ?? a.textContent,
         );
-      expect(current()).toEqual(["Needs you 2"]);
-
+      expect(current()).toEqual(["plans/design.md, 2 need you"]);
       const placed = Array.from(
         document.querySelectorAll("[data-planning-sections] [id]"),
       );
-      const row = document.getElementById(
-        planningRowId("ready", "plans/ready.md"),
-      )!;
-      scrolledBy = placed.indexOf(row) * 100 - 20;
-      await act(async () => {
-        scroller().dispatchEvent(new Event("scroll"));
-      });
-      await settle();
-      expect(current()).toEqual(["Ready to build 1", "plans/ready.md"]);
-
       scrolledBy =
-        placed.indexOf(document.getElementById("disagrees")!) * 100 - 50;
+        placed.indexOf(document.getElementById("maintenance")!) * 100 - 20;
       await act(async () => {
         scroller().dispatchEvent(new Event("scroll"));
       });
       await settle();
-      expect(current()).toEqual(["Stage conflict 1"]);
+      expect(current()).toEqual(["Maintenance 6"]);
     } finally {
       rect.mockRestore();
     }
   });
 
-  it("lists outlineDocuments documents under a section, and says how many more", async () => {
+  it("lists outlineDocuments documents, and says how many more", async () => {
     setPlanningLimitsForTests({ outlineDocuments: 1 });
-    seed();
+    seed(ROUTED);
     await renderPage();
-    expect(outlineDocuments("Not on a roadmap")).toEqual([
-      "plans/disagrees.md, 1 question",
-    ]);
-    expect(
-      within(outlineEntry("Not on a roadmap").parentElement!).getByTestId(
-        "outline-more",
-      ),
-    ).toHaveTextContent("and 1 more document");
+    expect(outlineDocuments()).toEqual(["plans/design.md, 2 need you"]);
+    expect(within(outline()).getByTestId("outline-more")).toHaveTextContent(
+      "and 1 more document",
+    );
   });
 });
 
@@ -4664,26 +4639,29 @@ describe("Expand all and Collapse all (planning-index.md §6.6)", () => {
       }),
     );
 
-  it("sits at the end of the section bar's line, and folds and unfolds every card on the page", async () => {
+  it("sits with the header's view toggles, and folds and unfolds every card on the page (planning-to-do-list.md §3.1)", async () => {
     await renderPage();
     const button = toggle();
-    expect(button).toHaveTextContent("Expand all");
-    // On the section bar's own line, after the bar.
-    const bar = screen.getByRole("navigation", { name: "Sections" });
-    expect(button.parentElement?.parentElement).toBe(bar.parentElement);
+    expect(button).toHaveAccessibleName("Expand all");
+    // In the header, after the full-width toggle, and never in the pane.
+    expect(header()).toContainElement(button);
+    const width = within(header()).getByRole("button", {
+      name: "Use full width",
+    });
     expect(
-      bar.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING,
+      width.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
+    expect(button).toHaveClass("hdr-view");
     expect(folds()).toEqual({ "OQ-L1": false, "OQ-L2": false });
 
     await press(button);
     expect(folds()).toEqual({ "OQ-L1": true, "OQ-L2": true });
-    expect(toggle()).toHaveTextContent("Collapse all");
+    expect(toggle()).toHaveAccessibleName("Collapse all");
     expect(readPreference(KEY)).toBe("true");
 
     await press(toggle());
     expect(folds()).toEqual({ "OQ-L1": false, "OQ-L2": false });
-    expect(toggle()).toHaveTextContent("Expand all");
+    expect(toggle()).toHaveAccessibleName("Expand all");
     expect(readPreference(KEY)).toBe("false");
   });
 
@@ -4710,7 +4688,7 @@ describe("Expand all and Collapse all (planning-index.md §6.6)", () => {
     observer.disconnect();
     expect(folds()).toEqual({ "OQ-L1": true, "OQ-L2": true, "OQ-L3": true });
     expect(flipped).toEqual([]);
-    expect(toggle()).toHaveTextContent("Collapse all");
+    expect(toggle()).toHaveAccessibleName("Collapse all");
   });
   it("lets a card's own fold win until the next Expand all or Collapse all, across a new layout", async () => {
     await renderPage();
@@ -4747,14 +4725,14 @@ describe("Expand all and Collapse all (planning-index.md §6.6)", () => {
     expect(folds()).toEqual({ "OQ-L1": false, "OQ-L2": false });
     // Named for what a press does to the cards on screen, which the other
     // tab's choice left folded.
-    expect(toggle()).toHaveTextContent("Expand all");
+    expect(toggle()).toHaveAccessibleName("Expand all");
     await size("20");
     expect(folds()).toEqual({ "OQ-L1": false, "OQ-L2": false, "OQ-L3": true });
-    expect(toggle()).toHaveTextContent("Expand all");
+    expect(toggle()).toHaveAccessibleName("Expand all");
     // So the first press here does what it says.
     await press(toggle());
     expect(folds()).toEqual({ "OQ-L1": true, "OQ-L2": true, "OQ-L3": true });
-    expect(toggle()).toHaveTextContent("Collapse all");
+    expect(toggle()).toHaveAccessibleName("Collapse all");
     expect(readPreference(KEY)).toBe("true");
     await press(toggle());
     expect(folds()).toEqual({ "OQ-L1": false, "OQ-L2": false, "OQ-L3": false });
@@ -4774,16 +4752,14 @@ describe("Expand all and Collapse all (planning-index.md §6.6)", () => {
     );
   });
 
-  it("is not offered on a page with no question cards", async () => {
+  it("keeps its place in the header on a page with no question cards, from the first paint", async () => {
     seed({
       "roadmap.md": "# Roadmap\n",
       "plans/ready.md": doc("status: accepted\nstage: DECIDED", "Decided."),
     });
     await renderPage();
     expect(documentsIn("Ready to build")).toEqual(["plans/ready.md"]);
-    expect(
-      screen.queryByRole("button", { name: /^(Expand all|Collapse all)$/ }),
-    ).toBeNull();
+    expect(header()).toContainElement(toggle());
   });
 });
 
@@ -5046,10 +5022,29 @@ describe("the planning filter (planning-index.md §6.11)", () => {
   const notice = () => screen.queryByTestId("filter-notice");
   const noticeLines = () =>
     Array.from(notice()?.querySelectorAll("p") ?? [], (p) => p.textContent);
-  const hint = () => screen.getByTestId("planning-filter-hint").textContent;
+  /** The hint, which shares its slot with the counts: `""` when it is not shown. */
+  const hint = () => {
+    const slot = screen.getByTestId("planning-filter-hint");
+    return slot.querySelector("[data-testid=planning-filter-counts]") === null
+      ? slot.textContent
+      : "";
+  };
   const status = () => screen.getByTestId("planning-filter-status");
-  const bar = () => screen.getByRole("navigation", { name: "Sections" });
-  const queryBar = () => screen.queryByRole("navigation", { name: "Sections" });
+  /**
+   * The filter the page on screen is laid out under, as its sections' box
+   * says: what the notice's first line named until the filter line's counts
+   * replaced it (planning-to-do-list.md §3.2).
+   */
+  const filterShown = () =>
+    document
+      .querySelector("[data-planning-sections]")
+      ?.getAttribute("data-planning-filter") ?? null;
+  /** The filter line's counts, *N match · M hidden*, or `null`. */
+  const counts = () =>
+    screen.queryByTestId("planning-filter-counts")?.textContent ?? null;
+  /** What else the summary says, in the counts' tooltip. */
+  const clauses = () =>
+    screen.getByTestId("planning-filter-hint").getAttribute("title");
   /** What stands in place of the sections when a filter keeps no entry. */
   const nothingMatches = () => screen.queryByTestId("nothing-matches");
   /** Its headline, then its reason line, as read; `null` while it is not shown. */
@@ -5137,7 +5132,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
   }
 
   describe("opened from a link", () => {
-    it("draws the sections' box anew when its frame lands after the index builds, so the notice moves nothing painted", async () => {
+    it("draws the sections' box anew when its frame lands after the index builds, so nothing painted moves", async () => {
       // Opened cold, the spinner paints in the sections' box under the
       // progress line. The frame lands with the notice above that box, so
       // the box is replaced, a removal and an insertion, rather than moved
@@ -5162,10 +5157,10 @@ describe("the planning filter (planning-index.md §6.11)", () => {
           "Loading this page's cards",
         ),
       ).toBeTruthy();
-      expect(notice()).toBeNull();
+      expect(counts()).toBeNull();
       release();
       await settle();
-      expect(notice()).not.toBeNull();
+      expect(counts()).not.toBeNull();
       expect(cardsIn("Needs you")).toHaveLength(2);
       expect(document.querySelector("[data-planning-sections]")).not.toBe(
         spinnerBox,
@@ -5173,7 +5168,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       expect(spinnerBox.isConnected).toBe(false);
     });
 
-    it("shows only what the filter keeps, counted, with the box holding its text and the notice saying what is hidden", async () => {
+    it("shows only what the filter keeps, counted in the filter line, with the box holding its text (planning-to-do-list.md §3.2)", async () => {
       await renderPage(
         "/.vantage/planning?filter=path:plans/design.md+is:open",
       );
@@ -5184,16 +5179,15 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       for (const name of ["Not on a roadmap", "Blocked", "Ready to build"]) {
         expect(querySection(name)).toBeNull();
       }
-      expect(bar()).toHaveTextContent(/^Needs you 2$/);
+      expect(screen.getByTestId("needs-you-count")).toHaveTextContent("2");
       expect(box().value).toBe("path:plans/design.md is:open");
-      expect(noticeLines()).toEqual([
-        "Filtered by path:plans/design.md is:open: 2 of 10 entries, in 1 of 9 paths, 2 of them open questions.",
+      // An item is a question or a document row, counted once; no notice
+      // line repeats the box.
+      expect(counts()).toBe("2 match · 8 hidden");
+      expect(notice()).toBeNull();
+      // What the counts cannot say is in their tooltip.
+      expect(clauses()).toBe(
         "1 of its questions is blocked and will need you later.",
-        "Clear the filter to see the other 8.",
-      ]);
-      // The text is set off as code, so the colon after it is not its own.
-      expect(notice()!.querySelector("code")).toHaveTextContent(
-        /^path:plans\/design\.md is:open$/,
       );
       // Already canonical, in the link encoding: nothing to rewrite.
       expect(router.location).toBe(
@@ -5260,15 +5254,13 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       await renderPage("/.vantage/planning?filter=QUESTION+oq-d3");
       expect(cardsIn("Needs you")).toEqual(["OQ-D3: Question OQ-D3?"]);
       expect(querySection("Not on a roadmap")).toBeNull();
-      expect(noticeLines()[0]).toBe(
-        "Filtered by QUESTION oq-d3: 1 of 10 entries, 1 of them an open question.",
-      );
+      expect(counts()).toBe("1 matches · 9 hidden");
       expect(box()).not.toHaveAttribute("aria-invalid");
       expect(router.location).toBe("/.vantage/planning?filter=QUESTION+oq-d3");
 
       cleanup();
       await renderPage("/.vantage/planning?filter=stage:decided");
-      expect(noticeLines()).toContain(
+      expect(clauses()).toContain(
         "stage: is not a filter key, so stage:decided is searched as text. The keys are path: and is:.",
       );
       expect(box()).not.toHaveAttribute("aria-invalid");
@@ -5278,29 +5270,30 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       await renderPage("/.vantage/planning?filter=path:plans/desing");
       // Said once, as the reason it keeps nothing; Clear the filter is the
       // button under it.
-      expect(noticeLines()).toEqual([
-        "Filtered by path:plans/desing: 0 of 10 entries, in 0 of 9 paths, none of them open questions.",
-      ]);
+      expect(notice()).toBeNull();
+      expect(counts()).toBe("0 match · 10 hidden");
+      expect(clauses()).toBeNull();
       expect(nothingMatchesLines()).toEqual([
         "Nothing matches path:plans/desing.",
         "path:plans/desing matches no path the index lists.",
       ]);
       expect(screen.queryByTestId("nothing-needs-you")).toBeNull();
       expect(screen.queryAllByRole("article")).toEqual([]);
-      expect(queryBar()).toBeNull();
     });
 
-    it("names a kept document's blocker the filter leaves out, with every blocker still on its row", async () => {
+    it("names a kept document's blocker the filter leaves out beside it in Blocked, with every blocker still on its row", async () => {
       await renderPage("/.vantage/planning?filter=path:plans/deps.md");
       expect(documentsIn("Blocked")).toEqual(["plans/deps.md"]);
       expect(
         within(section("Blocked")).getByText(/^blocked on/),
       ).toHaveTextContent("blocked on design.md#OQ-D1");
-      expect(noticeLines()).toEqual([
-        "Filtered by path:plans/deps.md: 1 of 10 entries, in 1 of 9 paths, none of them open questions.",
-        "plans/deps.md waits on plans/design.md#OQ-D1, which this filter leaves out.",
-        "Clear the filter to see the other 9.",
-      ]);
+      // Beside the document, not in a notice (planning-to-do-list.md §3.2).
+      expect(
+        section("Blocked").querySelector("[data-planning-left-out]"),
+      ).toHaveTextContent("(which this filter leaves out)");
+      expect(notice()).toBeNull();
+      expect(counts()).toBe("1 matches · 9 hidden");
+      expect(clauses()).toBeNull();
     });
 
     it("names each other roadmap holding a question it keeps, and a pick keeps the filter", async () => {
@@ -5308,10 +5301,10 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       await renderPage("/.vantage/planning?filter=path:plans/unrouted.md");
       expect(screen.queryAllByRole("article")).toEqual([]);
       // It keeps nothing here, so Nothing on this roadmap matches names the
-      // roadmap, and the notice does not say it again.
-      expect(noticeLines()).toEqual([
-        "Filtered by path:plans/unrouted.md: 0 of 9 entries, in 1 of 10 paths, none of them open questions.",
-      ]);
+      // roadmap, and the counts' tooltip does not say it again.
+      expect(notice()).toBeNull();
+      expect(counts()).toBe("0 match · 9 hidden");
+      expect(clauses()).toBeNull();
       expect(nothingMatchesLines()?.[1]).toBe(
         `1 question it keeps is on another roadmap: ${NESTED} (1). The filter stays when you choose that roadmap.`,
       );
@@ -5384,9 +5377,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
         "OQ-D3: Question OQ-D3?",
         "OQ-D4: Question OQ-D4?",
       ]);
-      expect(noticeLines()[0]).toBe(
-        "Filtered by path:plans/design.md is:open: 3 of 11 entries, in 1 of 9 paths, 3 of them open questions.",
-      );
+      expect(counts()).toBe("3 match · 8 hidden");
     });
 
     it("prints a line saying what it is filtered by, in place of the box", async () => {
@@ -5394,7 +5385,9 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       expect(form()).toHaveClass("print:hidden");
       const printed = screen.getByTestId("planning-filter-print");
       expect(printed).toHaveClass("hidden", "print:block");
-      expect(printed).toHaveTextContent(/^Filter: path:plans\/design\.md$/);
+      expect(printed).toHaveTextContent(
+        /^Filter: path:plans\/design\.md, 3 match, 7 hidden$/,
+      );
       cleanup();
       await renderPage();
       expect(screen.queryByTestId("planning-filter-print")).toBeNull();
@@ -5404,11 +5397,9 @@ describe("the planning filter (planning-index.md §6.11)", () => {
   describe("Nothing matches, in place of the sections (§6.18)", () => {
     it("says what words are matched against when a word matches nothing, and nothing of what needs you", async () => {
       await renderPage("/.vantage/planning?filter=zz");
-      // Clear the filter is the button under Nothing matches, so the notice
-      // does not say it too.
-      expect(noticeLines()).toEqual([
-        "Filtered by zz: 0 of 10 entries, none of them open questions.",
-      ]);
+      // The counts say how much it hides; no notice line repeats the box.
+      expect(notice()).toBeNull();
+      expect(counts()).toBe("0 match · 10 hidden");
       expect(nothingMatchesLines()).toEqual(["Nothing matches zz.", WORDS]);
       const shown = nothingMatches()!;
       // The filter as code, in the page's own text size, in no warning's
@@ -5424,13 +5415,8 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       );
       expect(screen.queryAllByRole("article")).toEqual([]);
       expect(querySection("Needs you")).toBeNull();
-      // No section bar, nor the row it and the page's controls stand in,
-      // whose room under the box read as something that failed to load.
-      expect(queryBar()).toBeNull();
-      expect(
-        document.querySelector("[data-planning-sections]")!
-          .previousElementSibling,
-      ).toBe(notice());
+      // No row stands between the box and it, whose room under the box
+      // read as something that failed to load.
       expect(document.querySelector(".min-h-7")).toBeNull();
       expect(screen.queryByTestId("nothing-needs-you")).toBeNull();
       // It prints, but for its button.
@@ -5459,9 +5445,8 @@ describe("the planning filter (planning-index.md §6.11)", () => {
         "Nothing on this roadmap matches path:plans/unrouted.md.",
         `1 question it keeps is on another roadmap: ${NESTED} (1). The filter stays when you choose that roadmap.`,
       ]);
-      expect(noticeLines()).toEqual([
-        "Filtered by path:plans/unrouted.md: 0 of 9 entries, in 1 of 10 paths, none of them open questions.",
-      ]);
+      expect(notice()).toBeNull();
+      expect(clauses()).toBeNull();
       const buttons = within(nothingMatches()!).getAllByRole("button");
       expect(buttons.map((b) => b.textContent)).toEqual([
         `Choose ${NESTED}`,
@@ -5528,7 +5513,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       expect(nothingMatches()!.querySelectorAll("code")).toHaveLength(2);
     });
 
-    it("clears the filter as the box's ✕ does: at once, in place, with the box emptied, focused and said", async () => {
+    it("clears the filter as the box's ✕ does: at once, as a new history entry Back undoes, with the box emptied, focused and said", async () => {
       await renderPage("/.vantage/planning?filter=zz");
       const clear = within(nothingMatches()!).getByRole("button", {
         name: "Clear the filter",
@@ -5541,7 +5526,8 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       });
       await settle();
       expect(router.location).toBe("/.vantage/planning");
-      expect(router.types.at(-1)).toBe("REPLACE");
+      // A new entry (planning-to-do-list.md §3.2, OQ-TD13).
+      expect(router.types.at(-1)).toBe("PUSH");
       expect(box().value).toBe("");
       expect(document.activeElement).toBe(box());
       expect(nothingMatches()).toBeNull();
@@ -5552,6 +5538,12 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       expect(status()).toHaveTextContent(
         "The filter is cleared. Every entry is shown.",
       );
+      // Back brings the filter back.
+      act(() => router.navigate!(-1));
+      await settle();
+      expect(router.location).toBe("/.vantage/planning?filter=zz");
+      expect(box().value).toBe("zz");
+      expect(nothingMatches()).not.toBeNull();
     });
 
     it("never stands in for the sections without a filter, or for one it cannot read, which shows every entry", async () => {
@@ -5659,17 +5651,15 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       );
       // The page on screen, its frame included, is still the unfiltered one.
       expect(cardsIn("Needs you")).toEqual(["OQ-D1: Question OQ-D1?"]);
-      expect(bar()).toHaveTextContent(/^Needs you 3/);
+      expect(screen.getByTestId("needs-you-count")).toHaveTextContent("3");
       expect(notice()).toBeNull();
       expect(spinning()).toBe(true);
       expect(box().value).toBe("path:plans/unrouted.md");
       release();
       await settle();
       expect(cardsIn("Needs you")).toEqual(["OQ-U1: Question OQ-U1?"]);
-      expect(bar()).toHaveTextContent(/^Needs you 1$/);
-      expect(noticeLines()[0]).toMatch(
-        /^Filtered by path:plans\/unrouted\.md:/,
-      );
+      expect(screen.getByTestId("needs-you-count")).toHaveTextContent("1");
+      expect(filterShown()).toMatch(/^path:plans\/unrouted\.md$/);
       expect(spinning()).toBe(false);
     });
 
@@ -5727,7 +5717,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       release();
       await settle();
       await enter("path:plans/design.md");
-      expect(noticeLines()[0]).toMatch(/^Filtered by path:plans\/design\.md:/);
+      expect(filterShown()).toMatch(/^path:plans\/design\.md$/);
       const delays: string[] = [];
       const slot = screen.getByTestId("planning-filter-spinner-slot");
       const observer = new MutationObserver(() => {
@@ -5787,9 +5777,58 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       );
       expect(box()).not.toHaveAttribute("aria-invalid");
       expect(querySection("Needs you")).toBeNull();
-      expect(noticeLines()[0]).toBe(
-        "Filtered by Path:plans/design.md: 0 of 10 entries, none of them open questions.",
+      expect(counts()).toBe("0 match · 10 hidden");
+    });
+
+    it("clears the filter on hidden as a new history entry, which Back undoes, and typing after it replaces it (planning-to-do-list.md §3.2)", async () => {
+      await renderPage("/.vantage/planning?filter=path:plans/design.md", [
+        "/plans/roadmap.md",
+      ]);
+      expect(counts()).toBe("3 match · 7 hidden");
+      await act(async () => {
+        fireEvent.click(screen.getByTestId("planning-filter-hidden"));
+      });
+      await settle();
+      expect(router.location).toBe("/.vantage/planning");
+      expect(router.types.at(-1)).toBe("PUSH");
+      expect(counts()).toBeNull();
+      expect(box().value).toBe("");
+      expect(document.activeElement).toBe(box());
+      expect(status()).toHaveTextContent(
+        "The filter is cleared. Every entry is shown.",
       );
+      // Back brings the filter back.
+      act(() => router.navigate!(-1));
+      await settle();
+      expect(router.location).toBe(
+        "/.vantage/planning?filter=path:plans/design.md",
+      );
+      expect(box().value).toBe("path:plans/design.md");
+      expect(counts()).toBe("3 match · 7 hidden");
+      // Cleared again, a filter typed after it replaces the cleared entry,
+      // so Back from it returns to the filter before.
+      await act(async () => {
+        fireEvent.click(screen.getByTestId("planning-filter-hidden"));
+      });
+      await settle();
+      await enter("oq-d3");
+      expect(router.location).toBe("/.vantage/planning?filter=oq-d3");
+      expect(router.types.at(-1)).toBe("REPLACE");
+      act(() => router.navigate!(-1));
+      await settle();
+      expect(router.location).toBe(
+        "/.vantage/planning?filter=path:plans/design.md",
+      );
+    });
+
+    it("never clears on Esc", async () => {
+      await renderPage("/.vantage/planning?filter=path:plans/design.md");
+      box().focus();
+      await press("Escape", box());
+      expect(router.location).toBe(
+        "/.vantage/planning?filter=path:plans/design.md",
+      );
+      expect(box().value).toBe("path:plans/design.md");
     });
 
     it("clears and applies with ✕, the focus staying in the box", async () => {
@@ -5802,9 +5841,11 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       });
       await settle();
       expect(router.location).toBe("/.vantage/planning?x=1");
+      // A new history entry, which Back undoes (OQ-TD13).
+      expect(router.types.at(-1)).toBe("PUSH");
       expect(box().value).toBe("");
       expect(document.activeElement).toBe(box());
-      expect(notice()).toBeNull();
+      expect(counts()).toBeNull();
       expect(cardsIn("Needs you")).toHaveLength(2);
       // Its slot stays, empty while there is no text.
       expect(
@@ -5838,22 +5879,24 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       expect(hint()).toBe(FILTER_HINT);
     });
 
-    it("says the notice in a polite live region after Enter or ✕, never as the page opens", async () => {
+    it("says the counts in a polite live region after Enter or ✕, never as the page opens", async () => {
       await renderPage(
         "/.vantage/planning?filter=path:plans/design.md+is:open",
       );
       expect(status()).toHaveAttribute("aria-live", "polite");
       expect(status()).toHaveTextContent(/^$/);
-      expect(box()).toHaveAttribute("aria-describedby", notice()!.id);
+      // The counts, and what else the summary says, describe the box.
+      expect(box()).toHaveAccessibleDescription(
+        "2 match, 8 hidden. 1 of its questions is blocked and will need you later.",
+      );
       await enter("path:plans/deps.md");
       // It keeps a Blocked row alone, so nothing it keeps needs you, which
       // is said and describes the box too (planning-index.md §6.18).
       expect(status().textContent).toBe(
-        "Filtered by path:plans/deps.md: 1 of 10 entries, in 1 of 9 paths, none of them open questions. plans/deps.md waits on plans/design.md#OQ-D1, which this filter leaves out. Clear the filter to see the other 9. Nothing this filter keeps needs you.",
+        "1 matches, 9 hidden. Nothing this filter keeps needs you.",
       );
-      expect(box()).toHaveAttribute(
-        "aria-describedby",
-        `${notice()!.id} ${screen.getByTestId("nothing-needs-you").id}`,
+      expect(box()).toHaveAccessibleDescription(
+        "Nothing this filter keeps needs you. 1 matches, 9 hidden.",
       );
       await act(async () => {
         fireEvent.click(
@@ -5881,11 +5924,10 @@ describe("the planning filter (planning-index.md §6.11)", () => {
         "nothing-matches-reason",
       );
       expect(status()).toHaveTextContent(
-        "Filtered by path:plans/answered.md is:open: 0 of 10 entries, in 1 of 9 paths, none of them open questions. Nothing matches path:plans/answered.md is:open. Without is:open it would keep 1 entry, and it is not an open question.",
+        "0 match, 10 hidden. Nothing matches path:plans/answered.md is:open. Without is:open it would keep 1 entry, and it is not an open question.",
       );
-      expect(box()).toHaveAttribute(
-        "aria-describedby",
-        `${notice()!.id} ${headline.id} ${reason.id}`,
+      expect(box().getAttribute("aria-describedby")).toContain(
+        `${headline.id} ${reason.id}`,
       );
       // A filter that keeps something that needs you says nothing of it.
       await enter("path:plans/design.md");
@@ -5893,7 +5935,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       expect(nothingMatches()).toBeNull();
       expect(status()).not.toHaveTextContent(/needs you\.$/);
       expect(status()).not.toHaveTextContent("Nothing matches");
-      expect(box()).toHaveAttribute("aria-describedby", notice()!.id);
+      expect(box()).toHaveAccessibleDescription("3 match, 7 hidden.");
     });
 
     it("says the notice of an Enter made while the index builds once the page is on screen", async () => {
@@ -5910,16 +5952,14 @@ describe("the planning filter (planning-index.md §6.11)", () => {
         "OQ-D1: Question OQ-D1?",
         "OQ-D3: Question OQ-D3?",
       ]);
-      expect(status()).toHaveTextContent(
-        /^Filtered by path:plans\/design\.md: 3 of 10 entries/,
-      );
+      expect(status()).toHaveTextContent(/^3 match, 7 hidden\.$/);
     });
 
     it("forgets what it said on a navigation it did not cause, so the same filter applied again is said again", async () => {
       await renderPage();
       await enter("path:plans/design.md is:open");
       const said = status().textContent;
-      expect(said).toMatch(/^Filtered by path:plans\/design\.md is:open:/);
+      expect(said).toMatch(/^2 match, 8 hidden\./);
       // g p opens the bare page, whose region says nothing of a filter.
       act(() => scroller().focus());
       await press("g");
@@ -5934,7 +5974,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       expect(router.location).toBe(
         "/.vantage/planning?filter=path:plans/design.md+is:open",
       );
-      expect(notice()).not.toBeNull();
+      expect(counts()).not.toBeNull();
       expect(status()).toHaveTextContent(/^$/);
     });
   });
@@ -5999,7 +6039,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       expect(seen).toEqual([[D1, D3], [D1, D3], [D1, D3], [D1, D3], [D3]]);
       // Rows hold no id, so a word only an id holds leaves them out.
       expect(querySection("Ready to build")).toBeNull();
-      expect(noticeLines()[0]).toMatch(/^Filtered by oq-d3: 1 of 10 entries,/);
+      expect(filterShown()).toMatch(/^oq-d3$/);
       expect(router.location).toBe("/.vantage/planning");
       // Halfway through the pause, nothing is written yet; after it, once.
       await idle(IDLE / 2);
@@ -6020,7 +6060,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       box().focus();
       await typeKeys('path:plans/design.md "is');
       expect(cardsIn("Needs you")).toEqual([D1, D3]);
-      expect(noticeLines()[0]).toMatch(/^Filtered by path:plans\/design\.md:/);
+      expect(filterShown()).toMatch(/^path:plans\/design\.md$/);
       expect(hint()).toBe(FILTER_HINT);
       // Not applied is not invalid: the amber ring is an applied filter's.
       expect(box()).not.toHaveAttribute("aria-invalid");
@@ -6046,17 +6086,12 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       for (const text of ["is", "is:", "is:o", "is:open"]) {
         await type(text);
         await settle();
-        seen.push(noticeLines()[0]?.split(": ")[0] ?? null);
+        seen.push(filterShown());
       }
       // `is` is a word, which only the paths holding "plans/disagrees.md"
       // hold; `is:` and `is:o` are not understood, so they leave that page
       // as it is, until `is:open` is read.
-      expect(seen).toEqual([
-        "Filtered by is",
-        "Filtered by is",
-        "Filtered by is",
-        "Filtered by is:open",
-      ]);
+      expect(seen).toEqual(["is", "is", "is", "is:open"]);
       expect(cardsIn("Needs you")).toEqual([D1, D3]);
     });
 
@@ -6071,7 +6106,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       const keys = router.keys.length;
       await typeKeys("oq-dz", "oq-d");
       expect(cardsIn("Needs you")).toEqual([D1, D3]);
-      expect(noticeLines()[0]).toMatch(/^Filtered by oq-d: 3 of 10 entries,/);
+      expect(filterShown()).toMatch(/^oq-d$/);
       expect(box().value).toBe("oq-dz");
       expect(hint()).toBe("");
       expect(router.location).toBe("/.vantage/planning");
@@ -6083,7 +6118,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       expect(router.location).toBe("/.vantage/planning?filter=oq-dz");
       expect(router.keys).toHaveLength(keys + 1);
       expect(querySection("Needs you")).toBeNull();
-      expect(noticeLines()[0]).toMatch(/^Filtered by oq-dz: 0 of 10 entries/);
+      expect(filterShown()).toMatch(/^oq-dz$/);
       expect(box().value).toBe("oq-dz");
       expect(document.activeElement).toBe(box());
     });
@@ -6102,14 +6137,14 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       // `-mz` drops nothing, and applies with no pause.
       await type("-mz");
       await settle();
-      expect(noticeLines()[0]).toMatch(/^Filtered by -mz: 10 of 10 entries/);
+      expect(filterShown()).toMatch(/^-mz$/);
       expect(router.location).toBe("/.vantage/planning");
       await type("-m");
       await settle();
-      expect(noticeLines()[0]).toMatch(/^Filtered by -mz:/);
+      expect(filterShown()).toMatch(/^-mz$/);
       await idle();
       expect(router.location).toBe("/.vantage/planning?filter=-m");
-      expect(noticeLines()[0]).toMatch(/^Filtered by -m: 0 of 10 entries/);
+      expect(filterShown()).toMatch(/^-m$/);
     });
 
     it("applies at once a typed text that keeps entries, after one held back", async () => {
@@ -6124,7 +6159,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       await type("oq-d3");
       await settle();
       expect(cardsIn("Needs you")).toEqual([D3]);
-      expect(noticeLines()[0]).toMatch(/^Filtered by oq-d3: 1 of 10 entries,/);
+      expect(filterShown()).toMatch(/^oq-d3$/);
       expect(router.location).toBe("/.vantage/planning");
       await idle();
       expect(router.location).toBe("/.vantage/planning?filter=oq-d3");
@@ -6139,7 +6174,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       await enter();
       expect(router.location).toBe("/.vantage/planning?filter=zz");
       expect(querySection("Needs you")).toBeNull();
-      expect(noticeLines()[0]).toMatch(/^Filtered by zz: 0 of 10 entries/);
+      expect(filterShown()).toMatch(/^zz$/);
       await act(async () => {
         fireEvent.click(clearX());
       });
@@ -6295,15 +6330,11 @@ describe("the planning filter (planning-index.md §6.11)", () => {
         expect(status()).toHaveTextContent(/^$/);
       }
       await idle();
-      expect(status().textContent).toMatch(
-        /^Filtered by oq-d: 3 of 10 entries/,
-      );
+      expect(status().textContent).toMatch(/^3 match, 7 hidden\./);
       await typeKeys("oq-d3", "oq-d");
-      expect(status().textContent).toMatch(/^Filtered by oq-d: /);
+      expect(status().textContent).toMatch(/^3 match, 7 hidden\./);
       await idle();
-      expect(status().textContent).toMatch(
-        /^Filtered by oq-d3: 1 of 10 entries/,
-      );
+      expect(status().textContent).toMatch(/^1 matches, 9 hidden\./);
     });
 
     it("carries a filter still owed into a roadmap pick", async () => {
@@ -6588,7 +6619,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       await settle();
       for (const release of releases) release();
       await settle();
-      expect(noticeLines()[0]).toMatch(/^Filtered by oq-u:/);
+      expect(filterShown()).toMatch(/^oq-u$/);
       expect(spinning()).toBe(false);
       await idle();
       expect(filterOf()).toBe("oq-u");
@@ -6625,11 +6656,11 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       box().focus();
       await type("oq-d ");
       await settle();
-      expect(noticeLines()[0]).toMatch(/^Filtered by oq-d:/);
+      expect(filterShown()).toMatch(/^oq-d$/);
       // Back to the URL's text, which the page does not show.
       await type('oq-d "');
       await settle();
-      expect(noticeLines()[0]).toMatch(/^Filtered by oq-d:/);
+      expect(filterShown()).toMatch(/^oq-d$/);
       expect(hint()).toBe(FILTER_HINT);
       await press("Escape", box());
       expect(box().value).toBe("oq-d");
@@ -6649,7 +6680,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       await settle();
       await type('oq-d "');
       await settle();
-      expect(noticeLines()[0]).toMatch(/^Filtered by oq-d:/);
+      expect(filterShown()).toMatch(/^oq-d$/);
       expect(hint()).toBe(FILTER_HINT);
     });
 
@@ -6697,7 +6728,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       seen.push(sections.getAttribute("data-planning-filter"));
       expect(seen).toEqual(["", "oq-d"]);
       expect(cardsIn("Needs you")).toEqual([D1]);
-      expect(noticeLines()[0]).toMatch(/^Filtered by oq-d:/);
+      expect(filterShown()).toMatch(/^oq-d$/);
     });
 
     it("never shows the page of a text typed past, though its inputs came in while it was the newest, before React rendered them (§6.16)", async () => {
@@ -6741,7 +6772,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       observer.disconnect();
       seen.push(sections.getAttribute("data-planning-filter"));
       expect(seen).toEqual(["", "oq-d"]);
-      expect(noticeLines()[0]).toMatch(/^Filtered by oq-d:/);
+      expect(filterShown()).toMatch(/^oq-d$/);
     });
 
     it("shows the page of the text it applied last, when the next keeps no entry and that page comes in before React renders it (§6.16)", async () => {
@@ -6774,7 +6805,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
         }
       });
       await settle();
-      expect(noticeLines()[0]).toMatch(/^Filtered by oq-u:/);
+      expect(filterShown()).toMatch(/^oq-u$/);
       expect(cardsIn("Needs you")).toEqual(["OQ-U1: Question OQ-U1?"]);
       expect(spinning()).toBe(false);
       await idle();
@@ -6805,7 +6836,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       expect(cardsIn("Needs you")).toEqual([D1]);
       release();
       await settle();
-      expect(noticeLines()[0]).toMatch(/^Filtered by oq-u:/);
+      expect(filterShown()).toMatch(/^oq-u$/);
       expect(cardsIn("Needs you")).toEqual(["OQ-U1: Question OQ-U1?"]);
       expect(spinning()).toBe(false);
     });
@@ -6839,18 +6870,18 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       expect(cardsIn("Needs you")).toEqual([D1]);
       release();
       await settle();
-      expect(noticeLines()[0]).toMatch(/^Filtered by oq-u:/);
+      expect(filterShown()).toMatch(/^oq-u$/);
       expect(cardsIn("Needs you")).toEqual(["OQ-U1: Question OQ-U1?"]);
       expect(spinning()).toBe(false);
       for (const text of ['oq-uz "', 'oq-uz "a', "oq-uz  "]) {
         await type(text);
         await settle();
-        expect(noticeLines()[0], text).toMatch(/^Filtered by oq-u:/);
+        expect(filterShown(), text).toMatch(/^oq-u$/);
         expect(spinning(), text).toBe(false);
       }
       await idle();
       expect(router.location).toBe("/.vantage/planning?filter=oq-uz");
-      expect(noticeLines()[0]).toMatch(/^Filtered by oq-uz: 0 of 10 entries/);
+      expect(filterShown()).toMatch(/^oq-uz$/);
     });
 
     it("shows the page of a text typed past and typed again, when its inputs came in between", async () => {
@@ -6882,7 +6913,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
         fireEvent.change(box(), { target: { value: "oq-u" } });
       });
       await settle();
-      expect(noticeLines()[0]).toMatch(/^Filtered by oq-u:/);
+      expect(filterShown()).toMatch(/^oq-u$/);
       expect(listedIn("Not on a roadmap")).toEqual(["OQ-U1: Question OQ-U1?"]);
       expect(spinning()).toBe(false);
     });
@@ -6902,7 +6933,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       expect(status()).toHaveTextContent(/^$/);
       await idle(700);
       expect(status().textContent).toBe(
-        `Filtered by zz: 0 of 10 entries, none of them open questions. Nothing matches zz. ${WORDS}`,
+        `0 match, 10 hidden. Nothing matches zz. ${WORDS}`,
       );
       expect(document.activeElement).toBe(box());
       // A key more, which also keeps nothing and is held, then the button:
@@ -6966,7 +6997,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       await settle();
       expect(nothingMatches()).toBeNull();
       expect(cardsIn("Needs you")).toEqual([D3]);
-      expect(noticeLines()[0]).toMatch(/^Filtered by oq-d3: 1 of 10 entries,/);
+      expect(filterShown()).toMatch(/^oq-d3$/);
       expect(filterOf()).toBe("oq-d3x");
       await idle(300);
       expect(filterOf()).toBe("oq-d3");
@@ -6997,7 +7028,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       expect(said.filter((s) => s !== "")).toEqual([]);
       await idle(600);
       expect(said.filter((s) => s !== "")).toEqual([
-        expect.stringMatching(/^Filtered by oq-d: 3 of 10 entries/),
+        expect.stringMatching(/^3 match, 7 hidden\./),
       ]);
       // Leaving the box says what is owed at once.
       said.length = 0;
@@ -7009,7 +7040,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       await settle();
       observer.disconnect();
       expect(said.filter((s) => s !== "")).toEqual([
-        expect.stringMatching(/^Filtered by oq-d3: 1 of 10 entries/),
+        expect.stringMatching(/^1 matches, 9 hidden\./),
       ]);
     });
 
@@ -7028,9 +7059,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       expect(filterOf()).toBe("oq-d3");
       expect(document.activeElement).toBe(scroller());
       expect(scroller().scrollTop).toBe(0);
-      expect(status().textContent).toMatch(
-        /^Filtered by oq-d3: 1 of 10 entries/,
-      );
+      expect(status().textContent).toMatch(/^1 matches, 9 hidden\./);
       // A text it cannot read keeps the focus, for the reader to correct
       // what the notice names, and the pane where it was.
       box().focus();
@@ -7081,14 +7110,14 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       setLoad(readyOf(MORE));
       await settle();
       expect(router.location).toBe("/.vantage/planning");
-      expect(noticeLines()[0]).toMatch(/^Filtered by oq-d: /);
+      expect(filterShown()).toMatch(/^oq-d$/);
       // Late data (planning-to-do-list.md §4.2): counted, and laid out by
       // the reader's next layout, under the same text.
       expect(cardsIn("Needs you")).toEqual([D1, D3]);
       expect(updatesCount()).toHaveTextContent("1");
       await refresh();
       expect(cardsIn("Needs you")).toEqual([D1, D3, "OQ-D4: Question OQ-D4?"]);
-      expect(noticeLines()[0]).toMatch(/^Filtered by oq-d: /);
+      expect(filterShown()).toMatch(/^oq-d$/);
       expect(box().value).toBe("oq-d");
       await idle();
       expect(filterOf()).toBe("oq-d");
@@ -7273,7 +7302,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
         "/.vantage/planning?filter=path:plans/%2A.md+is:open&roadmap=roadmap.md",
       );
       const outlineLink = screen
-        .getByRole("navigation", { name: "Planning outline" })
+        .getByRole("navigation", { name: "On this page" })
         .querySelector<HTMLAnchorElement>(
           '[data-testid=outline-document][data-path="plans/design.md"]',
         )!;
@@ -7359,9 +7388,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
         "/.vantage/planning?filter=path:plans/unrouted.md&roadmap=docs%2Fplans%2Froadmap.md",
       );
       expect(cardsIn("Needs you")).toEqual(["OQ-U1: Question OQ-U1?"]);
-      expect(status()).toHaveTextContent(
-        /^Filtered by path:plans\/unrouted\.md:/,
-      );
+      expect(status()).toHaveTextContent(/^\d+ match(es)?, \d+ hidden\./);
     });
 
     it("drops the roadmap of a link where fewer than two route, in one replace, and says the notice", async () => {
@@ -7376,9 +7403,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       expect(router.location).toBe(
         "/.vantage/planning?filter=path:plans/design.md",
       );
-      expect(status()).toHaveTextContent(
-        /^Filtered by path:plans\/design\.md: 3 of 10 entries/,
-      );
+      expect(status()).toHaveTextContent(/^3 match, 7 hidden\./);
     });
 
     it("chooses for a link's roadmap that does not route what the page would, in one replace, and says the notice", async () => {
@@ -7396,9 +7421,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       expect(router.location).toBe(
         "/.vantage/planning?filter=path:plans/design.md&roadmap=roadmap.md",
       );
-      expect(status()).toHaveTextContent(
-        /^Filtered by path:plans\/design\.md:/,
-      );
+      expect(status()).toHaveTextContent(/^\d+ match(es)?, \d+ hidden\./);
     });
 
     it("clears the filter with a link that has none", async () => {
@@ -7425,11 +7448,13 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       // The router commits a location in a transition, after the box shows
       // what it applied: in between, nothing in the box is unapplied (§6.17).
       await renderPage();
+      // The hint, which shares its slot with the counts.
       const shown: string[] = [];
       const observer = new MutationObserver((records) => {
         for (const record of records) {
           for (const node of record.addedNodes) {
-            shown.push(node.textContent ?? "");
+            const text = node.textContent ?? "";
+            if (text.includes(FILTER_HINT)) shown.push(text);
           }
         }
       });
@@ -8004,16 +8029,17 @@ describe("the planning filter (planning-index.md §6.11)", () => {
         serveSpaces(() => answer.promise);
         await renderPage(`/.vantage/planning?${FILTERED}&space=${ELSEWHERE}`);
         // The frame waits for the answer, so the line moves nothing.
-        expect(queryBar()).toBeNull();
+        expect(inPage().getByRole("status")).toBeTruthy();
         await act(async () => answer.resolve({ repo: null }));
         await settle();
-        expect(bar()).toBeTruthy();
+        expect(inPage().queryByRole("status")).toBeNull();
         expect(otherCheckout()).toHaveTextContent(
           PLANNING_SPACE_MESSAGES.otherCheckout,
         );
         expect(
-          notice()!.compareDocumentPosition(otherCheckout()!) &
-            Node.DOCUMENT_POSITION_FOLLOWING,
+          otherCheckout()!.compareDocumentPosition(
+            document.querySelector("[data-planning-sections]")!,
+          ) & Node.DOCUMENT_POSITION_FOLLOWING,
         ).toBeTruthy();
         expect(cardsIn("Needs you")).toHaveLength(2);
         // Kept in the URL, which still says where the link was made.
@@ -8027,7 +8053,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
         const answer = deferred();
         serveSpaces(() => answer.promise);
         await renderPage(`/.vantage/planning?${FILTERED}&space=${ELSEWHERE}`);
-        expect(bar()).toBeTruthy();
+        expect(inPage().queryByRole("status")).toBeNull();
         await act(async () => answer.resolve({ repo: null }));
         await settle();
         expect(otherCheckout()).toBeNull();
