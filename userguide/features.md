@@ -151,8 +151,8 @@ and they come back if the folder does.
 
 If the folder is deleted or moved out of the directory Vantage serves, the page
 says, a moment later, that the document could not be loaded, and shows it again
-by itself if the folder comes back. If you are writing a comment just then, the
-page waits until you save or cancel it. It says the same, rather than guess,
+by itself if the folder comes back. If a comment box is open on it just then,
+the page waits until you close the box. It says the same, rather than guess,
 when a rename could have put the document in more than one place — two folders
 renamed at once, each holding a file of that name — and when a document is
 edited and then its folder renamed in the same moment while it is the only file
@@ -315,6 +315,37 @@ Vantage includes a built-in review mode for annotating documents:
 - **Paste box** — for chat agents that cannot write files, paste their `- [<id>] <summary>` bullet reply into the Review panel instead
 
 Reviews are stored on disk and persist across server restarts.
+
+### Comment boxes save as you type
+
+Every comment box — a new comment, **Answer…** in a document or on a planning
+card, and editing or replying to a comment, in the document or in the Review
+panel — saves what you type as you type it, a second after you pause, or every
+five seconds if you keep typing. There is no Save and no Cancel: the box has
+one button, **Close**, and closing it any way at all keeps your text — Close,
+the ✕, Ctrl+Enter (⌘+Enter on a Mac), Esc, a click outside the box, opening
+another document, turning review mode off, or leaving the page.
+
+- **The box's foot says where it stands:** *Saving…*, then *Saved just now*,
+  *Saved 1 min ago* and so on, with a short pulse each time a save lands.
+- **A saved comment is a comment.** It waits on the agent from its first save,
+  and Copy answers copies it, in any tab, as you have typed it so far.
+- **Empty text is never saved.** Clear a new comment's box and close it, and
+  the comment it saved is deleted. An edit or reply box you empty keeps what
+  it last saved, and says *Empty text is not saved*.
+- **When a save fails,** the box says *Not saved, retrying* and keeps trying,
+  at growing intervals up to every 30 seconds, for as long as the tab is open.
+  Close it and the retries go on; a notice in the corner then says how many
+  comments are not saved, with **Reopen** for each. Leaving or reloading the
+  tab while anything is not saved asks you first.
+- **When the comment was deleted** — elsewhere, while you were editing it or
+  replying to it — the box says *This comment was deleted* and stops trying.
+  It offers **Copy text**, and **Post as a new comment**, which files your
+  text as a new comment on the same block, or on the document if that block
+  is gone. Until you do one or the other, leaving the tab still asks first.
+- **A reply stays editable.** Your reply is edited in place as you go on
+  typing; editing it after the agent has answered puts the comment back in
+  the agent's queue, as editing the comment does.
 
 Agent responses arrive through a small `.vantage/inbox/` directory at the repo
 root — see [Review Inbox](guides/review-inbox.md), which also covers gitignoring it.

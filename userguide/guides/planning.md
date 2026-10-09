@@ -633,7 +633,10 @@ What the card offers follows the question's state:
   says *Leaning taken*, with **Undo**, which deletes the comment, until someone
   replies.
 - **Answer…** opens the comment box, and what you type is filed on the
-  question the same way.
+  question the same way, as you type it: the box
+  [saves as you type](../features.md#comment-boxes-save-as-you-type) and keeps
+  your text however you close it. The card does not change while the box is
+  open; it shows your answer once you close it.
 - **Open document** opens the question's document in a new tab, as its icon
   says, and the planning page stays as it was in its own. It opens at the
   document's top, not at the question: a question you could not answer from

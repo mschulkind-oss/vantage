@@ -46,7 +46,13 @@ import { usePlanningIndex } from "../stores/usePlanningStore";
 import { PLANNING_BADGE_ATTR } from "./PlanningBadge";
 import { ReferencedBy, summaryLine } from "./ReferencedBy";
 import { useCollapseSections } from "../hooks/useCollapseSections";
-import { useReviewStore } from "../stores/useReviewStore";
+import {
+  newReviewComment,
+  reviewTarget,
+  useReviewStore,
+  type PendingSelection,
+} from "../stores/useReviewStore";
+import { editCommentBox, newCommentBox, replyBox } from "../lib/reviewBoxes";
 import { ReviewCommentPopover } from "./ReviewCommentPopover";
 import {
   blockVisibleText,
@@ -363,10 +369,8 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
   const clearPendingSelection = useReviewStore((s) => s.clearPendingSelection);
   const addComment = useReviewStore((s) => s.addComment);
   const deleteComment = useReviewStore((s) => s.deleteComment);
-  const editComment = useReviewStore((s) => s.editComment);
   const dismissComment = useReviewStore((s) => s.dismissComment);
-  const replyToComment = useReviewStore((s) => s.replyToComment);
-  const reopenAndReply = useReviewStore((s) => s.reopenAndReply);
+  const reviewPath = useReviewStore((s) => s.filePath);
   const unresolveComment = useReviewStore((s) => s.unresolveComment);
   const copyCommentToClipboard = useReviewStore(
     (s) => s.copyCommentToClipboard,
@@ -377,15 +381,17 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
       onDelete: deleteComment,
       onDismiss: dismissComment,
       onReopen: unresolveComment,
-      onEdit: editComment,
+      // Each box saves to the document it was opened on, for its whole life
+      // (`lib/reviewBoxes.ts`).
+      editBox: (c) => {
+        const target = reviewPath === null ? null : reviewTarget(reviewPath);
+        return target === null ? null : editCommentBox(target, c);
+      },
       // Replying to a resolved comment reopens it, matching the sidebar's
       // "Reopen & Reply" — the inline surface offers the same one action.
-      onReply: (id, text) => {
-        const target = useReviewStore
-          .getState()
-          .comments.find((c) => c.id === id);
-        if (target?.resolved) reopenAndReply(id, text);
-        else replyToComment(id, text);
+      replyBox: (c) => {
+        const target = reviewPath === null ? null : reviewTarget(reviewPath);
+        return target === null ? null : replyBox(target, c);
       },
       onCopy: copyCommentToClipboard,
     }),
@@ -393,9 +399,7 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
       deleteComment,
       dismissComment,
       unresolveComment,
-      editComment,
-      reopenAndReply,
-      replyToComment,
+      reviewPath,
       copyCommentToClipboard,
     ],
   );
@@ -993,19 +997,42 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
         <ReviewCommentPopover
           selectedText={pendingSelection.displayText}
           rect={pendingSelection.rect}
-          onSave={(comment) => {
-            addComment(
-              pendingSelection.anchor,
-              comment,
-              pendingSelection.displayText,
+          // A new selection is a new box; the one closed saves what it holds.
+          key={selectionKey(pendingSelection)}
+          // Made once, when the popover opens, saving to the document it
+          // opened on for as long as it lives (`lib/reviewBoxes.ts`).
+          makeBox={() => {
+            const target = reviewTarget(reviewPath ?? "") ?? {
+              base: "",
+              path: reviewPath ?? "",
+            };
+            return newCommentBox(
+              target,
+              newReviewComment(
+                pendingSelection.anchor,
+                "",
+                pendingSelection.displayText,
+              ),
             );
           }}
-          onCancel={clearPendingSelection}
+          onClose={clearPendingSelection}
         />
       )}
     </div>
   );
 };
+
+/** A key for each selection a popover opens on, so a new one is a new box. */
+const selectionKeys = new WeakMap<PendingSelection, number>();
+let lastSelectionKey = 0;
+function selectionKey(sel: PendingSelection): number {
+  let key = selectionKeys.get(sel);
+  if (key === undefined) {
+    key = ++lastSelectionKey;
+    selectionKeys.set(sel, key);
+  }
+  return key;
+}
 
 /** Marks the line Referenced by reserved at first paint, while it is empty. */
 export const REFERENCED_BY_RESERVED_ATTR =

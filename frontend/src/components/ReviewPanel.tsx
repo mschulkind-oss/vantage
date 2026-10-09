@@ -21,10 +21,14 @@ import {
   hasAgentReaction,
   isAnsweredByAgent,
   isPendingForAgent,
+  reviewTarget,
   useReviewStore,
 } from "../stores/useReviewStore";
 import type { CommentReaction, ReviewComment } from "../types";
 import { AnchoredMenu } from "./AnchoredMenu";
+import { CommentBoxFoot, CommentBoxTextarea } from "./CommentBoxFields";
+import type { CommentBox } from "../lib/commentAutosave";
+import { editCommentBox, replyBox } from "../lib/reviewBoxes";
 
 interface ReviewPanelProps {
   isOpen: boolean;
@@ -84,12 +88,9 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
 }) => {
   const comments = useReviewStore((s) => s.comments);
   const deleteComment = useReviewStore((s) => s.deleteComment);
-  const editComment = useReviewStore((s) => s.editComment);
   const dismissComment = useReviewStore((s) => s.dismissComment);
   const dismissAll = useReviewStore((s) => s.dismissAll);
   const dismissAnswered = useReviewStore((s) => s.dismissAnswered);
-  const replyToComment = useReviewStore((s) => s.replyToComment);
-  const reopenAndReply = useReviewStore((s) => s.reopenAndReply);
   const commandError = useReviewStore((s) => s.commandError);
   const clearCommandError = useReviewStore((s) => s.clearCommandError);
   const unresolveComment = useReviewStore((s) => s.unresolveComment);
@@ -102,12 +103,22 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
   const [filter, setFilter] = useState<Filter>("all");
   const [copied, setCopied] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editText, setEditText] = useState("");
-  const [replyingId, setReplyingId] = useState<string | null>(null);
-  const [replyText, setReplyText] = useState("");
-  const replyRef = useRef<HTMLTextAreaElement>(null);
-  const editRef = useRef<HTMLTextAreaElement>(null);
+  // The edit box and the reply box open in the panel, if any. Each saves as
+  // the reviewer types (`lib/commentAutosave.ts`), so closing one only stops
+  // drawing it.
+  const filePath = useReviewStore((s) => s.filePath);
+  const [editing, setEditing] = useState<CommentBox | null>(null);
+  const [replying, setReplying] = useState<CommentBox | null>(null);
+  const editingId = editing?.subject.commentId ?? null;
+  const replyingId = replying?.subject.commentId ?? null;
+  const openEdit = (c: ReviewComment) => {
+    const target = filePath === null ? null : reviewTarget(filePath);
+    if (target !== null) setEditing(editCommentBox(target, c));
+  };
+  const openReply = (c: ReviewComment) => {
+    const target = filePath === null ? null : reviewTarget(filePath);
+    if (target !== null) setReplying(replyBox(target, c));
+  };
   const [menuOpen, setMenuOpen] = useState(false);
   const menuTriggerRef = useRef<HTMLButtonElement>(null);
   const closeMenu = useCallback(() => setMenuOpen(false), []);
@@ -138,9 +149,18 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
     [comments],
   );
 
+  // A comment with a box open stays listed whatever its saves make of it: a
+  // reply on a dismissed comment reopens it, and moving it out of the Resolved
+  // view would take the box away from the reviewer typing in it.
   const visible = useMemo(
-    () => comments.filter((c) => commentMatchesFilter(c, filter)),
-    [comments, filter],
+    () =>
+      comments.filter(
+        (c) =>
+          commentMatchesFilter(c, filter) ||
+          c.id === editingId ||
+          c.id === replyingId,
+      ),
+    [comments, filter, editingId, replyingId],
   );
 
   // Closing the panel disarms the destructive confirms. Without this, arming
@@ -163,17 +183,13 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
     }
   }
 
-  // An open edit/reply box must not outlive its comment — otherwise the text
-  // gets committed against a comment that was deleted underneath it, and a
-  // comment that later reappears under the same id resurrects the stale draft.
-  // Adjusted during render rather than in an effect, so the inconsistent state
-  // never reaches the DOM.
+  // An open edit/reply box does not outlive its comment: one deleted
+  // underneath it closes it, and the box, which keeps its text, says whether
+  // what it held could be saved. Adjusted during render rather than in an
+  // effect, so the inconsistent state never reaches the DOM.
   const liveIds = useMemo(() => new Set(comments.map((c) => c.id)), [comments]);
-  if (editingId && !liveIds.has(editingId)) setEditingId(null);
-  if (replyingId && !liveIds.has(replyingId)) {
-    setReplyingId(null);
-    setReplyText("");
-  }
+  if (editingId && !liveIds.has(editingId)) setEditing(null);
+  if (replyingId && !liveIds.has(replyingId)) setReplying(null);
   if (confirmDeleteId && !liveIds.has(confirmDeleteId))
     setConfirmDeleteId(null);
   // Switching tabs can unmount the armed row. Leaving it armed means the
@@ -279,27 +295,6 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
     } else {
       armConfirm(confirmTimer, setConfirmDismiss);
     }
-  };
-
-  // Closing the reply box is a success-only action. Clearing it up front —
-  // which is what fire-and-forget did — destroys the only copy of the text the
-  // reviewer typed the moment the command fails, and a 404 from a comment
-  // deleted in another tab is a real way for that to happen.
-  const submitReply = async (c: ReviewComment) => {
-    const trimmed = replyText.trim();
-    if (!trimmed) {
-      setReplyingId(null);
-      setReplyText("");
-      return;
-    }
-    if (c.resolved) {
-      await reopenAndReply(c.id, trimmed);
-    } else {
-      await replyToComment(c.id, trimmed);
-    }
-    if (useReviewStore.getState().commandError) return;
-    setReplyingId(null);
-    setReplyText("");
   };
 
   return createPortal(
@@ -463,11 +458,7 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
                       <div className="flex items-center gap-0.5 shrink-0">
                         {!c.resolved && (
                           <button
-                            onClick={() => {
-                              setEditingId(c.id);
-                              setEditText(c.comment);
-                              setTimeout(() => editRef.current?.focus(), 0);
-                            }}
+                            onClick={() => openEdit(c)}
                             // Reveal-on-hover, but only where hovering exists.
                             // Tailwind already gates group-hover: behind
                             // (hover: hover) — the bare opacity-0 was not, so
@@ -500,47 +491,12 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
                         </button>
                       </div>
                     </div>
-                    {editingId === c.id ? (
-                      <div className="mt-1.5">
-                        <textarea
-                          ref={editRef}
-                          value={editText}
-                          onChange={(e) => setEditText(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                              e.preventDefault();
-                              const trimmed = editText.trim();
-                              if (trimmed && trimmed !== c.comment) {
-                                editComment(c.id, trimmed);
-                              }
-                              setEditingId(null);
-                            }
-                            if (e.key === "Escape") setEditingId(null);
-                          }}
-                          rows={3}
-                          className="w-full text-sm rounded-md border border-blue-300 dark:border-blue-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 px-2 py-1.5 resize-y min-h-[48px] focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        />
-                        <div className="flex justify-end gap-1.5 mt-1">
-                          <button
-                            onClick={() => setEditingId(null)}
-                            className="px-2 py-1 text-[11px] rounded text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700"
-                          >
-                            Cancel
-                          </button>
-                          <button
-                            onClick={() => {
-                              const trimmed = editText.trim();
-                              if (trimmed && trimmed !== c.comment) {
-                                editComment(c.id, trimmed);
-                              }
-                              setEditingId(null);
-                            }}
-                            className="px-2 py-1 text-[11px] rounded bg-blue-600 text-white hover:bg-blue-700"
-                          >
-                            Save
-                          </button>
-                        </div>
-                      </div>
+                    {editing !== null && editingId === c.id ? (
+                      <PanelBox
+                        box={editing}
+                        onClose={() => setEditing(null)}
+                        rows={3}
+                      />
                     ) : (
                       <p
                         className={
@@ -553,46 +509,22 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
                       </p>
                     )}
 
-                    <ThreadView comment={c} />
+                    <ThreadView
+                      comment={c}
+                      editingReplyId={
+                        replyingId === c.id
+                          ? replying?.subject.replyId
+                          : undefined
+                      }
+                    />
 
-                    {replyingId === c.id && (
-                      <div className="mt-1.5">
-                        <textarea
-                          ref={replyRef}
-                          value={replyText}
-                          onChange={(e) => setReplyText(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                              e.preventDefault();
-                              void submitReply(c);
-                            }
-                            if (e.key === "Escape") {
-                              setReplyingId(null);
-                              setReplyText("");
-                            }
-                          }}
-                          rows={2}
-                          placeholder="Follow-up for the agent..."
-                          className="w-full text-sm rounded-md border border-blue-300 dark:border-blue-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 px-2 py-1.5 resize-y min-h-[40px] focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        />
-                        <div className="flex justify-end gap-1.5 mt-1">
-                          <button
-                            onClick={() => {
-                              setReplyingId(null);
-                              setReplyText("");
-                            }}
-                            className="px-2 py-1 text-[11px] rounded text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700"
-                          >
-                            Cancel
-                          </button>
-                          <button
-                            onClick={() => void submitReply(c)}
-                            className="px-2 py-1 text-[11px] rounded bg-blue-600 text-white hover:bg-blue-700"
-                          >
-                            {c.resolved ? "Reopen & Reply" : "Reply"}
-                          </button>
-                        </div>
-                      </div>
+                    {replying !== null && replyingId === c.id && (
+                      <PanelBox
+                        box={replying}
+                        onClose={() => setReplying(null)}
+                        rows={2}
+                        placeholder="Follow-up for the agent..."
+                      />
                     )}
 
                     {replyingId !== c.id && (
@@ -620,11 +552,7 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
                         )}
                         {showReply && (
                           <button
-                            onClick={() => {
-                              setReplyingId(c.id);
-                              setReplyText("");
-                              setTimeout(() => replyRef.current?.focus(), 0);
-                            }}
+                            onClick={() => openReply(c)}
                             className="px-2 py-1 text-[11px] rounded text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700"
                           >
                             Reply
@@ -653,11 +581,7 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
                               Reopen
                             </button>
                             <button
-                              onClick={() => {
-                                setReplyingId(c.id);
-                                setReplyText("");
-                                setTimeout(() => replyRef.current?.focus(), 0);
-                              }}
+                              onClick={() => openReply(c)}
                               className="px-2 py-1 text-[11px] rounded text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-700 hover:bg-blue-50 dark:hover:bg-blue-900/30"
                             >
                               Reopen &amp; Reply
@@ -734,12 +658,20 @@ function turnStyle(r: CommentReaction): { label: string; className: string } {
  * agent reaction (as this panel used to) made the reviewer's own replies vanish
  * the instant they were submitted, and hid every earlier round of a thread.
  */
-const ThreadView: React.FC<{ comment: ReviewComment }> = ({ comment }) => {
+const ThreadView: React.FC<{
+  comment: ReviewComment;
+  /** A reply the open reply box is still editing, shown in the box instead. */
+  editingReplyId?: string;
+}> = ({ comment, editingReplyId }) => {
   // Legacy "noted" turns are dropped, not relabeled: they recorded a dismissal
   // through a since-removed accept action, and dismissing is a flag on the
   // comment rather than something either party said. Rendering them stacked up
   // "You accepted" rows that no reviewer ever typed.
-  const reactions = (comment.reactions ?? []).filter((r) => r.kind !== "noted");
+  const reactions = (comment.reactions ?? []).filter(
+    (r) =>
+      r.kind !== "noted" &&
+      (editingReplyId === undefined || r.id !== editingReplyId),
+  );
   if (reactions.length === 0) return null;
   return (
     <div className="mt-2 space-y-1.5">
@@ -756,6 +688,42 @@ const ThreadView: React.FC<{ comment: ReviewComment }> = ({ comment }) => {
           </div>
         );
       })}
+    </div>
+  );
+};
+
+/**
+ * An edit or reply box in the panel: open while drawn, and closed — which
+ * saves what it holds — however it goes, by Close, Ctrl+Enter or ⌘+Enter, Esc,
+ * the panel closing or the page going.
+ */
+const PanelBox: React.FC<{
+  box: CommentBox;
+  onClose: () => void;
+  rows: number;
+  placeholder?: string;
+}> = ({ box, onClose, rows, placeholder }) => {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    box.open();
+    ref.current?.focus();
+    return () => box.close();
+  }, [box]);
+  const close = () => {
+    box.close();
+    onClose();
+  };
+  return (
+    <div className="mt-1.5">
+      <CommentBoxTextarea
+        ref={ref}
+        box={box}
+        onClose={close}
+        rows={rows}
+        placeholder={placeholder}
+        className="w-full text-sm rounded-md border border-blue-300 dark:border-blue-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 px-2 py-1.5 resize-y min-h-[40px] focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+      />
+      <CommentBoxFoot box={box} onClose={close} />
     </div>
   );
 };

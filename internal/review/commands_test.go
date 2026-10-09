@@ -94,7 +94,7 @@ func TestCommandsOnAbsentReviewReturnNotFound(t *testing.T) {
 	require.ErrorIs(t, err, ErrCommentNotFound)
 	_, err = s.SetResolved("ghost.md", "", "c1", true)
 	require.ErrorIs(t, err, ErrCommentNotFound)
-	_, err = s.Reply("ghost.md", "", "c1", "hi", cmdDoc)
+	_, err = s.Reply("ghost.md", "", "c1", "", "hi", cmdDoc)
 	require.ErrorIs(t, err, ErrCommentNotFound)
 	_, err = s.DeleteComment("ghost.md", "", "c1")
 	require.ErrorIs(t, err, ErrCommentNotFound)
@@ -126,7 +126,7 @@ func TestReplyAppendsReactionAndRecaptures(t *testing.T) {
 	// The document changed since the comment was created; the follow-up
 	// re-captures because the reviewer is looking at the current text.
 	edited := "# Title\n\nRewritten paragraph.\n\nSecond Paragraph HERE.\n"
-	data, err := s.Reply("a.md", "", "c1", "still unclear", edited)
+	data, err := s.Reply("a.md", "", "c1", "", "still unclear", edited)
 	require.NoError(t, err)
 
 	c := data.Comments[0]
@@ -146,7 +146,7 @@ func TestReopenReplyClearsResolved(t *testing.T) {
 	_, err = s.SetResolved("a.md", "", "c1", true)
 	require.NoError(t, err)
 
-	data, err := s.ReopenReply("a.md", "", "c1", "not fixed", cmdDoc)
+	data, err := s.ReopenReply("a.md", "", "c1", "", "not fixed", cmdDoc)
 	require.NoError(t, err)
 	require.False(t, data.Comments[0].Resolved)
 	require.Len(t, data.Comments[0].Reactions, 1)
@@ -489,7 +489,7 @@ func TestApplyResponsesContentDedupIgnoresReviewerReactions(t *testing.T) {
 	s := NewStore(t.TempDir())
 	seedForResponses(t, s)
 
-	_, err := s.Reply("a.md", "", "abcd1234", "Fixed it", cmdDoc)
+	_, err := s.Reply("a.md", "", "abcd1234", "", "Fixed it", cmdDoc)
 	require.NoError(t, err)
 
 	data, applied, err := s.ApplyResponses("a.md", "",
@@ -586,4 +586,100 @@ func TestApplyResponsesRecordsTheRoundItAnswers(t *testing.T) {
 		[]ResponseEntry{{ShortID: "abcd", Summary: "no round", Nonce: "n2", Round: RoundUnknown}}, cmdDoc)
 	require.NoError(t, err)
 	require.Nil(t, data.Comments[0].Reactions[1].AnswersRound)
+}
+
+func TestAddCommentWithHeldIDEditsItsText(t *testing.T) {
+	s := NewStore(t.TempDir())
+	_, err := s.AddComment("a.md", "", anchoredComment("c1", "first words", 3), cmdDoc)
+	require.NoError(t, err)
+
+	// A retry of the create, carrying the text typed since: one comment, the
+	// newer text, and marked edited as an edit would mark it.
+	data, err := s.AddComment("a.md", "", anchoredComment("c1", "first words and more", 3), cmdDoc)
+	require.NoError(t, err)
+	require.Len(t, data.Comments, 1, "a repeated create must not duplicate the comment")
+	require.Equal(t, "first words and more", data.Comments[0].Comment)
+	require.Greater(t, data.Comments[0].EditedAt, float64(0))
+
+	stored, err := s.Get("a.md", "")
+	require.NoError(t, err)
+	require.Len(t, stored.Comments, 1)
+	require.Equal(t, "first words and more", stored.Comments[0].Comment)
+}
+
+func TestAddCommentRepeatedVerbatimChangesNothing(t *testing.T) {
+	s := NewStore(t.TempDir())
+	_, err := s.AddComment("a.md", "", anchoredComment("c1", "same", 3), cmdDoc)
+	require.NoError(t, err)
+	_, err = s.SetResolved("a.md", "", "c1", true)
+	require.NoError(t, err)
+
+	data, err := s.AddComment("a.md", "", anchoredComment("c1", "same", 3), cmdDoc)
+	require.NoError(t, err)
+	require.Len(t, data.Comments, 1)
+	require.Zero(t, data.Comments[0].EditedAt, "a pure retry is not an edit")
+	require.True(t, data.Comments[0].Resolved, "a repeated create changes nothing but the text")
+}
+
+func TestReplyWithHeldIDEditsTheReply(t *testing.T) {
+	s := NewStore(t.TempDir())
+	_, err := s.AddComment("a.md", "", anchoredComment("c1", "x", 3), cmdDoc)
+	require.NoError(t, err)
+
+	_, err = s.Reply("a.md", "", "c1", "r1", "half a thought", cmdDoc)
+	require.NoError(t, err)
+	data, err := s.Reply("a.md", "", "c1", "r1", "half a thought, finished", cmdDoc)
+	require.NoError(t, err)
+
+	c := data.Comments[0]
+	require.Len(t, c.Reactions, 1, "a repeated reply must not duplicate it")
+	require.Equal(t, "r1", c.Reactions[0].ID)
+	require.Equal(t, "half a thought, finished", c.Reactions[0].Summary)
+
+	// A reply without an id is appended as it always was.
+	data, err = s.Reply("a.md", "", "c1", "", "another", cmdDoc)
+	require.NoError(t, err)
+	require.Len(t, data.Comments[0].Reactions, 2)
+}
+
+func TestEditReplyRewritesItWhereverItSits(t *testing.T) {
+	s := NewStore(t.TempDir())
+	seedForResponses(t, s)
+	_, err := s.Reply("a.md", "", "abcd1234", "r1", "still unclear", cmdDoc)
+	require.NoError(t, err)
+	// The agent answers after the reply, so the reply is no longer last.
+	data, _, err := s.ApplyResponses("a.md", "",
+		[]ResponseEntry{{ShortID: "abcd", Summary: "Clarified", Nonce: "n1", Round: 1}}, cmdDoc)
+	require.NoError(t, err)
+	answered := data.Comments[0].Reactions[1].Timestamp
+
+	data, err = s.EditReply("a.md", "", "abcd1234", "r1", "still unclear: which paragraph?", cmdDoc)
+	require.NoError(t, err)
+	reactions := data.Comments[0].Reactions
+	require.Len(t, reactions, 2, "an edit appends nothing")
+	require.Equal(t, "still unclear: which paragraph?", reactions[0].Summary)
+	require.Equal(t, "agent", reactions[1].Actor)
+	// The edit outranks the agent's answer, which is what puts the thread
+	// back in the agent's queue.
+	require.Greater(t, reactions[0].EditedAt, answered)
+}
+
+func TestEditReplyRefusesWhatItCannotFind(t *testing.T) {
+	s := NewStore(t.TempDir())
+	seedForResponses(t, s)
+	_, err := s.Reply("a.md", "", "abcd1234", "", "no id", cmdDoc)
+	require.NoError(t, err)
+	_, _, err = s.ApplyResponses("a.md", "",
+		[]ResponseEntry{{ShortID: "abcd", Summary: "Done", Nonce: "n1", Round: 1}}, cmdDoc)
+	require.NoError(t, err)
+
+	_, err = s.EditReply("a.md", "", "nope", "r1", "x", cmdDoc)
+	require.ErrorIs(t, err, ErrCommentNotFound)
+	_, err = s.EditReply("ghost.md", "", "abcd1234", "r1", "x", cmdDoc)
+	require.ErrorIs(t, err, ErrCommentNotFound)
+	_, err = s.EditReply("a.md", "", "abcd1234", "r1", "x", cmdDoc)
+	require.ErrorIs(t, err, ErrReplyNotFound)
+	// An empty id names nothing, though a reply without an id is held.
+	_, err = s.EditReply("a.md", "", "abcd1234", "", "x", cmdDoc)
+	require.ErrorIs(t, err, ErrReplyNotFound)
 }

@@ -203,6 +203,7 @@ import {
   type Quotes,
 } from "../planningScan/client";
 import { planningLimits } from "../planningScan/limits";
+import type { OnSaved } from "../lib/reviewBoxes";
 import { useRepoStore } from "../stores/useRepoStore";
 import {
   usePlanningIndex,
@@ -212,7 +213,10 @@ import {
 import {
   answersPayload,
   deleteCommentFrom,
+  isPendingForAgent,
   postCommentTo,
+  reviewTarget,
+  typedComments,
   type LineLookup,
 } from "../stores/useReviewStore";
 import { VIEWER_RELEASE } from "../lib/viewerRelease";
@@ -2086,7 +2090,15 @@ export const PlanningPage: React.FC = () => {
   const [copied, setCopied] = useState(false);
   const copyAnswers = useCallback(() => {
     if (quotesLoading || !countKnown) return;
-    const payload = answersPayload(pending);
+    // What this tab's boxes hold, as last typed (planning-to-do-list.md §6.3).
+    const payload = answersPayload(
+      pending.map((group) => ({
+        ...group,
+        comments: typedComments(group.path, group.comments).filter(
+          isPendingForAgent,
+        ),
+      })),
+    );
     if (payload === null) return;
     void copyTextOrWarn(payload).then((ok) => {
       if (!ok) return;
@@ -2104,6 +2116,22 @@ export const PlanningPage: React.FC = () => {
         prev.paths.has(path)
           ? prev
           : { ...prev, paths: new Set([...prev.paths, path]) },
+      );
+    },
+    [adopt],
+  );
+  // Every save of a card's Answer… box, which saves to the repository and
+  // document it opened on: its answer is this page's only while that is still
+  // the repository on screen. Filed here, so what it answers counts at once,
+  // as a take does.
+  const boxSaved = useCallback<OnSaved>(
+    (target, data) => {
+      if (reviewTarget(target.path)?.base !== target.base) return;
+      adopt(target.path, data);
+      setCounted((prev) =>
+        prev.paths.has(target.path)
+          ? prev
+          : { ...prev, paths: new Set([...prev.paths, target.path]) },
       );
     },
     [adopt],
@@ -2524,6 +2552,7 @@ export const PlanningPage: React.FC = () => {
         href={buildPath(question.path)}
         onOpenHere={saveScroll}
         onFile={fileComment}
+        onBoxSaved={boxSaved}
         onUndo={undoComment}
         cardKey={key}
         onScoped={reportScoped}

@@ -228,13 +228,23 @@ type CommentAnchor struct {
 // which turn it answers, and that implication is wrong for a delivery that
 // lands after the reviewer posted a follow-up. Absent means "not stated", which
 // readers treat as answering the newest turn.
+//
+// ID and EditedAt belong to a reviewer's reply. ID is chosen by the browser
+// that wrote the reply, so the comment box that wrote it can go on editing it
+// in place as the reviewer types (docs/design/planning-to-do-list.md §6.2);
+// replies written before that carry none, and agent reactions never do.
+// EditedAt is when the reviewer last reworded the reply, which, like a
+// comment's own EditedAt, puts the thread back in the agent's queue when it is
+// later than the agent's last answer. Zero means never edited.
 type CommentReaction struct {
+	ID           string  `json:"id,omitempty"`
 	Actor        string  `json:"actor"`
 	Kind         string  `json:"kind"`
 	Summary      string  `json:"summary"`
 	BeforeText   string  `json:"before_text"`
 	AfterText    string  `json:"after_text"`
 	Timestamp    float64 `json:"timestamp"`
+	EditedAt     float64 `json:"edited_at,omitempty"`
 	AnswersRound *int    `json:"answers_round,omitempty"`
 }
 
