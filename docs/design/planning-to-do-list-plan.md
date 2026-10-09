@@ -100,12 +100,12 @@ build order; each ends green on its own gate.
 - **Settled.** [§4.1](planning-to-do-list.md#41-your-own-actions)'s table, [§4.2](planning-to-do-list.md#42-what-arrives-late)'s table, [§4.3](planning-to-do-list.md#43-refresh)'s three steps, [the New reply mark](planning-to-do-list.md#the-new-reply-mark), and the updates slot in the header with its room kept from first paint ([§3.1](planning-to-do-list.md#31-the-header)).
 - **Change.** The basis in `PlanningPage.tsx`; `PlanningUpdates.tsx`; the card's marks and frozen list; the popover's close handle.
 - **Tests first.** One page test per row of [§4.1](planning-to-do-list.md#41-your-own-actions) and [§4.2](planning-to-do-list.md#42-what-arrives-late); counts change while the layout is held; Refresh keeps the first item on screen at the same height; Refresh closes an open box first.
-- **Integration with A.** Refresh calls the card's close handle; today that files the typed text as Save does. When A lands, closing saves, and the handle is A's close path.
+- **Integration with A (landed).** Refresh calls `closeBoxes(() => true)` (`lib/commentAutosave.ts`) and waits, at most the reviews deadline, for the closed boxes' saves before it lays out. A card's box closed from outside its popover is seen through the box's own subscription; the card then calls `onAnswerClosed` and the page's `onAnswered`, which shrinks it.
 
 ### Task 4: the folded groups (after 1)
 
 - **Settled.** *Blocked* and *Maintenance*, closed by default, open state remembered per group, one row per item, the first 100 then *Show all N*, Copy agent request on each kind's sub-heading ([§3.4](planning-to-do-list.md#34-the-folded-groups)).
-- **Integration with B.** *To fold into the ledger* lists ✅ questions of the chosen roadmap's *Needs you*; its Copy agent request is wired only once `vantage-md/planning` exports the `compact` request. Until then the spot is marked in `PlanningGroups.tsx`. When B lands, the list should come from B's own selection function (P7), not the page's.
+- **Integration with B (landed).** *To fold into the ledger* lists exactly what the `compact` request lists, from B's `answeredQuestions(index, keeps)` (P7), and its Copy agent request is `planningAgentRequest` with `ids: ["compact"]`.
 
 ### Task 5: measure (after 2 and 3)
 

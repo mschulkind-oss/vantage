@@ -16,7 +16,8 @@ describe("the limits module", () => {
     expect(planningLimits.chunkEntries).toBe(100);
     expect(planningLimits.chunkBytes).toBe(256 * 1024);
     expect(planningLimits.cardChars).toBe(32_000);
-    expect(planningLimits.pageMarkdownChars).toBe(32 * 1024);
+    expect(planningLimits.defaultPageSize).toBe(10);
+    expect(planningLimits.pageSizes).toEqual([10, 20, 30, 50]);
     expect(planningLimits.holdMs).toBe(150);
   });
 

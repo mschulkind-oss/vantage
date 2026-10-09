@@ -17,8 +17,8 @@ import { planningIndexReady } from "./planningIndex";
 const ROADMAP = "plans/roadmap.md";
 /** planning.spec.ts rewrites it, so its hash may move under this spec. */
 const REWRITTEN = "plans/design.md";
-/** The planning page's one unrouted question, whose card every test awaits. */
-const UNROUTED_CARD = "OQ-U1: Is anyone tracking this?";
+/** A card of Needs you, from a document no other spec rewrites: every test awaits it. */
+const NEEDS_YOU_CARD = "OQ-P1: Which way for part 1?";
 
 interface Line {
   kind: string;
@@ -76,7 +76,7 @@ async function planningPage(page: Page, reload = false): Promise<void> {
   if (reload) await page.reload();
   else await page.goto("/.vantage/planning");
   await expect(
-    page.getByRole("article", { name: UNROUTED_CARD }),
+    page.getByRole("article", { name: NEEDS_YOU_CARD }),
   ).toBeVisible();
 }
 
@@ -275,7 +275,7 @@ test.describe("the planning scan cache", () => {
     // Every card of a document nobody rewrites came from the cache, with no
     // request for its file.
     const shown = await cardPaths(page);
-    expect(shown).toContain("plans/unrouted.md");
+    expect(shown).toContain("plans/paged.md");
     expect(
       asked.filter((path) => shown.has(path) && path !== REWRITTEN),
     ).toEqual([]);
@@ -421,7 +421,7 @@ test.describe("the planning scan cache", () => {
     // The blocks of this tab's build are held in the worker's memory, so the
     // cards needed no request for their files.
     const shown = await cardPaths(page);
-    expect(shown).toContain("plans/unrouted.md");
+    expect(shown).toContain("plans/paged.md");
     expect(
       asked.filter((path) => shown.has(path) && path !== REWRITTEN),
     ).toEqual([]);

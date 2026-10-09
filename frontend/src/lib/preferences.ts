@@ -46,6 +46,18 @@ export const PREFERENCE_KEYS = [
    * full width, not planning state; absent, cards open folded.
    */
   "vantage:planningCardsExpanded",
+  /**
+   * The planning page's page size: how many questions that need you it shows
+   * as full cards, one of `planningLimits.pageSizes`, as a decimal string
+   * (`docs/design/planning-to-do-list.md` §3.3). Absent, the default.
+   */
+  "vantage:planningPageSize",
+  /**
+   * Whether the planning page's folded *Blocked* and *Maintenance* groups are
+   * open, `"true"` or `"false"`; absent, closed (§3.4 of the same design).
+   */
+  "vantage:planningBlockedOpen",
+  "vantage:planningMaintenanceOpen",
   "vantage:sidebarCollapsed",
   /** The sidebar's width in px, as a decimal string. */
   "vantage:sidebarWidth",
@@ -139,6 +151,20 @@ export const UNSYNCED_PREFERENCES: Partial<
     "further than that, closing the review affordances under a reviewer " +
     "part-way through a comment on the strength of a click in another tab. " +
     "Adoption at open is the weaker guarantee and the right one.",
+  "vantage:planningPageSize":
+    "A page size changing is a new layout of Needs you, and only the reader's " +
+    "own action may lay the page out again under them " +
+    "(planning-to-do-list.md P2). The page reads the preference at every " +
+    "layout it makes, so another tab's choice applies at this tab's next " +
+    "Refresh, filter change or visit, with nothing to follow in between.",
+  "vantage:planningBlockedOpen":
+    "Opening or closing a group moves everything below it, which only the " +
+    "reader's own action may do (planning-to-do-list.md P2). Read once per " +
+    "visit, as the page opens.",
+  "vantage:planningMaintenanceOpen":
+    "Opening or closing a group moves everything below it, which only the " +
+    "reader's own action may do (planning-to-do-list.md P2). Read once per " +
+    "visit, as the page opens.",
   [PLANNING_ROADMAP_FAMILY]:
     "The planning page reads the remembered roadmap once per visit, by design " +
     "(planning-index.md §6.8): another tab's pick must never swap Needs you " +
