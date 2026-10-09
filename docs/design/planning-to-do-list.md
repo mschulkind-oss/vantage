@@ -2,7 +2,7 @@
 title: "The planning page is a to-do list"
 status: accepted
 stage: DECIDED
-next: "Write the implementation plan from the sketch, then build in the order of §12"
+next: "Build in the order of §12, from the implementation plan"
 ---
 
 # The planning page is a to-do list
@@ -36,7 +36,7 @@ the layout in [§3](#3-the-page-top-to-bottom) follows from it.
 **Needs your ruling:** None.
 
 **Reads with:** [`planning-to-do-list-plan.md`](planning-to-do-list-plan.md)
-(the implementation sketch, to be completed into the plan),
+(the implementation plan),
 [`planning-index.md`](../reference/planning-index.md) (the page as built today),
 [`answer-publication.md`](answer-publication.md) (what an agent's reply means,
 which decides where a replied question lands).
