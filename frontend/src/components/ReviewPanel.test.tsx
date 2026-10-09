@@ -10,6 +10,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { ReviewPanel } from "./ReviewPanel";
 import { isPendingForAgent, useReviewStore } from "../stores/useReviewStore";
 import { useRepoStore } from "../stores/useRepoStore";
+import { installReviewServer } from "../test/reviewServer";
+import { resetBoxesForTest } from "../lib/commentAutosave";
 import type {
   CommentReaction,
   ReactionActor,
@@ -327,6 +329,68 @@ describe("ReviewPanel — reply box lifecycle", () => {
     // the reviewer wrote for a comment that had been removed.
     expect(replyBox()).toBeNull();
     expect(screen.getByRole("button", { name: "Reply" })).toBeTruthy();
+  });
+});
+
+describe("ReviewPanel — boxes that save as you type", () => {
+  beforeEach(() => {
+    useReviewStore.setState({ comments: [], filePath: null });
+    vi.clearAllMocks();
+  });
+  afterEach(() => resetBoxesForTest());
+
+  it("edits a comment in place, with Close and no Save or Cancel", async () => {
+    setComments([baseComment({})]);
+    const server = installReviewServer();
+    render(<ReviewPanel isOpen onClose={() => {}} />);
+
+    fireEvent.click(screen.getByTitle("Edit comment"));
+    const box = screen.getByDisplayValue(baseComment({}).comment);
+    expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Cancel" })).toBeNull();
+    fireEvent.change(box, { target: { value: "reworded in the panel" } });
+    expect(
+      await screen.findByText("Saved just now", {}, { timeout: 3000 }),
+    ).toBeTruthy();
+    expect(server.comments[0].comment).toBe("reworded in the panel");
+    // Still open, still the same box.
+    expect(screen.getByDisplayValue("reworded in the panel")).toBe(box);
+
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(screen.queryByDisplayValue("reworded in the panel")).toBeNull();
+    expect(screen.getByText("reworded in the panel")).toBeTruthy();
+  });
+
+  it("keeps a reply on Esc, sending it as one reply", async () => {
+    setComments([baseComment({ reactions: [agentAddressed] })]);
+    const server = installReviewServer();
+    render(<ReviewPanel isOpen onClose={() => {}} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Reply" }));
+    const box = screen.getByPlaceholderText("Follow-up for the agent...");
+    fireEvent.change(box, { target: { value: "one more round" } });
+    fireEvent.keyDown(box, { key: "Escape" });
+    await waitFor(() =>
+      expect(useReviewStore.getState().comments[0].reactions).toHaveLength(2),
+    );
+    expect(server.writes).toEqual(["POST /api/review/comments/c1/replies"]);
+  });
+
+  it("keeps a reopened comment listed under Resolved while its reply box is open", async () => {
+    setComments([baseComment({ resolved: true })]);
+    installReviewServer();
+    render(<ReviewPanel isOpen onClose={() => {}} />);
+    fireEvent.click(screen.getByRole("button", { name: /^Resolved/ }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Reopen & Reply" }));
+    const box = screen.getByPlaceholderText("Follow-up for the agent...");
+    fireEvent.change(box, { target: { value: "not fixed after all" } });
+    await waitFor(
+      () => expect(useReviewStore.getState().comments[0].resolved).toBe(false),
+      { timeout: 3000 },
+    );
+    // The first save reopened it; the box is still where it was typed in.
+    expect(screen.getByPlaceholderText("Follow-up for the agent...")).toBe(box);
   });
 });
 

@@ -307,7 +307,7 @@ func TestConsumeInboxAndCommandsConcurrentlyLoseNoTurns(t *testing.T) {
 		writers.Add(1)
 		go func() {
 			defer writers.Done()
-			if _, err := s.Reply(raceDoc, "", id, fmt.Sprintf("reviewer note %02d", i), ""); err != nil {
+			if _, err := s.Reply(raceDoc, "", id, "", fmt.Sprintf("reviewer note %02d", i), ""); err != nil {
 				fail("Reply: %v", err)
 			}
 		}()
@@ -481,7 +481,7 @@ func hammerOneFile(s *Store, doc, id, tag string, rounds int) (int64, []string) 
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if _, err := s.Reply(doc, "", id, reply, ""); err != nil {
+			if _, err := s.Reply(doc, "", id, "", reply, ""); err != nil {
 				fail("Reply: %v", err)
 			}
 		}()

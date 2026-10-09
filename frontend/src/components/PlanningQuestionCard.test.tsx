@@ -19,6 +19,7 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BrowserRouter } from "react-router-dom";
@@ -77,6 +78,9 @@ import {
 import type { CommentAnchor, ReviewComment } from "../types";
 
 vi.mock("axios");
+import { installReviewServer } from "../test/reviewServer";
+import { resetBoxesForTest, retargetBoxes } from "../lib/commentAutosave";
+afterEach(() => resetBoxesForTest());
 // The viewer's diagram, drawn from the SVG cache when it holds the diagram
 // and empty until then; Mermaid itself stays out of the suite.
 vi.mock("vantage-md/react", async () => {
@@ -357,20 +361,26 @@ const filedBy = (onFile: ReturnType<typeof vi.fn>): Filed => {
   };
 };
 
-async function answerOnCard(
-  onFile: ReturnType<typeof vi.fn>,
-  typed: string,
-): Promise<Filed> {
+/** Answer on the card's box, and what it filed: the body of its create. */
+async function answerOnCard(typed: string): Promise<Filed> {
+  vi.mocked(axios.post).mockClear();
   act(() => {
     fireEvent.click(screen.getByRole("button", { name: "Answer…" }));
   });
   fireEvent.change(screen.getByPlaceholderText("Your comment..."), {
     target: { value: typed },
   });
+  // The box saves as it is typed in; Close sends what is not saved yet.
   await act(async () => {
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(screen.getByText("Close"));
   });
-  return filedBy(onFile);
+  await waitFor(() => expect(vi.mocked(axios.post)).toHaveBeenCalled());
+  const body = vi.mocked(axios.post).mock.calls.at(-1)![1] as Filed;
+  return {
+    anchor: body.anchor,
+    comment: body.comment,
+    fallback_text: body.fallback_text,
+  };
 }
 
 describe("an answer from the card is the in-page button's (§6.7)", () => {
@@ -401,8 +411,8 @@ describe("an answer from the card is the in-page button's (§6.7)", () => {
     "files Answer… on the same anchor for %s",
     async (_name, question) => {
       const inPage = fileInPage(question);
-      const { onFile } = renderCard(question);
-      const answered = await answerOnCard(onFile, "Typed on the page.");
+      renderCard(question);
+      const answered = await answerOnCard("Typed on the page.");
       expect(answered).toEqual({ ...inPage, comment: "Typed on the page." });
     },
   );
@@ -1933,6 +1943,142 @@ describe("the comments already filed on a question", () => {
       expect.objectContaining({ ids: [onB3.id] }),
     );
     expect(onScoped.mock.lastCall?.[1].comments).toBe(second);
+  });
+
+  it("files Answer… as it is typed, edits it in place, and never changes the card meanwhile", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const server = installReviewServer([]);
+    const question = byId("OQ-B1");
+    const onBoxSaved = vi.fn();
+    const onAnswerClosed = vi.fn();
+    const props = {
+      question,
+      card: blockOf(question),
+      badge: null,
+      href: "/x",
+      onFile: vi.fn(async () => {}),
+      onBoxSaved,
+      onAnswerClosed,
+    };
+    const { rerender } = render(
+      <BrowserRouter>
+        <PlanningQuestionCard {...props} comments={[]} />
+      </BrowserRouter>,
+    );
+    act(() => {
+      fireEvent.click(screen.getByRole("button", { name: "Answer…" }));
+    });
+    const box = screen.getByPlaceholderText("Your comment...");
+    fireEvent.change(box, { target: { value: "Front" } });
+    await act(() => vi.advanceTimersByTimeAsync(1000));
+    expect(server.writes).toEqual([`POST /api/review/comments`]);
+    expect(onBoxSaved).toHaveBeenLastCalledWith(
+      { base: "/api", path: question.path },
+      expect.objectContaining({ comments: [expect.anything()] }),
+    );
+    const filed = server.comments;
+    expect(filed[0].comment).toBe("Front");
+
+    // The save's answer reaches the card as its document's comments; the
+    // card goes on showing what it showed when the box opened.
+    const row = () =>
+      Array.from(screen.getByRole("article").querySelectorAll("button")).map(
+        (b) => b.textContent,
+      );
+    const before = row();
+    rerender(
+      <BrowserRouter>
+        <PlanningQuestionCard {...props} comments={structuredClone(filed)} />
+      </BrowserRouter>,
+    );
+    expect(row()).toEqual(before);
+    expect(screen.queryByText("Answered — waiting on the agent")).toBeNull();
+
+    fireEvent.change(box, { target: { value: "Front of the queue." } });
+    await act(() => vi.advanceTimersByTimeAsync(1000));
+    expect(server.writes).toEqual([
+      `POST /api/review/comments`,
+      `PATCH /api/review/comments/${filed[0].id}`,
+    ]);
+    expect(server.comments[0].comment).toBe("Front of the queue.");
+
+    // Closed holding text: the card shows the answer, and says it closed.
+    await act(async () => {
+      fireEvent.keyDown(box, { key: "Escape" });
+    });
+    expect(onAnswerClosed).toHaveBeenCalledWith(question.path, filed[0].id);
+    expect(screen.getByText("Answered — waiting on the agent")).toBeTruthy();
+    vi.useRealTimers();
+  });
+
+  it("keeps an Answer… that failed to save, retrying, until it lands", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const server = installReviewServer([]);
+    server.down = true;
+    renderCard(byId("OQ-B1"));
+    act(() => {
+      fireEvent.click(screen.getByRole("button", { name: "Answer…" }));
+    });
+    const box =
+      screen.getByPlaceholderText<HTMLTextAreaElement>("Your comment...");
+    fireEvent.change(box, { target: { value: "Not lost." } });
+    await act(() => vi.advanceTimersByTimeAsync(1000));
+    expect(screen.getByText("Not saved, retrying")).toBeTruthy();
+    expect(box.value).toBe("Not lost.");
+    // Closing it hands the text to the same retries.
+    await act(async () => {
+      fireEvent.click(screen.getByText("Close"));
+    });
+    server.down = false;
+    await act(() => vi.advanceTimersByTimeAsync(2000));
+    expect(server.comments.map((c) => c.comment)).toEqual(["Not lost."]);
+    vi.useRealTimers();
+  });
+
+  it("goes on saving to the repository it opened in, after the reader switches", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    useRepoStore.setState({ isMultiRepo: true, currentRepo: "alpha" });
+    const server = installReviewServer([]);
+    server.down = true;
+    const onBoxSaved = vi.fn();
+    renderCard(byId("OQ-B1"), { onBoxSaved });
+    act(() => {
+      fireEvent.click(screen.getByRole("button", { name: "Answer…" }));
+    });
+    fireEvent.change(screen.getByPlaceholderText("Your comment..."), {
+      target: { value: "For alpha." },
+    });
+    await act(() => vi.advanceTimersByTimeAsync(1000));
+    useRepoStore.setState({ currentRepo: "beta" });
+    server.down = false;
+    await act(() => vi.advanceTimersByTimeAsync(2000));
+    expect(server.writes.at(-1)).toBe("POST /api/r/alpha/review/comments");
+    expect(server.writes.some((w) => w.includes("/r/beta/"))).toBe(false);
+    expect(onBoxSaved).toHaveBeenLastCalledWith(
+      { base: "/api/r/alpha", path: byId("OQ-B1").path },
+      expect.anything(),
+    );
+    vi.useRealTimers();
+  });
+
+  it("follows its document to a new path, rather than editing the old one", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    installReviewServer([]);
+    const question = byId("OQ-B1");
+    renderCard(question);
+    act(() => {
+      fireEvent.click(screen.getByRole("button", { name: "Answer…" }));
+    });
+    const box = screen.getByPlaceholderText("Your comment...");
+    fireEvent.change(box, { target: { value: "One" } });
+    await act(() => vi.advanceTimersByTimeAsync(1000));
+    retargetBoxes("/api", question.path, "docs/moved/agent-bootstrap.md");
+    fireEvent.change(box, { target: { value: "One, two" } });
+    await act(() => vi.advanceTimersByTimeAsync(1000));
+    expect(vi.mocked(axios.patch).mock.calls.at(-1)![2]).toEqual({
+      params: { path: "docs/moved/agent-bootstrap.md" },
+    });
+    vi.useRealTimers();
   });
 
   it("says so when the comment could not be saved", async () => {

@@ -258,7 +258,7 @@ test.describe("question and fallback directives", () => {
     await page
       .locator('textarea[placeholder="Your comment..."]')
       .fill("The first way, after all.");
-    await page.getByText("Save", { exact: true }).click();
+    await page.getByText("Close", { exact: true }).click();
 
     const row = item(page, "OQ-4").locator(":scope > .review-oq-row");
     await expect(row.locator(".review-oq-answered")).toHaveText(ANSWERED);
@@ -354,7 +354,7 @@ test.describe("a question written as paragraphs", () => {
     await page
       .locator('textarea[placeholder="Your comment..."]')
       .fill("The first way, as leaned.");
-    await page.getByText("Save", { exact: true }).click();
+    await page.getByText("Close", { exact: true }).click();
 
     const rows = prose(page).locator(".review-oq-row");
     await expect(rows.first().locator(".review-oq-answered")).toHaveText(

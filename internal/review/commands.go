@@ -43,9 +43,20 @@ type ResponseEntry struct {
 // reviewer turn.
 const RoundUnknown = -1
 
+// ErrReplyNotFound is returned when a reply edit names a reply the comment
+// does not hold, or one that is not the reviewer's. Handlers map it to a 404.
+var ErrReplyNotFound = errors.New("review: reply not found")
+
 // AddComment appends c to the review for filePath in repo, creating the review
 // if absent. The anchored block's current text is captured from docContent so a
 // later agent response has an honest "before" even across restarts.
+//
+// Creating is safe to repeat. The browser chooses a comment's id, and a comment
+// box that saves as the reviewer types retries a create whose answer it never
+// heard, so a create naming a comment the review already holds is an edit of
+// that comment's text ([Store.EditCommentText]), and nothing else about it
+// changes. The same text again changes nothing at all, so a pure retry does not
+// mark the comment edited (docs/design/planning-to-do-list.md §6.2).
 func (s *Store) AddComment(filePath, repo string, c model.ReviewComment, docContent string) (*model.ReviewData, error) {
 	defer s.lock(filePath, repo)()
 	data, err := s.getLocked(filePath, repo)
@@ -54,6 +65,16 @@ func (s *Store) AddComment(filePath, repo string, c model.ReviewComment, docCont
 	}
 	if data == nil {
 		data = model.NewReviewData(filePath)
+	}
+	if held := commentByID(data.Comments, c.ID); held != nil {
+		if held.Comment == c.Comment {
+			return data, nil
+		}
+		editText(held, c.Comment, nowSeconds(), docContent)
+		if err := s.saveLocked(filePath, repo, data); err != nil {
+			return nil, err
+		}
+		return data, nil
 	}
 	if c.Reactions == nil {
 		c.Reactions = []model.CommentReaction{}
@@ -77,10 +98,16 @@ func (s *Store) AddComment(filePath, repo string, c model.ReviewComment, docCont
 // answer with changes its first answer made.
 func (s *Store) EditCommentText(filePath, repo, id, text, docContent string) (*model.ReviewData, error) {
 	return s.mutateComment(filePath, repo, id, func(c *model.ReviewComment, now float64) {
-		c.Comment = text
-		c.EditedAt = now
-		c.CapturedBlock = blockTextAt(docContent, anchorLineOf(c))
+		editText(c, text, now, docContent)
 	})
+}
+
+// editText is the edit [Store.EditCommentText] makes, shared with a repeated
+// create.
+func editText(c *model.ReviewComment, text string, now float64, docContent string) {
+	c.Comment = text
+	c.EditedAt = now
+	c.CapturedBlock = blockTextAt(docContent, anchorLineOf(c))
 }
 
 // SetResolved sets the comment's resolved flag: dismiss-without-reaction
@@ -94,22 +121,34 @@ func (s *Store) SetResolved(filePath, repo, id string, resolved bool) (*model.Re
 // Reply appends a reviewer follow-up (needs_clarification) to the comment and
 // re-captures the anchored block: the reviewer is looking at the current text,
 // so the next agent response's "before" is this block, now.
-func (s *Store) Reply(filePath, repo, id, text, docContent string) (*model.ReviewData, error) {
-	return s.reply(filePath, repo, id, text, docContent, false)
+//
+// replyID is the id the browser chose for the reply, or "" for a reply that has
+// none. Like creating a comment, replying with an id is safe to repeat: when
+// the comment already holds the reviewer's reply of that id, its text is edited
+// in place ([Store.EditReply]) rather than a second reply appended.
+func (s *Store) Reply(filePath, repo, id, replyID, text, docContent string) (*model.ReviewData, error) {
+	return s.reply(filePath, repo, id, replyID, text, docContent, false)
 }
 
 // ReopenReply is Reply plus resolved=false, atomically — reopening a resolved
 // thread with the follow-up that explains why.
-func (s *Store) ReopenReply(filePath, repo, id, text, docContent string) (*model.ReviewData, error) {
-	return s.reply(filePath, repo, id, text, docContent, true)
+func (s *Store) ReopenReply(filePath, repo, id, replyID, text, docContent string) (*model.ReviewData, error) {
+	return s.reply(filePath, repo, id, replyID, text, docContent, true)
 }
 
-func (s *Store) reply(filePath, repo, id, text, docContent string, reopen bool) (*model.ReviewData, error) {
+func (s *Store) reply(filePath, repo, id, replyID, text, docContent string, reopen bool) (*model.ReviewData, error) {
 	return s.mutateComment(filePath, repo, id, func(c *model.ReviewComment, now float64) {
 		if reopen {
 			c.Resolved = false
 		}
+		if held := reviewerReply(c, replyID); held != nil {
+			if held.Summary != text {
+				editReply(c, held, text, now, docContent)
+			}
+			return
+		}
 		c.Reactions = append(c.Reactions, model.CommentReaction{
+			ID:        replyID,
 			Actor:     "reviewer",
 			Kind:      "needs_clarification",
 			Summary:   text,
@@ -117,6 +156,59 @@ func (s *Store) reply(filePath, repo, id, text, docContent string, reopen bool) 
 		})
 		c.CapturedBlock = blockTextAt(docContent, anchorLineOf(c))
 	})
+}
+
+// EditReply rewrites the text of the reviewer's reply replyID on comment id,
+// wherever it sits in the thread and whatever has been added after it, and
+// stamps the reply's EditedAt. An edit later than the agent's last answer puts
+// the thread back in the agent's queue, as editing a comment does. The anchored
+// block is re-captured for the reason an edit of the comment re-captures it.
+//
+// A missing comment is ErrCommentNotFound; a reply the comment does not hold,
+// or one that is not the reviewer's, is ErrReplyNotFound.
+func (s *Store) EditReply(filePath, repo, id, replyID, text, docContent string) (*model.ReviewData, error) {
+	defer s.lock(filePath, repo)()
+	data, err := s.getLocked(filePath, repo)
+	if err != nil {
+		return nil, err
+	}
+	if data == nil {
+		return nil, ErrCommentNotFound
+	}
+	comment := commentByID(data.Comments, id)
+	if comment == nil {
+		return nil, ErrCommentNotFound
+	}
+	held := reviewerReply(comment, replyID)
+	if held == nil {
+		return nil, ErrReplyNotFound
+	}
+	editReply(comment, held, text, nowSeconds(), docContent)
+	if err := s.saveLocked(filePath, repo, data); err != nil {
+		return nil, err
+	}
+	return data, nil
+}
+
+// reviewerReply is the reviewer's reply replyID on c, or nil when replyID is
+// "" or names no reply of the reviewer's.
+func reviewerReply(c *model.ReviewComment, replyID string) *model.CommentReaction {
+	if replyID == "" {
+		return nil
+	}
+	for i := range c.Reactions {
+		r := &c.Reactions[i]
+		if r.ID == replyID && r.Actor == "reviewer" {
+			return r
+		}
+	}
+	return nil
+}
+
+func editReply(c *model.ReviewComment, r *model.CommentReaction, text string, now float64, docContent string) {
+	r.Summary = text
+	r.EditedAt = now
+	c.CapturedBlock = blockTextAt(docContent, anchorLineOf(c))
 }
 
 // DismissMany resolves comments in bulk without recording reactions. A nil ids

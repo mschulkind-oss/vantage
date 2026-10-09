@@ -465,7 +465,7 @@ func TestConsumeInboxCarriesTheRound(t *testing.T) {
 	_, _, err := s.ApplyResponses("a.md", "",
 		[]ResponseEntry{{ShortID: "c1a2b3c4", Summary: "round one", Nonce: "n1", Round: 0}}, cmdDoc)
 	require.NoError(t, err)
-	_, err = s.Reply("a.md", "", "c1a2b3c4deadbeef", "not quite, also X", cmdDoc)
+	_, err = s.Reply("a.md", "", "c1a2b3c4deadbeef", "", "not quite, also X", cmdDoc)
 	require.NoError(t, err)
 
 	writeInboxFile(t, root, "a.jsonl",

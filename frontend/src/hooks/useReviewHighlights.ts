@@ -11,6 +11,13 @@ import {
 } from "../lib/reviewAnchor";
 import { revealCollapsedBlock } from "../lib/collapseSections";
 import {
+  closeHint,
+  closesBox,
+  statusText,
+  STATUS_TICK_MS,
+  type CommentBox,
+} from "../lib/commentAutosave";
+import {
   hasAgentReaction,
   isPendingForAgent,
   latestAgentReaction,
@@ -18,6 +25,16 @@ import {
 } from "../stores/useReviewStore";
 
 const MARK_ATTR = "data-review-comment-id";
+/** Marks a thread entry with the id of the reviewer's reply it shows. */
+const REPLY_ATTR = "data-review-reply-id";
+
+/** `value` safe inside a double-quoted HTML attribute. */
+function escapeAttr(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;");
+}
 const INLINE_COMMENT_ATTR = "data-review-inline-comment";
 
 /** Minimum gap between arming the delete confirm and it accepting. */
@@ -71,8 +88,16 @@ export interface InlineReviewActions {
   onDismiss: (id: string) => void;
   /** Reopen a resolved comment, no reply. */
   onReopen: (id: string) => void;
-  onEdit: (id: string, newComment: string) => void;
-  onReply: (id: string, replyText: string) => void;
+  /**
+   * The box ✎ opens on `comment`, which saves its text as the reviewer types
+   * (`lib/commentAutosave.ts`); `null` when there is nowhere to save to.
+   */
+  editBox: (comment: ReviewComment) => CommentBox | null;
+  /**
+   * The box Reply, or Reopen & Reply on a dismissed comment, opens; its first
+   * save creates the reply and its later ones edit it.
+   */
+  replyBox: (comment: ReviewComment) => CommentBox | null;
   /** Copy this one comment's thread; resolves false if the clipboard refused. */
   onCopy: (id: string) => Promise<boolean>;
 }
@@ -90,16 +115,52 @@ export function useReviewHighlights(
   actions: InlineReviewActions,
   publishDrift = true,
 ) {
+  // Leaving the document — a navigation, or the viewer going away — closes
+  // every box open in it, which saves what each holds.
+  useEffect(() => {
+    const el = containerRef.current;
+    return () => {
+      if (el) for (const open of boxesIn(el)) closeInlineBox(open);
+    };
+  }, [containerRef]);
+
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
+    el.setAttribute(LAYER_ATTR, "");
 
-    // The whole inline layer is torn down and rebuilt on every store write, so
-    // an open reply/edit box would lose whatever the reviewer had typed —
-    // including when their own keystroke-adjacent action triggers the redraw.
-    // Capture drafts first and restore them after the rebuild.
-    const drafts = captureDrafts(el);
+    // The whole inline layer is torn down and rebuilt on every store write,
+    // and a box's own saves are store writes, pushed to every tab. So the
+    // boxes open in it are lifted out first, with where their focus, caret,
+    // selection and scroll were, and put back into the rebuilt layer as the
+    // same elements: the reviewer typing in one never notices a save
+    // (docs/design/planning-to-do-list.md §6.1).
+    const open = boxesIn(el);
+    const held = open.map(liftBox);
+    const heldResolved = new Set(
+      open.filter((b) => b.heldResolved).map((b) => b.commentId),
+    );
 
+    rebuildLayer(el, comments, actions, publishDrift, heldResolved);
+
+    for (const lifted of held) putBoxBack(el, lifted);
+  }, [containerRef, comments, currentContent, actions, publishDrift]);
+}
+
+/**
+ * Tear the comment layer in `el` down and build it again from `comments`.
+ * `heldResolved` names comments drawn among the dismissed ones whatever they
+ * are now: a reply box opened on a dismissed comment reopens it with its first
+ * save, and moving the comment would move the box being typed in.
+ */
+function rebuildLayer(
+  el: HTMLElement,
+  comments: ReviewComment[],
+  actions: InlineReviewActions,
+  publishDrift: boolean,
+  heldResolved: ReadonlySet<string>,
+): void {
+  {
     // An arm belongs to one comment in one document. Drop it as soon as that
     // comment is gone — deleted, or left behind by a file switch — so it cannot
     // be restored onto a later render of something else.
@@ -157,8 +218,10 @@ export function useReviewHighlights(
       return;
     }
 
-    const active = comments.filter((c) => !c.resolved);
-    const resolved = comments.filter((c) => c.resolved);
+    const shownResolved = (c: ReviewComment) =>
+      !!c.resolved || heldResolved.has(c.id);
+    const active = comments.filter((c) => !shownResolved(c));
+    const resolved = comments.filter(shownResolved);
 
     // Resolved comments are rendered (collapsed) rather than reduced to a bare
     // count: without them the inline surface offers no way to read a finished
@@ -169,7 +232,6 @@ export function useReviewHighlights(
 
     if (active.length === 0) {
       reportDrift();
-      restoreDrafts(el, drafts);
       return;
     }
 
@@ -310,8 +372,7 @@ export function useReviewHighlights(
     }
 
     reportDrift();
-    restoreDrafts(el, drafts);
-  }, [containerRef, comments, currentContent, actions, publishDrift]);
+  }
 }
 
 /** Closest block whose source-line ≤ target — anchor for outdated rendering. */
@@ -554,7 +615,7 @@ function wireCommentButtons(
   comment: ReviewComment,
   actions: InlineReviewActions,
 ) {
-  const { onDelete, onDismiss, onReopen, onEdit, onCopy } = actions;
+  const { onDelete, onDismiss, onReopen, onCopy } = actions;
 
   const simple: Array<[string, () => void]> = [
     [".review-inline-comment-dismiss", () => onDismiss(comment.id)],
@@ -670,70 +731,19 @@ function wireCommentButtons(
     });
   }
 
-  wireReplyButton(wrapper, comment, actions);
-
+  // Reply, and Reopen & Reply on a dismissed comment, open the reply box; ✎
+  // opens the edit box. Each saves as the reviewer types (`InlineBox`).
+  for (const btn of wrapper.querySelectorAll(".review-inline-comment-reply")) {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      openInlineBox("reply", wrapper, comment, actions);
+    });
+  }
   const editBtn = wrapper.querySelector(".review-inline-comment-edit");
-  const textEl = wrapper.querySelector(".review-inline-comment-text");
-  if (editBtn && textEl) {
+  if (editBtn) {
     editBtn.addEventListener("click", (e) => {
       e.stopPropagation();
-      if (wrapper.querySelector(".review-inline-edit-area")) return;
-
-      const currentText = comment.comment;
-      const textarea = document.createElement("textarea");
-      textarea.className = "review-inline-edit-area";
-      textarea.value = currentText;
-      textarea.rows = 3;
-
-      const btnRow = document.createElement("div");
-      btnRow.className = "review-inline-edit-buttons";
-
-      const saveBtn = document.createElement("button");
-      saveBtn.textContent = "Save";
-      saveBtn.className = "review-inline-edit-save";
-
-      const cancelBtn = document.createElement("button");
-      cancelBtn.textContent = "Cancel";
-      cancelBtn.className = "review-inline-edit-cancel";
-
-      btnRow.appendChild(cancelBtn);
-      btnRow.appendChild(saveBtn);
-
-      (textEl as HTMLElement).style.display = "none";
-      textEl.parentNode!.insertBefore(textarea, textEl.nextSibling);
-      textEl.parentNode!.insertBefore(btnRow, textarea.nextSibling);
-      textarea.focus();
-
-      const cleanup = () => {
-        textarea.remove();
-        btnRow.remove();
-        (textEl as HTMLElement).style.display = "";
-      };
-
-      saveBtn.addEventListener("click", (ev) => {
-        ev.stopPropagation();
-        const newText = textarea.value.trim();
-        if (newText && newText !== currentText) {
-          onEdit(comment.id, newText);
-        }
-        cleanup();
-      });
-
-      cancelBtn.addEventListener("click", (ev) => {
-        ev.stopPropagation();
-        cleanup();
-      });
-
-      textarea.addEventListener("keydown", (ev) => {
-        if (ev.key === "Enter" && (ev.metaKey || ev.ctrlKey)) {
-          ev.preventDefault();
-          saveBtn.click();
-        }
-        if (ev.key === "Escape") {
-          ev.preventDefault();
-          cancelBtn.click();
-        }
-      });
+      openInlineBox("edit", wrapper, comment, actions);
     });
   }
 }
@@ -756,7 +766,10 @@ function renderThreadHtml(comment: ReviewComment): string {
         ? ["agent", r.kind === "wont_fix" ? "Agent declined" : "Agent"]
         : ["reviewer", "You"];
     const badge = `<span class="review-thread-badge review-thread-badge--${cls}">${label}</span>`;
-    html += `<div class="review-thread-entry" data-thread-idx="${i}">${badge}<span class="review-thread-text"></span></div>`;
+    // A reply's id marks its entry, which an open reply box hides while it
+    // is still editing that reply.
+    const reply = r.id ? ` ${REPLY_ATTR}="${escapeAttr(r.id)}"` : "";
+    html += `<div class="review-thread-entry" data-thread-idx="${i}"${reply}>${badge}<span class="review-thread-text"></span></div>`;
   }
   html += "</div>";
   return html;
@@ -782,75 +795,6 @@ function populateThreadSummaries(
     const textEl = entry.querySelector(".review-thread-text");
     if (textEl) textEl.innerHTML = renderCommentMarkdown(r.summary);
   }
-}
-
-function wireReplyButton(
-  wrapper: HTMLElement,
-  comment: ReviewComment,
-  actions: InlineReviewActions,
-): void {
-  const onReply = actions.onReply;
-  const replyBtn = wrapper.querySelector(".review-inline-comment-reply");
-  if (!replyBtn) return;
-
-  replyBtn.addEventListener("click", (e) => {
-    e.stopPropagation();
-    if (wrapper.querySelector(".review-inline-reply-area")) return;
-
-    const content = wrapper.querySelector(".review-inline-comment-content");
-    if (!content) return;
-
-    const textarea = document.createElement("textarea");
-    textarea.className = "review-inline-reply-area";
-    textarea.placeholder = "Write a reply…";
-    textarea.rows = 2;
-
-    const btnRow = document.createElement("div");
-    btnRow.className = "review-inline-edit-buttons";
-
-    const sendBtn = document.createElement("button");
-    sendBtn.textContent = comment.resolved ? "Reopen & Reply" : "Reply";
-    sendBtn.className = "review-inline-edit-save";
-
-    const cancelBtn = document.createElement("button");
-    cancelBtn.textContent = "Cancel";
-    cancelBtn.className = "review-inline-edit-cancel";
-
-    btnRow.appendChild(cancelBtn);
-    btnRow.appendChild(sendBtn);
-
-    content.appendChild(textarea);
-    content.appendChild(btnRow);
-    textarea.focus();
-
-    const cleanup = () => {
-      textarea.remove();
-      btnRow.remove();
-    };
-
-    sendBtn.addEventListener("click", (ev) => {
-      ev.stopPropagation();
-      const text = textarea.value.trim();
-      if (text) onReply(comment.id, text);
-      cleanup();
-    });
-
-    cancelBtn.addEventListener("click", (ev) => {
-      ev.stopPropagation();
-      cleanup();
-    });
-
-    textarea.addEventListener("keydown", (ev) => {
-      if (ev.key === "Enter" && (ev.metaKey || ev.ctrlKey)) {
-        ev.preventDefault();
-        sendBtn.click();
-      }
-      if (ev.key === "Escape") {
-        ev.preventDefault();
-        cancelBtn.click();
-      }
-    });
-  });
 }
 
 /**
@@ -910,70 +854,289 @@ function insertResolvedSection(
 /** Whether the resolved-comments section is expanded; survives re-renders. */
 let resolvedSectionOpen = false;
 
-/** An open, unsubmitted reply or edit box captured before a re-render. */
-interface Draft {
+/** Marks the element a hook's comment layer is drawn in. */
+const LAYER_ATTR = "data-review-layer";
+
+/**
+ * An inline edit or reply box open in a document's comment layer: a textarea
+ * and its foot, saving through `box` as the reviewer types
+ * (`lib/commentAutosave.ts`). The element is built once and kept for the
+ * box's life, and every rebuild of the layer puts that same element back into
+ * its comment's new card, so a save never costs the reviewer their place.
+ */
+interface InlineBox {
+  kind: "edit" | "reply";
   commentId: string;
-  kind: "reply" | "edit";
-  value: string;
-  selectionStart: number | null;
+  /**
+   * Opened on a dismissed comment, so it is drawn among the dismissed ones
+   * until it closes, though its first save reopens the comment.
+   */
+  heldResolved: boolean;
+  /** The comment layer it is open in. */
+  host: HTMLElement;
+  el: HTMLElement;
+  textarea: HTMLTextAreaElement;
+  box: CommentBox;
+  /** Stop following the box: its foot's subscription and clock. */
+  stop: () => void;
+}
+
+/** Every inline box open, by kind and comment. */
+const inlineBoxes = new Map<string, InlineBox>();
+
+const boxKey = (kind: InlineBox["kind"], commentId: string) =>
+  `${kind}:${commentId}`;
+
+function boxesIn(host: HTMLElement): InlineBox[] {
+  return [...inlineBoxes.values()].filter((b) => b.host === host);
+}
+
+/** Open the `kind` box on `comment`'s card, or focus the one already open. */
+function openInlineBox(
+  kind: InlineBox["kind"],
+  wrapper: HTMLElement,
+  comment: ReviewComment,
+  actions: InlineReviewActions,
+): void {
+  const existing = inlineBoxes.get(boxKey(kind, comment.id));
+  if (existing) {
+    existing.textarea.focus();
+    return;
+  }
+  const host = wrapper.closest<HTMLElement>(`[${LAYER_ATTR}]`);
+  if (!host) return;
+  const box =
+    kind === "edit" ? actions.editBox(comment) : actions.replyBox(comment);
+  if (!box) return;
+
+  const el = document.createElement("div");
+  el.className = "review-inline-box";
+  const textarea = document.createElement("textarea");
+  textarea.className =
+    kind === "edit" ? "review-inline-edit-area" : "review-inline-reply-area";
+  textarea.rows = kind === "edit" ? 3 : 2;
+  if (kind === "reply") textarea.placeholder = "Write a reply…";
+  textarea.value = box.getState().text;
+  const foot = buildFoot(box);
+  el.append(textarea, foot.el);
+
+  const entry: InlineBox = {
+    kind,
+    commentId: comment.id,
+    heldResolved: kind === "reply" && !!comment.resolved,
+    host,
+    el,
+    textarea,
+    box,
+    stop: foot.stop,
+  };
+  textarea.addEventListener("input", () => box.input(textarea.value));
+  textarea.addEventListener("keydown", (ev) => {
+    if (closesBox(ev)) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      closeInlineBox(entry);
+    }
+  });
+  foot.close.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    closeInlineBox(entry);
+  });
+  // A click in the box is the reviewer's own, never one for the card under it.
+  el.addEventListener("click", (ev) => ev.stopPropagation());
+
+  inlineBoxes.set(boxKey(kind, comment.id), entry);
+  box.open();
+  attachBox(wrapper, entry);
+  textarea.focus();
 }
 
 /**
- * Whether an inline reply or edit box under `container` holds words the
- * reviewer has not sent: what a rebuild of this layer carries over, and what
- * unmounting the document would lose.
+ * Close an inline box: the box saves what it holds and goes on retrying if it
+ * must, and the card shows its comment or reply again.
  */
-export function hasInlineDraft(container: ParentNode): boolean {
-  return captureDrafts(container).length > 0;
-}
-
-function captureDrafts(container: ParentNode): Draft[] {
-  const drafts: Draft[] = [];
-  const areas = container.querySelectorAll<HTMLTextAreaElement>(
-    ".review-inline-reply-area, .review-inline-edit-area",
+function closeInlineBox(entry: InlineBox): void {
+  if (inlineBoxes.get(boxKey(entry.kind, entry.commentId)) !== entry) return;
+  inlineBoxes.delete(boxKey(entry.kind, entry.commentId));
+  entry.stop();
+  entry.box.close();
+  const wrapper = entry.el.parentElement?.closest<HTMLElement>(
+    `[${INLINE_COMMENT_ATTR}]`,
   );
-  for (const area of areas) {
-    const wrapper = area.closest(`[${INLINE_COMMENT_ATTR}]`);
-    const commentId = wrapper?.getAttribute(INLINE_COMMENT_ATTR);
-    if (!commentId || commentId === "__resolved__") continue;
-    if (!area.value.trim()) continue;
-    drafts.push({
-      commentId,
-      kind: area.classList.contains("review-inline-reply-area")
-        ? "reply"
-        : "edit",
-      value: area.value,
-      selectionStart: area.selectionStart,
-    });
+  entry.el.remove();
+  if (!wrapper) return;
+  const typed = entry.box.typed;
+  if (entry.kind === "edit") {
+    const textEl = wrapper.querySelector<HTMLElement>(
+      ".review-inline-comment-text",
+    );
+    if (textEl) {
+      // What was typed is what the comment says now, though its save may
+      // still be on its way; the next rebuild draws what the server holds.
+      if (typed) textEl.innerHTML = renderCommentMarkdown(typed);
+      textEl.style.display = "";
+    }
+  } else {
+    const replyId = entry.box.subject.replyId;
+    const shown = replyId
+      ? wrapper.querySelector<HTMLElement>(`[${REPLY_ATTR}="${replyId}"]`)
+      : null;
+    if (shown) shown.style.display = "";
   }
-  return drafts;
 }
 
-function restoreDrafts(container: HTMLElement, drafts: Draft[]): void {
-  if (drafts.length === 0) return;
-  for (const draft of drafts) {
-    const wrapper = container.querySelector<HTMLElement>(
-      `[${INLINE_COMMENT_ATTR}="${draft.commentId}"]`,
+/**
+ * Put an inline box into `wrapper`, its comment's card: an edit box in place
+ * of the comment's text, a reply box at the foot of the thread, in place of
+ * the reply it has saved, which it is still editing.
+ */
+function attachBox(wrapper: HTMLElement, entry: InlineBox): boolean {
+  if (entry.kind === "edit") {
+    const textEl = wrapper.querySelector<HTMLElement>(
+      ".review-inline-comment-text",
     );
-    if (!wrapper) continue; // comment is gone — nothing to restore onto
-    const opener = wrapper.querySelector<HTMLElement>(
-      draft.kind === "reply"
-        ? ".review-inline-comment-reply"
-        : ".review-inline-comment-edit",
-    );
-    if (!opener) continue;
-    opener.click(); // rebuilds the textarea via the normal open path
-    const area = wrapper.querySelector<HTMLTextAreaElement>(
-      draft.kind === "reply"
-        ? ".review-inline-reply-area"
-        : ".review-inline-edit-area",
-    );
-    if (!area) continue;
-    area.value = draft.value;
-    if (draft.selectionStart !== null) {
-      area.setSelectionRange(draft.selectionStart, draft.selectionStart);
-    }
+    if (!textEl?.parentNode) return false;
+    textEl.style.display = "none";
+    textEl.parentNode.insertBefore(entry.el, textEl.nextSibling);
+    return true;
   }
+  const content = wrapper.querySelector(".review-inline-comment-content");
+  if (!content) return false;
+  const replyId = entry.box.subject.replyId;
+  const shown = replyId
+    ? wrapper.querySelector<HTMLElement>(`[${REPLY_ATTR}="${replyId}"]`)
+    : null;
+  if (shown) shown.style.display = "none";
+  content.appendChild(entry.el);
+  return true;
+}
+
+/** An inline box lifted out of the layer for a rebuild, and where its reader was. */
+interface LiftedBox {
+  entry: InlineBox;
+  focused: boolean;
+  start: number;
+  end: number;
+  direction: "forward" | "backward" | "none";
+  scrollTop: number;
+}
+
+function liftBox(entry: InlineBox): LiftedBox {
+  const { textarea } = entry;
+  const lifted: LiftedBox = {
+    entry,
+    focused: document.activeElement === textarea,
+    start: textarea.selectionStart,
+    end: textarea.selectionEnd,
+    direction: textarea.selectionDirection ?? "none",
+    scrollTop: textarea.scrollTop,
+  };
+  entry.el.remove();
+  return lifted;
+}
+
+/**
+ * Put a lifted box back into its comment's rebuilt card, with its focus,
+ * caret, selection and scroll as they were. A comment that is gone from the
+ * layer — deleted elsewhere, or no longer shown — closes its box, which keeps
+ * the text.
+ */
+function putBoxBack(host: HTMLElement, lifted: LiftedBox): void {
+  const { entry } = lifted;
+  const wrapper = host.querySelector<HTMLElement>(
+    `[${INLINE_COMMENT_ATTR}="${CSS.escape(entry.commentId)}"]`,
+  );
+  if (!wrapper || !attachBox(wrapper, entry)) {
+    closeInlineBox(entry);
+    return;
+  }
+  const { textarea } = entry;
+  if (lifted.focused) textarea.focus({ preventScroll: true });
+  textarea.setSelectionRange(lifted.start, lifted.end, lifted.direction);
+  textarea.scrollTop = lifted.scrollTop;
+}
+
+/**
+ * A box's foot, built by hand like the rest of the layer, with the classes and
+ * words of the React one (`components/CommentBoxFields.tsx`): the hint, where
+ * the box's saves stand, and Close.
+ */
+function buildFoot(box: CommentBox): {
+  el: HTMLElement;
+  close: HTMLButtonElement;
+  stop: () => void;
+} {
+  const wrap = document.createElement("div");
+  const el = document.createElement("div");
+  el.className = "comment-box-foot";
+  const hint = document.createElement("span");
+  hint.className = "comment-box-hint";
+  hint.textContent = closeHint();
+  const status = document.createElement("span");
+  status.className = "comment-box-status";
+  status.setAttribute("role", "status");
+  const close = document.createElement("button");
+  close.type = "button";
+  close.className = "comment-box-close";
+  close.textContent = "Close";
+  el.append(hint, status, close);
+
+  // Once the box's comment is gone: Copy text and Post as a new comment, as
+  // the React foot offers them (`GoneActions`).
+  const goneRow = document.createElement("div");
+  goneRow.className = "comment-box-foot";
+  const copy = document.createElement("button");
+  copy.type = "button";
+  copy.className = "comment-box-close";
+  copy.textContent = "Copy text";
+  const post = document.createElement("button");
+  post.type = "button";
+  post.className = "comment-box-close";
+  post.textContent = "Post as a new comment";
+  goneRow.append(copy, post);
+  copy.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    void box.copyText().then((ok) => {
+      copy.textContent = ok ? "Copied" : "Copy failed";
+    });
+  });
+  post.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    box.postAsNew();
+  });
+  wrap.append(el);
+
+  let saves = box.getState().saves;
+  const paint = () => {
+    const state = box.getState();
+    const gone = state.status === "gone";
+    status.textContent = statusText(state, Date.now());
+    status.classList.toggle(
+      "comment-box-status--retrying",
+      state.status === "retrying" || gone,
+    );
+    if (gone && !goneRow.isConnected) wrap.append(goneRow);
+    if (!gone && goneRow.isConnected) goneRow.remove();
+    post.style.display = state.canPost ? "" : "none";
+    if (state.saves !== saves) {
+      saves = state.saves;
+      // Once for each save that lands: off, a reflow, and on again restarts it.
+      status.classList.remove("comment-box-status--pulse");
+      void status.offsetWidth;
+      status.classList.add("comment-box-status--pulse");
+    }
+  };
+  paint();
+  const unsubscribe = box.subscribe(paint);
+  const tick = setInterval(paint, STATUS_TICK_MS);
+  return {
+    el: wrap,
+    close,
+    stop: () => {
+      unsubscribe();
+      clearInterval(tick);
+    },
+  };
 }
 
 // Used by stripBlockText callers that also want a hash for the same text.

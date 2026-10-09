@@ -10,6 +10,11 @@ import {
   type PreferenceName,
 } from "../lib/preferences";
 import { isStaticMode } from "../lib/staticMode";
+import {
+  retargetBoxes,
+  withTypedText,
+  type ReviewTarget,
+} from "../lib/commentAutosave";
 import { VIEWER_RELEASE } from "../lib/viewerRelease";
 import { ANSWER_PROCESSING_GUIDE } from "vantage-md";
 import type {
@@ -109,8 +114,64 @@ export function isPendingForAgent(c: ReviewComment): boolean {
     last.actor === "agent" &&
     (last.kind === "addressed" || last.kind === "wont_fix");
   if (!answered) return true;
-  // The agent answered the *previous* wording; a later edit re-queues it.
-  return (c.edited_at ?? 0) > last.timestamp;
+  // The agent answered the *previous* wording; a later edit re-queues it,
+  // whether of the comment or of one of the reviewer's replies, which a
+  // comment box goes on editing in place as the reviewer types.
+  return lastReviewerEdit(c) > last.timestamp;
+}
+
+/**
+ * When the reviewer last reworded anything in the thread: the comment, or any
+ * of their replies. 0 when nothing was ever edited.
+ */
+function lastReviewerEdit(c: ReviewComment): number {
+  let at = c.edited_at ?? 0;
+  for (const r of c.reactions ?? []) {
+    if (r.actor === "reviewer" && (r.edited_at ?? 0) > at) at = r.edited_at!;
+  }
+  return at;
+}
+
+/**
+ * Whether the agent last read an older wording of a turn edited at
+ * `editedAt`: some answer of the agent's that could have read the turn is
+ * older than the edit, and none is newer. `answers` are the agent's reactions
+ * that came after the turn — every one for the comment itself, and only those
+ * placed after it for a reply, since an answer before a reply never read it.
+ *
+ * An edit no answer preceded is only the reviewer still writing, which a box
+ * that saves as it is typed does all the time; and an edit some later answer
+ * followed was read by that answer. Marking either would tell the agent it
+ * missed a rewording it did not miss.
+ */
+function editedAfterAnAnswer(
+  answers: readonly CommentReaction[],
+  editedAt: number | undefined,
+): boolean {
+  if (!editedAt) return false;
+  return (
+    answers.some((r) => r.timestamp < editedAt) &&
+    !answers.some((r) => r.timestamp > editedAt)
+  );
+}
+
+/** The agent's reactions in `c` placed after position `after` (-1 for all). */
+function agentAnswersAfter(c: ReviewComment, after: number): CommentReaction[] {
+  return (c.reactions ?? []).filter((r, i) => i > after && r.actor === "agent");
+}
+
+/** Whether the payload marks `c`'s own text as edited since the agent read it. */
+function commentEdited(c: ReviewComment): boolean {
+  return editedAfterAnAnswer(agentAnswersAfter(c, -1), c.edited_at);
+}
+
+/** Whether the payload marks the reviewer's reply at index `i` as edited. */
+function replyEdited(c: ReviewComment, i: number): boolean {
+  const r = (c.reactions ?? [])[i];
+  return (
+    r?.actor === "reviewer" &&
+    editedAfterAnAnswer(agentAnswersAfter(c, i), r.edited_at)
+  );
 }
 
 /**
@@ -176,7 +237,7 @@ export function isAnsweredByAgent(c: ReviewComment): boolean {
  * `vantage serve` setup.  Without the fallback, creating a comment throws and
  * the popover silently does nothing.
  */
-function newId(): string {
+export function newReviewId(): string {
   if (
     typeof crypto !== "undefined" &&
     typeof crypto.randomUUID === "function"
@@ -212,7 +273,7 @@ export function newReviewComment(
   fallbackText: string,
 ): ReviewComment {
   return {
-    id: newId(),
+    id: newReviewId(),
     anchor,
     fallback_text: fallbackText,
     reactions: [],
@@ -282,6 +343,149 @@ export async function deleteCommentFrom(
     { params: { path } },
   );
   return data ?? null;
+}
+
+/**
+ * Where a comment box opened on the document at `path` saves, for the
+ * repository on screen now: kept by the box for its life, so its saves land
+ * on that document even once the page has moved on. `null` when no repository
+ * is selected.
+ */
+export function reviewTarget(path: string): ReviewTarget | null {
+  const base = getApiBase();
+  return base === null ? null : { base, path };
+}
+
+/**
+ * One request of a comment box's, against `target` rather than the document
+ * on screen (`docs/design/planning-to-do-list.md` §6). It rejects on failure,
+ * so the box keeps its text and retries, and changes nothing here then: no
+ * banner, and no resync, since nothing was put on screen before the server
+ * said so. On success the review the server answered with is adopted, as
+ * `runCommand` adopts it, when it is the document on screen and nothing newer
+ * has landed meanwhile; the answer is returned for a page that keeps reviews
+ * of its own, as the planning page does.
+ */
+async function boxWrite(
+  target: ReviewTarget,
+  send: (base: string, path: string) => Promise<{ data: ReviewData | null }>,
+): Promise<ReviewData | null> {
+  if (isStaticMode()) {
+    throw new Error("this is a static export, with no server to save to");
+  }
+  const seq = ++saveSeq;
+  const loadSeqAtStart = loadSeq;
+  const moving = moveSettled(target.path);
+  if (moving) await moving;
+  const path = target.path;
+  const { data } = await send(target.base, path);
+  const saved = data ?? null;
+  if (
+    saved?.comments &&
+    seq === saveSeq &&
+    loadSeq === loadSeqAtStart &&
+    useReviewStore.getState().filePath === path &&
+    getApiBase() === target.base
+  ) {
+    useReviewStore.setState({ comments: saved.comments });
+  }
+  return saved;
+}
+
+/**
+ * A new-comment box's first save. Creating is safe to repeat: the server
+ * edits a comment whose id it already holds, so a retry after a lost answer
+ * cannot duplicate it.
+ */
+export function saveNewComment(
+  target: ReviewTarget,
+  comment: ReviewComment,
+): Promise<ReviewData | null> {
+  return boxWrite(target, (base, path) =>
+    axios.post<ReviewData | null>(
+      `${base}/review/comments`,
+      createCommentBody(comment),
+      { params: { path } },
+    ),
+  );
+}
+
+/** Rewrite comment `id`'s text: every later save of a box, and an edit box's every save. */
+export function saveCommentText(
+  target: ReviewTarget,
+  id: string,
+  text: string,
+): Promise<ReviewData | null> {
+  return boxWrite(target, (base, path) =>
+    axios.patch<ReviewData | null>(
+      `${base}/review/comments/${encodeURIComponent(id)}`,
+      { comment: text },
+      { params: { path } },
+    ),
+  );
+}
+
+/** Delete comment `id`: a box that created it, closed empty. */
+export function removeComment(
+  target: ReviewTarget,
+  id: string,
+): Promise<ReviewData | null> {
+  return boxWrite(target, (base, path) =>
+    axios.delete<ReviewData | null>(
+      `${base}/review/comments/${encodeURIComponent(id)}`,
+      { params: { path } },
+    ),
+  );
+}
+
+/**
+ * A reply box's first save: the reply `replyId` on comment `id`, reopening the
+ * comment too when it was dismissed. Safe to repeat, as creating a comment is.
+ */
+export function saveNewReply(
+  target: ReviewTarget,
+  id: string,
+  replyId: string,
+  text: string,
+  reopen: boolean,
+): Promise<ReviewData | null> {
+  const route = reopen ? "reopen-reply" : "replies";
+  return boxWrite(target, (base, path) =>
+    axios.post<ReviewData | null>(
+      `${base}/review/comments/${encodeURIComponent(id)}/${route}`,
+      { id: replyId, text },
+      { params: { path } },
+    ),
+  );
+}
+
+/** Rewrite the reviewer's reply `replyId` on comment `id`: a reply box's later saves. */
+export function saveReplyText(
+  target: ReviewTarget,
+  id: string,
+  replyId: string,
+  text: string,
+): Promise<ReviewData | null> {
+  return boxWrite(target, (base, path) =>
+    axios.patch<ReviewData | null>(
+      `${base}/review/comments/${encodeURIComponent(id)}/replies/${encodeURIComponent(replyId)}`,
+      { text },
+      { params: { path } },
+    ),
+  );
+}
+
+/**
+ * The comments of the document at `path` as this tab's comment boxes have
+ * them typed, which is what Copy answers copies here (§6.3 of
+ * `planning-to-do-list.md`). `comments` unchanged when `path` is null.
+ */
+export function typedComments(
+  path: string | null,
+  comments: readonly ReviewComment[],
+): ReviewComment[] {
+  if (path === null) return [...comments];
+  return withTypedText(getApiBase(), path, comments);
 }
 
 /**
@@ -569,6 +773,8 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
 
     const base = getApiBase();
     if (!base || isStaticMode()) return;
+    // A comment box open on the document goes on saving to it where it is now.
+    retargetBoxes(base, from, to);
     // A write, so a reload of the review that started before it is stale, and
     // a command sent after it is newer than its answer.
     const seq = ++saveSeq;
@@ -861,7 +1067,7 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
 
   copyAllToClipboard: async () => {
     const { filePath, lastContent, comments } = get();
-    const active = comments.filter(isPendingForAgent);
+    const active = typedComments(filePath, comments).filter(isPendingForAgent);
     if (!filePath || active.length === 0) return false;
 
     const output = reviewCommentsBlock(filePath, active, lastContent);
@@ -877,7 +1083,7 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
 
   copyCommentToClipboard: async (id: string) => {
     const { filePath, lastContent, comments } = get();
-    const c = comments.find((x) => x.id === id);
+    const c = typedComments(filePath, comments).find((x) => x.id === id);
     if (!filePath || !c) return false;
 
     const pathPrefix = clipboardPathPrefix(filePath);
@@ -1057,6 +1263,24 @@ function turnLabel(r: CommentReaction): string {
   return "Follow-up";
 }
 
+/** Marks a comment whose wording changed after the agent answered it. */
+const COMMENT_EDITED_MARK = "_(the reviewer edited this comment)_";
+/** Marks a follow-up whose wording changed after the agent answered it. */
+const REPLY_EDITED_MARK = "_(the reviewer edited this follow-up)_";
+
+/** Whether the payload marks any of the reviewer's replies in `c` as edited. */
+function hasEditedReply(c: ReviewComment): boolean {
+  return (c.reactions ?? []).some((_r, i) => replyEdited(c, i));
+}
+
+/**
+ * Whether what re-queued `c` is an edited follow-up alone, with the comment's
+ * own wording unchanged since the agent answered it.
+ */
+function onlyAReplyEdited(c: ReviewComment): boolean {
+  return hasEditedReply(c) && !commentEdited(c);
+}
+
 /** Render one comment (heading, quote, comment, agent response, follow-ups). */
 function commentBlock(
   c: ReviewComment,
@@ -1089,7 +1313,7 @@ function commentBlock(
   }
   out.push("");
   out.push(`**Comment:** ${c.comment}`);
-  if (c.edited_at) out.push("_(the reviewer edited this comment)_");
+  if (commentEdited(c)) out.push(COMMENT_EDITED_MARK);
   out.push("");
   // Interleave every turn in chronological order so a back-and-forth thread
   // reads correctly.  Only legacy "noted" is skipped: it recorded a dismissal
@@ -1097,9 +1321,12 @@ function commentBlock(
   // agent needs to read — labeling it as a turn would put words in the
   // reviewer's mouth.  `round` above stays the raw count so it keeps agreeing
   // with the positional comparison in [answeredAnOlderRound].
-  for (const r of c.reactions ?? []) {
+  for (const [i, r] of (c.reactions ?? []).entries()) {
     if (r.kind === "noted") continue;
     out.push(`**${turnLabel(r)}:** ${r.summary}`);
+    if (replyEdited(c, i)) {
+      out.push(REPLY_EDITED_MARK);
+    }
     out.push("");
   }
   out.push("---");
@@ -1227,9 +1454,16 @@ function respondingInstructions(
               `> A thread above that already shows an _Agent response_ followed by a **Follow-up** means your earlier answer did not satisfy the reviewer — address *that*, rather than restating what you already did.`,
             ]
           : []),
-        ...(editRequeued.length
+        ...(editRequeued.some((c) => !onlyAReplyEdited(c))
           ? [
-              `> A thread marked _(the reviewer edited this comment)_ means the reviewer rewrote the request itself. Re-read the comment text as it now stands and answer that, rather than restating what you already did.`,
+              `> A thread marked ${COMMENT_EDITED_MARK} means the reviewer rewrote the request itself. Re-read the comment text as it now stands and answer that, rather than restating what you already did.`,
+            ]
+          : []),
+        // Only when one is marked, so a payload without an edited follow-up
+        // reads exactly as it always has.
+        ...(editRequeued.some(hasEditedReply)
+          ? [
+              `> A follow-up marked ${REPLY_EDITED_MARK} was rewritten after you answered it. Re-read it as it now stands and answer that.`,
             ]
           : []),
         "",

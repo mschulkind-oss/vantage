@@ -89,6 +89,8 @@ import { ExternalLink, MessageSquarePlus } from "lucide-react";
 import { MarkdownViewer } from "./MarkdownViewer";
 import { PlanningBadgeChip } from "./PlanningBadge";
 import { ReviewCommentPopover } from "./ReviewCommentPopover";
+import type { CommentBox, ReviewTarget } from "../lib/commentAutosave";
+import { newCommentBox, type OnSaved } from "../lib/reviewBoxes";
 import { AppLink } from "./AppLink";
 import {
   OQ_ANSWERED_HINT,
@@ -131,8 +133,9 @@ import {
   isPendingForAgent,
   latestAgentReaction,
   newReviewComment,
+  reviewTarget,
 } from "../stores/useReviewStore";
-import type { ReviewComment } from "../types";
+import type { CommentAnchor, ReviewComment } from "../types";
 
 /** Marks the elements between the card and the question's unit. */
 export const CARD_PATH_ATTR = "data-planning-card-path";
@@ -202,8 +205,21 @@ interface PlanningQuestionCardProps {
    * never calls it.
    */
   onOpenHere?: () => void;
-  /** File a comment on `path`; rejects when it could not be saved. */
+  /** File a comment on `path`, as a take does; rejects when it could not be saved. */
   onFile: (path: string, comment: ReviewComment) => Promise<void>;
+  /**
+   * Told of the answer to every save of the box **Answer…** opens, which
+   * saves as the reader types to the document and repository it was opened
+   * on (`lib/reviewBoxes.ts`), wherever the page is by then: the page adopts
+   * the review the server answered with when it is the page's own.
+   */
+  onBoxSaved?: OnSaved;
+  /**
+   * The box **Answer…** opened closed holding text: what this card answered
+   * with is filed, or on its way. Called once per box, after the card has
+   * drawn what the box's saves did to it.
+   */
+  onAnswerClosed?: (path: string, commentId: string) => void;
   /**
    * Delete the comment `id` from `path`'s review: Undo on a take this card's
    * question still holds. Rejects when it could not be deleted. Without it
@@ -555,6 +571,8 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
   href,
   onOpenHere,
   onFile,
+  onBoxSaved,
+  onAnswerClosed,
   onUndo,
   cardKey = "",
   onScoped,
@@ -631,6 +649,19 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
   const [answering, setAnswering] = useState<{
     rect: DOMRect;
     text: string;
+    anchor: CommentAnchor;
+    target: ReviewTarget;
+  } | null>(null);
+  /**
+   * What the card showed when **Answer…** opened its box, which it goes on
+   * showing until the box closes: the box saves as the reader types, and its
+   * own saves must not change the card under them
+   * (`docs/design/planning-to-do-list.md` §6.3). The page still hears of every
+   * save (`onScoped`), so the numbers it shows stay live.
+   */
+  const [held, setHeld] = useState<{
+    offer: QuestionOffer | null;
+    listed: readonly ReviewComment[];
   } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -866,7 +897,7 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
   // answers it, the chip instead (`docs/reference/planning-index.md` §6.7).
   const answerable =
     writable && (question.state === "open" || question.state === "answered");
-  const offer = answerable ? state.offer : null;
+  const offer = answerable ? (held ? held.offer : state.offer) : null;
   const canTake = offer?.kind === "take" && question.state === "open";
   const canAnswer =
     answerable && offer?.kind !== "taken" && offer?.kind !== "answered";
@@ -887,7 +918,32 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
     }
   }, [take, onUndo, question.path]);
 
-  const listed = (comments ?? []).filter((c) => state.scoped.includes(c.id));
+  const liveListed = (comments ?? []).filter((c) =>
+    state.scoped.includes(c.id),
+  );
+  const listed = held ? held.listed : liveListed;
+
+  // The box **Answer…** opens, made once when it opens: its first save files
+  // the comment as the take does, its later ones edit it, and closing it empty
+  // deletes what it filed. Saves go on after the card has gone, until they land.
+  const makeAnswerBox = (
+    target: ReviewTarget,
+    anchor: CommentAnchor,
+    fallbackText: string,
+  ) =>
+    newCommentBox(target, newReviewComment(anchor, "", fallbackText), {
+      label: `Answer to ${question.title}`,
+      onSaved: onBoxSaved,
+    });
+  const closeAnswer = (box: CommentBox) => {
+    setAnswering(null);
+    setHeld(null);
+    // As after a take: the list opens on what was filed.
+    if (box.typed !== "") {
+      setOpen(true);
+      onAnswerClosed?.(question.path, box.subject.commentId);
+    }
+  };
   const listOpen = open ?? !commentsLate;
 
   const id = planningCardId(question.path, question.id, question.unitLine);
@@ -1078,10 +1134,14 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
             disabled={busy}
             onClick={(e) => {
               const now = anchorNow();
-              if (now === null) return;
+              const target = reviewTarget(question.path);
+              if (now === null || target === null) return;
+              setHeld({ offer: state.offer, listed: liveListed });
               setAnswering({
                 rect: e.currentTarget.getBoundingClientRect(),
                 text: now.fallbackText,
+                anchor: now.anchor,
+                target,
               });
             }}
           >
@@ -1174,13 +1234,13 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
 
       {answering !== null && (
         <ReviewCommentPopover
+          key={answering.anchor.block_text_hash + answering.rect.top}
           selectedText={answering.text}
           rect={answering.rect}
-          onSave={(typed) => {
-            setAnswering(null);
-            void file(() => typed);
-          }}
-          onCancel={() => setAnswering(null)}
+          makeBox={() =>
+            makeAnswerBox(answering.target, answering.anchor, answering.text)
+          }
+          onClose={closeAnswer}
         />
       )}
     </article>
