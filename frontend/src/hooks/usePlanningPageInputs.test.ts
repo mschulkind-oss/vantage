@@ -94,17 +94,17 @@ function serve(
   return asked;
 }
 
+/** The layout at `size` cards a page (planning-to-do-list.md §3.3). */
 const layoutOf = (
   ready: Extract<PlanningLoad, { status: "ready" }>,
-  request = {},
-) => layoutPlanningPage(ready.index, sectionsOf(ready.index), request);
+  size = 10,
+) => layoutPlanningPage(ready.index, sectionsOf(ready.index), size);
 
 const inputsOf = async (
   ready: Extract<PlanningLoad, { status: "ready" }>,
-  request = {},
+  size = 10,
 ): Promise<PageInputs> => {
-  const inputs = await loadPageInputs("", ready, layoutOf(ready, request))
-    .promise;
+  const inputs = await loadPageInputs("", ready, layoutOf(ready, size)).promise;
   if (inputs === null) throw new Error("superseded");
   return inputs;
 };
@@ -125,26 +125,24 @@ afterEach(() => {
 });
 
 describe("one set of inputs", () => {
-  it("asks for each shown card's block once, by its content hash, and reads the shown documents' reviews", async () => {
+  it("asks for each card's block once, by its content hash, and reads the cards' documents' reviews", async () => {
     const asked = serve();
     const ready = readyOf();
     const inputs = await inputsOf(ready);
     expect(asked).toHaveLength(1);
-    expect(asked[0]).toEqual(
-      expect.arrayContaining([
-        {
-          path: "plans/a.md",
-          hash: ready.hashes["plans/a.md"],
-          startLine: expect.any(Number),
-        },
-        {
-          path: "plans/b.md",
-          hash: ready.hashes["plans/b.md"],
-          startLine: expect.any(Number),
-        },
-      ]),
-    );
-    expect(asked[0]).toHaveLength(3);
+    // Needs you's two cards; OQ-B1, not on a roadmap, is a row with no block.
+    expect(asked[0]).toEqual([
+      {
+        path: "plans/a.md",
+        hash: ready.hashes["plans/a.md"],
+        startLine: expect.any(Number),
+      },
+      {
+        path: "plans/a.md",
+        hash: ready.hashes["plans/a.md"],
+        startLine: expect.any(Number),
+      },
+    ]);
     const a1 = ready.index.documents
       .find((d) => d.path === "plans/a.md")!
       .questions.find((x) => x.id === "OQ-A1")!;
@@ -158,18 +156,56 @@ describe("one set of inputs", () => {
     expect(inputs.reviewsFailed).toBe(false);
   });
 
-  it("asks for the shown pages only", async () => {
-    setPlanningLimitsForTests({ pageEntries: 1 });
+  it("asks for the page size of cards and cardsAhead more, and no other", async () => {
+    setPlanningLimitsForTests({ cardsAhead: 0 });
     const asked = serve();
     const ready = readyOf();
-    await inputsOf(ready);
-    // Needs you's first card, and Not on a roadmap's.
-    expect(asked[0]?.map((w) => w.path)).toEqual(["plans/a.md", "plans/b.md"]);
-    // Page 2 of Needs you, and Not on a roadmap's page again, whose block the first
-    // set already holds.
-    await inputsOf(ready, { "needs-you": "2" });
+    await inputsOf(ready, 1);
+    // Needs you's first card alone.
+    expect(asked[0]).toHaveLength(1);
+    // At two a page, its second, whose block the first set does not hold.
+    await inputsOf(ready, 2);
     expect(asked[1]?.map((w) => w.path)).toEqual(["plans/a.md"]);
     expect(asked[1]?.[0]?.startLine).not.toBe(asked[0]?.[0]?.startLine);
+  });
+
+  it("asks past the questions a pending comment answers, which have no card", async () => {
+    setPlanningLimitsForTests({ cardsAhead: 0 });
+    const asked = serve();
+    const ready = readyOf();
+    const a1 = ready.index.documents
+      .find((d) => d.path === "plans/a.md")!
+      .questions.find((x) => x.id === "OQ-A1")!;
+    vi.mocked(axios.post).mockResolvedValue({
+      data: {
+        reviews: [
+          {
+            path: "plans/a.md",
+            review: {
+              file_path: "plans/a.md",
+              comments: [
+                {
+                  id: "c1",
+                  comment: "Yes.",
+                  created_at: 0,
+                  reactions: [],
+                  anchor: {
+                    source_line: a1.line,
+                    block_text_hash: "00000000",
+                    selection_offset: 0,
+                    selection_length: 0,
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    });
+    const inputs = await inputsOf(ready, 1);
+    // OQ-A1's block came with the first request; OQ-A2, the one card, after.
+    expect(asked).toHaveLength(2);
+    expect(inputs.blocks.size).toBe(2);
   });
 
   it("says the reviews failed when their request did", async () => {
@@ -183,7 +219,9 @@ describe("one set of inputs", () => {
       cards: async (repo, want, options) => {
         const answers = await inline.cards(repo, want, options);
         return answers.map((answer): CardAnswer =>
-          answer.path === "plans/b.md"
+          answer.path === "plans/a.md" &&
+          "block" in answer &&
+          answer.block.startLine === want[1]!.startLine
             ? {
                 path: answer.path,
                 startLine: want[1]!.startLine,
@@ -195,7 +233,7 @@ describe("one set of inputs", () => {
     }));
     const inputs = await inputsOf(readyOf());
     expect(inputs.previews.size).toBe(1);
-    expect([...inputs.previews][0]).toMatch(/^plans\/b\.md\n/);
+    expect([...inputs.previews][0]).toMatch(/^plans\/a\.md\n/);
   });
 
   it("asks for the same set once, however often it is asked for", async () => {
@@ -208,7 +246,7 @@ describe("one set of inputs", () => {
     expect(asked).toHaveLength(1);
   });
 
-  it("keeps the same pages under another roadmap as another set", async () => {
+  it("keeps the same page size under another roadmap as another set", async () => {
     const asked = serve();
     // docs/roadmap.md, found by name, routes plans/b.md.
     const ready = readyOf({
@@ -218,14 +256,14 @@ describe("one set of inputs", () => {
     const nearest = layoutPlanningPage(
       ready.index,
       sectionsOf(ready.index),
-      {},
+      10,
     );
     const other = layoutPlanningPage(
       ready.index,
       sectionsOf(ready.index, "docs/roadmap.md"),
-      {},
+      10,
     );
-    expect(nearest.pages).toBe(other.pages);
+    expect(nearest.pageSize).toBe(other.pageSize);
     const first = loadPageInputs("", ready, nearest);
     const second = loadPageInputs("", ready, other);
     expect(second).not.toBe(first);
@@ -236,18 +274,18 @@ describe("one set of inputs", () => {
   });
 
   // planning-index.md §6.16: the applied filter joins the set's identity.
-  it("keeps the same pages under another filter as another set", async () => {
+  it("keeps the same page size under another filter as another set", async () => {
     const asked = serve();
     const ready = readyOf();
-    const filter = "path:plans/b.md";
+    const filter = "path:plans/a.md";
     const unfiltered = layoutOf(ready);
     const filtered = layoutPlanningPage(
       ready.index,
       sectionsOf(ready.index, null, filter),
-      {},
+      10,
       filter,
     );
-    expect(filtered.pages).toBe(unfiltered.pages);
+    expect(filtered.pageSize).toBe(unfiltered.pageSize);
     expect(filtered.roadmap).toBe(unfiltered.roadmap);
     const first = loadPageInputs("", ready, unfiltered);
     const a = await first.promise;
@@ -258,8 +296,8 @@ describe("one set of inputs", () => {
     const b = await second.promise;
     expect(a?.key).not.toBe(b?.key);
     expect(b?.layout.filter).toBe(filter);
-    expect(b?.documents).toEqual(["plans/b.md"]);
-    // Its one card's block is the first set's, for the same content.
+    expect(b?.documents).toEqual(["plans/a.md"]);
+    // Its cards' blocks are the first set's, for the same content.
     expect(asked).toHaveLength(1);
   });
 
@@ -281,16 +319,12 @@ describe("one set of inputs", () => {
     });
     const inputs = await inputsOf(ready);
     expect(refreshed).toHaveBeenCalledTimes(1);
-    expect(refreshed).toHaveBeenCalledWith(
-      "",
-      ["plans/a.md", "plans/b.md"],
-      [],
-    );
+    expect(refreshed).toHaveBeenCalledWith("", ["plans/a.md"], []);
     expect([...inputs.blocks.values()].every((b) => b === null)).toBe(true);
-    // Another page asks about the same files under the same hashes: they are
-    // not refreshed again, and nothing waits.
-    setPlanningLimitsForTests({ reviewsDeadlineMs: 60_000, pageEntries: 1 });
-    await inputsOf(ready, { "needs-you": "2" });
+    // Another page size asks about the same files under the same hashes:
+    // they are not refreshed again, and nothing waits.
+    setPlanningLimitsForTests({ reviewsDeadlineMs: 60_000 });
+    await inputsOf(ready, 1);
     expect(refreshed).toHaveBeenCalledTimes(1);
   });
 
@@ -320,24 +354,24 @@ describe("one set of inputs", () => {
 
 describe("the cache of sets", () => {
   it("keeps the last pageInputsKept sets, least recently used first out", async () => {
-    setPlanningLimitsForTests({ pageEntries: 1, pageInputsKept: 2 });
+    setPlanningLimitsForTests({ pageInputsKept: 2 });
     serve();
     const first = readyOf();
     const second = readyOf();
     const load = (
       ready: Extract<PlanningLoad, { status: "ready" }>,
-      request = {},
-    ) => loadPageInputs("", ready, layoutOf(ready, request));
+      size = 10,
+    ) => loadPageInputs("", ready, layoutOf(ready, size));
     const one = load(first);
     await one.promise;
-    const two = load(first, { "needs-you": "2" });
+    const two = load(first, 1);
     await two.promise;
-    // Used again, so page 2's set is now the oldest.
+    // Used again, so the size-1 set is now the oldest.
     expect(load(first)).toBe(one);
     // A third set pushes it out.
     await load(second).promise;
     expect(load(first)).toBe(one);
-    expect(load(first, { "needs-you": "2" })).not.toBe(two);
+    expect(load(first, 1)).not.toBe(two);
   });
 
   it("reuses, in a set of a new version, the blocks a cached set holds for the same content", async () => {
@@ -368,11 +402,11 @@ describe("the cache of sets", () => {
     const changed = readyOf();
     const edited = {
       ...changed,
-      hashes: { ...changed.hashes, "plans/b.md": "0".repeat(32) },
+      hashes: { ...changed.hashes, "plans/a.md": "0".repeat(32) },
     };
     await inputsOf(edited);
     expect(asked).toHaveLength(2);
-    expect(asked[1]?.map((w) => w.path)).toEqual(["plans/b.md"]);
+    expect(asked[1]?.map((w) => w.path)).toEqual(["plans/a.md", "plans/a.md"]);
   });
 });
 
@@ -386,24 +420,24 @@ describe("the sets of a filter being typed", () => {
     layoutPlanningPage(
       ready.index,
       sectionsOf(ready.index, null, filter),
-      {},
+      10,
       filter,
     );
   /**
-   * Three history entries' sets: Needs you's two pages, and the first page
-   * of an index that came before.
+   * Three history entries' sets: two page sizes, and an index that came
+   * before.
    */
   const historyOf = async (
     ready: Extract<PlanningLoad, { status: "ready" }>,
   ): Promise<string[]> => {
     const earlier = readyOf();
     const keys: string[] = [];
-    for (const [load, request] of [
-      [earlier, {}],
-      [ready, {}],
-      [ready, { "needs-you": "2" }],
+    for (const [load, size] of [
+      [earlier, 10],
+      [ready, 10],
+      [ready, 1],
     ] as const) {
-      const entry = loadPageInputs("", load, layoutOf(load, request));
+      const entry = loadPageInputs("", load, layoutOf(load, size));
       keys.push((await entry.promise)!.key);
     }
     return keys;
@@ -417,10 +451,10 @@ describe("the sets of a filter being typed", () => {
   );
 
   it("evicts, typing past a dozen texts, no set another history entry was shown with, and holds two in the typing slot", async () => {
-    setPlanningLimitsForTests({ pageEntries: 1, pageInputsKept: 4 });
+    setPlanningLimitsForTests({ pageInputsKept: 4 });
     serve();
     const ready = readyOf();
-    // Three history entries' sets: Needs you's pages 1 to 3.
+    // Three history entries' sets.
     const history = await historyOf(ready);
     expect(heldPlanningPageInputs().cached).toEqual(history);
     let shown = history[1]!;
@@ -440,7 +474,7 @@ describe("the sets of a filter being typed", () => {
   });
 
   it("moves a typed set into the cache once the URL takes its text, and the visit's earlier one out", async () => {
-    setPlanningLimitsForTests({ pageEntries: 1, pageInputsKept: 4 });
+    setPlanningLimitsForTests({ pageInputsKept: 4 });
     serve();
     const ready = readyOf();
     const history = await historyOf(ready);
@@ -517,7 +551,7 @@ describe("prefetchPlanningPage", () => {
     expect(asked).toHaveLength(1);
   });
 
-  it("asks for the remembered roadmap's first page, else the default's, and a pager's own", async () => {
+  it("asks for the remembered roadmap's layout, else the default's, and one named", async () => {
     const tree = {
       ...TREE,
       "docs/roadmap.md": "# Docs\n\n- [B](../plans/b.md)\n",
@@ -538,8 +572,8 @@ describe("prefetchPlanningPage", () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
       expect(asked).toHaveLength(1);
       expect(paths(asked[0])).toEqual(["plans/b.md"]);
-      // A pager names the roadmap the page shows, over the remembered one.
-      prefetchPlanningPage("", {}, "roadmap.md");
+      // A roadmap named outranks the remembered one.
+      prefetchPlanningPage("", "roadmap.md");
       await new Promise((resolve) => setTimeout(resolve, 0));
       expect(asked).toHaveLength(2);
       expect(paths(asked[1])).toEqual(["plans/a.md", "plans/a.md"]);
@@ -548,18 +582,19 @@ describe("prefetchPlanningPage", () => {
     }
   });
 
-  it("lays a pager's page out under the filter the page applies, and g p's under none", async () => {
+  it("lays a layout out under the filter named, and g p's under none", async () => {
     usePlanningStore.setState({ byRepo: { "": readyOf() } });
     const asked = serve();
-    prefetchPlanningPage("", {}, null, "path:plans/b.md");
+    prefetchPlanningPage("", null, "oq-a2");
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(asked.map((want) => want.map((w) => w.path))).toEqual([
-      ["plans/b.md"],
+      ["plans/a.md"],
     ]);
     prefetchPlanningPage("");
     await new Promise((resolve) => setTimeout(resolve, 0));
+    // OQ-A1's block, which the filtered set did not hold.
     expect(asked).toHaveLength(2);
-    expect(asked[1]?.map((w) => w.path)).toEqual(["plans/a.md", "plans/a.md"]);
+    expect(asked[1]?.map((w) => w.path)).toEqual(["plans/a.md"]);
   });
 
   it("asks for nothing while the index builds, when it is refused, or in a static export", async () => {

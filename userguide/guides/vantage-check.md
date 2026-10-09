@@ -804,8 +804,8 @@ four large fields emptied:
   links narrowed to those that point at another candidate. *Too large* and
   *Unreadable* are here too. Each question carries the file lines it spans,
   `unitLine` to `unitEndLine`, and `cardChars`, the length of the Markdown its
-  card shows on the planning page, which is what the page's
-  [pages](planning.md#pages) are cut by. Its `directive` is the name that
+  card shows on the planning page, past which its card is a
+  [preview card](planning.md#a-questions-card). Its `directive` is the name that
   declared it, `question` or the deprecated `oq`; whether a question is offered
   to answer in one click is its `state`'s to say, never the name's.
 - **`sections`** holds the same lists the text form prints, for the chosen

@@ -101,6 +101,8 @@ Measures the planning index's scale targets (docs/reference/planning-index.md
   --gap <ms>            between the g and the p of g p (default: 200)
   --settle <ms>         to let a page settle before and after g p (default: 1000)
   --cpu-slowdown <n>    Chromium's CPU throttling rate (default: 1, none)
+  --page-size <n>       the planning page's page size, 10, 20, 30 or 50, seeded
+                        into each browser profile (default: the page's own, 10)
   --query <text>        what the typing flow types (default: generator is:open)
   --type-gap <ms>       between its keys (default: 150)
   --burst-gap <ms>      between its keys in a burst, typed again in a visit of
@@ -143,7 +145,13 @@ function parseArgs(argv: string[]): Args {
     out: null,
     build: true,
     keep: false,
-    flow: { gapMs: 200, settleMs: 1000, cpuSlowdown: 1, timeoutMs: 60_000 },
+    flow: {
+      gapMs: 200,
+      settleMs: 1000,
+      cpuSlowdown: 1,
+      timeoutMs: 60_000,
+      pageSize: null,
+    },
     typing: { query: "generator is:open", gapMs: 150 },
     burst: { query: "generator is:open", gapMs: 30 },
   };
@@ -204,6 +212,9 @@ function parseArgs(argv: string[]): Args {
         break;
       case "--cpu-slowdown":
         args.flow.cpuSlowdown = Math.max(1, number(flag, value()));
+        break;
+      case "--page-size":
+        args.flow.pageSize = number(flag, value());
         break;
       case "--query":
         args.typing.query = value();

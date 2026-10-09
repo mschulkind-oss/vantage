@@ -16,6 +16,7 @@ just planning-perf --size 45,60 --targets D3 --runs 40  # D3 is a slope from 45 
 just planning-perf --repo . --targets D1,D2,D5,D7       # this repository's column of §18
 just planning-perf --targets first-build                # this repository's first build
 just planning-perf --targets typing --size 15,60 --repo . --runs 10  # T1 to T4, the fixture beside this repository
+just planning-perf --targets typing --page-size 50      # T1 to T4 with fifty cards in Needs you
 just planning-perf --help                               # every option
 ```
 

@@ -77,7 +77,13 @@
  * in place — the reader's own action, so the page may grow. Show question goes
  * with it, so the focus it had goes to the card.
  */
-import React, { useCallback, useLayoutEffect, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown, ChevronUp, Eye } from "lucide-react";
 import type {
@@ -136,6 +142,11 @@ import {
   reviewTarget,
 } from "../stores/useReviewStore";
 import type { CommentAnchor, ReviewComment } from "../types";
+import type { Mark } from "../lib/planningLayout";
+import { ItemMarks, NewReplyBar } from "./PlanningNeedsYou";
+
+/** No marks: one object, so a card's props stay equal render to render. */
+const NO_MARKS: readonly Mark[] = Object.freeze([]);
 
 /** Marks the elements between the card and the question's unit. */
 export const CARD_PATH_ATTR = "data-planning-card-path";
@@ -239,6 +250,25 @@ interface PlanningQuestionCardProps {
    * its page to the next.
    */
   onScoped?: (key: string, report: ScopedReport | null) => void;
+  /**
+   * The comments its list shows until the reader opens or toggles it: the
+   * document's comments as the layout painted them, so a reply arriving
+   * later changes no card's height (`docs/design/planning-to-do-list.md`
+   * P2). Its count, its chip and the page's scoping read `comments`, live.
+   * Without it, the list shows `comments`.
+   */
+  listComments?: readonly ReviewComment[];
+  /** Late data's marks on it, as text in its top line (§4.2). */
+  marks?: readonly Mark[];
+  /** The agent replied since it painted: the New reply mark (§4.2). */
+  newReply?: boolean;
+  /** New reply pressed: the list opens on the reply, and the page is told. */
+  onNewReply?: (key: string) => void;
+  /**
+   * A comment filed from this card landed, its box closed holding text or a
+   * leaning taken: the page shrinks the card to a row (§4.1).
+   */
+  onAnswered?: (key: string) => void;
   /**
    * Whether a card opens unfolded: the page's remembered Expand all /
    * Collapse all. Read as the card mounts, and again only when `folds` is
@@ -443,6 +473,13 @@ interface CardState {
    * `null` while it has no host to anchor on.
    */
   offer: QuestionOffer | null;
+  /**
+   * What it offered by the comments the layout painted (`listComments`),
+   * which it goes on showing until the reader acts on the card: a late
+   * comment or reply changes no control under them
+   * (`docs/design/planning-to-do-list.md` P2), it marks the card instead.
+   */
+  paintedOffer: QuestionOffer | null;
   /** The unit was laid out (`markCardParts`): false leaves it as rendered. */
   laidOut: boolean;
   /** The bold title is hidden in the unit, for the headline to show. */
@@ -457,6 +494,7 @@ const EMPTY_STATE: CardState = {
   found: false,
   scoped: [],
   offer: null,
+  paintedOffer: null,
   laidOut: false,
   titled: false,
   leaning: false,
@@ -466,6 +504,7 @@ const EMPTY_STATE: CardState = {
 const sameState = (a: CardState, b: CardState): boolean =>
   a.found === b.found &&
   sameOffer(a.offer, b.offer) &&
+  sameOffer(a.paintedOffer, b.paintedOffer) &&
   a.laidOut === b.laidOut &&
   a.titled === b.titled &&
   a.leaning === b.leaning &&
@@ -578,6 +617,11 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
   onScoped,
   unfoldedByDefault = false,
   folds,
+  listComments,
+  marks = NO_MARKS,
+  newReply = false,
+  onNewReply,
+  onAnswered,
 }: PlanningQuestionCardProps) {
   // Show question's answer, for the question it was fetched for.
   const [shown, setShown] = useState<{
@@ -704,6 +748,12 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
       commentsOnQuestions(root, questions, comments ?? [], index).get(host) ??
       [];
     const scoped = onIt.map((c) => c.id);
+    const paintedOnIt =
+      listComments === undefined || listComments === comments
+        ? onIt
+        : (commentsOnQuestions(root, questions, listComments, index).get(
+            host,
+          ) ?? []);
 
     isolate(root, unit);
 
@@ -728,6 +778,14 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
         built === null
           ? null
           : questionOffer(built.anchor, leaningComment(host.stamped), onIt),
+      paintedOffer:
+        built === null
+          ? null
+          : questionOffer(
+              built.anchor,
+              leaningComment(host.stamped),
+              paintedOnIt,
+            ),
       laidOut: true,
       titled: parts.titled,
       leaning: parts.leaning,
@@ -739,7 +797,7 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
       cardKey,
       built === null ? null : { ids: scoped, question, comments },
     );
-  }, [markdown, question, comments, cardKey, onScoped, cut]);
+  }, [markdown, question, comments, listComments, cardKey, onScoped, cut]);
 
   // Every diagram as the card first painted it, and every one it becomes: a
   // diagram MarkdownViewer draws late replaces its element's content, and one
@@ -881,13 +939,14 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
           newReviewComment(now.anchor, text(now.host), now.fallbackText),
         );
         setOpen(true);
+        onAnswered?.(cardKey);
       } catch (e) {
         setError(commandErrorMessage(e, "Could not save the comment"));
       } finally {
         setBusy(false);
       }
     },
-    [anchorNow, onFile, question.path],
+    [anchorNow, onFile, question.path, onAnswered, cardKey],
   );
 
   const writable = !isStaticMode() && state.found;
@@ -897,7 +956,15 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
   // answers it, the chip instead (`docs/reference/planning-index.md` §6.7).
   const answerable =
     writable && (question.state === "open" || question.state === "answered");
-  const offer = answerable ? (held ? held.offer : state.offer) : null;
+  // Until the reader acts on the card, the controls the layout painted.
+  const painted = open === null && listComments !== undefined;
+  const offer = answerable
+    ? held
+      ? held.offer
+      : painted
+        ? state.paintedOffer
+        : state.offer
+    : null;
   const canTake = offer?.kind === "take" && question.state === "open";
   const canAnswer =
     answerable && offer?.kind !== "taken" && offer?.kind !== "answered";
@@ -918,33 +985,68 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
     }
   }, [take, onUndo, question.path]);
 
+  // The count is the comments in hand. The list is what the box held while
+  // it is open, and otherwise, until the reader opens or toggles it, the
+  // comments the layout painted (planning-to-do-list.md P2).
   const liveListed = (comments ?? []).filter((c) =>
     state.scoped.includes(c.id),
   );
-  const listed = held ? held.listed : liveListed;
+  const counted = held ? held.listed : liveListed;
+  const listed = held
+    ? held.listed
+    : open === null && listComments !== undefined
+      ? listComments.filter((c) => state.scoped.includes(c.id))
+      : liveListed;
 
   // The box **Answer…** opens, made once when it opens: its first save files
   // the comment as the take does, its later ones edit it, and closing it empty
   // deletes what it filed. Saves go on after the card has gone, until they land.
+  const boxRef = useRef<CommentBox | null>(null);
   const makeAnswerBox = (
     target: ReviewTarget,
     anchor: CommentAnchor,
     fallbackText: string,
-  ) =>
-    newCommentBox(target, newReviewComment(anchor, "", fallbackText), {
-      label: `Answer to ${question.title}`,
-      onSaved: onBoxSaved,
-    });
+  ) => {
+    const box = newCommentBox(
+      target,
+      newReviewComment(anchor, "", fallbackText),
+      { label: `Answer to ${question.title}`, onSaved: onBoxSaved },
+    );
+    boxRef.current = box;
+    return box;
+  };
   const closeAnswer = (box: CommentBox) => {
+    if (boxRef.current !== box) return;
+    boxRef.current = null;
     setAnswering(null);
     setHeld(null);
-    // As after a take: the list opens on what was filed.
+    // As after a take: the list opens on what was filed, and the page
+    // shrinks the card to an answered row (planning-to-do-list.md §4.1).
     if (box.typed !== "") {
       setOpen(true);
       onAnswerClosed?.(question.path, box.subject.commentId);
+      onAnswered?.(cardKey);
     }
   };
+  // A box closed from outside the popover, as Refresh closes every open box
+  // first (§4.3): the card stops drawing it, as its own Close does.
+  const closeAnswerRef = useRef(closeAnswer);
+  useLayoutEffect(() => {
+    closeAnswerRef.current = closeAnswer;
+  });
+  const answeringOpen = answering !== null;
+  useEffect(() => {
+    const box = boxRef.current;
+    if (!answeringOpen || box === null) return;
+    return box.subscribe(() => {
+      if (!box.getState().open) closeAnswerRef.current(box);
+    });
+  }, [answeringOpen]);
   const listOpen = open ?? !commentsLate;
+  const pressNewReply = () => {
+    setOpen(true);
+    onNewReply?.(cardKey);
+  };
 
   const id = planningCardId(question.path, question.id, question.unitLine);
   const bodyId = `${id}-body`;
@@ -971,8 +1073,10 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
       aria-label={question.title}
       // Where Show question's focus goes once the card is shown.
       tabIndex={preview ? -1 : undefined}
-      className="rounded-xl border border-slate-200 bg-white px-5 pt-3 pb-4 shadow-sm dark:border-slate-700 dark:bg-slate-800"
+      data-planning-item={id}
+      className="relative rounded-xl border border-slate-200 bg-white px-5 pt-3 pb-4 shadow-sm dark:border-slate-700 dark:bg-slate-800"
     >
+      {newReply && <NewReplyBar />}
       <div className="mb-1 flex flex-wrap items-baseline gap-x-2 text-xs text-slate-500 dark:text-slate-400">
         {/* This tab, which the page saves its place in first. */}
         <AppLink
@@ -985,6 +1089,11 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
           {question.path}
         </AppLink>
         {badge !== null && <PlanningBadgeChip badge={badge} />}
+        <ItemMarks
+          marks={marks}
+          newReply={newReply}
+          onNewReply={pressNewReply}
+        />
       </div>
 
       {headed && <Headline question={question} id={headlineId} />}
@@ -1183,7 +1292,7 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
           data-planning-comment-slot
           className="ml-auto inline-flex w-28 justify-end"
         >
-          {listed.length > 0 && (
+          {counted.length > 0 && (
             <button
               type="button"
               aria-expanded={listOpen}
@@ -1191,7 +1300,9 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
               onClick={() => setOpen(!listOpen)}
               className="rounded px-1.5 py-0.5 text-[11px] font-medium text-slate-600 tabular-nums transition-colors hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700"
             >
-              {listed.length === 1 ? "1 comment" : `${listed.length} comments`}
+              {counted.length === 1
+                ? "1 comment"
+                : `${counted.length} comments`}
             </button>
           )}
         </span>

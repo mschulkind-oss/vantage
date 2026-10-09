@@ -1,6 +1,9 @@
 /**
  * The planning page's page inputs (`docs/reference/planning-index.md`
- * §6.5): what the shown pages' cards need before they may paint.
+ * §6.5): what *Needs you*'s cards need before they may paint
+ * (`docs/design/planning-to-do-list.md` §3.3, §7): the blocks of the first
+ * page size of the questions no pending comment answers, and `cardsAhead`
+ * more, which join the cards as the reader answers.
  *
  * - **Their card blocks**, from the scanner client, which cut them in the scan
  *   and keeps them in the scan cache. A preview card's block is not asked for.
@@ -24,7 +27,7 @@
  * Markdown pipeline to have run once (`lib/warmMarkdown.ts`).
  *
  * Each set is cached by repository, index version, chosen roadmap, applied
- * planning filter and pages, the last `pageInputsKept` kept, outside any
+ * planning filter and page size, the last `pageInputsKept` kept, outside any
  * component: a history entry returned to whose set is cached renders the
  * frame and the sections in one commit, and `prefetchPlanningPage` fills the
  * cache ahead of a visit, on the `g` of `g p` and from the viewer's planning
@@ -58,11 +61,13 @@ import {
   chooseRoadmap,
   layoutPlanningPage,
   listedQuestions,
+  readPageSize,
   readRememberedRoadmap,
   sectionsOf,
-  type PageRequest,
   type PlanningLayout,
+  type QuestionEntry,
 } from "../lib/planningPages";
+import { pendingAnswers, questionKey } from "../lib/planningAnswers";
 import { afterNextPaint } from "../lib/afterPaint";
 import { isStaticMode } from "../lib/staticMode";
 import { warmMarkdown } from "../lib/warmMarkdown";
@@ -162,7 +167,7 @@ const inputsKey = (
   // A roadmap's path is never empty, so `""` stands for none; nor is an
   // applied filter's canonical text, which holds no control character, so it
   // sits on a line of its own (§6.14).
-  `${repo}\n${version}\n${layout.roadmap ?? ""}\n${layout.filter}\n${layout.pages}`;
+  `${repo}\n${version}\n${layout.roadmap ?? ""}\n${layout.filter}\n${layout.pageSize}`;
 
 /** `promise`, or nothing once `ms` have passed. */
 function within(promise: Promise<unknown>, ms: number): Promise<void> {
@@ -190,38 +195,6 @@ export function predrawDiagrams(markdowns: readonly string[]): Promise<void> {
     Promise.allSettled([...codes].map((code) => prerenderMermaid(code))),
     planningLimits.mermaidDeadlineMs,
   );
-}
-
-/** What a layout's shown pages ask for. */
-function needsOf(layout: PlanningLayout, hashes: ReadyLoad["hashes"]) {
-  const wants: CardWant[] = [];
-  const unhashed: string[] = [];
-  const seen = new Set<string>();
-  const documents = new Set<string>();
-  for (const section of layout.sections) {
-    if (section.kind === "rows") {
-      for (const path of section.items) documents.add(path);
-      continue;
-    }
-    if (section.kind !== "cards") continue;
-    for (const entry of section.items) {
-      if (entry.kind === "document") {
-        documents.add(entry.path);
-        continue;
-      }
-      const { question } = entry;
-      documents.add(question.path);
-      if (entry.preview) continue;
-      const { startLine } = question.block;
-      const key = blockKey(question.path, startLine);
-      if (seen.has(key)) continue;
-      seen.add(key);
-      const hash = hashes[question.path];
-      if (hash === undefined) unhashed.push(key);
-      else wants.push({ path: question.path, hash, startLine });
-    }
-  }
-  return { wants, unhashed, documents: [...documents].sort() };
 }
 
 /**
@@ -283,20 +256,35 @@ function heldBlock(repo: string, want: CardWant): CardBlock | undefined {
   return undefined;
 }
 
+/**
+ * Which questions of *Needs you* a set of inputs carries blocks for: the
+ * first page size of those no pending comment answers, which the page draws
+ * as full cards, and `cardsAhead` more, which join the cards as the reader
+ * answers (`docs/design/planning-to-do-list.md` §3.3, §4.1). The answered
+ * ones are rows, with no block, so the blocks asked for go on past them.
+ */
 async function gather(
   key: string,
   repo: string,
   ready: ReadyLoad,
   layout: PlanningLayout,
 ): Promise<PageInputs | null> {
-  const { wants, unhashed, documents } = needsOf(layout, ready.hashes);
+  const entries = layout.needsYou;
+  const want = layout.pageSize + planningLimits.cardsAhead;
+  const documents = new Set<string>();
+  const blocks = new Map<string, CardBlock | null>();
+  const previews = new Set<string>();
+  const stale: CardWant[] = [];
 
   // The reviews are asked for at once, and waited for at most their deadline:
-  // the shown documents', and every one whose comments the need-you numbers
-  // read, so that a cold visit paints them right.
+  // the documents of the first cards, and every one whose comments the
+  // need-you numbers read, so that a cold visit paints them right.
+  for (const entry of entries.slice(0, want)) {
+    documents.add(entry.question.path);
+  }
   let reviewsFailed = false;
   const reviews = fetchPlanningReviews(repo, [
-    ...documents,
+    ...[...documents].sort(),
     ...needYouDocuments(ready.index, layout.roadmap),
   ]).then(
     (ok) => {
@@ -308,27 +296,46 @@ async function gather(
   );
   const reviewsWait = within(reviews, planningLimits.reviewsDeadlineMs);
 
-  const blocks = new Map<string, CardBlock | null>();
-  const previews = new Set<string>();
-  for (const k of unhashed) blocks.set(k, null);
-  const stale: CardWant[] = [];
-  // A block a cached set already holds for the same content is that block: an
-  // index update that did not touch a shown document asks the scanner
-  // nothing for it, and its card's props stay equal, so it does not render.
-  const asked = wants.filter((want) => {
-    const held = heldBlock(repo, want);
-    if (held === undefined) return true;
-    blocks.set(blockKey(want.path, want.startLine), held);
-    return false;
-  });
-  if (asked.length > 0) {
+  /** Ask for the blocks of `batch`, which hold no block asked for already. */
+  const fetchBlocks = async (batch: readonly QuestionEntry[]) => {
+    const wants: CardWant[] = [];
+    for (const entry of batch) {
+      const { question } = entry;
+      documents.add(question.path);
+      if (entry.preview) continue;
+      const k = blockKey(question.path, question.block.startLine);
+      if (
+        blocks.has(k) ||
+        wants.some((w) => blockKey(w.path, w.startLine) === k)
+      ) {
+        continue;
+      }
+      const hash = ready.hashes[question.path];
+      if (hash === undefined) {
+        blocks.set(k, null);
+        continue;
+      }
+      // A block a cached set already holds for the same content is that
+      // block: an index update that did not touch a shown document asks the
+      // scanner nothing for it, and its card's props stay equal, so it does
+      // not render.
+      const want = {
+        path: question.path,
+        hash,
+        startLine: question.block.startLine,
+      };
+      const held = heldBlock(repo, want);
+      if (held !== undefined) blocks.set(k, held);
+      else wants.push(want);
+    }
+    if (wants.length === 0) return;
     let answers: CardAnswer[] | null;
     try {
-      answers = await planningScanner().cards(repo, asked);
+      answers = await planningScanner().cards(repo, wants);
     } catch {
       answers = null;
     }
-    asked.forEach((want, at) => {
+    wants.forEach((want, at) => {
       const k = blockKey(want.path, want.startLine);
       const answer = answers?.[at];
       if (answer === undefined) blocks.set(k, null);
@@ -336,6 +343,27 @@ async function gather(
       else if ("preview" in answer) previews.add(k);
       else stale.push(want);
     });
+  };
+
+  // The first cards' blocks, beside the reviews; then, once the reviews are
+  // in, the blocks of as many more as the answered ones among them leave
+  // short.
+  let taken = Math.min(want, entries.length);
+  await Promise.all([fetchBlocks(entries.slice(0, taken)), reviewsWait]);
+  const answered = pendingAnswers(
+    listedQuestions(ready.index, sectionsOf(ready.index, layout.roadmap)),
+    planningReviewsOf(repo),
+    {},
+  ).answered;
+  for (;;) {
+    const needing = entries
+      .slice(0, taken)
+      .filter((e) => !answered.has(questionKey(e.question))).length;
+    if (needing >= want || taken >= entries.length) break;
+    const next = entries.slice(taken, taken + (want - needing));
+    if (next.length === 0) break;
+    taken += next.length;
+    await fetchBlocks(next);
   }
 
   if (stale.length > 0) {
@@ -377,7 +405,6 @@ async function gather(
     ),
   );
 
-  await reviewsWait;
   return {
     key,
     repo,
@@ -387,7 +414,7 @@ async function gather(
     layout,
     blocks,
     previews,
-    documents,
+    documents: [...documents].sort(),
     reviewsFailed,
   };
 }
@@ -487,20 +514,18 @@ function dropTyped(newest: string, shown: string | null): void {
 }
 
 /**
- * Ask for the inputs of `repo`'s planning page ahead of a visit — every
- * section on its first page unless `request` says otherwise — once its index
- * is ready. For the `g` of `g p`, the viewer's planning entry and a pager.
+ * Ask for the inputs of `repo`'s planning page ahead of a visit, at the page
+ * size this browser remembers, once its index is ready. For the `g` of `g p`
+ * and the viewer's planning entry.
  *
- * `roadmap` is the roadmap the page shows, for a pager; without one, it is
- * the roadmap a visit would choose with no roadmap in its URL: the one this
- * browser remembers for `repo`, else the default (§6.5). `filter` is the
- * filter the page applies, for a pager, as `PlanningLayout.filter` names it;
- * `g p` and the sidebar entry open the bare page, with none
- * (§6.16).
+ * `roadmap` is the roadmap to lay out; without one, it is the roadmap a
+ * visit would choose with no roadmap in its URL: the one this browser
+ * remembers for `repo`, else the default (§6.5). `filter` is the filter, as
+ * `PlanningLayout.filter` names it; `g p` and the sidebar entry open the
+ * bare page, with none (§6.16).
  */
 export function prefetchPlanningPage(
   repo: string,
-  request: PageRequest = {},
   roadmap?: string | null,
   filter = "",
 ): void {
@@ -518,7 +543,7 @@ export function prefetchPlanningPage(
     layoutPlanningPage(
       load.index,
       sectionsOf(load.index, chosen, filter),
-      request,
+      readPageSize(),
       filter,
     ),
   );

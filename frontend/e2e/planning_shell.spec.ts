@@ -64,32 +64,28 @@ test.describe("the planning page in the app shell", () => {
     page,
   }) => {
     await openWithOutline(page);
-    // A section: its heading comes into view with the focus.
+    // A section in a folded group: the group opens, and its heading comes
+    // into view with the focus.
     await outlineSection(page, "Ready to graduate").focus();
     await page.keyboard.press("Enter");
     const graduate = section(page, "Ready to graduate").getByRole("heading", {
-      level: 2,
+      level: 3,
     });
     await expect(graduate).toBeFocused();
     await expect(graduate).toBeInViewport();
 
-    // A document on a section's second page: the section flips to it.
+    // A document of Not on a roadmap: no pages, and no history entry.
     await outlineDocument(page, "tree-badges/bake-images.md").focus();
     await page.keyboard.press("Enter");
-    await expect(page).toHaveURL(/\?unrouted=2$/);
-    await expect(
-      section(page, "Not on a roadmap").getByRole("link", {
-        name: "tree-badges/bake-images.md",
-      }),
-    ).not.toHaveCount(0);
-    // Its first card, found by the id every card carries (planningCardId),
-    // is brought into view with the focus on its first control.
-    const card = section(page, "Not on a roadmap")
-      .locator('article[id^="pq-tree-badges%2Fbake-images.md--"]')
+    await expect(page).toHaveURL(/\/\.vantage\/planning$/);
+    // Its first row, found by the id its card would carry (planningCardId),
+    // is brought into view with the focus on its first link.
+    const first = section(page, "Not on a roadmap")
+      .locator('li[id^="pq-tree-badges%2Fbake-images.md--"]')
       .first();
-    await expect(card).toBeInViewport();
+    await expect(first).toBeInViewport();
     await expect
-      .poll(() => card.evaluate((el) => el.contains(document.activeElement)))
+      .poll(() => first.evaluate((el) => el.contains(document.activeElement)))
       .toBe(true);
 
     // A document's row: in view, with its link focused.
@@ -106,6 +102,9 @@ test.describe("the planning page in the app shell", () => {
 
   test("marks where the reader is as the pane scrolls", async ({ page }) => {
     await openWithOutline(page);
+    await page
+      .getByRole("button", { name: /^Maintenance/, expanded: false })
+      .click();
     await expect(outlineSection(page, "Needs you")).toHaveAttribute(
       "aria-current",
       "location",
@@ -121,7 +120,7 @@ test.describe("the planning page in the app shell", () => {
     );
     // And a section's heading at the top of the pane marks that section.
     await section(page, "Not on a roadmap")
-      .getByRole("heading", { level: 2 })
+      .getByRole("heading", { level: 3 })
       .evaluate((el) => el.scrollIntoView({ block: "start" }));
     await expect(outlineSection(page, "Not on a roadmap")).toHaveAttribute(
       "aria-current",

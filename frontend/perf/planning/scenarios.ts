@@ -28,6 +28,12 @@ export interface FlowOptions {
   cpuSlowdown: number;
   /** The longest any one wait may take before the run fails. */
   timeoutMs: number;
+  /**
+   * The planning page's page size, seeded into each profile's storage
+   * before the app's scripts run (`docs/design/planning-to-do-list.md`
+   * §3.3); `null` leaves the default.
+   */
+  pageSize: number | null;
 }
 
 /** A served repository: where, and the document every flow starts from. */
@@ -136,6 +142,18 @@ async function newPage(browser: Browser, options: FlowOptions) {
     viewport: { width: 1440, height: 900 },
   });
   await context.addInitScript(installProbe);
+  if (options.pageSize !== null) {
+    await context.addInitScript((size: number) => {
+      try {
+        // The browser profile's storage, seeded before the app runs, as a
+        // reader's earlier choice would leave it: no preference of the app's.
+        // eslint-disable-next-line no-restricted-syntax
+        localStorage.setItem("vantage:planningPageSize", String(size));
+      } catch {
+        // A page with no storage keeps the default size.
+      }
+    }, options.pageSize);
+  }
   const page = await context.newPage();
   const cdp = await context.newCDPSession(page);
   if (options.cpuSlowdown > 1) {

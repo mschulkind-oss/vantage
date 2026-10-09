@@ -368,8 +368,11 @@ The planning page gathers, for one repository, every question that is waiting
 on someone and every document whose stage calls for a next step. Press **`g p`**
 while viewing a document or a folder to open it, or click the checklist icon
 beside **Vantage** at the top of the sidebar. It is built from the index every time and stores nothing of its
-own: no snooze, no assignment, no read state, no remembered filter. It changes
-when the documents do, without a reload. Its **Filter** box, at the top, narrows
+own: no snooze, no assignment, no read state, no remembered filter. It is a
+to-do list: what needs you first, as cards, and everything else folded into
+counts until you open it. What changes while it is open is marked and counted,
+and laid out when you press **Refresh** ([below](#late-changes-and-refresh)).
+Its **Filter** box, at the top, narrows
 it to one piece of work as you type ([below](#filtering-the-page)).
 
 It sits in the app as a document does: the sidebar is beside it, with its file
@@ -407,45 +410,50 @@ was made for.
 > commit history of a root-level `notes.md`. In daemon mode the same goes for a
 > whole repository named `history` or `recent`.
 
-**What appears when.** The page's header, its Filter box and its
-[section bar](#pages) appear as soon as you press `g p`. The cards of each
-section's shown page follow together, in one step, once their text, their
-documents' comments and their Mermaid diagrams are all in hand, so nothing on
-the page moves as they arrive. A spinner shows only if that takes longer than
+**What appears when.** The page's header, its Filter box and the line naming
+its sections appear as soon as you press `g p`. *Needs you*'s cards follow
+together, in one step, once their text, their documents' comments and their
+Mermaid diagrams are all in hand, so nothing on the page moves as they arrive. A spinner shows only if that takes longer than
 150 ms. Opened while the index is still being read, the page says *Reading
-planning documents…* where the section bar will be, then *Scanning planning
-documents: 412 of 1,000*, and the section bar and the sections replace that
-line when the index is ready. A rescan of an index already shown keeps the page
+planning documents…* where the line naming the sections will be, then
+*Scanning planning documents: 412 of 1,000*, and that line and the sections
+replace it when the index is ready. A rescan of an index already shown keeps the page
 as it is, with a thin bar along its top.
 
 ### Its sections
 
-From top to bottom, leaving out any that are empty, each with its count and
-who does the next thing with its entries:
+From top to bottom, leaving out any that are empty:
 
 | Section | Holds | Who acts | Each entry shows |
 | :--- | :--- | :--- | :--- |
-| **Needs you** | Questions the shown roadmap [routes](#the-roadmap) that are open or answered, in its order | you | the question's [card](#a-questions-card) |
-| **Not on a roadmap** | Open questions no roadmap routes, by path | an agent proposes where each goes, and you confirm | the question's card |
-| **Blocked** | Blocked questions, and documents with a `depends-on` entry that still waits: one naming a question waits while it is open (💬), and one naming a document waits while that document has an open question | nobody: what it waits on comes first | a blocked question's card; a document's name and badge, then *blocked on* each entry it waits on, with that entry's badge |
-| **Ready to build** | Documents whose stage has the `ready` role and no open questions; one can be under *Blocked* too | an agent | the document's name and badge |
-| **Ready to graduate** | Documents whose stage has the `built` role and no questions left; one can be under *Blocked* too | an agent | the document's name and badge |
-| **Stage conflict** | Documents whose stage says `ready` or `built` while they still have open questions | an agent | the document's name and badge |
-| **Too large** | Candidates over the size limit ([below](#limits)) | you | the path, its size and the limit |
-| **Unreadable** | Candidates that could not be read, or whose frontmatter does not parse | you | the path and why |
+| **Needs you** | Open questions the shown roadmap [routes](#the-roadmap), in its order | you | the questions you have answered as one-line rows, then the question's [card](#a-questions-card) ([below](#needs-you)) |
+| **Blocked**, folded | Blocked questions, and documents with a `depends-on` entry that still waits: one naming a question waits while it is open (💬), and one naming a document waits while that document has an open question | nobody: what it waits on comes first | one row: a question by its document, id and title; a document by its name and badge, then *blocked on* each entry it waits on |
+| **Maintenance**, folded | Everything an agent should already have done, one list per kind, and the files the index could not read | an agent, or you for *Too large* and *Unreadable* | one row per entry ([below](#the-folded-groups)) |
 
-Under each heading, one line says what the section's entries are and what to
-do with them, such as *Built, with no questions left. An agent turns it into a
-reference doc.* under *Ready to graduate*. The [section bar](#pages) and the
-[contents column](#the-contents-column) show the same line when the pointer
-rests on a section's name, and `vantage-check index` prints it under each
-heading. A section that is an agent's work has **Copy agent request**
-([below](#agent-requests)).
+*Maintenance*'s kinds, in its order:
+
+| Kind | Holds |
+| :--- | :--- |
+| **Not on a roadmap** | Open questions no roadmap routes, by path |
+| **Ready to build** | Documents whose stage has the `ready` role and no open questions; one can be under *Blocked* too |
+| **Ready to graduate** | Documents whose stage has the `built` role and no questions left; one can be under *Blocked* too |
+| **Stage conflict** | Documents whose stage says `ready` or `built` while they still have open questions |
+| **To fold into the ledger** | ✅ questions: ruled, and waiting for an agent to fold the ruling into the document and record it |
+| **Too large** | Candidates over the size limit ([below](#limits)): the path, its size and the limit |
+| **Unreadable** | Candidates that could not be read, or whose frontmatter does not parse: the path and why |
+
+Under each heading, one line says what the entries are and what to do with
+them, such as *Built, with no questions left. An agent turns it into a
+reference doc.* under *Ready to graduate*. The line naming the sections, under
+the Filter box, and the [contents column](#the-contents-column) show the same
+line when the pointer rests on a section's name, and `vantage-check index`
+prints it under each heading. Clicking a section's name there goes to it,
+opening its folded group first. A kind that is an agent's work has **Copy agent
+request** ([below](#agent-requests)).
 
 Clicking a document's name opens it in this tab, and **Back** returns to the
-planning page with the same [pages](#pages), at the same scroll position. A
-card's **Open document** opens it in a new tab instead
-([below](#a-questions-card)).
+planning page at the same scroll position. A card's **Open document** opens it
+in a new tab instead ([below](#a-questions-card)).
 
 Two cases change the sections:
 
@@ -466,9 +474,8 @@ Two cases change the sections:
   *Stage conflict* are not shown, and a line says how to declare them.
 
 When no document has an open question, `done` documents aside, the page says
-**Nothing needs you**. That line can sit above a *Needs you* holding only ✅
-answered questions: those await compaction, not a ruling. It says so too once
-every open question has your answer waiting on the agent
+**Nothing needs you**. *Needs you*'s own last line says it too, once every
+question it lists has your answer waiting on the agent
 ([below](#a-comment-on-a-question-is-your-answer)).
 
 Past the candidate limit ([below](#limits)) there are no sections at all, only a
@@ -476,7 +483,8 @@ line saying how many candidates there are and to narrow `include`.
 
 ### Several roadmaps
 
-When two or more roadmaps route, a **Roadmap** menu sits above the section bar,
+When two or more roadmaps route, a **Roadmap** menu sits above the line naming
+the sections,
 or at the head of the [contents column](#the-contents-column) while that is
 shown. There is only ever one.
 It lists each by its full path, nearest the repository root first, with how
@@ -494,8 +502,8 @@ their roadmap to see them.
 - **The address says which roadmap is shown,** as
   `?roadmap=docs/plans/roadmap.md` (the `/` may be escaped as `%2F`; both
   read alike), so a copied link shows the same roadmap to anyone.
-- **Choosing one** replaces the history entry rather than adding one, as a
-  [flip](#pages) does, and shows *Needs you* from its first page. The menu
+- **Choosing one** replaces the history entry rather than adding one, and lays
+  *Needs you* out again in its order. The menu
   changes at once, and the sections once the new cards are ready; a spinner
   beside the menu, in room kept for it, shows when that takes a moment.
 - **This browser remembers your choice** for each repository, and the next
@@ -516,42 +524,75 @@ their roadmap to see them.
 With one roadmap that routes, or none, there is no menu, and the address
 carries no `roadmap`.
 
-### Pages
+### Needs you
 
-Each section shows one page of its entries at a time, so the page opens as
-quickly for a thousand documents as for ten:
+*Needs you* is the list of what waits on you, in three parts:
 
-| Sections | A page holds |
-| :--- | :--- |
-| Needs you, Not on a roadmap, Blocked | 10 entries, or fewer when their cards together would pass 32,768 characters of Markdown. A page always holds at least one entry, and a [preview card](#a-questions-card) counts for none of those characters |
-| Ready to build, Ready to graduate, Stage conflict | 25 documents |
-| Too large, Unreadable | 50 lines |
+1. **Answered rows.** A question you have answered with a comment that is still
+   waiting on the agent ([below](#a-comment-on-a-question-is-your-answer)) is
+   one line at the top: its id, its title, the chip its card would show
+   (*Answered — waiting on the agent*, or *Leaning taken* with its **Undo**),
+   and **Show**, which opens it into its card in place. The first five show;
+   *… 3 more answered · Show* opens the rest in place.
+2. **Cards.** The first questions that need you, as cards: 10 of them, or the
+   page size you choose.
+3. **The last line,** *12 more need you · show 10 | 20 | 30 | 50*. Choosing a
+   size shows that many cards at once, and this browser remembers it for the
+   next visit. With nothing past the cards it offers the sizes alone, and with
+   nothing that needs you at all it says *Nothing needs you*.
 
-- **The section bar,** under the header, names each section that is not empty
-  with its count, such as `Needs you 143 · Not on a roadmap 12 · Blocked 7`.
-  The counts are of the whole section, whatever page is shown. Clicking one scrolls to its
-  section without adding a history entry.
-- **A pager** sits under the heading of a section with more than one page, and
-  again after its last entry: `1–10 of 143 · ‹ Previous · Next ›`, with a page
-  menu once a section has five pages. The pager at the bottom brings the
-  section's heading back into view; the one at the top leaves the scroll where
-  it is. A section of one page has no pager.
-- **The page you flip to** replaces the shown one only once its cards are
-  ready, and the shown page stays up until then.
-- **The address carries the pages,** as in
-  `/.vantage/planning?needs-you=3&waiting=2`, with page 1 left out. A flip
-  replaces the history entry rather than adding one, so Back from a document
-  you opened in this tab returns to the same pages at the same scroll
-  position, and Back from the planning page leaves it rather than stepping
-  back through its pages. A page past a section's end shows its last page, a
-  value that is not a page number shows page 1, and either way the address is
-  corrected in place. A flip keeps the [filter](#filtering-the-page), and a
-  filtered page's numbers count only what the filter keeps.
+Its heading counts the questions that need you, whatever the page size shows,
+and the answered rows it lists, as *Needs you 12 · 15 answered*. A ✅ question
+is not here: it waits only for an agent to fold it into the ledger, and
+*Maintenance* lists it.
 
-Paging decides only what is drawn. Every question is still counted in the
-section bar and reachable through its section's pager, and
-[Copy answers](#copy-answers) and the [agent requests](#agent-requests) cover
-the entries on every page.
+**Answering moves only what you answered.** When a card's comment box closes
+holding your answer, or you take its leaning, the card shrinks to an answered
+row where it stands, and the next question that needs you joins the end of the
+cards; nothing above it moves, and nothing is reordered. **Undo** on a take
+opens the row back into its card, and the card that joined stays. The next
+layout, on **Refresh**, a filter, a roadmap or a page size, gathers the answered
+rows at the top.
+
+There are no pages. An address from before, carrying a page such as
+`?needs-you=3`, shows the page as it is now, and the page drops that part of
+the address in place.
+
+### The folded groups
+
+**Blocked** and **Maintenance** are each one heading line with its count,
+closed until you open it; *Maintenance*'s line names each kind with its count,
+as *Maintenance 13 · 3 not on a roadmap · 4 ready to build · 2 to graduate*.
+This browser remembers which you left open. Opened, a group lists one line per
+entry, never a card: a question by its document, id and title, a document by
+its name, each a link. A long list shows its first 100 entries, then **Show
+all**. A question listed here is answered from its document.
+
+### Late changes and Refresh
+
+What changes while the page is open never moves what you are reading: an
+agent's reply, an answer you gave in another tab or on a document, a document
+edited, a new question. Each one only marks what it concerns, and counts:
+
+| What changed | On the page | After Refresh |
+| :--- | :--- | :--- |
+| The agent replied on a question | A **New reply** mark, with a colored bar beside the question; pressing it opens the reply in place | A card again if the question needs you again |
+| You answered a question elsewhere | *Answered elsewhere* on its card | An answered row |
+| A question became ✅, or left its document | *Done* on it, and it stays | Gone from *Needs you*; a ✅ one is under *Maintenance* |
+| A question's text changed | *Changed in the document*; the card keeps the text it showed | The new text |
+| A new question needs you | Counted only | In roadmap order |
+| The roadmap was reordered | Counted once | The new order |
+| A blocked or maintenance entry came or went | The group's count changes; an opened group marks a gone entry *Done* | Listed, or gone |
+
+The counts in the headings and on the header's buttons follow at once. The
+header says how many changes are waiting, as **3 updates · Refresh**, with what
+they are in its tooltip, such as *2 new replies, 1 done*; its room is kept, so
+it appearing moves nothing, and a narrow header shows its icon and count.
+**Refresh** first closes a comment box you have open, which saves what you
+typed, then lays the page out again from what is in hand, keeping the first
+entry on screen where it was. Nothing else applies the changes on its own:
+choosing a filter, a roadmap or a page size lays the page out too, and so does
+opening it again.
 
 ### The contents column
 
@@ -560,24 +601,24 @@ The header's contents toggle, the one that shows a document's
 in the same column here, beside the cards:
 
 - **Each section** that is not empty, with its count. Clicking one scrolls to
-  it, as the section bar does.
+  it, opening its folded group first.
 - **Under a section,** the documents it lists, in the section's order, each by
   its file name with its folder below it, and after the name how many of its
   questions the section holds (under *Stage conflict*, how many are still
   open).
-  Clicking one shows the page of the section that holds its first card or row,
-  and scrolls to it. Like a flip, that replaces the history entry.
+  Clicking one scrolls to its first card or row, opening its folded group
+  first, and adds no history entry.
 - **Where you are** is marked as you scroll: the section, and the document
   whose card is at the top of the page.
 - **Every entry is a link.** Tab reaches it and Enter follows it, and
-  Ctrl-click or a middle click opens it in a new tab, at the same page and card.
+  Ctrl-click or a middle click opens it in a new tab, at the same card.
 - **With several roadmaps,** the **Roadmap** menu sits at the head of the
-  column instead of above the section bar, its path and count whole, wrapped
+  column instead of above the line naming the sections, its path and count whole, wrapped
   to the column's width.
 
-A section lists its first 50 documents, then says how many more there are; its
-pager reaches them. The column is not drawn on a narrow screen, where the menu
-stays above the section bar.
+A section lists its first 50 documents, then says how many more there are. The
+column is not drawn on a narrow screen, where the menu
+stays above the line naming the sections.
 
 ### A question's card
 
@@ -612,19 +653,22 @@ out.
 
 **Expand all**, at the end of the line naming the sections, unfolds every card
 on the page, and **Collapse all** folds them again. Either one also decides how
-cards open from then on: on the section's next page, in the other sections, and
-the next time you open the page. Vantage remembers it in this browser, as it
-remembers [full width](../features.md#full-width). Unfolding or folding one card
-yourself wins for that card, even after you flip to another page and back, until
-you next press Expand all or Collapse all.
+cards open from then on: the cards a new layout brings in, and the next time
+you open the page. Vantage remembers it in this browser, as it remembers
+[full width](../features.md#full-width). Unfolding or folding one card yourself
+wins for that card, through a new layout too, until you next press Expand all
+or Collapse all.
 
 What the card offers follows the question's state:
 
 | State | Take this leaning | Answer… | Open document |
 | :--- | :--- | :--- | :--- |
 | 💬 open, or no marker | yes | yes | yes |
-| ✅ answered | no: it has been ruled | yes | yes |
-| 🔒 blocked, under *Blocked* | no | no: it cannot be answered yet | yes |
+| ✅ answered | — | — | — |
+| 🔒 blocked | — | — | — |
+
+A ✅ or 🔒 question has no card: *Maintenance* and *Blocked* list it as a row,
+and it is answered from its document.
 
 - **Take this leaning** files the question's leaning as a review comment on
   it: the same comment review mode's own **Take this leaning** button files in
@@ -643,7 +687,7 @@ What the card offers follows the question's state:
   its card usually needs the rest of the document, and its table of contents
   lists the question one click away. To open the document in this tab instead,
   click its name above the question; **Back** then returns to the planning
-  page with the same [pages](#pages), at the same scroll position. Either way,
+  page at the same scroll position. Either way,
   opening it leaves the document's review mode as it was.
 
 A comment filed from a card is filed in the question's own document, exactly as
@@ -656,28 +700,26 @@ includes it, and the agent answers it through the
 Any comment on a question that is still waiting on the agent is your answer to
 it: Take this leaning, Answer…, or a comment you typed on any part of the
 question in its document — its title, an option, the leaning, the Answer. The
-card then says so where Take this leaning stood: *Leaning taken* for the
-leaning you took, otherwise *Answered — waiting on the agent*. The question
-stays where it is, so you can see what you answered, and Copy answers includes
-the comment, but not Answer…: your answer is filed. It no longer counts as
-needing you: the roadmap menu's counts, the line counting the questions on
-other roadmaps and *Nothing needs you* leave it out, and its section's count
-says how many it lists are answered, as *Needs you 3 (2 answered)*. Nothing is
+question is then an answered row of *Needs you* ([above](#needs-you)), which
+says so: *Leaning taken* for the leaning you took, otherwise *Answered —
+waiting on the agent*. Copy answers includes the comment. It no longer counts
+as needing you: *Needs you*'s heading, the roadmap menu's counts and the line
+counting the questions on other roadmaps leave it out. Nothing is
 written into the document: `vantage-check index`, which reads documents and no
 comments, counts it as before.
 
 Once the agent replies, or you dismiss the comment, the question needs you
-again until its document says it is settled, and its card offers Answer…
-again. A take says what became of it, *Leaning taken — the agent replied* or
+again until its document says it is settled: its row is marked **New reply**,
+and the next layout makes it a card that offers Answer… again. A take says what became of it, *Leaning taken — the agent replied* or
 *Leaning taken — dismissed*, and is not offered again, since that would send
 the agent the same leaning twice: answer with Answer…, or, while nobody has
 replied, Undo the take and take it afresh. Review mode in the document offers
 the same, in the row at the end of the question.
 
 An answer counts from the moment the page opens, whichever roadmap's question
-it answers. Only when its document's comments take longer than a second to load
-does *Nothing needs you* wait for your next page flip or roadmap choice, so
-nothing moves under you while you read.
+it answers. One whose document's comments take longer than a second to load is
+marked *Answered elsewhere* and counted, and becomes a row at the next layout,
+so nothing moves under you while you read.
 
 When comments are filed on that question, and only on it, the card's row of
 buttons ends with their count, such as *2 comments*, which shows or hides
@@ -686,8 +728,8 @@ buttons at once. The page waits up to a second for them; comments that load
 later than that go only into the count until you open it, so the card never
 grows under you. Each is marked *waiting on the agent* until the agent answers
 it, the agent's latest reply appears beneath it once there is one, and a
-dismissed comment says so. A comment filed while the page is open, from the
-page or elsewhere, shows up on its card at once.
+dismissed comment says so. A comment filed while the page is open elsewhere
+goes into the count, and the list shows it once you open it.
 
 A Mermaid diagram in a card is drawn before the card appears. One that takes
 longer than a second draws later into a frame of fixed height, 240 px, scaled
@@ -728,10 +770,10 @@ number of comments waiting on the agent on the questions the page lists: not
 dismissed, and not yet answered, or edited or replied to since the agent's last
 answer. With none, the button is disabled.
 
-It counts and copies the comments on the questions of every
-[page](#pages), not only the ones shown, so a comment on a question two pages
-on is included, and those of every [roadmap](#several-roadmaps), so is one on
-a question only another roadmap routes. The count reads `–` until every listed document's comments have
+It counts and copies the comments on every question the page lists, whether or
+not it has a card, folded groups included, and those of every
+[roadmap](#several-roadmaps), so one on a question only another roadmap routes
+is included too. The count reads `–` until every listed document's comments have
 loaded, and the button waits until then; the count has room for four digits, so
 its arrival moves nothing. A question whose card has not been drawn in this
 visit gets the comments filed on its lines in the document, which is exact
@@ -760,13 +802,14 @@ credited to the question around it.
 
 ### Agent requests
 
-Four sections are an agent's work: *Not on a roadmap*, *Ready to build*,
-*Ready to graduate* and *Stage conflict*. Each has **Copy agent request** beside
-its heading, which copies an instruction for an agent covering every entry of
-that section, on every [page](#pages), not only the ones shown. **Copy all
-agent requests**, before Expand all on the line naming the sections, copies one
-instruction covering all four. An empty section is not shown, so it has no
-button, and with all four empty there is no Copy all agent requests.
+Five of *Maintenance*'s kinds are an agent's work: *Not on a roadmap*, *Ready
+to build*, *Ready to graduate*, *Stage conflict* and *To fold into the ledger*.
+Each has **Copy agent request** beside its heading, which copies an instruction
+for an agent covering every entry of that kind, the ones past the first 100
+too. **Copy all agent requests**, before Expand all on the line naming the
+sections, copies one instruction covering all five. An empty kind is not
+shown, so it has no button, and with all five empty there is no Copy all agent
+requests.
 
 | Section | The request asks the agent to |
 | :--- | :--- |
@@ -774,6 +817,7 @@ button, and with all four empty there is no Copy all agent requests.
 | Ready to build | build each document from its plan, then give it a stage with the `built` role. If one should not be built, it asks you before retiring it, with the stage with the `done` role you choose. It skips a document marked blocked, one *Blocked* lists too |
 | Ready to graduate | rewrite each as a reference document of the system as built, verified against the code, saying what it covers and the commit it was verified at, with the stage your other reference documents carry; then delete the design document and any plan written for it, repoint every link and citation of them, in documents, code comments and tests, and keep every question id that other documents cite resolvable |
 | Stage conflict | find whether the stage or the open questions are wrong, from the document and the code, and set a wrong stage back to one with the `open` role, or propose moving a follow-up question to a new document. It rules and answers nothing: where a question looks settled, it tells you what it found and asks you for the ruling |
+| To fold into the ledger | fold each ✅ question's ruling into the part of its document it governs, record it in the document's Decision Ledger under the same id, remove the question's directive, and repair the links to it ([`vantage-check index`](vantage-check.md#vantage-check-index)'s `compact` request) |
 
 Every request names the repository, by the absolute path of its root, and
 each entry by its path, with its question's id and title or the document's
@@ -954,8 +998,8 @@ filter keeps needs you* in place of *Nothing needs you*.
 
 A filter that keeps no entry in any section says so where the sections would
 be: *Nothing matches `zqxj`.*, with the filter in its
-[canonical text](#the-address). The section bar is left out with the
-sections, since there is no section to jump to. One line under it says why,
+[canonical text](#the-address). The line naming the sections is left out
+with them, since there is no section to jump to. One line under it says why,
 the first of these that applies:
 
 | Why | The line |
@@ -1030,8 +1074,8 @@ never says *Nothing matches*: it shows every entry.
   screen. The roadmap it names is shown, not remembered. A link with no filter
   in it clears the filter. Pasted text that holds no planning link applies as
   typed text does, and goes into the address at once.
-- **While a filtered page is on its way,** the shown page's pagers and
-  contents column do nothing, and a spinner in the box's row shows when the
+- **While a filtered page is on its way,** the shown page's contents column
+  does nothing, and a spinner in the box's row shows when the
   wait takes more than 150 ms.
 
 #### The address
@@ -1048,9 +1092,8 @@ is encoded too, so a sentence's period after a pasted address cannot take it.
   box write it at once, so an address you copy right after typing holds the
   filter on screen.
 - **Typing never adds a history entry.** Each write replaces the history entry
-  rather than adding one, as a flip does, so **Back** goes where it went before
-  you typed. A write shows every section from its first page, keeps the
-  roadmap and the rest of the address, and drops a `#` anchor.
+  rather than adding one, so **Back** goes where it went before you typed. A
+  write keeps the roadmap and the rest of the address, and drops a `#` anchor.
 - **Vantage writes an understood filter in one spelling,** its canonical text:
   a repeated term is dropped, quotes that are not needed are dropped, as in
   `"pypi"` and `path:"docs/x.md"`, and a leading `./` is written `/`, so
@@ -1062,8 +1105,7 @@ is encoded too, so a sentence's period after a pasted address cannot take it.
 - **A filter Vantage does not understand** stays in the address and the box
   exactly as written once you press Enter, or open a link that holds one, so
   you can fix it.
-- **A flip, a roadmap choice and the contents column's links keep the
-  filter,** written the same way. An address written by hand may spell it
+- **A roadmap choice and the contents column's links keep the filter,** written the same way. An address written by hand may spell it
   with `%3A` and `%2F` for `:` and `/`, and both read alike.
 - **`g p` and the sidebar's planning entry open the page with no filter,**
   whatever document you were on, and **Back** returns to the filtered page,
@@ -1073,8 +1115,8 @@ is encoded too, so a sentence's period after a pasted address cannot take it.
 
 #### Everything else under a filter
 
-- The section bar, the pagers and the [contents column](#the-contents-column)
-  follow the filtered sections.
+- The line naming the sections and the
+  [contents column](#the-contents-column) follow the filtered sections.
 - A *Blocked* row the filter keeps still names every document it waits on.
 - [Copy answers](#copy-answers) and the [agent requests](#agent-requests)
   cover only what the filter keeps, as their sections say, and with
@@ -1175,10 +1217,11 @@ and the `planning/*` rules that `check` runs over the same scan are in
 Both are keys of `[planning]`
 ([Configuration](../reference/configuration.md#planning-documents)).
 
-The planning page adds two limits of its own, which are not settings and never
-leave anything out: a page stops before its cards pass 32,768 characters of
-Markdown ([Pages](#pages)), and a card over 32,000 characters is a
-[preview card](#a-questions-card) until you ask for the whole question.
+The planning page adds limits of its own, which are not settings and never
+leave anything out: *Needs you* shows the [page size](#needs-you) you choose
+as cards, an opened folded group its first 100 entries until you ask for all,
+and a card over 32,000 characters is a [preview card](#a-questions-card) until
+you ask for the whole question.
 
 ## How it stays current
 

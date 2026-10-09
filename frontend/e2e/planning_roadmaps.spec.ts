@@ -148,9 +148,15 @@ test.describe("several roadmaps", () => {
     await expect(page.getByTestId("other-roadmaps")).toHaveText(
       "3 more questions need you on other roadmaps.",
     );
-    await cardsIn(page, "Not on a roadmap").toEqual([
-      "OQ-G1: Is anyone tracking gamma?",
-    ]);
+    // Under Maintenance, folded until opened (planning-to-do-list.md §3.4).
+    await page
+      .getByRole("button", { name: /^Maintenance/, expanded: false })
+      .click();
+    await expect(
+      page
+        .getByRole("region", { name: /^Not on a roadmap/ })
+        .getByRole("listitem", { name: "OQ-G1: Is anyone tracking gamma?" }),
+    ).toBeVisible();
     // The address says which roadmap is shown, written in place.
     await expect.poll(() => roadmapParam(page)).toBe("roadmap.md");
     const entries = await page.evaluate(() => history.length);
@@ -603,13 +609,12 @@ test.describe("several roadmaps", () => {
       await fileOnTitle("designs/alpha.md", "OQ-A1");
       await fileOnTitle("designs/beta.md", "OQ-B1");
       await page.goto(`/.vantage/planning?roadmap=roadmap.md`);
-      const a1 = page.getByRole("article", { name: /^OQ-A1:/ });
+      // An answered row of Needs you, first (planning-to-do-list.md §3.3).
+      const a1 = page.getByRole("group", { name: /^OQ-A1:/ });
       await expect(
-        a1.getByText("Answered — waiting on the agent"),
+        a1.getByText("Answered — waiting on the agent", { exact: true }),
       ).toBeVisible();
-      // Still listed where it was.
       await cardsIn(page, "Needs you").toEqual([
-        "OQ-A1: Which way does alpha go?",
         "OQ-A2: How soon does alpha ship?",
       ]);
       // Both comments came with the sections, so both roadmaps' counts drop.
@@ -639,8 +644,8 @@ test.describe("several roadmaps", () => {
       await picker(page).selectOption(NESTED);
       await expect(
         page
-          .getByRole("article", { name: /^OQ-B1:/ })
-          .getByText("Answered — waiting on the agent"),
+          .getByRole("group", { name: /^OQ-B1:/ })
+          .getByText("Answered — waiting on the agent", { exact: true }),
       ).toBeVisible();
       await expect(picker(page).locator("option")).toHaveText([
         "roadmap.md (1 needs you)",
@@ -684,8 +689,9 @@ test.describe("several roadmaps", () => {
         await expect(page.getByTestId("other-roadmaps")).toHaveText(
           "No more questions need you on other roadmaps.",
         );
-        await expect(page.getByTestId("nothing-needs-you")).toContainText(
-          "Every open question has your answer, waiting on the agent.",
+        // Needs you's last line says so, under its answered rows.
+        await expect(page.getByTestId("needs-you-end")).toHaveText(
+          "Nothing needs you",
         );
       } finally {
         for (const doc of new Set(all.map(([doc]) => doc))) await clear(doc);
