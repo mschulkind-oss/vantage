@@ -1,6 +1,6 @@
 /**
  * Copy answers + maintenance's button and panel
- * (`docs/design/planning-to-do-list.md` §5.1): when the panel opens and
+ * (`docs/reference/planning-index.md` §6.7): when the panel opens and
  * closes, what it says, the checkboxes remembered in this browser, the
  * button's count, and when it is greyed out.
  */

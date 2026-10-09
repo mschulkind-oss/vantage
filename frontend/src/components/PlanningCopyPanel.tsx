@@ -1,5 +1,5 @@
 /**
- * Copy answers + maintenance (`docs/design/planning-to-do-list.md` §5.1): the
+ * Copy answers + maintenance (`docs/reference/planning-index.md` §6.7): the
  * planning page header's second copy button, beside Copy answers, and its
  * panel, which says what it copies and which kinds of *Maintenance* it adds.
  *
@@ -49,7 +49,7 @@ const COPIED_MS = 2000;
 /** The button's label, and the name its ▾ and panel go by. */
 export const COPY_MAINTENANCE_LABEL = "Copy answers + maintenance";
 
-/** The panel's sentence (§5.1). */
+/** The panel's sentence (§6.7). */
 export const COPY_PANEL_SENTENCE =
   "Your answers, the same as Copy answers, plus the maintenance this page found for the agent.";
 
@@ -243,7 +243,7 @@ export const PlanningCopyPanel: React.FC<{
             text: shown,
             testId: "copy-maintenance-count",
             // Left-aligned: its digits change with the filter and late
-            // data (§4.2), and a count that grows to the right moves no
+            // data (§6.4), and a count that grows to the right moves no
             // text that is already painted.
             className:
               "inline-block text-left tabular-nums text-slate-500 dark:text-slate-400",

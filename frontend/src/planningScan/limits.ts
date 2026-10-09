@@ -60,7 +60,7 @@ export interface PlanningLimits {
 
   /**
    * The page sizes the reader can choose for *Needs you*: how many questions
-   * that need you it shows as full cards (`planning-to-do-list.md` §3.3).
+   * that need you it shows as full cards (`planning-index.md` §6.4).
    */
   pageSizes: readonly number[];
   /** The page size before the reader has chosen one. */
@@ -72,7 +72,7 @@ export interface PlanningLimits {
   /**
    * Questions past the page size whose blocks a layout fetches too, so that a
    * card answering into a row is followed by a full card joining at the end.
-   * The design names no number, so this one is coined here.
+   * No ruling names a number, so this one is coined here.
    */
   cardsAhead: number;
   /** How long the page inputs may take before a spinner shows, in ms. */

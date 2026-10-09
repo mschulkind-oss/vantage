@@ -105,7 +105,7 @@ export const CommentBoxFoot: React.FC<{
 
 /**
  * What a box whose comment was deleted offers for its text
- * (`docs/design/planning-to-do-list.md` §6.2): **Copy text**, and **Post as a
+ * (`docs/reference/comment-autosave.md` §4.3): **Copy text**, and **Post as a
  * new comment**, which files it anew and goes on saving it there.
  */
 export const GoneActions: React.FC<{ box: CommentBox }> = ({ box }) => {

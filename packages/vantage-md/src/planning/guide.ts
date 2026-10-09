@@ -201,8 +201,8 @@ export function agentSectionCount(
 
 /**
  * Every agent request an agent can be handed: the four agent sections, then
- * `compact`. `compact` is a request, not a section (§5.2 of
- * `docs/design/planning-to-do-list.md`): it has no entry in the index's
+ * `compact`. `compact` is a request, not a section
+ * (`docs/reference/planning-index.md` §6.2): it has no entry in the index's
  * sections, JSON or text, so it is not in `PLANNING_AGENT_SECTION_IDS`, which
  * every section consumer reads. It lists the ✅ questions an agent folds into
  * their ledgers.

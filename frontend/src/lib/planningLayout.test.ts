@@ -1,5 +1,5 @@
 /**
- * The movement rule's pure half (`docs/design/planning-to-do-list.md` §4):
+ * The movement rule's pure half (`docs/reference/planning-index.md` §6.4):
  * *Needs you* laid out, what the reader changes in place, the marks late
  * data puts on items, and the held updates Refresh would apply.
  */
@@ -84,7 +84,7 @@ const qKey = (index: PlanningIndex, id: string): string =>
 const ids = (entries: readonly { question: PlanningQuestion }[]) =>
   entries.map((e) => e.question.id);
 
-describe("Needs you, laid out (§3.3)", () => {
+describe("Needs you, laid out (§6.4)", () => {
   const index = indexOf(treeOf(), { stages: STAGES });
   const layout = layoutOf(index);
 
@@ -126,7 +126,7 @@ describe("Needs you, laid out (§3.3)", () => {
   });
 });
 
-describe("in place (§4.1)", () => {
+describe("in place (§6.4)", () => {
   const index = indexOf(treeOf(), { stages: STAGES });
   const needsYou = layoutNeedsYou(layoutOf(index).needsYou, new Set(), 2);
 
@@ -191,7 +191,7 @@ describe("in place (§4.1)", () => {
   });
 });
 
-describe("marks (§4.2)", () => {
+describe("marks (§6.4)", () => {
   const index = indexOf(treeOf(), { stages: STAGES });
   const painted = index.documents.flatMap((d) => d.questions)[0]!;
   const facts = (over: Partial<QuestionFacts>): QuestionFacts => ({
@@ -256,7 +256,7 @@ describe("marks (§4.2)", () => {
   });
 });
 
-describe("held updates (§4.3)", () => {
+describe("held updates (§6.4)", () => {
   const before = indexOf(treeOf(), { stages: STAGES });
   const layout = layoutOf(before);
 
@@ -442,7 +442,7 @@ describe("held updates (§4.3)", () => {
   });
 });
 
-describe("an answered row's chip (§3.3)", () => {
+describe("an answered row's chip (§6.4)", () => {
   const comment = (over: Partial<ReviewComment>): ReviewComment =>
     ({
       id: "c1",
@@ -488,7 +488,7 @@ describe("an answered row's chip (§3.3)", () => {
   });
 });
 
-describe("the filter line's items (§3.2)", () => {
+describe("the filter line's items (§6.18)", () => {
   const STAGED = {
     DESIGN: "open" as const,
     DECIDED: "ready" as const,

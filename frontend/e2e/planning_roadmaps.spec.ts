@@ -148,7 +148,7 @@ test.describe("several roadmaps", () => {
     await expect(page.getByTestId("other-roadmaps")).toHaveText(
       "3 more questions need you on other roadmaps.",
     );
-    // Under Maintenance, folded until opened (planning-to-do-list.md §3.4).
+    // Under Maintenance, folded until opened (planning-index.md §6.2).
     await page
       .getByRole("button", { name: /^Maintenance/, expanded: false })
       .click();
@@ -203,7 +203,7 @@ test.describe("several roadmaps", () => {
     await expect(empty).toContainText(
       `1 question it keeps is on another roadmap: ${NESTED} (1). The filter stays when you choose that roadmap.`,
     );
-    // No notice says it again (planning-to-do-list.md §3.2).
+    // No notice says it again (planning-index.md §6.18).
     await expect(page.getByTestId("filter-notice")).toHaveCount(0);
     await expect(empty.getByRole("button")).toHaveText([
       `Choose ${NESTED}`,
@@ -358,7 +358,7 @@ test.describe("several roadmaps", () => {
   });
 
   // Where the column is not drawn, the picker is on Needs you's heading
-  // line, the list the roadmap orders (planning-to-do-list.md §3.5).
+  // line, the list the roadmap orders (planning-index.md §6.8).
   test("puts the picker on Needs you's heading line where the column is not drawn", async ({
     page,
   }) => {
@@ -633,7 +633,7 @@ test.describe("several roadmaps", () => {
       await fileOnTitle("designs/alpha.md", "OQ-A1");
       await fileOnTitle("designs/beta.md", "OQ-B1");
       await page.goto(`/.vantage/planning?roadmap=roadmap.md`);
-      // An answered row of Needs you, first (planning-to-do-list.md §3.3).
+      // An answered row of Needs you, first (planning-index.md §6.4).
       const a1 = page.getByRole("group", { name: /^OQ-A1:/ });
       await expect(
         a1.getByText("Answered — waiting on the agent", { exact: true }),

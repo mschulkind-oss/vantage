@@ -94,7 +94,7 @@ function serve(
   return asked;
 }
 
-/** The layout at `size` cards a page (planning-to-do-list.md §3.3). */
+/** The layout at `size` cards a page (planning-index.md §6.4). */
 const layoutOf = (
   ready: Extract<PlanningLoad, { status: "ready" }>,
   size = 10,

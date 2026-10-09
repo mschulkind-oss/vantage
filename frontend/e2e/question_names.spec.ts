@@ -130,7 +130,7 @@ test.describe("question and fallback directives", () => {
     await page.goto("/.vantage/planning");
     const card = (title: string) => page.getByRole("article", { name: title });
     // A blocked question is a row of the folded Blocked group, never a card
-    // (docs/design/planning-to-do-list.md §3.4).
+    // (docs/reference/planning-index.md §6.2).
     await page
       .getByRole("button", { name: /^Blocked/, expanded: false })
       .click();
@@ -277,7 +277,7 @@ test.describe("question and fallback directives", () => {
     const rowOf = (id: string) =>
       page.getByRole("group", { name: new RegExp(`^${id}:`) });
     // Answered, it is a row of Needs you with its card's chip
-    // (docs/design/planning-to-do-list.md §3.3); Show opens its card.
+    // (docs/reference/planning-index.md §6.4); Show opens its card.
     await expect(rowOf("OQ-4").getByText(ANSWERED, { exact: true })).toBeVisible();
     await rowOf("OQ-4").getByRole("button", { name: /^Show/ }).click();
     await expect(card("OQ-4").getByText(ANSWERED)).toBeVisible();
@@ -382,7 +382,7 @@ test.describe("a question written as paragraphs", () => {
     const card = (id: string) =>
       page.getByRole("article", { name: new RegExp(`^${id}:`) });
     // Answered, it is a row of Needs you, with its card's chip
-    // (docs/design/planning-to-do-list.md §3.3); Show opens the card.
+    // (docs/reference/planning-index.md §6.4); Show opens the card.
     const row = page.getByRole("group", { name: /^OQ-P1:/ });
     await expect(row.getByText(ANSWERED, { exact: true })).toBeVisible();
     await row.getByRole("button", { name: /^Show/ }).click();

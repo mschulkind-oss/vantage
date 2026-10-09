@@ -19,7 +19,7 @@ import { serveFixture } from "./ownServer";
 // aside.md's long OQ-A1, in a list, and OQ-A2, a paragraph outside one, which
 // is one block the card cuts short itself. The page opens at twenty cards a
 // page, so every question is a card; at ten, those past OQ-F10 are not
-// (docs/design/planning-to-do-list.md §3.3).
+// (docs/reference/planning-index.md §6.4).
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const EXPANDED = "vantage:planningCardsExpanded";
@@ -480,7 +480,7 @@ test.describe("a question card's fold", () => {
     await open(page, 900, 10);
     const toggle = page.getByRole("button", { name: "Expand all" });
     // With the header's view toggles, after full width, on their line
-    // (planning-to-do-list.md §3.1).
+    // (planning-index.md §6.3).
     const width = (await page
       .getByRole("button", { name: "Use full width" })
       .boundingBox())!;

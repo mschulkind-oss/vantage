@@ -3,7 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { serveFixture } from "./ownServer";
 
-// Comment autosave (docs/design/planning-to-do-list.md §6, done-when 6), in
+// Comment autosave (docs/reference/comment-autosave.md, done-when 6), in
 // a real browser against the real server: a comment box saves as it is typed
 // in, every way of leaving it keeps the text, and a save that fails says so
 // and lands once the server answers again. The fixture is

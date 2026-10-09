@@ -1,5 +1,5 @@
 /**
- * Comment autosave (`docs/design/planning-to-do-list.md` §6): every comment
+ * Comment autosave (`docs/reference/comment-autosave.md`): every comment
  * box in the app saves as the reviewer types, has no Save and no Cancel, and
  * keeps its text through every way of leaving it.
  *
@@ -128,7 +128,7 @@ export function isGone(e: unknown): boolean {
 /**
  * One comment box's save controller: one writer, one request in flight at a
  * time, the newest text in each request, and an edit never before the create
- * it edits has landed (`planning-to-do-list.md` §6.2).
+ * it edits has landed (`comment-autosave.md` §1.2).
  */
 export class CommentBox {
   readonly subject: BoxSubject;
@@ -582,7 +582,7 @@ export function retargetBoxes(base: string, from: string, to: string): void {
 /**
  * `comments` with the text typed in this tab's boxes in place of what is
  * saved, for the document at `path` in `base`: Copy answers copies the text as
- * last typed in the tab that holds the box (`planning-to-do-list.md` §6.3),
+ * last typed in the tab that holds the box (`comment-autosave.md` §7),
  * not the text the last save carried. A box whose comment or reply is not
  * created yet adds it; an empty box changes nothing, since empty text is never
  * saved.

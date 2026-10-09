@@ -231,7 +231,7 @@ type CommentAnchor struct {
 //
 // ID and EditedAt belong to a reviewer's reply. ID is chosen by the browser
 // that wrote the reply, so the comment box that wrote it can go on editing it
-// in place as the reviewer types (docs/design/planning-to-do-list.md §6.2);
+// in place as the reviewer types (docs/reference/comment-autosave.md §5);
 // replies written before that carry none, and agent reactions never do.
 // EditedAt is when the reviewer last reworded the reply, which, like a
 // comment's own EditedAt, puts the thread back in the agent's queue when it is

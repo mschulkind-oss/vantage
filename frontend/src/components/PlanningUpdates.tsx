@@ -1,6 +1,6 @@
 /**
- * The planning page header's updates slot (`docs/design/planning-to-do-list.md`
- * §3.1, §4.3): *N updates · Refresh* while the page holds late data back
+ * The planning page header's updates slot (`docs/reference/planning-index.md`
+ * §6.3, §6.4): *N updates · Refresh* while the page holds late data back
  * from its layout, and nothing otherwise.
  *
  * Its room is kept from the first paint, as Copy answers' count is: the

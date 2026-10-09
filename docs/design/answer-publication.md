@@ -123,8 +123,8 @@ an unknown result, never a successful verification.
 An answered marker is an intermediate state, not completed compaction. On the
 planning page a ✅ question leaves *Needs you* and is listed as agent-owned
 compaction under *Maintenance* instead, as
-[`planning-to-do-list.md` §3.4](planning-to-do-list.md#34-the-folded-groups)
-rules; it is never another ruling owed by the user.
+[`planning-index.md` §6.2](../reference/planning-index.md#62-sections-top-to-bottom)
+says ([OQ-TD4](../reference/planning-index.md#why-its-this-way)); it is never another ruling owed by the user.
 This proposal does not change the standalone index's inclusion of answered
 questions or dependencies that already recognize retained decision IDs.
 

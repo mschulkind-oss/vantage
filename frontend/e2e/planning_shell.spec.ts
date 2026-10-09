@@ -1,7 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 
 // The planning page in the app shell, with the planning outline, On this
-// page, in its contents column (docs/design/planning-to-do-list.md §3.5), in
+// page, in its contents column (docs/reference/planning-index.md §6.9), in
 // a real browser.
 // The fixture is test_repo's plans/, as planning_page.spec.ts reads it: Needs
 // you holds design.md's two questions and paged.md's twelve, ten to a page,
@@ -67,7 +67,7 @@ test.describe("the planning page in the app shell", () => {
   }) => {
     await openWithOutline(page);
     // Only the full cards' documents, then the lines; Maintenance's items
-    // are not listed (planning-to-do-list.md §3.5).
+    // are not listed (planning-index.md §6.9).
     await expect(outline(page)).toContainText("On this page");
     await expect(outlineDocument(page, "plans/shipped.md")).toHaveCount(0);
     // A folded group: it opens, and its heading comes into view with the

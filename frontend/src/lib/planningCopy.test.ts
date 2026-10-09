@@ -1,6 +1,6 @@
 /**
- * Copy answers + maintenance's rules (`docs/design/planning-to-do-list.md`
- * §5.1): the kinds left out, the total, when it is greyed out, and its text.
+ * Copy answers + maintenance's rules (`docs/reference/planning-index.md`
+ * §6.7): the kinds left out, the total, when it is greyed out, and its text.
  */
 import { describe, expect, it } from "vitest";
 import {
