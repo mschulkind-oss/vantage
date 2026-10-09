@@ -1,15 +1,15 @@
 ---
 title: "The planning page is a to-do list"
-status: in-review
-stage: DESIGN
-next: "Rule OQ-TD13, then measure the page-size cost before building"
+status: accepted
+stage: DECIDED
+next: "Write the implementation plan from the sketch, then build in the order of §12"
 ---
 
 # The planning page is a to-do list
 
-**Status:** 2026-10-09. Nothing built. Shaped in conversation with the user on
-2026-10-08, whose rulings are in the [Decision Ledger](#decision-ledger).
-Evidence verified at `e4f046c0`.
+**Status:** 2026-10-09. Every ruling is in; nothing is built. Shaped in
+conversation with the user on 2026-10-08 and 2026-10-09, whose rulings are in
+the [Decision Ledger](#decision-ledger). Evidence verified at `e4f046c0`.
 
 > **In short.** The planning page should show what needs you, in roadmap
 > order, and answer it in place; everything else is a count until you ask for
@@ -33,10 +33,10 @@ comment safe to repeat and to let a reply be edited.
 **Start at [§4](#4-what-moves-and-who-moves-it)**, the rule about movement;
 the layout in [§3](#3-the-page-top-to-bottom) follows from it.
 
-**Needs your ruling:** [OQ-TD13](#OQ-TD13).
+**Needs your ruling:** None.
 
 **Reads with:** [`planning-to-do-list-plan.md`](planning-to-do-list-plan.md)
-(the implementation sketch, incomplete while questions are open),
+(the implementation sketch, to be completed into the plan),
 [`planning-index.md`](../reference/planning-index.md) (the page as built today),
 [`answer-publication.md`](answer-publication.md) (what an agent's reply means,
 which decides where a replied question lands).
@@ -144,11 +144,12 @@ What changes is the slot beside them:
   the slot says *Not applied: Enter says why*, as it does today.
 - **At a narrow width** the counts give way to *379 hidden*, the part you can
   act on.
-- **Pressing *379 hidden* clears the filter as a new history entry**
-  ([OQ-TD6](#decision-ledger)), so Back brings the filter back. Typing still
-  replaces the entry, so a filter typed after clearing replaces the cleared
-  page, and Back from it returns to the filter before. Whether ✕ does the
-  same is [OQ-TD13](#OQ-TD13).
+- **Clearing the filter adds a history entry,** whether by pressing *379
+  hidden* ([OQ-TD6](#decision-ledger)) or ✕ ([OQ-TD13](#decision-ledger)), so
+  Back brings the filter back. ✕ replaced the entry until now, which is why
+  Esc never clears; Esc still never clears. Typing still replaces the entry,
+  so a filter typed after clearing replaces the cleared page, and Back from it
+  returns to the filter before.
 - **The notice line under the filter line stays only for what the counts
   cannot say:** *Not filtered: this Vantage cannot read …* after Enter on a
   text the page cannot read, and *Nothing matches* with its reason. The line
@@ -601,7 +602,7 @@ old link is honored ([OQ-TD11](#decision-ledger)).
    is saved once the server is back.
 7. Hovering Copy answers + maintenance opens its panel; unchecking every kind
    greys it out; the ▾ still opens the panel; a reload keeps the checkboxes.
-8. Pressing *379 hidden* clears the filter, and Back brings it back.
+8. Pressing *379 hidden*, or ✕, clears the filter, and Back brings it back.
 9. `vantage-check index --format json` prints what it prints at `e4f046c0`
    for the same tree.
 
@@ -615,28 +616,6 @@ old link is honored ([OQ-TD11](#decision-ledger)).
 4. **The folded groups and the `compact` request.**
 5. **The header and the copy panel**, then the filter line's counts, then the
    contents column and the section bar's removal.
-
-## Open Questions
-
-1. 💬 **OQ-TD13: Does ✕ add a history entry when it clears the filter, as *hidden* does?**
-
-   *379 hidden* clears the filter as a new history entry, so Back brings it
-   back ([§3.2](#32-the-filter-line)). ✕ clears it as a replace today, which is
-   why Esc never clears.
-
-   - **A — Yes, both clears add an entry.** One rule for clearing; Back undoes
-     a ✕ pressed by mistake.
-   - **B — No, only *hidden* does.** ✕ stays as built; two ways of clearing
-     behave differently.
-
-   <!-- vantage: question id=OQ-TD13 leaning="A — both clears add a history entry, so Back undoes either one." -->
-
-   _Leaning:_ A. Clearing is one act whichever control does it, and Back
-   undoing a mistaken ✕ is the reason Esc does not clear today.
-
-   **Answer:**
-
-   > _(empty — fill in when decided)_
 
 ## Decision Ledger
 
@@ -654,3 +633,4 @@ old link is honored ([OQ-TD11](#decision-ledger)).
 | OQ-TD10 | Late changes never change an item's height; they mark it, a reply with visual weight, and Refresh in the header applies them, rather than a dismiss. Comments save as you type, with a *Saved* indicator and a Close button, no Save and no Cancel, and no draft state: Copy answers copies what is saved | 2026-10-08 | [§4](#4-what-moves-and-who-moves-it), [§6](#6-comment-autosave) | — |
 | OQ-TD11 | Old links do not matter: page parameters are dropped | 2026-10-08 | [§7](#7-dropping-pages) | — |
 | OQ-TD12 | The page and the checker counting *Needs you* differently is acceptable: they are views of the same data at different times, and converge | 2026-10-08 | [§8](#8-non-goals) | — |
+| OQ-TD13 | ✕ adds a history entry when it clears the filter, as *hidden* does, so Back undoes either; Esc still never clears | 2026-10-09 | [§3.2](#32-the-filter-line) | — |
