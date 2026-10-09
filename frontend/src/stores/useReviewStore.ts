@@ -358,7 +358,7 @@ export function reviewTarget(path: string): ReviewTarget | null {
 
 /**
  * One request of a comment box's, against `target` rather than the document
- * on screen (`docs/design/planning-to-do-list.md` §6). It rejects on failure,
+ * on screen (`docs/reference/comment-autosave.md`). It rejects on failure,
  * so the box keeps its text and retries, and changes nothing here then: no
  * banner, and no resync, since nothing was put on screen before the server
  * said so. On success the review the server answered with is adopted, as
@@ -477,8 +477,8 @@ export function saveReplyText(
 
 /**
  * The comments of the document at `path` as this tab's comment boxes have
- * them typed, which is what Copy answers copies here (§6.3 of
- * `planning-to-do-list.md`). `comments` unchanged when `path` is null.
+ * them typed, which is what Copy answers copies here (§7 of
+ * `docs/reference/comment-autosave.md`). `comments` unchanged when `path` is null.
  */
 export function typedComments(
   path: string | null,

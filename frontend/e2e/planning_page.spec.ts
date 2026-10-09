@@ -6,8 +6,7 @@ import { drawnIn, sameBox } from "./drawnIn";
 import { planningIndexReady } from "./planningIndex";
 
 // The planning page in a real browser, against the real planning endpoint and
-// the real review store (docs/reference/planning-index.md §6, and
-// docs/design/planning-to-do-list.md). The fixture is
+// the real review store (docs/reference/planning-index.md §6). The fixture is
 // `fixtures/test_repo/plans/`, whose roadmap `.vantage.toml` names: it routes
 // design.md's two questions and paged.md's twelve, so Needs you holds more
 // than the ten cards it shows, and not unrouted.md's one, or oversized.md's,
@@ -200,7 +199,7 @@ test.describe("the planning page", () => {
       .getByRole("button", { name: "Take this leaning" })
       .click();
     // Answered here, the card is a row where it stood
-    // (planning-to-do-list.md §4.1).
+    // (planning-index.md §6.4).
     const answered = row(page, LAST);
     await expect(answered.getByText("Leaning taken")).toBeVisible();
     await expect(page.getByTestId("pending-answers")).toHaveText("1");
@@ -430,7 +429,7 @@ test.describe("the planning page", () => {
     await expect.poll(() => paneTop(page)).toBe(200);
   });
 
-  // planning-to-do-list.md §11, items 1 to 3 and 5: answering moves only
+  // planning-index.md §6.4 and §12.2: answering moves only
   // what was answered, and an agent's reply arriving marks its row and moves
   // nothing, until Refresh.
   test("shrinks an answered card to a row in place, marks a late reply, and lays it out on Refresh, moving nothing painted", async ({
@@ -555,7 +554,7 @@ test.describe("the planning page", () => {
     await expect(copy).toHaveText("Copy agent request", { timeout: 4000 });
 
     // Copy answers + maintenance, with every kind checked, copies every
-    // request (planning-to-do-list.md §5).
+    // request (planning-index.md §6.7).
     await page
       .getByRole("button", {
         name: "Choose what Copy answers + maintenance copies",
@@ -592,7 +591,7 @@ test.describe("the planning page", () => {
   }) => {
     await context.grantPermissions(["clipboard-read", "clipboard-write"]);
     // Wide enough for the header's labels beside the sidebar, now that it
-    // holds Copy answers + maintenance too (planning-to-do-list.md §3.1).
+    // holds Copy answers + maintenance too (planning-index.md §6.3).
     await page.setViewportSize({ width: 1440, height: 720 });
     await page.goto("/.vantage/planning");
     // An answer waiting on the agent, so Copy answers has one to copy.
@@ -640,7 +639,7 @@ test.describe("the planning page", () => {
     }
   });
 
-  // planning-to-do-list.md §5.1 and §11, item 7: the panel opens on hover
+  // planning-index.md §6.7: the panel opens on hover
   // after a rest and from its ▾, its checkboxes are remembered, and none of
   // it moves anything painted.
   test("opens Copy answers + maintenance's panel on hover and from its ▾, remembers its checkboxes, and moves nothing painted", async ({

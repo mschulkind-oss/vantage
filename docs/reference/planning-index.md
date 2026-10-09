@@ -2,8 +2,8 @@
 title: "The planning index — planning facts written once, and shown wherever they are linked"
 status: accepted
 stage: CURRENT
-verified: 2026-10-06
-verified_commit: 3fbfaa4
+verified: 2026-10-09
+verified_commit: cf28344a
 covers:
   - packages/vantage-md/src/planning/
   - internal/planning/
@@ -45,7 +45,8 @@ summary: "Vantage reads a repository's planning documents as a set — frontmatt
 
 # The planning index — planning facts written once, and shown wherever they are linked
 
-**Status:** Verified 2026-10-06 against `3fbfaa4`. The planning filter's design
+**Status:** Verified 2026-10-09 against `cf28344a`, as the rest of this line
+says, part by part. The planning filter's design
 graduated into this document from `b759024`: the filter's principles, terms and
 sections ([§1.4](#14-principles-of-the-planning-filter),
 [§6.11](#611-the-planning-filter) to [§6.19](#619-across-releases),
@@ -70,8 +71,7 @@ Of the perimeter's other commits since, `06e8797`, `ffb1676`, `6b62ed1`, `db5c01
 `519cd66` were read against it at graduation and change none of its claims; the
 amendments were not read again.
 The planning page as a to-do list graduated into this document on 2026-10-09 from
-[`planning-to-do-list.md`](../design/planning-to-do-list.md), written from
-`9a27a9fa`'s code: its sections and groups
+its design, whose text is in git, written from `9a27a9fa`'s code: its sections and groups
 ([§6.2](#62-sections-top-to-bottom)), the frame and header
 ([§6.3](#63-the-frame-and-the-header)), *Needs you*, layouts and Refresh, in
 place of pages ([§6.4](#64-needs-you-as-a-to-do-list)), Copy answers +
@@ -80,7 +80,15 @@ maintenance ([§6.7](#67-answering-and-copy-answers)), the picker's place
 ([§6.9](#69-the-planning-outline)), the filter line's counts
 ([§6.17](#617-the-filter-line), [§6.18](#618-the-filters-counts-the-notice-and-nothing-matches)),
 [§12](#12-late-data-never-moves-painted-content)'s late data, and the `OQ-TD` rows of [Why it's this way](#why-its-this-way).
-The design stays beside it until the user retires it.
+Those passages were then checked again against `cf28344a`'s code, when the design and
+its plan were retired: `323e9be7`'s fixes were written in (the reader's own rows,
+the panel's focus, a clear inside the idle pause, the copy button greyed out while
+quotes load), with the folded groups' *Done* rows, the non-goals and limits that pages
+had left stale, and the page-size runs of [§18](#18-scale-targets-and-what-has-been-measured).
+The design's comment autosave is in [`comment-autosave.md`](comment-autosave.md).
+Of the perimeter's other commits since `3fbfaa4`, those that changed what this
+document describes amended it themselves, and `80ec9eb7` and `191dbdfe` change none
+of its claims.
 **MEASURED at scale on 2026-10-01**, against `46c4091`'s code: every scale target
 in [§18](#18-scale-targets-and-what-has-been-measured) has been run against the
 build, or is held by a test. The scale fixture meets every target but D6 as the
@@ -92,7 +100,8 @@ in [its own piece of work](../design/planning-index-measurement.md).
 load average of 4, which rose to about 18 midway, so the verdict is a weak one
 ([§18](#18-scale-targets-and-what-has-been-measured)). UNMEASURED: T1 to T4 since
 the two rulings of 2026-10-06 and `b5a0860`'s fixes, on a machine that stays quiet
-through a batch, at 20,000 questions, and while the index builds; D6's long tasks
+through a batch, at 20,000 questions, at each page size of *Needs you*, and while
+the index builds; D6's long tasks
 on a cold filtered load; what a 0.8.x viewer does with a planning link, which is
 read from its code and not run; and the filter line with assistive technology and
 with an input method composing.
@@ -258,8 +267,8 @@ the code, and each is the first thing to check when changing the area it names.
   thing remembered is the roadmap a reader picked ([§6.8](#68-several-roadmaps-on-the-page)).
 - **The page and `vantage-check` derive from the same functions** (P7), so the
   page, `index` and the planning rules cannot disagree.
-- **Two layouts of one index with the same roadmap, filter and pages show the same
-  entries.** The applied filter's canonical text is part of every identity a page
+- **Two layouts of one index with the same roadmap, filter and page size show the
+  same entries.** The applied filter's canonical text is part of every identity a page
   has: the cache of derived sections, the layout, the page-inputs key, the
   prefetches and the frame's own sections ([§6.16](#616-typing-and-the-url)). Miss
   one and two filters share a set.
@@ -865,7 +874,7 @@ maintenance** ([§6.3](#63-the-frame-and-the-header)).
 what each section of the index holds, and `guide.ts` beside it holds the *section
 guide*: each section's title, the line that explains it, and its actor. The page
 arranges those sections as a to-do list
-([`planning-to-do-list.md`](../design/planning-to-do-list.md), [OQ-TD1](#why-its-this-way)):
+([OQ-TD1](#why-its-this-way)):
 *Needs you* first, then two folded groups, *Blocked* and *Maintenance*, which hold
 everything else (`layoutPlanningPage` in `frontend/src/lib/planningPages.ts`).
 
@@ -882,7 +891,9 @@ everything else (`layoutPlanningPage` in `frontend/src/lib/planningPages.ts`).
 *Maintenance* holds one more kind that is not a section of the index: **To fold
 into the ledger** (`compact`), the ✅ questions, listed by `answeredQuestions`, the
 same function the `compact` request reads (P7). The index's sections, and their
-JSON, keep their meaning (P5 of the design): `sections.needs-you` still holds ✅
+JSON, keep their meaning, as P0 of
+[`checker-version-skew.md`](../design/checker-version-skew.md#1-verdict-and-the-principles)
+requires: `sections.needs-you` still holds ✅
 questions in `vantage-check index --format json`, and the page and the checker
 count *Needs you* differently, as two views of the same data at different times
 ([OQ-TD12](#why-its-this-way)). *Maintenance*'s kinds, in its order:
@@ -944,7 +955,7 @@ count *Needs you* differently, as two views of the same data at different times
   of several kinds at once, after the answers. Both build the request in the
   browser when pressed, from the data in hand under the layout's roadmap and
   filter, the same data the kinds' live counts read
-  ([§4.2 of the design](../design/planning-to-do-list.md#42-what-arrives-late)), so
+  ([§6.4](#64-needs-you-as-a-to-do-list)), so
   a request copies what its count says, offline and with nothing selected; print
   hides them. Their label reads *Copied* for two seconds in room kept for the
   longer label, so nothing moves. The request names the repository by the root
@@ -998,7 +1009,10 @@ count *Needs you* differently, as two views of the same data at different times
   3 not on a roadmap · 4 ready to build*, on one line that never wraps. Opened, a
   group lists one row per item, never a card — a question by its document, id and
   title, a document by its path and badge, each a link — the first 100 of each
-  list and then *Show all N*. A *Blocked* document row names what it waits on, and
+  list and then *Show all N*. The rows are the layout's: a row whose item has gone
+  from the data in hand since is marked *Done* and stays, and one that came after
+  the layout is counted, not listed, until the next layout
+  ([§6.4](#64-needs-you-as-a-to-do-list)). A *Blocked* document row names what it waits on, and
   under a filter adds *(which this filter leaves out)* after each target the
   filter does not keep ([§6.18](#618-the-filters-counts-the-notice-and-nothing-matches)). A
   question listed in a group is answered from its document.
@@ -1050,7 +1064,7 @@ and it commits inside the transition at once.
   needs you*, no roadmap, a listed roadmap not read, no stages, refused). The
   [filter line](#617-the-filter-line) stands above all of it, outside the frame,
   since the frame is not drawn in the error and refused states.
-- **There is no section bar** ([§3.5 of the design](../design/planning-to-do-list.md#35-the-contents-column)).
+- **There is no section bar.**
   With the groups folded, the page's top is the filter line, *Needs you*'s heading
   and its first card, so a line naming the sections had nothing left to jump to. A
   link to a section's `#id`, or to a card's or a row's, still scrolls there once
@@ -1073,7 +1087,7 @@ and it commits inside the transition at once.
 three parts (`frontend/src/components/PlanningNeedsYou.tsx`,
 `frontend/src/lib/planningLayout.ts`):
 
-1. **Answered rows.** An *answered row* *(a term the design coined)* is a question
+1. **Answered rows.** An *answered row* *(coined by the to-do list design, 2026-10-08)* is a question
    answered by a comment ([§6.7](#67-answering-and-copy-answers)), still waiting
    on the agent, drawn as one line: its marker, id and title, the chip its card
    would show (*Answered — waiting on the agent*, or *Leaning taken* with its
@@ -1081,7 +1095,7 @@ three parts (`frontend/src/components/PlanningNeedsYou.tsx`,
    in roadmap order. The first 5 show, then *… N more answered · Show* opens the
    rest in place; the 5 is fixed ([OQ-TD9](#why-its-this-way)).
 2. **Full cards.** The first *N* questions that need you, as cards, *N* the *page
-   size* *(the design's term)*: 10, 20, 30 or 50, default 10, remembered in this
+   size* *(coined by the same design)*: 10, 20, 30 or 50, default 10, remembered in this
    browser (`vantage:planningPageSize`) and read again at each layout
    ([OQ-TD8](#why-its-this-way)). There is no character budget: the full cards of
    one layout paint in one commit, whatever the page size.
@@ -1101,7 +1115,7 @@ about which questions the reader has seen.
 Page parameters in an address, such as `needs-you=3`, are ignored and dropped by
 the in-place rewrite; no old link is honored.
 
-**A layout** *(the design's term)* is the page's arrangement of items: which items
+**A layout** *(coined by the same design)* is the page's arrangement of items: which items
 it lists, in what order, as rows or as cards. Only the reader's own actions make
 one: opening the page, a filter applied, a roadmap picked, a page size chosen, and
 **Refresh**. The page lays out the load it last made a layout from, its *basis*
@@ -1343,8 +1357,8 @@ the page.
 **Copy answers** hands the answers to the agent in one trip. The button sits in the
 header and shows how many answers are pending, in a slot reserved for a few digits
 in tabular numerals that shows `–` until the count is known. It copies every
-comment still pending for the agent on a question listed on the page — on every
-page, not only the shown ones, and under every roadmap: *Needs you* under each
+comment still pending for the agent on a question listed on the page — drawn as a
+card or not, and under every roadmap: *Needs you* under each
 roadmap that routes, *Not on a roadmap* and *Blocked* — grouped by document. Choosing
 another roadmap therefore never changes what it copies or its count. Under a
 [planning filter](#611-the-planning-filter) it copies and counts the pending
@@ -1388,7 +1402,7 @@ one card:
 
 The page inputs' reviews request holds the full cards' documents and every
 listed document holding a question that needs the human — open, or ✅ awaiting
-compaction — on any page and under any roadmap (`needYouDocuments`), since a
+compaction — drawn as a card or not, and under any roadmap (`needYouDocuments`), since a
 comment in one of those can take a question off the numbers below. The reviews
 of every other document any unfiltered section lists, the question documents and
 every row's document too (`listedDocuments`), are fetched in a second reviews
@@ -1494,8 +1508,9 @@ requests.
   build* alone is left out, since sent by accident it starts the most expensive
   work there is. An id a later release offers is ignored.
 - **Greyed out, never disabled:** with no kind checked, which would copy nothing
-  Copy answers does not, or a total of 0, the button is `aria-disabled` and a
-  press copies nothing; the panel still opens from it, or nothing could check a
+  Copy answers does not, or a total of 0, or while Copy answers' quoted lines are
+  still on their way (below), when Copy answers is disabled, the button is
+  `aria-disabled` and a press copies nothing; the panel still opens from it, or nothing could check a
   kind again. Its accessible name stays *Copy answers + maintenance N*, and a
   polite live region says it copied.
 
@@ -1509,8 +1524,7 @@ while any group's lines are still coming.
 ### 6.8 Several roadmaps on the page
 
 **The roadmap line** stands on *Needs you*'s heading line, the list the roadmap
-orders ([§3.5 of the design](../design/planning-to-do-list.md#35-the-contents-column)),
-shown only when two or more roadmaps route; where *Needs you* is not drawn, on a
+orders, shown only when two or more roadmaps route; where *Needs you* is not drawn, on a
 line of its own at the top of the sections. With one roadmap, or none, there is no
 line. While the contents column is drawn, the picker stands at the head of the
 planning outline instead, so there is only ever one picker.
@@ -1578,8 +1592,7 @@ retirement, and neither does one found by name, since *Too large* and
 ### 6.9 The planning outline
 
 The contents column shows the planning outline, titled **On this page**, since it
-is no longer a document's contents
-([§3.5 of the design](../design/planning-to-do-list.md#35-the-contents-column)),
+is no longer a document's contents,
 drawn from the layout on screen (`frontend/src/lib/planningOutline.ts`,
 `frontend/src/components/PlanningOutline.tsx`). Its navigation landmark is named
 *On this page* too.
@@ -2075,7 +2088,9 @@ handed the unfiltered sections for those facts, beside the filtered ones it list
 - **Clearing the filter adds a history entry** ([OQ-TD6](#why-its-this-way),
   [OQ-TD13](#why-its-this-way)): ✕, *hidden* beside the counts, and *Nothing
   matches*' Clear the filter each push the cleared URL, so Back brings the filter
-  back. The page tells its own push from a navigation the box did not cause by the
+  back. A clear pressed inside the idle pause first writes the typed filter the
+  page is showing, in place, then pushes the clear, so Back brings back that
+  filter rather than the one the URL held before. The page tells its own push from a navigation the box did not cause by the
   announcement it asked for on the way, so the live region still says what the
   clear brought in. Typing still replaces the entry, so a filter typed after a
   clear replaces the cleared page, and Back from it returns to the filter before.
@@ -2313,10 +2328,9 @@ through any tunnel, and nothing stores an address.
 
 ### 6.18 The filter's counts, the notice, and Nothing matches
 
-**On the page, an applied filter's counts say what it keeps**
-([§3.2 of the design](../design/planning-to-do-list.md#32-the-filter-line)), in the
+**On the page, an applied filter's counts say what it keeps**, in the
 filter line's hint slot ([§6.17](#617-the-filter-line)): *18 match · 379 hidden*.
-An **item** *(a term the design coined)* is one question or one document row the
+An **item** *(coined by the to-do list design, 2026-10-08)* is one question or one document row the
 page lists, counted once even where two groups list it, so a document in both
 *Ready to graduate* and *Blocked* is one item; items in folded groups count, and so
 do *Needs you*'s questions past the page size (`layoutItemKeys`,
@@ -3274,9 +3288,9 @@ by number.
   push saying that a file or a review changed re-renders a document in place, as
   the viewer re-renders a document it live-reloads. On the planning page it marks
   and counts, and changes no item's height, position or presence until the reader
-  makes a new layout ([§6.4](#64-needs-you-as-a-to-do-list), P2 of
-  [the to-do list design](../design/planning-to-do-list.md#1-principles),
-  [OQ-TD10](#why-its-this-way)): only the reader's own action moves an item.
+  makes a new layout ([§6.4](#64-needs-you-as-a-to-do-list),
+  [OQ-TD10](#why-its-this-way)): only the reader's own action changes an item's
+  height, position or presence, and their own actions may move anything.
 - **L3. Nothing is shown on a guess.** The header never says *Untracked file* before
   git status has answered, nor when the request failed: a failure ends the hold like
   an answer, and the header shows neither that label nor a date until a push or the
@@ -4092,10 +4106,14 @@ is visible. Both are decided before any read, and every answer about many files 
 written one file at a time, since thousands of files at the size limit is a valid
 config and a marshaled slice would hold all of it.
 
-**Two render budgets** on the planning page, from the limits module: card Markdown per
-section page, and a per-card size past which a question is drawn as a preview card.
-There is no total-bytes cap: the stream makes one unnecessary, since nothing holds the
-corpus.
+**The planning page's render bounds,** from the limits module: the page size, which
+bounds *Needs you*'s full cards in one layout, and a per-card size past which a
+question is drawn as a preview card. There is no character budget across cards
+([OQ-TD8](#why-its-this-way)), so at the largest page size a layout's cards may
+hold the card limit times the page size in Markdown, all painted in one commit
+([§6.5](#65-page-inputs-and-one-commit)). Answered rows and the groups' rows are
+text, with no Markdown to render, bounded by their own row counts. There is no
+total-bytes cap: the stream makes one unnecessary, since nothing holds the corpus.
 
 **A planning filter is bounded too:** a few dozen terms and a couple of thousand code
 points, past which it is not understood (`PLANNING_FILTER_LIMITS`), and every cache
@@ -4119,7 +4137,7 @@ What each place holds, independent of the repository's size where it can be:
 | Wire, warm | the server id's request, a `have` of one path and hash per candidate, one short `same` line per unchanged candidate, plus every roadmap and the changed files |
 | Wire, cold | every readable candidate once, streamed and never held whole |
 | Work before the frame paints | the section derivation |
-| Work before a section's cards paint | the per-commit card and Markdown bounds, independent of the repository |
+| Work before a section's cards paint | the page size's cards, each within the card limit, independent of the repository |
 
 > [!NOTE]
 > **Every limit is tested by configuring it down,** through the limits module
@@ -4150,8 +4168,26 @@ What each place holds, independent of the repository's size where it can be:
   Go. A sidecar would hold hundreds of megabytes per repository, keep two modes
   correct, and need a version handshake, and an install with only the server would
   lose its planning page.
-- **Infinite scroll or windowing.** The reader pages; a virtualized list is infinite
-  scroll by another name.
+- **Infinite scroll, windowing, or pages** ([OQ-TD5](#why-its-this-way)). The reader
+  chooses the page size; a virtualized list is infinite scroll by another name.
+- **For the to-do list** ([§6.4](#64-needs-you-as-a-to-do-list)):
+  - **No change to the index, the scan, or `vantage-check index`'s sections and
+    JSON.** The checker counts ✅ and answered questions in *Needs you*; the page
+    does not ([OQ-TD12](#why-its-this-way)).
+  - **No default filter.** *Needs you* holding only what needs the reader is the
+    page's default view, not a filter ([OQ-TD3](#why-its-this-way)).
+  - **No read state, snooze or dismissal.** Refresh applies held updates; it never
+    hides anything that still belongs on the page, and a reply comes back as a card
+    when it needs the reader.
+  - **Nothing applies held updates but the reader:** not a timer, not the tab
+    coming back into view, not a rescan finishing.
+  - **No sticky headings.** With one list of cards, the heading the reader is under
+    is always *Needs you*.
+  - **No request for *Too large* or *Unreadable* files,** which the index lists but
+    cannot describe beyond their size or error.
+  - **No reply or edit box on the planning page.** A question the agent answered
+    back is answered again with **Answer…**, or in its document's thread
+    ([`comment-autosave.md`](comment-autosave.md#8-non-goals)).
 - **Coordinating tabs.** Two tabs may scan the same repository once each.
 - **Paging Referenced by's list**, which is one document's and collapsed by default.
 - **The other layout-shift sources** named under
@@ -4340,7 +4376,7 @@ roadmap places.
 design on 2026-10-05 (F7) and are read by the harness's typing flow, `just
 planning-perf --targets typing`:
 
-- **The flow.** The planning page is open with its index ready, its first pages
+- **The flow.** The planning page is open with its index ready, its first layout
   painted and the visit's second review request answered, with no filter. The
   harness presses `/`, then types `generator is:open` one key every 150 ms through
   the browser's own input pipeline, so Event Timing sees real key events, waits a
@@ -4413,6 +4449,17 @@ its verdict is a weak one. Times are in ms.
   default query keeps entries at every keystroke on both trees, so no key of it is
   held back. Nor since `b5a0860`, whose `path:` matcher replaced a regular
   expression; the default query holds no `path:` term.
+- **At each page size, since *Needs you* lost its pages.** `just planning-perf`
+  takes `--page-size`, seeded into each run's browser profile before the page's
+  scripts run, so the typing targets are read with *Needs you* drawing 10 to 50
+  full cards. A page size whose first layout misses them is a risk to report, never
+  a reason to put the character budget back ([OQ-TD8](#why-its-this-way)). One
+  batch of 10 runs a cell, on `18dd06f4`'s code at a load average of 9 to 13, so
+  reported and not judged: at page size 10, T2's p95 was 57.7 at 15 documents,
+  84.6 at 60 and 32.1 on this repository, 1 of 120 keystrokes over 100 at 60, no
+  long task and T4 0; at page size 50, 33.3, 130.2 and 28.2,
+  15 of 120 over 100 at 60 with one long task of 64 ms, and T4 0. UNMEASURED: page
+  size 50 on a quiet machine, where T2 at 60 documents is the one target at risk.
 - **In the browser on the end-to-end fixture,** `frontend/e2e/planning_filter.spec.ts`
   holds criteria 13 and 14 below, and that a cold filtered link and an Enter shift
   nothing painted and leave `history.length` as it was. It reports criterion 8's long
@@ -4487,8 +4534,8 @@ questions, [OQ-E1](../../frontend/e2e/fixtures/test_repo/plans/design.md#OQ-E1) 
 
 ## Current values
 
-Verified at `3fbfaa4`; the planning page's rows from the to-do list design, against
-the commit that graduated it. The prose above explains what each of these is for; this table
+Verified at `3fbfaa4`; the planning page's rows from the to-do list design at
+`cf28344a`. The prose above explains what each of these is for; this table
 is the only place most of the numbers are stated.
 
 | Value | Setting | Defined in |
@@ -4580,7 +4627,8 @@ is the only place most of the numbers are stated.
 Rulings a maintainer reading only the text above might undo on purpose, each with the
 id that code comments and sibling documents cite. `OQ-PL`, `OQ-PS` and `OQ-PF` rows
 ruled the three designs' open questions, the last the planning filter's; `OQ-TD` rows
-ruled [the to-do list design](../design/planning-to-do-list.md#decision-ledger)'s; *Plan Q* rows
+ruled the to-do list design's (2026-10-08 to 2026-10-09, its text in git), whose
+comment-autosave half is in [`comment-autosave.md`](comment-autosave.md#why-its-this-way); *Plan Q* rows
 ruled the questions the first implementation plan raised. Ids not listed were absorbed
 into the text above or are in git.
 

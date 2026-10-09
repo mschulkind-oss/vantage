@@ -26,7 +26,7 @@ interface ReviewCommentPopoverProps {
  * The new-comment box: a comment on a block or a selection in review mode,
  * and the box **Answer…** opens on a document and on a planning card. It
  * saves as the reader types and has no Save and no Cancel
- * (`docs/design/planning-to-do-list.md` §6.1).
+ * (`docs/reference/comment-autosave.md` §3.2).
  */
 export const ReviewCommentPopover: React.FC<ReviewCommentPopoverProps> = ({
   selectedText,

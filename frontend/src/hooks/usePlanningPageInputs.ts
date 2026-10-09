@@ -1,7 +1,7 @@
 /**
  * The planning page's page inputs (`docs/reference/planning-index.md`
  * §6.5): what *Needs you*'s cards need before they may paint
- * (`docs/design/planning-to-do-list.md` §3.3, §7): the blocks of the first
+ * (`docs/reference/planning-index.md` §6.4): the blocks of the first
  * page size of the questions no pending comment answers, and `cardsAhead`
  * more, which join the cards as the reader answers.
  *
@@ -260,7 +260,7 @@ function heldBlock(repo: string, want: CardWant): CardBlock | undefined {
  * Which questions of *Needs you* a set of inputs carries blocks for: the
  * first page size of those no pending comment answers, which the page draws
  * as full cards, and `cardsAhead` more, which join the cards as the reader
- * answers (`docs/design/planning-to-do-list.md` §3.3, §4.1). The answered
+ * answers (`docs/reference/planning-index.md` §6.4). The answered
  * ones are rows, with no block, so the blocks asked for go on past them.
  */
 async function gather(

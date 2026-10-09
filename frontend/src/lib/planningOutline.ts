@@ -1,7 +1,7 @@
 /**
  * The planning outline (a term this module coins): what the contents column
  * lists on the planning page, titled *On this page*
- * (`docs/design/planning-to-do-list.md` §3.5). The documents of *Needs
+ * (`docs/reference/planning-index.md` §6.9). The documents of *Needs
  * you*'s full cards, in list order, each with how many of its questions need
  * you; then one line each for the answered rows, *Blocked* and
  * *Maintenance*, with their counts. Maintenance's items are not listed.
@@ -56,7 +56,7 @@ export interface OutlineInput {
   answered: { total: number; first: PlanningQuestion | null };
   /**
    * *Blocked*'s count, absent when the layout has no *Blocked*: which groups
-   * there are is the layout's, and their counts are live (§4.2), so a group
+   * there are is the layout's, and their counts are live (§6.4), so a group
    * whose count falls to 0 keeps its line.
    */
   blocked?: number;

@@ -1,5 +1,5 @@
 /**
- * *Needs you*, as a to-do list (`docs/design/planning-to-do-list.md` §3.3):
+ * *Needs you*, as a to-do list (`docs/reference/planning-index.md` §6.4):
  * its heading with the live count of questions that need you and the
  * answered rows it lists; the answered rows, the first few and then *… N
  * more answered · Show*; the full cards, with the rows of cards answered in
@@ -8,7 +8,7 @@
  *
  * What it lists, and as what, is the layout's (`lib/planningLayout.ts`),
  * which only the reader's own actions change: the numbers here change live,
- * in slots kept for them, and nothing else does (§4.2).
+ * in slots kept for them, and nothing else does (§6.4).
  */
 import React from "react";
 import { ChevronDown, Undo2 } from "lucide-react";
@@ -54,7 +54,7 @@ export const LiveCount: React.FC<{
 
 /**
  * A late change's marks, in an item's own line: the New reply mark's words,
- * a button that opens the reply, and each other mark as text (§4.2).
+ * a button that opens the reply, and each other mark as text (§6.4).
  */
 export const ItemMarks: React.FC<{
   marks: readonly Mark[];
@@ -94,7 +94,7 @@ export const NewReplyBar: React.FC = () => (
 );
 
 /**
- * An answered row (§3.3, *coined* there): one line, its marker, id and
+ * An answered row (§6.4): one line, its marker, id and
  * title, the chip its card shows, Undo on a take that is still the whole
  * thread, and Show, which opens it into its card where it stands.
  */
@@ -167,7 +167,7 @@ export const AnsweredRow: React.FC<{
       </span>
       {/* Every slot after the title keeps its room whatever it holds, so a
           late change of a mark, the chip or Undo moves nothing in the row
-          (planning-to-do-list.md P2). */}
+          (planning-index.md §12.1). */}
       <span className="flex w-20 shrink-0 justify-end">
         <ItemMarks marks={marks} newReply={newReply} onNewReply={onNewReply} />
       </span>
@@ -248,7 +248,7 @@ const moreAnswered = (n: number) =>
 export const PlanningNeedsYou: React.FC<{
   /** The line under its heading. */
   explanation: string;
-  /** The questions that need you, live (§3.3): the heading's first count. */
+  /** The questions that need you, live (§6.4): the heading's first count. */
   needYou: number;
   view: NeedsYouView;
   pageSize: number;
@@ -271,7 +271,7 @@ export const PlanningNeedsYou: React.FC<{
 }) => {
   // Whether the layout on screen still paints a full card: the end line says
   // *Nothing needs you* only where none is left, never under a card still
-  // shown, which an answer from elsewhere only marks (§4.2).
+  // shown, which an answer from elsewhere only marks (§6.4).
   const cardsPainted = view.list.some((i) => i.as === "card");
   const sizes = (
     <span className="inline-flex items-center gap-1">

@@ -30,8 +30,8 @@ export interface FlowOptions {
   timeoutMs: number;
   /**
    * The planning page's page size, seeded into each profile's storage
-   * before the app's scripts run (`docs/design/planning-to-do-list.md`
-   * §3.3); `null` leaves the default.
+   * before the app's scripts run (`docs/reference/planning-index.md`
+   * §6.4); `null` leaves the default.
    */
   pageSize: number | null;
 }

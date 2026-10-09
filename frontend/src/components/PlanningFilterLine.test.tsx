@@ -325,7 +325,7 @@ describe("PlanningFilterLine in print", () => {
   });
 });
 
-describe("PlanningFilterLine's counts (planning-to-do-list.md §3.2)", () => {
+describe("PlanningFilterLine's counts (planning-index.md §6.18)", () => {
   const COUNTS: FilterCounts = {
     match: 18,
     hidden: 379,

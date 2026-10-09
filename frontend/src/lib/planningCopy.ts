@@ -1,5 +1,5 @@
 /**
- * Copy answers + maintenance (`docs/design/planning-to-do-list.md` §5): the
+ * Copy answers + maintenance (`docs/reference/planning-index.md` §6.7): the
  * planning page's second copy button, which copies what Copy answers copies,
  * byte for byte, and then the agent request for the kinds of *Maintenance*
  * its panel has checked.
@@ -10,7 +10,7 @@
 import type { PlanningRequestId } from "vantage-md/planning";
 
 /**
- * The kinds the panel offers, in the order it lists them (§5.1): each of
+ * The kinds the panel offers, in the order it lists them (§6.7): each of
  * *Maintenance*'s kinds that has an agent request. *Too large* and
  * *Unreadable* have none, so they are not offered.
  */
@@ -24,7 +24,7 @@ export const COPY_KINDS: readonly PlanningRequestId[] = [
 
 /**
  * The kinds left out until the reader chooses: *Ready to build*, whose
- * request, sent by accident, starts the most expensive work there is (§5.1).
+ * request, sent by accident, starts the most expensive work there is (§6.7).
  */
 export const COPY_LEFT_OUT_DEFAULT: ReadonlySet<PlanningRequestId> = new Set([
   "ready",
@@ -63,7 +63,7 @@ export const checkedKinds = (
 ): PlanningRequestId[] => COPY_KINDS.filter((id) => !leftOut.has(id));
 
 /**
- * What the button copies, counted (§5.1): the answers, and every checked
+ * What the button copies, counted (§6.7): the answers, and every checked
  * kind's items.
  */
 export function copyTotal(
@@ -78,7 +78,7 @@ export function copyTotal(
 }
 
 /**
- * Whether the button is greyed out (§5.1): with no kind checked it would copy
+ * Whether the button is greyed out (§6.7): with no kind checked it would copy
  * nothing Copy answers does not, and with a total of 0 nothing at all.
  */
 export const copyGreyed = (

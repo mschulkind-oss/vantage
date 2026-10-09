@@ -58,7 +58,7 @@ const reviewPath = () => {
  * inline or in the review panel. A box saves as it is typed in, but it is
  * drawn on the document, so replacing the document with the page saying it is
  * gone would end it under the reader; the reload waits until the box closes
- * (docs/design/planning-to-do-list.md §6.1).
+ * (docs/reference/comment-autosave.md §3.2).
  */
 const writingInReview = () => {
   const { isReviewMode, pendingSelection } = useReviewStore.getState();
