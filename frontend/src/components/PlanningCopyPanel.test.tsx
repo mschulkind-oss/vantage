@@ -160,6 +160,37 @@ describe("the ▾", () => {
     expect(panel()!.contains(document.activeElement)).toBe(true);
   });
 
+  it("never takes the focus into a panel hover opens, after Enter closed it from the ▾", () => {
+    vi.useFakeTimers();
+    renderPanel();
+    toggle().focus();
+    fireEvent.keyDown(toggle(), { key: "ArrowDown" });
+    expect(panel()).not.toBeNull();
+    toggle().focus();
+    // Enter on the ▾ is a click with no pointer: it closes the panel.
+    fireEvent.click(toggle(), { detail: 0 });
+    expect(panel()).toBeNull();
+    enter(root());
+    wait(OPEN_MS);
+    expect(panel()).not.toBeNull();
+    expect(document.activeElement).toBe(toggle());
+  });
+
+  it("never takes the focus into a panel hover opens, after ↓ on a panel already open", () => {
+    vi.useFakeTimers();
+    renderPanel();
+    fireEvent.click(toggle(), { detail: 1 });
+    toggle().focus();
+    fireEvent.keyDown(toggle(), { key: "ArrowDown" });
+    toggle().focus();
+    fireEvent.click(toggle(), { detail: 1 });
+    expect(panel()).toBeNull();
+    enter(root());
+    wait(OPEN_MS);
+    expect(panel()).not.toBeNull();
+    expect(document.activeElement).toBe(toggle());
+  });
+
   it("is never opened by the focus alone", () => {
     renderPanel();
     toggle().focus();
@@ -297,6 +328,15 @@ describe("the button", () => {
     fireEvent.mouseDown(document.body);
     fireEvent.click(toggle(), { detail: 1 });
     expect(panel()).not.toBeNull();
+  });
+
+  it("is greyed out while what it copies is not ready, and copies nothing", async () => {
+    renderPanel({ ready: false });
+    expect(button()).toHaveAttribute("aria-disabled", "true");
+    await act(async () => {
+      fireEvent.click(button());
+    });
+    expect(copied).toEqual([]);
   });
 
   it("is greyed out when its total is 0", () => {

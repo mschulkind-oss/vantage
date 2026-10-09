@@ -3157,6 +3157,14 @@ export const PlanningPage: React.FC = () => {
   const applyFilter = useCallback(
     (text: string, roadmap: string | null, push = false) => {
       cancelIdle();
+      // A clear inside the idle pause: the text typed is the filter on
+      // screen, though the URL does not hold it yet, so it is written first
+      // and the clear pushed after it, for Back to bring it back.
+      const owed = typedRef.current;
+      const showing =
+        push && owed !== null && owed !== latestRef.current.urlValue
+          ? owed
+          : null;
       typedRef.current = null;
       let next = withFilter(search, text, roadmap);
       // A pasted link's roadmap, written as the in-place rewrite would leave
@@ -3183,7 +3191,11 @@ export const PlanningPage: React.FC = () => {
         readRoadmapRequest(next) === readRoadmapRequest(search);
       // A notice the idle pause's write still owes is kept: it is this
       // filter's, and the box's blur says it at once.
-      if (readFilterRequest(next) === filterValue(filterText) && sameRoadmap) {
+      if (
+        showing === null &&
+        readFilterRequest(next) === filterValue(filterText) &&
+        sameRoadmap
+      ) {
         startTransition(() => setLead(null));
         return;
       }
@@ -3202,6 +3214,13 @@ export const PlanningPage: React.FC = () => {
       // filter between the box's and the new one.
       startTransition(() => {
         setLead(null);
+        if (showing !== null) {
+          const shown = planningQuery(withFilter(search, showing));
+          navigate(
+            { search: shown === "" ? "" : `?${shown}` },
+            { replace: true },
+          );
+        }
         navigate(
           { search: query === "" ? "" : `?${query}` },
           { replace: !push },
@@ -3608,6 +3627,7 @@ export const PlanningPage: React.FC = () => {
           <PlanningCopyPanel
             answers={pendingCount}
             known={countKnown}
+            ready={!quotesLoading}
             counts={groupCounts.kinds}
             onCopy={copyWithMaintenance}
           />

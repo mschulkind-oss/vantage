@@ -1463,9 +1463,16 @@ answers until the reader picked another roadmap and came back.
 **Copy answers + maintenance** (`frontend/src/components/PlanningCopyPanel.tsx`,
 `frontend/src/lib/planningCopy.ts`) sits beside Copy answers and copies its
 payload byte for byte, a blank line, then `planningAgentRequest` for the
-*Maintenance* kinds its panel checks, with the filter's `keeps`: exactly what
+*Maintenance* kinds its panel checks, with the filter's `keeps`: what
 `vantage-check index --request <kinds> --filter` prints for the same kinds and
-filter ([OQ-TD7](#why-its-this-way)). It replaced Copy all agent requests.
+filter, but for two things the checker cannot know. A release viewer names
+itself in the request's *Verify:* line, as `VANTAGE_VIEWER=<release> uvx
+vantage-check`, where the checker writes `vantage-check`; and the page names the
+repository by the root `/info` reports, `.` or a daemon's project name until it
+answers, where the checker names its project root. With the same root and no
+viewer release, as in a development build and the parity tests, the two are byte
+for byte the same ([OQ-TD7](#why-its-this-way)). It replaced Copy all agent
+requests.
 
 - **Its count is the total it copies:** the pending answers and every checked
   kind's items, live and filtered as the groups count them, in room for four
@@ -3503,8 +3510,10 @@ the page, with no memory between runs:
 for the agent sections named after it — `unrouted`, `ready`, `graduate`,
 `disagrees`, by id — or for all four when none is named, the words up to the next
 option. The text is `planningAgentRequest` over the index the command built, with the
-project root as the repository, then a newline: exactly what the page's buttons copy
-for the same tree when the server reports the same root. Sections are covered in page
+project root as the repository, then a newline: what the page's buttons copy for
+the same tree when the server reports the same root, but that a release viewer's
+copy names its release in the *Verify:* line
+([§6.7](#67-answering-and-copy-answers)). Sections are covered in page
 order however they are named, and an empty one is left out; when no section asked for
 has an entry, being empty or not shown for want of a roadmap or of stages, stdout stays
 empty, as the page shows no button, and stderr says so, with exit `0`. Any other word

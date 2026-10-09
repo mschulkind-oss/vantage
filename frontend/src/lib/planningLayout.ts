@@ -544,9 +544,13 @@ export function heldUpdates(input: UpdatesInput): HeldUpdates {
     const will = freshRoles.get(key) ?? null;
     const f = facts(key);
     const marks = f && was !== null ? marksOf(f, was) : null;
-    // A row the reader opened compares by its marks alone, and so does a
-    // card that joined for one they answered: both are their own doing.
-    const own = opened.has(key) || (joined.has(key) && will === null);
+    // A row the reader opened compares by its marks alone, and so do a
+    // card that joined for one they answered and a row their own box made,
+    // whose save may not have landed yet: all are their own doing.
+    const own =
+      opened.has(key) ||
+      (joined.has(key) && will === null) ||
+      (was === "row" && input.own?.has(key) === true);
     if (was !== will && !own) {
       const done = marks?.marks.includes("done") === true;
       if (was === null) {
