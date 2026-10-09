@@ -590,3 +590,49 @@ export function heldUpdates(input: UpdatesInput): HeldUpdates {
   );
   return counts;
 }
+
+/**
+ * Every *item* a layout lists (`docs/design/planning-to-do-list.md` §3.2,
+ * coined there): one question or one document row, counted once even where
+ * two groups list it, so a document in both *Ready to graduate* and
+ * *Blocked* is one item. Items in folded groups count, and so do *Needs
+ * you*'s questions past the page size. What the filter line's *N match · M
+ * hidden* counts.
+ */
+export function layoutItemKeys(layout: PlanningLayout): Set<string> {
+  const out = new Set<string>();
+  for (const entry of layout.needsYou) out.add(itemKey(entry.question));
+  for (const key of groupKeys(layout.blocked)) out.add(key);
+  for (const kind of layout.maintenance) {
+    if (kind.kind === "questions") {
+      for (const entry of kind.items) out.add(itemKey(entry.question));
+    } else if (kind.kind === "documents") {
+      for (const path of kind.items) out.add(`doc\n${path}`);
+    } else {
+      for (const { path } of kind.items) out.add(`doc\n${path}`);
+    }
+  }
+  return out;
+}
+
+/**
+ * The filter line's counts (§3.2): the items `filtered` lists, and those of
+ * `all`, the same page unfiltered, that it does not.
+ */
+export function filterItemCounts(
+  filtered: PlanningLayout,
+  all: PlanningLayout,
+): { match: number; hidden: number } {
+  const kept = layoutItemKeys(filtered);
+  let hidden = 0;
+  for (const key of layoutItemKeys(all)) if (!kept.has(key)) hidden++;
+  return { match: kept.size, hidden };
+}
+
+/** `18 match`, `1 matches`: the filter line's counts, first part (§3.2). */
+export const matchText = (match: number): string =>
+  `${match.toLocaleString("en-US")} ${match === 1 ? "matches" : "match"}`;
+
+/** `379 hidden`: the part of the filter line's counts that clears it. */
+export const hiddenText = (hidden: number): string =>
+  `${hidden.toLocaleString("en-US")} hidden`;

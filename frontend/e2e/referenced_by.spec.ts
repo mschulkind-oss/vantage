@@ -240,8 +240,8 @@ test("a live document's line links to the planning page filtered to it", async (
   await expect(page.getByRole("textbox", { name: "Filter" })).toHaveValue(
     "path:/plans/paged.md",
   );
-  await expect(page.getByTestId("filter-notice")).toContainText(
-    "Filtered by path:/plans/paged.md: ",
+  await expect(page.getByTestId("planning-filter-counts")).toHaveText(
+    /^\d+ match(es)? · \d+ hidden$/,
   );
   await expect(needsYou.getByRole("article").first()).toContainText("OQ-P");
   await expect(
