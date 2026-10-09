@@ -9,7 +9,7 @@ import {
 } from "./commands/check.js";
 import type { RunShard } from "./core/parallel.js";
 import { indexCommand, type IndexOptions } from "./commands/index.js";
-import { isPlanningAgentSectionId } from "../../vantage-md/src/planning/index.js";
+import { isPlanningRequestId } from "../../vantage-md/src/planning/index.js";
 
 export type Invocation =
   | { kind: "check"; options: CheckOptions }
@@ -163,7 +163,7 @@ function parseCheck(argv: string[]): Invocation {
  * `--config` does.
  *
  * `--request` takes the words after it, up to the next option, as agent
- * section ids, none meaning all four; given twice, the ids add up. It prints
+ * request ids (the four agent sections and `compact`), none meaning all five; given twice, the ids add up. It prints
  * text, so it refuses `--format json`.
  *
  * `--filter` takes the next argument whatever it is, so `--filter -path:x` is
@@ -180,10 +180,10 @@ function parseIndex(argv: string[]): Invocation {
   let requesting = false;
   /** Add one `--request` section, or say why it is not one. */
   const request = (word: string): Invocation | null => {
-    if (!isPlanningAgentSectionId(word)) {
+    if (!isPlanningRequestId(word)) {
       return {
         kind: "usage-error",
-        message: `--request takes the sections an agent works on: ${REQUEST_SECTIONS} (got ${word})`,
+        message: `--request takes the requests an agent is given: ${REQUEST_SECTIONS} (got ${word})`,
       };
     }
     options.request ??= [];

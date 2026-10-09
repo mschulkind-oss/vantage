@@ -676,7 +676,7 @@ yourself.
 ## `vantage-check index`
 
 ```bash
-vantage-check index [--format text|json] [--request [<section>…]] [--roadmap <path>] [--filter <text>] [--config <path> | --no-config]
+vantage-check index [--format text|json] [--request [<request>…]] [--roadmap <path>] [--filter <text>] [--config <path> | --no-config]
 ```
 
 Prints the repository's [planning index](planning.md): the sections that say
@@ -685,7 +685,7 @@ blocked, and which documents are ready to build or to graduate, each with a line
 saying what it means and who acts on it, then the chosen roadmap with each
 link's badge written inline. With `--request`, it prints instead the
 [request to hand an agent](#agent-requests) for the sections an agent works
-on. With `--filter`, it prints only what a
+on, or for the answered questions to compact. With `--filter`, it prints only what a
 [planning filter](planning.md#filtering-the-page) keeps, and a link to the
 planning page filtered the same way. It is how an agent sees what a person sees
 on the [planning page](planning.md#the-planning-page), with no server running.
@@ -695,7 +695,7 @@ How it works:
 | Option | Effect |
 | :--- | :--- |
 | `--format text\|json` | Output format. Default `text`. |
-| `--request [<section>…]` | Print the [agent request](#agent-requests) for these sections instead: `unrouted` (*Not on a roadmap*), `ready` (*Ready to build*), `graduate` (*Ready to graduate*) or `disagrees` (*Stage conflict*), any of them, separated by spaces. Default: all four. Takes no `--format json`. |
+| `--request [<request>…]` | Print the [agent request](#agent-requests) for these instead: `unrouted` (*Not on a roadmap*), `ready` (*Ready to build*), `graduate` (*Ready to graduate*), `disagrees` (*Stage conflict*) or `compact` (the ✅ questions to fold into their Decision Ledgers), any of them, separated by spaces. Default: all five. Takes no `--format json`. |
 | `--roadmap <path>` | The roadmap *Needs you* follows, and whose source is printed. Relative to the project root, with one leading `./` dropped; given twice, the last wins. Default: the nearest the root of the roadmaps it can follow, which are those it can read whose stage has no `done` role. |
 | `--filter <text>` | Show only the entries a [planning filter](planning.md#filtering-the-page) keeps, the text the planning page's Filter box takes, such as `'path:/docs/design/search.md is:open'` or `'generator is:open'`, and print a link to the page filtered the same way ([Filtering](#filtering)). Also `--filter=<text>`. Given twice, the texts join with a space; an empty one is no filter. Works with `--format json`, `--request` and `--roadmap`. The first run that prints a link writes `.vantage/space` ([What `--filter` writes](#what---filter-writes)). |
 | `--config <path>` | Read this `.vantage.toml`. It never changes which project is scanned. |
@@ -1043,11 +1043,13 @@ Older viewers ignore `space=`: the link opens as it did before.
 
 Four sections are work for an agent: *Not on a roadmap* (`unrouted`), *Ready to
 build* (`ready`), *Ready to graduate* (`graduate`) and *Stage conflict*
-(`disagrees`). `vantage-check index --request` prints, for each of them that
-holds an entry, what it means, what to do and every entry, on every page, then
-how to check the work: the planning page's **Copy agent request** and **Copy
-all agent requests** buttons copy exactly this text. Name sections to narrow
-it, as in `vantage-check index --request graduate`.
+(`disagrees`). A fifth request, `compact`, is not a section: it lists the ✅
+questions, the ones you have ruled that still sit in their documents, and asks
+the agent to compact each. `vantage-check index --request` prints, for each of
+them that holds an entry, what it means, what to do and every entry, on every
+page, then how to check the work: the planning page's **Copy agent request** and
+**Copy all agent requests** buttons copy exactly this text. Name requests to
+narrow it, as in `vantage-check index --request graduate`.
 
 ```text
 Repository: /home/me/project
@@ -1064,6 +1066,7 @@ Verify: in the repository, run `vantage-check` on every Markdown file you change
 | Ready to build | build each document's plan and give it a stage with the `built` role, or, if one should not be built, ask you, and only with your agreement give it the stage with the `done` role you choose. It skips a document marked blocked, which *Blocked* lists too |
 | Ready to graduate | write each as a reference document of the system as built, with the stage the repository's other reference documents carry; delete the design document and any plan written for it; and repoint every link and citation of them, in documents, code comments and tests |
 | Stage conflict | find which is wrong, the stage or the questions, and fix a wrong stage, or propose moving a follow-up question to a new document; it rules and answers nothing, and asks you for rulings |
+| Compact | for each ✅ question, fold its ruling into the body section it governs, add a Decision Ledger row keeping its exact id, remove its question directive, and repoint the links to its anchor at the ledger, keeping question-specific `depends-on` fragments. The sections, the JSON and the text output do not change: a ✅ question stays in *Needs you* |
 
 The request is generated when it is asked for, from the documents and
 `[planning.stages]` as they are then, so it names the stage words the
