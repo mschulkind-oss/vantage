@@ -37,7 +37,7 @@
     "rehype-slug": "^6.0.0",
     "remark-gfm": "^4.0.1",
     "remark-math": "^6.0.0",
-    "smol-toml": "^1.6.1",
+    "smol-toml": "^1.9.0",
     "tailwind-merge": "^3.7.0",
     "vantage-md": "file:../packages/vantage-md",
     "yaml": "^2.8.2",
