@@ -13,7 +13,10 @@ page, which the planning outline's jump to this document flips to.
    OQ-F11's above it on the same page, so the card cuts it short and puts
    Show full question at the cut. Whether those cards above it have drawn
    their cuts yet is what decides where a jump or a link lands it, which is
-   why it sits below one, and why this paragraph runs on a little longer.
+   why it sits below one. The rest of this paragraph is there only to be cut:
+   it goes on long enough that no wide screen and no browser's fonts fit it
+   in three lines, since a card that happened to fit would draw no cut, and
+   the page would then have no Show full question for a reader to see here.
 
    <!-- vantage: oq id=OQ-L1 leaning="It does." -->
 
