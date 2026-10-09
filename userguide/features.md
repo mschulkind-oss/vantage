@@ -326,8 +326,10 @@ one button, **Close**, and closing it any way at all keeps your text — Close,
 the ✕, Ctrl+Enter (⌘+Enter on a Mac), Esc, a click outside the box, opening
 another document, turning review mode off, or leaving the page.
 
-- **The box's foot says where it stands:** *Saving…*, then *Saved just now*,
-  *Saved 1 min ago* and so on, with a short pulse each time a save lands.
+- **The box's foot says where it stands:** *Not saved yet* while you type,
+  *Saving…* once you pause, then *Saved just now*, *Saved 1 min ago* and so
+  on, with a short pulse each time a save lands. It only ever says *Saved* of
+  the text in the box — your next keystroke turns it back to *Not saved yet*.
 - **A saved comment is a comment.** It waits on the agent from its first save,
   and Copy answers copies it, in any tab, as you have typed it so far.
 - **Empty text is never saved.** Clear a new comment's box and close it, and

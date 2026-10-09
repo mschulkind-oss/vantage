@@ -1120,10 +1120,13 @@ function buildFoot(box: CommentBox): {
     post.style.display = state.canPost ? "" : "none";
     if (state.saves !== saves) {
       saves = state.saves;
-      // Once for each save that lands: off, a reflow, and on again restarts it.
+      // Once for each save that lands, unless the box is already ahead of
+      // it: off, a reflow, and on again restarts it.
       status.classList.remove("comment-box-status--pulse");
-      void status.offsetWidth;
-      status.classList.add("comment-box-status--pulse");
+      if (!state.unsaved) {
+        void status.offsetWidth;
+        status.classList.add("comment-box-status--pulse");
+      }
     }
   };
   paint();
