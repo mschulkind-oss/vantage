@@ -11,6 +11,11 @@
  *   the composition ends. Enter, ✕ and a pasted planning link apply at once,
  *   through `onApply`; other pasted text is typing written at once; leaving
  *   the box asks for a write still owed (`onFlush`).
+ * - **Enter takes the reader to the results** (OQ-PF9). Typing has already
+ *   applied what it reads, so an Enter that only applied would look like
+ *   nothing happened: on a text the language reads, or none, it also hands
+ *   the page the focus (`onEnter`). A text it cannot read keeps the focus,
+ *   since the notice Enter brings up says what to correct.
  * - **It follows every navigation it did not cause.** `BrowserRouter` commits
  *   a location in a transition, so a box controlled from the URL would drop
  *   keystrokes; instead the box is reset from the URL whenever the location's
@@ -99,6 +104,11 @@ export const PlanningFilterLine: React.FC<{
    * applied and written does nothing.
    */
   onApply: (text: string, roadmap: string | null) => void;
+  /**
+   * Enter applied a text the language reads, or none: the page takes the
+   * focus, and shows the start of its results.
+   */
+  onEnter: () => void;
   /** The focus left the box: a write the idle pause still owes is made now. */
   onFlush: () => void;
   /** Esc with nothing unapplied: the focus back to the page's pane. */
@@ -127,6 +137,7 @@ export const PlanningFilterLine: React.FC<{
   busyAfter,
   onType,
   onApply,
+  onEnter,
   onFlush,
   onLeave,
   inputRef,
@@ -227,6 +238,7 @@ export const PlanningFilterLine: React.FC<{
           // A form submits on Enter, which would reload the page.
           e.preventDefault();
           apply(text);
+          if (parsePlanningFilter(text).kind !== "not-understood") onEnter();
         }}
         className="flex h-9 flex-nowrap items-center gap-2 print:hidden"
       >

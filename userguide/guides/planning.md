@@ -1003,9 +1003,12 @@ never says *Nothing matches*: it shows every entry.
   brings back a text that keeps something.
   Enter, ✕, a paste and leaving the box apply it at once.
 - **Enter** applies the box's text and writes it into the address at once,
-  and the box then shows it in its [canonical text](#the-address). On a text
-  Vantage does not understand, Enter is how you see why: the page shows every
-  entry, and the notice names what it could not read.
+  and the box then shows it in its [canonical text](#the-address). Then it
+  takes you to the results: the page scrolls back to the top and the focus
+  leaves the box, so the arrow keys, Page Down and the page's shortcuts work
+  on the results. On a text Vantage does not understand, Enter is how you see
+  why: the page shows every entry, the notice names what it could not read,
+  and the focus stays in the box for you to fix it.
 - **✕** clears the filter and applies that at once, and the focus stays in the
   box.
 - **Esc** puts back the last filter you typed that Vantage understands when

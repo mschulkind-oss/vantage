@@ -280,6 +280,8 @@ test.describe("the planning filter", () => {
     await expect(cards(page, "Needs you")).toHaveCount(10);
     await expect(box(page)).toHaveAttribute("aria-invalid", "true");
     await expect(hint).toHaveText("");
+    // The focus stays, for the reader to correct what the notice names.
+    await expect(box(page)).toBeFocused();
   });
 
   test("applies typed text as it is typed, and Enter writes it at once: the agent's address and page, in place, moving nothing painted (criteria 3, 8)", async ({
@@ -304,7 +306,7 @@ test.describe("the planning filter", () => {
     );
     await expect(cards(page, "Needs you")).toHaveCount(2);
     await expect(box(page)).toHaveValue(FILTER);
-    await expect(box(page)).toBeFocused();
+    await expect(page.locator("[data-content-scroll]")).toBeFocused();
     await expect(page.getByTestId("planning-filter-hint")).toHaveText("");
     await expect(page.getByTestId("planning-filter-status")).toContainText(
       `Filtered by ${FILTER}`,
@@ -313,6 +315,36 @@ test.describe("the planning filter", () => {
     expect(shifts, JSON.stringify(shifts)).toEqual([]);
     expect(await page.evaluate(() => history.length)).toBe(entries);
     await reportLongTasks(page, "Enter");
+  });
+
+  // planning-index.md §6.17, OQ-PF9: typing has applied the text already,
+  // so Enter also leaves the box for the results, from their start.
+  test("leaves the box on Enter for the top of the results, whose keys then scroll them, moving nothing painted", async ({
+    page,
+  }) => {
+    await watchPaint(page);
+    await page.goto("/.vantage/planning");
+    await expect(cards(page, "Needs you")).toHaveCount(10);
+    const pane = page.locator("[data-content-scroll]");
+    const top = () => pane.evaluate((node) => node.scrollTop);
+    await box(page).click();
+    await page.keyboard.type("is:open");
+    await expect(notice(page)).toContainText("Filtered by is:open:");
+    // Scrolled down the results with the focus still in the box.
+    await pane.evaluate((node) => {
+      node.scrollTop = 600;
+    });
+    expect(await top()).toBeGreaterThan(0);
+    await page.keyboard.press("Enter");
+    await expect(pane).toBeFocused();
+    await expect(box(page)).not.toBeFocused();
+    expect(await top()).toBe(0);
+    await expect(filterLine(page)).toBeInViewport();
+    // The pane's own keys scroll it now, not the box's caret.
+    await page.keyboard.press("PageDown");
+    await expect.poll(top).toBeGreaterThan(0);
+    const shifts = await shiftsOf(page);
+    expect(shifts, JSON.stringify(shifts)).toEqual([]);
   });
 
   // planning-index.md §6.16: a typed text that keeps no entry applies only
