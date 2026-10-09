@@ -1,6 +1,6 @@
 import {
-  PLANNING_AGENT_SECTION_IDS,
-  PLANNING_SECTION_TITLES,
+  PLANNING_REQUEST_IDS,
+  PLANNING_REQUEST_TITLES,
 } from "../../vantage-md/src/planning/index.js";
 import { RULES } from "./rules/registry.js";
 import { COMMIT, DEVELOPMENT_BUILD, RELEASE, knownCommit } from "./version.js";
@@ -14,15 +14,15 @@ const RULE_WIDTH = Math.max(...RULES.map((rule) => rule.id.length)) + 2;
  * line of the index options' description column.
  */
 const REQUEST_ID_WIDTH =
-  Math.max(...PLANNING_AGENT_SECTION_IDS.map((id) => id.length)) + 2;
-const REQUEST_SECTION_LIST = PLANNING_AGENT_SECTION_IDS.map(
+  Math.max(...PLANNING_REQUEST_IDS.map((id) => id.length)) + 2;
+const REQUEST_SECTION_LIST = PLANNING_REQUEST_IDS.map(
   (id) =>
-    `${" ".repeat(39)}${id.padEnd(REQUEST_ID_WIDTH)}${PLANNING_SECTION_TITLES[id]}`,
+    `${" ".repeat(39)}${id.padEnd(REQUEST_ID_WIDTH)}${PLANNING_REQUEST_TITLES[id]}`,
 ).join("\n");
 
 /** The same, in one line, for a usage error: `unrouted (Not on a roadmap), …`. */
-export const REQUEST_SECTIONS = PLANNING_AGENT_SECTION_IDS.map(
-  (id) => `${id} (${PLANNING_SECTION_TITLES[id]})`,
+export const REQUEST_SECTIONS = PLANNING_REQUEST_IDS.map(
+  (id) => `${id} (${PLANNING_REQUEST_TITLES[id]})`,
 ).join(", ");
 
 const RULE_LIST = RULES.map(
@@ -59,7 +59,7 @@ Options for index:
   --request [<section>...]           print instead the request to give an agent
                                      for these sections, as the planning page's
                                      Copy agent request buttons copy it
-                                     (default: all four):
+                                     (default: all five):
 ${REQUEST_SECTION_LIST}
   --roadmap <path>                   the roadmap Needs you follows, relative to
                                      the project root (default: the one nearest

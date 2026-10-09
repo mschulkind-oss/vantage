@@ -15,6 +15,7 @@
  * `--request` arguments — and never change; a title is display text, and may.
  */
 
+import { COMPACTION_RULE } from "../styleGuide.js";
 import { VANTAGE_OQ_STATUS } from "../vantageDirectives.js";
 import type { PlanningConfig, StageRole } from "./config.js";
 import { findDocument, type PlanningIndex } from "./model.js";
@@ -199,6 +200,83 @@ export function agentSectionCount(
 }
 
 /**
+ * Every agent request an agent can be handed: the four agent sections, then
+ * `compact`. `compact` is a request, not a section (§5.2 of
+ * `docs/design/planning-to-do-list.md`): it has no entry in the index's
+ * sections, JSON or text, so it is not in `PLANNING_AGENT_SECTION_IDS`, which
+ * every section consumer reads. It lists the ✅ questions an agent folds into
+ * their ledgers.
+ */
+export const PLANNING_REQUEST_IDS = [
+  ...PLANNING_AGENT_SECTION_IDS,
+  "compact",
+] as const;
+export type PlanningRequestId = (typeof PLANNING_REQUEST_IDS)[number];
+
+export function isPlanningRequestId(value: string): value is PlanningRequestId {
+  return (PLANNING_REQUEST_IDS as readonly string[]).includes(value);
+}
+
+/** Each request's title: a section's, or *Compact*. */
+export const PLANNING_REQUEST_TITLES: Readonly<
+  Record<PlanningRequestId, string>
+> = Object.freeze({
+  ...PLANNING_SECTION_TITLES,
+  compact: "Compact",
+});
+
+/** Whether a question is kept: a planning filter's test, or all of them. */
+export type PlanningQuestionKeeper = (question: PlanningQuestion) => boolean;
+
+/**
+ * The ✅ questions the `compact` request lists: every one the index holds, by
+ * document in index order, then line, that `keeps` keeps (default: all).
+ */
+export function answeredQuestions(
+  index: PlanningIndex,
+  keeps: PlanningQuestionKeeper = () => true,
+): QuestionRef[] {
+  return index.documents.flatMap((doc) =>
+    doc.questions
+      .filter((q) => q.state === "answered" && keeps(q))
+      .map((q) => ({ path: q.path, id: q.id, line: q.line })),
+  );
+}
+
+/**
+ * How many items a request lists: a section's entries, or the ✅ questions
+ * `compact` lists. `keeps` is the applied filter's question test, which only
+ * `compact` reads; the sections are already filtered.
+ */
+export function planningRequestCount(
+  index: PlanningIndex,
+  sections: PlanningSections,
+  id: PlanningRequestId,
+  keeps?: PlanningQuestionKeeper,
+): number {
+  return id === "compact"
+    ? answeredQuestions(index, keeps).length
+    : agentSectionCount(sections, id);
+}
+
+/**
+ * The requests among `ids` (default: all five) that list an item, in request
+ * order: the ones a request covers, and on the page, the ones that get a
+ * button.
+ */
+export function planningRequestsWithEntries(
+  index: PlanningIndex,
+  sections: PlanningSections,
+  ids: readonly PlanningRequestId[] = PLANNING_REQUEST_IDS,
+  keeps?: PlanningQuestionKeeper,
+): PlanningRequestId[] {
+  return PLANNING_REQUEST_IDS.filter(
+    (id) =>
+      ids.includes(id) && planningRequestCount(index, sections, id, keeps) > 0,
+  );
+}
+
+/**
  * The agent sections among `ids` (default: all four) that hold an entry, in
  * page order: the ones a request covers, and on the page, the ones that get a
  * Copy agent request button.
@@ -220,11 +298,11 @@ export interface PlanningAgentRequestOptions {
    */
   repository: string;
   /**
-   * The sections to cover (default: all four agent sections). Covered in page
-   * order whatever order they are given in, each once, and an empty one is
-   * left out.
+   * The requests to cover (default: all five: the four agent sections, then
+   * `compact`). Covered in that order whatever order they are given in, each
+   * once, and an empty one is left out.
    */
-  ids?: readonly PlanningAgentSectionId[];
+  ids?: readonly PlanningRequestId[];
   /**
    * The Vantage release of the viewer handing the request over, as `X.Y.Z`,
    * or absent for a development build and for `vantage-check index
@@ -247,7 +325,17 @@ export interface PlanningAgentRequestOptions {
    * which keeps every entry, the request is byte for byte what it was before
    * filters.
    */
-  filter?: { text: string; unfiltered: PlanningSections };
+  filter?: {
+    text: string;
+    unfiltered: PlanningSections;
+    /**
+     * The filter's test of one question, `filterKeepsQuestion` with the
+     * understood filter bound. `compact` lists ✅ questions from the whole
+     * index, which no filtered section holds, so it reads this; absent, every
+     * one is kept.
+     */
+    keeps?: PlanningQuestionKeeper;
+  };
 }
 
 /**
@@ -296,11 +384,14 @@ export function planningAgentRequest(
   sections: PlanningSections,
   options: PlanningAgentRequestOptions,
 ): string | null {
-  const ids = agentSectionsWithEntries(sections, options.ids);
+  const keeps = options.filter?.keeps;
+  const ids = planningRequestsWithEntries(index, sections, options.ids, keeps);
   if (ids.length === 0) return null;
   const blockedFrom = options.filter?.unfiltered ?? sections;
   const blocks = ids.map((id) =>
-    requestBlock(index, sections, blockedFrom, id),
+    id === "compact"
+      ? compactBlock(index, keeps)
+      : requestBlock(index, sections, blockedFrom, id),
   );
   const filter =
     options.filter === undefined || options.filter.text === ""
@@ -313,6 +404,22 @@ export function planningAgentRequest(
     // so a code file's `§N` comments would read as broken references.
     `Verify: in the repository, run \`${checker(options.viewer)}\` on every Markdown file you changed, then \`${checker(options.viewer)} index\`. ${VERIFY_CAUTION}`,
   ].join("\n\n");
+}
+
+/**
+ * The `compact` block: its heading line, then one line per ✅ question, as
+ * the *Not on a roadmap* block lists its questions. The instruction restates
+ * the style guide's compaction bullet (`COMPACTION_RULE`).
+ */
+function compactBlock(
+  index: PlanningIndex,
+  keeps: PlanningQuestionKeeper | undefined,
+): string {
+  const refs = answeredQuestions(index, keeps);
+  return lines(
+    `${PLANNING_REQUEST_TITLES.compact} (${count(refs.length)}): questions the human has ruled (✅), whose rulings are still in their question directives. Compact each in its document. ${COMPACTION_RULE} An entry is where the question's item starts.`,
+    refs.map((ref) => questionItem(index, ref)),
+  );
 }
 
 /**

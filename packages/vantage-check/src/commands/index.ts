@@ -1,8 +1,9 @@
 import { statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import {
-  PLANNING_AGENT_SECTION_IDS,
   PLANNING_NOTICES,
+  PLANNING_REQUEST_IDS,
+  PLANNING_REQUEST_TITLES,
   PLANNING_SECTION_GUIDE,
   PLANNING_SECTION_TITLES,
   ROADMAP_STATE_PHRASES,
@@ -15,6 +16,7 @@ import {
   codeSpan,
   dependsOnLabel,
   derivePlanningSections,
+  filterKeepsQuestion,
   findDocument,
   noticeText,
   parsePlanningFilter,
@@ -25,13 +27,14 @@ import {
   sectionExplanation,
   type FilteredPlanningSections,
   type PlanningAgentRequestOptions,
-  type PlanningAgentSectionId,
+  type PlanningRequestId,
   type PlanningBadge,
   type PlanningIndex,
   type PlanningRoadmap,
   type PlanningSectionId,
   type PlanningSections,
   type PlanningSources,
+  type UnderstoodPlanningFilter,
   type QuestionRef,
   type QuestionState,
 } from "../../../vantage-md/src/planning/index.js";
@@ -111,10 +114,10 @@ export interface IndexOptions {
   roadmap?: string;
   /**
    * `--request`: print the agent request for these sections instead of the
-   * index. Empty asks for every agent section, as Copy all agent requests
+   * index. Empty asks for every request, the four agent sections and `compact`, as Copy all agent requests
    * does.
    */
-  request?: PlanningAgentSectionId[];
+  request?: PlanningRequestId[];
   /**
    * `--filter`: a planning filter's text, every value given joined with one
    * space (`docs/reference/planning-index.md` §13.4). Empty, or white space
@@ -253,7 +256,7 @@ export function indexCommand(options: IndexOptions, io: Io): number {
 
   if (options.request !== undefined) {
     if (sections !== null) {
-      requestOut(project, sections, options.request, io, applied);
+      requestOut(project, sections, options.request, io, applied, filter);
     }
   } else if (options.format === "json") {
     io.out(
@@ -506,11 +509,12 @@ function shellQuote(text: string): string {
 function requestOut(
   project: ScannedProject,
   sections: PlanningSections,
-  asked: readonly PlanningAgentSectionId[],
+  asked: readonly PlanningRequestId[],
   io: Io,
   applied: AppliedFilter | null,
+  filter: UnderstoodPlanningFilter | null,
 ): void {
-  const ids = asked.length === 0 ? PLANNING_AGENT_SECTION_IDS : asked;
+  const ids = asked.length === 0 ? PLANNING_REQUEST_IDS : asked;
   const options: PlanningAgentRequestOptions = {
     repository: project.root,
     ids,
@@ -522,6 +526,11 @@ function requestOut(
     options.filter = {
       text: requestText ?? canonical,
       unfiltered: applied.unfiltered,
+      // `compact` lists from the whole index, so it needs the filter's own
+      // question test.
+      ...(filter === null
+        ? {}
+        : { keeps: (q) => filterKeepsQuestion(filter, q) }),
     };
   }
   const request = planningAgentRequest(
@@ -535,9 +544,9 @@ function requestOut(
   }
   // A section with no entries is empty, or not shown at all (no roadmap, or
   // no stages): "has no entries" is true of both.
-  const empty = PLANNING_AGENT_SECTION_IDS.filter((id) => ids.includes(id));
+  const empty = PLANNING_REQUEST_IDS.filter((id) => ids.includes(id));
   io.err(
-    `vantage-check: nothing to ask an agent: ${andList(empty.map((id) => PLANNING_SECTION_TITLES[id]))} ${empty.length === 1 ? "has" : "have"} no entries${applied === null ? "" : " the filter keeps"}\n`,
+    `vantage-check: nothing to ask an agent: ${andList(empty.map((id) => PLANNING_REQUEST_TITLES[id]))} ${empty.length === 1 ? "has" : "have"} no entries${applied === null ? "" : " the filter keeps"}\n`,
   );
 }
 

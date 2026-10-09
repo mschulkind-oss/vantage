@@ -30,6 +30,7 @@ import {
   filterKeepsQuestion,
   noticeText,
   parsePlanningFilter,
+  PLANNING_AGENT_SECTION_IDS,
   planningAgentRequest,
   planningLink,
   readPastedPlanningLink,
@@ -1662,7 +1663,11 @@ describe("the agent request under a filter (§6.15, §6.2)", () => {
     const { sections, summary } = apply("path:/notes");
     const request = planningAgentRequest(INDEX, sections, {
       repository,
-      filter: { text: summary.requestText!, unfiltered: SECTIONS },
+      filter: {
+        text: summary.requestText!,
+        unfiltered: SECTIONS,
+        keeps: (q) => filterKeepsQuestion(understood("path:/notes"), q),
+      },
     })!;
     expect(request).toContain(
       "Filter: `path:/notes`. Only the entries it keeps are listed.",
@@ -1675,6 +1680,8 @@ describe("the agent request under a filter (§6.15, §6.2)", () => {
     expect(
       planningAgentRequest(INDEX, nothing.sections, {
         repository,
+        // The sections alone: the document's ✅ question is a `compact` item.
+        ids: PLANNING_AGENT_SECTION_IDS,
         filter: { text: nothing.summary.requestText!, unfiltered: SECTIONS },
       }),
     ).toBeNull();

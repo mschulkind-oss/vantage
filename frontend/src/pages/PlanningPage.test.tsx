@@ -44,12 +44,22 @@ import {
   PLANNING_SECTION_GUIDE,
   buildPlanningIndex,
   derivePlanningSections,
+  filterKeepsQuestion,
+  parsePlanningFilter,
   planningAgentRequest,
+  type PlanningQuestionKeeper,
   sectionExplanation,
   type PlanningConfig,
   type PlanningSources,
 } from "vantage-md/planning";
 import { filterSummaryOf, sectionsOf } from "../lib/planningPages";
+
+/** The question test of the filter `text`, which `compact` reads. */
+const keepsOf = (text: string): PlanningQuestionKeeper => {
+  const filter = parsePlanningFilter(text);
+  if (filter.kind !== "understood") throw new Error(`not understood: ${text}`);
+  return (q) => filterKeepsQuestion(filter, q);
+};
 import { VIEWER_RELEASE } from "../lib/viewerRelease";
 import { PlanningPage } from "./PlanningPage";
 import { AppShell } from "../components/AppShell";
@@ -3221,6 +3231,7 @@ describe("each section's explanation, and Copy agent request", () => {
         filter: {
           text: "path:plans/ready.md",
           unfiltered: derivePlanningSections(index),
+          keeps: keepsOf("path:plans/desing path:plans/ready.md"),
         },
       }),
     );
@@ -3342,6 +3353,7 @@ describe("each section's explanation, and Copy agent request", () => {
               filter: {
                 text: summary.requestText,
                 unfiltered: sectionsOf(index, "roadmap.md"),
+                keeps: keepsOf(text),
               },
             },
           ),
