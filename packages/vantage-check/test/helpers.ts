@@ -10,6 +10,37 @@ import { Settings } from "../src/core/settings.js";
 import type { RunReport } from "../src/core/types.js";
 import { Workspace } from "../src/core/workspace.js";
 
+/**
+ * The variables git consults to find a repository, as
+ * `internal/gitenv`'s `locationVars` lists them for the Go tests.
+ */
+const GIT_LOCATION_VARS = [
+  "GIT_DIR",
+  "GIT_WORK_TREE",
+  "GIT_INDEX_FILE",
+  "GIT_OBJECT_DIRECTORY",
+  "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+  "GIT_COMMON_DIR",
+  "GIT_PREFIX",
+  "GIT_NAMESPACE",
+];
+
+/**
+ * This process's environment without the variables that locate a repository,
+ * for a test's own `git` commands. A commit made in a linked worktree runs the
+ * pre-commit hook, and so these tests, with `GIT_DIR` naming that worktree's
+ * directory under the shared `.git`; inherited, a test's `git init` in its own
+ * tree re-initializes that directory instead, and sets `core.bare = true` in
+ * the shared config, which leaves every checkout of the clone unusable.
+ */
+export function gitEnvScrubbed(
+  env: NodeJS.ProcessEnv = process.env,
+): NodeJS.ProcessEnv {
+  const scrubbed = { ...env };
+  for (const name of GIT_LOCATION_VARS) delete scrubbed[name];
+  return scrubbed;
+}
+
 const trees: string[] = [];
 
 afterEach(() => {
