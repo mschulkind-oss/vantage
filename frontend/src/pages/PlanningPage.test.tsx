@@ -235,7 +235,7 @@ const TREE: Record<string, string> = {
 /**
  * The corpus with OQ-U1's document on the roadmap too, so it is a card of
  * Needs you in a document of its own: what the suites of a card's inputs
- * read, since Not on a roadmap lists rows (planning-to-do-list.md §3.4).
+ * read, since Not on a roadmap lists rows (planning-index.md §6.2).
  */
 const ROUTED: Record<string, string> = {
   ...TREE,
@@ -567,7 +567,7 @@ const cardsIn = (name: string) =>
 /**
  * Every question a section lists, as a card or as a one-line row, by the
  * question each names: *Needs you*'s answered rows, and the folded groups'
- * rows (planning-to-do-list.md §3.3, §3.4).
+ * rows (planning-index.md §6.4, §6.2).
  */
 const listedIn = (name: string) =>
   Array.from(
@@ -601,7 +601,7 @@ const nameLink = (id: string, path: string) =>
   within(cardFor(id)).getByRole("link", { name: path });
 /**
  * Copy answers' accessible name, and not its neighbour Copy answers +
- * maintenance's (planning-to-do-list.md §5).
+ * maintenance's (planning-index.md §6.7).
  */
 const COPY_ANSWERS = /^(Copy answers|Copied)(?! \+)/;
 /** Open document's accessible name, which says what its icon does. */
@@ -619,7 +619,7 @@ const documentsIn = (name: string) =>
 describe("the sections, top to bottom (§6.2)", () => {
   beforeEach(() => seed());
 
-  it("lists routed open questions under Needs you, in roadmap order, and a ✅ one under Maintenance (planning-to-do-list.md §3.3)", async () => {
+  it("lists routed open questions under Needs you, in roadmap order, and a ✅ one under Maintenance (planning-index.md §6.4)", async () => {
     await renderPage();
     expect(cardsIn("Needs you")).toEqual([
       "OQ-D1: Question OQ-D1?",
@@ -707,7 +707,7 @@ describe("the sections, top to bottom (§6.2)", () => {
     expect(section("Unreadable")).toHaveTextContent("docs/latin1.md not UTF-8");
   });
 
-  it("puts Needs you first, then the folded groups, Maintenance's kinds in their order (planning-to-do-list.md §3.4)", async () => {
+  it("puts Needs you first, then the folded groups, Maintenance's kinds in their order (planning-index.md §6.2)", async () => {
     seed(
       TREE,
       { stages: STAGES },
@@ -938,7 +938,7 @@ describe("empty and degenerate states", () => {
     release();
     await settle();
     expect(inPage().queryByRole("status")).toBeNull();
-    // No section bar (planning-to-do-list.md §3.5).
+    // No section bar (planning-index.md §6.3).
     expect(screen.queryByRole("navigation", { name: "Sections" })).toBeNull();
     expect(listedIn("Not on a roadmap")).toHaveLength(2);
   });
@@ -1028,7 +1028,7 @@ async function reviewPushed(path: string): Promise<void> {
 }
 
 /* ------------------------------------------------------------------ *
- * Needs you as a to-do list (planning-to-do-list.md §3.3, §7)
+ * Needs you as a to-do list (planning-index.md §6.4)
  * ------------------------------------------------------------------ */
 
 /** A roadmap routing `count` open questions of one document, OQ-T1 on. */
@@ -1055,7 +1055,7 @@ const refresh = async () => {
   await settle();
 };
 
-describe("Needs you as a to-do list (planning-to-do-list.md §3.3)", () => {
+describe("Needs you as a to-do list (planning-index.md §6.4)", () => {
   it("shows the page size of questions that need you as cards, and counts the rest on the end line", async () => {
     pageSize(2);
     seed(todoTree(5));
@@ -1148,7 +1148,7 @@ describe("Needs you as a to-do list (planning-to-do-list.md §3.3)", () => {
     ).toBeTruthy();
   });
 
-  it("ignores an old address's page parameters, and the in-place rewrite drops them (§7)", async () => {
+  it("ignores an old address's page parameters, and the in-place rewrite drops them (§6.4)", async () => {
     pageSize(2);
     seed(todoTree(5));
     await renderPage("/.vantage/planning?needs-you=2&other=x");
@@ -1156,7 +1156,7 @@ describe("Needs you as a to-do list (planning-to-do-list.md §3.3)", () => {
     expect(router.location).toBe("/.vantage/planning?other=x");
   });
 
-  it("paints every full card of a layout in one commit, whatever the page size (§7)", async () => {
+  it("paints every full card of a layout in one commit, whatever the page size (§6.5)", async () => {
     pageSize(5);
     const tree = todoTree(8);
     let release: () => void = () => {};
@@ -1184,10 +1184,10 @@ describe("Needs you as a to-do list (planning-to-do-list.md §3.3)", () => {
 });
 
 /* ------------------------------------------------------------------ *
- * What moves, and who moves it (planning-to-do-list.md §4)
+ * What moves, and who moves it (planning-index.md §6.4)
  * ------------------------------------------------------------------ */
 
-describe("your own actions (planning-to-do-list.md §4.1)", () => {
+describe("your own actions (planning-index.md §6.4)", () => {
   it("shrinks a card answered here to a row where it was, and the next question joins the cards", async () => {
     pageSize(2);
     const tree = todoTree(4);
@@ -1318,7 +1318,7 @@ describe("your own actions (planning-to-do-list.md §4.1)", () => {
     ).toHaveAttribute("data-planning-row");
   });
 
-  it("opens and closes a folded group in place, closed until opened and remembered per group (§3.4)", async () => {
+  it("opens and closes a folded group in place, closed until opened and remembered per group (§6.2)", async () => {
     localStorage.clear();
     seed();
     await renderPage();
@@ -1344,7 +1344,7 @@ describe("your own actions (planning-to-do-list.md §4.1)", () => {
   });
 });
 
-describe("the focus, where the reader's own action takes its control away (§4.1)", () => {
+describe("the focus, where the reader's own action takes its control away (§6.4)", () => {
   it("goes to the row's Show when Take this leaning shrinks the card", async () => {
     pageSize(2);
     seed(todoTree(3));
@@ -1420,7 +1420,7 @@ describe("the focus, where the reader's own action takes its control away (§4.1
   });
 });
 
-describe("a group the layout did not have (§4.2)", () => {
+describe("a group the layout did not have (§6.4)", () => {
   it("is not drawn until the next layout: its items count in the updates slot", async () => {
     pageSize(2);
     const tree = todoTree(2);
@@ -1474,7 +1474,7 @@ describe("a group the layout did not have (§4.2)", () => {
   });
 });
 
-describe("the end line follows the layout on screen (§3.3)", () => {
+describe("the end line follows the layout on screen (§6.4)", () => {
   it("never says Nothing needs you while a full card is still painted", async () => {
     pageSize(2);
     const tree = todoTree(1);
@@ -1489,7 +1489,7 @@ describe("the end line follows the layout on screen (§3.3)", () => {
   });
 });
 
-describe("a card a row opens into (§4.1)", () => {
+describe("a card a row opens into (§6.4)", () => {
   it("is drawn from the document as it is at the layout, after an edit and Refresh", async () => {
     pageSize(2);
     // Its block, in a document of its own, is past those a layout fetches
@@ -1531,7 +1531,7 @@ describe("a card a row opens into (§4.1)", () => {
   });
 });
 
-describe("what arrives late (planning-to-do-list.md §4.2)", () => {
+describe("what arrives late (planning-index.md §6.4)", () => {
   /** A reply of the agent's on your comment on `id`. */
   function agentReplied(tree: Record<string, string>, id: string): string {
     const { path } = typedOnTitle(tree, id);
@@ -1804,7 +1804,7 @@ describe("what arrives late (planning-to-do-list.md §4.2)", () => {
   });
 });
 
-describe("Refresh (planning-to-do-list.md §4.3)", () => {
+describe("Refresh (planning-index.md §6.4)", () => {
   it("keeps the room of its slot from the first paint, and shows N updates only while some are held", async () => {
     pageSize(2);
     seed(todoTree(3));
@@ -1876,7 +1876,7 @@ describe("Refresh (planning-to-do-list.md §4.3)", () => {
   });
 });
 
-describe("no section bar (planning-to-do-list.md §3.5)", () => {
+describe("no section bar (planning-index.md §6.3)", () => {
   beforeEach(() => seed());
 
   it("has none: the page's top is the filter line, then Needs you's heading and its first card", async () => {
@@ -2630,7 +2630,7 @@ describe("several roadmaps (§6.8)", () => {
   });
 
   // One picker, where the planning outline is drawn at its head, and on
-  // Needs you's heading line when it is not (planning-to-do-list.md §3.5).
+  // Needs you's heading line when it is not (planning-index.md §6.8).
   it("puts the picker at the head of the planning outline while it is drawn, and only there", async () => {
     localStorage.setItem("vantage:tocOpen", "true");
     seed(TWO);
@@ -2857,7 +2857,7 @@ describe("several roadmaps (§6.8)", () => {
     serveTree(retired);
     setLoad(readyOf(retired));
     await settle();
-    // Late data (planning-to-do-list.md §4.2): held until the next layout.
+    // Late data (planning-index.md §6.4): held until the next layout.
     expect(picker().value).toBe(NESTED);
     expect(cardsIn("Needs you")[0]).toBe("OQ-U1: Question OQ-U1?");
     await refresh();
@@ -3016,7 +3016,7 @@ describe("in daemon mode", () => {
 describe("each card's controls follow its state (Plan Q5)", () => {
   beforeEach(() => seed());
 
-  it("lists a blocked question under Blocked as one row, answered from its document (planning-to-do-list.md §3.4)", async () => {
+  it("lists a blocked question under Blocked as one row, answered from its document (planning-index.md §6.2)", async () => {
     await renderPage();
     expect(within(section("Blocked")).queryByRole("article")).toBeNull();
     const row = screen.getByRole("listitem", {
@@ -3029,7 +3029,7 @@ describe("each card's controls follow its state (Plan Q5)", () => {
     expect(within(row).queryByRole("button")).toBeNull();
   });
 
-  it("lists a ✅ question under To fold into the ledger as one row, never a card (planning-to-do-list.md §3.3)", async () => {
+  it("lists a ✅ question under To fold into the ledger as one row, never a card (planning-index.md §6.4)", async () => {
     await renderPage();
     expect(
       screen.queryByRole("article", { name: "OQ-A1: Question OQ-A1?" }),
@@ -3537,7 +3537,7 @@ describe("each section's explanation, and Copy agent request", () => {
     screen.getByRole("button", { name: `Copy agent request for ${title}` });
   /**
    * Copy answers + maintenance, which replaced Copy all agent requests
-   * (planning-to-do-list.md §5): with every kind checked and no answer
+   * (planning-index.md §6.7): with every kind checked and no answer
    * pending, what it copies is every request, as `--request` prints it.
    */
   const copyAll = () =>
@@ -3611,7 +3611,7 @@ describe("each section's explanation, and Copy agent request", () => {
     );
   });
 
-  it("gives each agent section Copy agent request, and no Copy all agent requests (planning-to-do-list.md §5)", async () => {
+  it("gives each agent section Copy agent request, and no Copy all agent requests (planning-index.md §6.7)", async () => {
     await renderPage();
     expect(agentButtons()).toEqual([
       "Copy agent request for Not on a roadmap",
@@ -3693,7 +3693,7 @@ describe("each section's explanation, and Copy agent request", () => {
     ).toBeTruthy();
   });
 
-  describe("Copy answers + maintenance (planning-to-do-list.md §5)", () => {
+  describe("Copy answers + maintenance (planning-index.md §6.7)", () => {
     const answersButton = () =>
       screen.getByRole("button", { name: COPY_ANSWERS });
     const count = () => screen.getByTestId("copy-maintenance-count");
@@ -4202,7 +4202,7 @@ describe("scoping a comment to its question, over agent-bootstrap.md", () => {
     });
 
     await settle();
-    // Answered here, its card is a row now (planning-to-do-list.md §4.1).
+    // Answered here, its card is a row now (planning-index.md §6.4).
     expect(bootstrapCard("OQ-B3")).toBeUndefined();
     for (const id of ["OQ-B1", "OQ-B2", "OQ-B4", "OQ-B5"]) {
       const list = within(bootstrapCard(id)).queryByRole("list", {
@@ -4333,7 +4333,7 @@ describe("in the app shell (§6.1)", () => {
   });
 });
 
-describe("the planning outline, On this page (planning-to-do-list.md §3.5)", () => {
+describe("the planning outline, On this page (planning-index.md §6.9)", () => {
   beforeEach(() => {
     localStorage.setItem("vantage:tocOpen", "true");
   });
@@ -4667,7 +4667,7 @@ describe("Expand all and Collapse all (planning-index.md §6.6)", () => {
       }),
     );
 
-  it("sits with the header's view toggles, and folds and unfolds every card on the page (planning-to-do-list.md §3.1)", async () => {
+  it("sits with the header's view toggles, and folds and unfolds every card on the page (planning-index.md §6.3)", async () => {
     await renderPage();
     const button = toggle();
     expect(button).toHaveAccessibleName("Expand all");
@@ -4798,7 +4798,7 @@ describe("Expand all and Collapse all (planning-index.md §6.6)", () => {
 describe("a comment on a question is its answer (§6.7)", () => {
   const ANSWERED_CHIP = "Answered — waiting on the agent";
 
-  it("lists a question your comment answers as an answered row with its card's chip, and copies it (planning-to-do-list.md §3.3)", async () => {
+  it("lists a question your comment answers as an answered row with its card's chip, and copies it (planning-index.md §6.4)", async () => {
     seed();
     answer(TREE, "OQ-D1");
     await renderPage();
@@ -5061,7 +5061,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
   /**
    * The filter the page on screen is laid out under, as its sections' box
    * says: what the notice's first line named until the filter line's counts
-   * replaced it (planning-to-do-list.md §3.2).
+   * replaced it (planning-index.md §6.18).
    */
   const filterShown = () =>
     document
@@ -5196,7 +5196,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       expect(spinnerBox.isConnected).toBe(false);
     });
 
-    it("shows only what the filter keeps, counted in the filter line, with the box holding its text (planning-to-do-list.md §3.2)", async () => {
+    it("shows only what the filter keeps, counted in the filter line, with the box holding its text (planning-index.md §6.18)", async () => {
       await renderPage(
         "/.vantage/planning?filter=path:plans/design.md+is:open",
       );
@@ -5315,7 +5315,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       expect(
         within(section("Blocked")).getByText(/^blocked on/),
       ).toHaveTextContent("blocked on design.md#OQ-D1");
-      // Beside the document, not in a notice (planning-to-do-list.md §3.2).
+      // Beside the document, not in a notice (planning-index.md §6.18).
       expect(
         section("Blocked").querySelector("[data-planning-left-out]"),
       ).toHaveTextContent("(which this filter leaves out)");
@@ -5363,7 +5363,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       expect(box().value).toBe("path:plans/unrouted.md");
     });
 
-    it("drops a filtered link's page parameters, which name no page (planning-to-do-list.md §7)", async () => {
+    it("drops a filtered link's page parameters, which name no page (planning-index.md §6.4)", async () => {
       await renderPage(
         "/.vantage/planning?filter=path:plans/design.md&needs-you=2&waiting=4",
       );
@@ -5393,7 +5393,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       serveTree(grown);
       setLoad(readyOf(grown));
       await settle();
-      // Held (planning-to-do-list.md §4.2): counted, and laid out on Refresh.
+      // Held (planning-index.md §6.4): counted, and laid out on Refresh.
       expect(cardsIn("Needs you")).toEqual([
         "OQ-D1: Question OQ-D1?",
         "OQ-D3: Question OQ-D3?",
@@ -5554,7 +5554,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       });
       await settle();
       expect(router.location).toBe("/.vantage/planning");
-      // A new entry (planning-to-do-list.md §3.2, OQ-TD13).
+      // A new entry (planning-index.md §6.16, OQ-TD13).
       expect(router.types.at(-1)).toBe("PUSH");
       expect(box().value).toBe("");
       expect(document.activeElement).toBe(box());
@@ -5808,7 +5808,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       expect(counts()).toBe("0 match · 10 hidden");
     });
 
-    it("clears the filter on hidden as a new history entry, which Back undoes, and typing after it replaces it (planning-to-do-list.md §3.2)", async () => {
+    it("clears the filter on hidden as a new history entry, which Back undoes, and typing after it replaces it (planning-index.md §6.16)", async () => {
       await renderPage("/.vantage/planning?filter=path:plans/design.md", [
         "/plans/roadmap.md",
       ]);
@@ -7181,7 +7181,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       await settle();
       expect(router.location).toBe("/.vantage/planning");
       expect(filterShown()).toMatch(/^oq-d$/);
-      // Late data (planning-to-do-list.md §4.2): counted, and laid out by
+      // Late data (planning-index.md §6.4): counted, and laid out by
       // the reader's next layout, under the same text.
       expect(cardsIn("Needs you")).toEqual([D1, D3]);
       expect(updatesCount()).toHaveTextContent("1");

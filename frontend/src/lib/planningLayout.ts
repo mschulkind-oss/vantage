@@ -1,22 +1,22 @@
 /**
  * The movement rule of the planning page, as pure functions
- * (`docs/design/planning-to-do-list.md` §4): what *Needs you* lists and how,
+ * (`docs/reference/planning-index.md` §6.4): what *Needs you* lists and how,
  * what the reader changed in place since, and what late data marks and holds
  * back.
  *
- * - A **layout** (the design's term) is the page's arrangement of items:
+ * - A **layout** (a term `docs/reference/planning-index.md` §6.4 defines) is the page's arrangement of items:
  *   which it lists, in what order, as rows or as cards. Only the reader's own
- *   actions and opening the page make one (§4.1). `layoutNeedsYou` makes
+ *   actions and opening the page make one (§6.4). `layoutNeedsYou` makes
  *   *Needs you*'s: the answered rows first, then the first page size of the
- *   questions that need you as cards, then what is left beyond them (§3.3).
+ *   questions that need you as cards, then what is left beyond them (§6.4).
  * - **In place** (a term this module coins) is what the reader did to a
  *   layout without making a new one: a card answered here shrinks to a row
  *   where it was and the next question joins the cards; a row shown, or a
  *   take undone, opens into a card where it stands; *… N more answered*
- *   shows the rest (§4.1). `InPlace` holds it.
- * - **Late data** is everything after a layout (§4.2). It never changes an
+ *   shows the rest (§6.4). `InPlace` holds it.
+ * - **Late data** is everything after a layout (§6.4). It never changes an
  *   item's height, position or presence: it marks the item (`marksOf`), and
- *   is counted as a **held update** (§4.3) until the reader's next layout
+ *   is counted as a **held update** (§6.4) until the reader's next layout
  *   (`heldUpdates`).
  *
  * An item is known across index versions by `itemKey`, its card's id
@@ -43,7 +43,7 @@ export const itemKey = (question: {
   unitLine: number;
 }): string => planningCardId(question.path, question.id, question.unitLine);
 
-/** *Needs you*, laid out (§3.3). */
+/** *Needs you*, laid out (§6.4). */
 export interface NeedsYouLayout {
   /** The questions a comment of yours answers, in the roadmap's order. */
   answered: readonly QuestionEntry[];
@@ -75,7 +75,7 @@ export function layoutNeedsYou(
   };
 }
 
-/** What the reader changed in place since the layout (§4.1). */
+/** What the reader changed in place since the layout (§6.4). */
 export interface InPlace {
   /** Cards answered here, now rows where they were. */
   shrunk: ReadonlySet<string>;
@@ -96,7 +96,7 @@ export const NOTHING_IN_PLACE: InPlace = Object.freeze({
 
 /**
  * A card answered here: it shrinks to a row where it is, and the first
- * question beyond the cards, if any, joins their end (§4.1). A card already a
+ * question beyond the cards, if any, joins their end (§6.4). A card already a
  * row changes nothing. A row the reader opened into its card, by Show, Undo
  * or New reply, that is answered again shrinks back to its row, and nothing
  * joins for it: the card that joined when it first shrank is still there.
@@ -131,7 +131,7 @@ export function shrinkCard(
 
 /**
  * A row opened into its card where it stands: Show, Undo on a take, or a
- * mark's own control. The card that joined for it stays (§4.1).
+ * mark's own control. The card that joined for it stays (§6.4).
  */
 export function openRow(inPlace: InPlace, key: string): InPlace {
   if (inPlace.opened.has(key)) return inPlace;
@@ -241,7 +241,7 @@ export const agentReplies = (
     0,
   );
 
-/** What an answered row's chip says (§3.3): the card's own chip. */
+/** What an answered row's chip says (§6.4): the card's own chip. */
 export type RowAnswer =
   | { kind: "taken"; comment: ReviewComment }
   | { kind: "answered" }
@@ -276,7 +276,7 @@ export function rowAnswer(
   return null;
 }
 
-/** A mark late data puts on an item (§4.2). */
+/** A mark late data puts on an item (§6.4). */
 export type Mark = "done" | "answered-elsewhere" | "changed";
 
 /** What a mark says, in the item's own line. */
@@ -286,7 +286,7 @@ export const MARK_LABELS: Readonly<Record<Mark, string>> = {
   changed: "Changed in the document",
 };
 
-/** The New reply mark's words (§4.2, *The New reply mark*). */
+/** The New reply mark's words (§6.4). */
 export const NEW_REPLY_LABEL = "New reply";
 
 /** What the page knows of one question at the layout and now. */
@@ -314,7 +314,7 @@ export interface QuestionFacts {
 
 /**
  * How many questions share each root-level block, by `blockKeyOf`: counted
- * once per index, so each question's count is a lookup (§4.2).
+ * once per index, so each question's count is a lookup (§6.4).
  */
 export function blockSizes(
   questions: Iterable<PlanningQuestion>,
@@ -370,7 +370,7 @@ const isDone = (facts: QuestionFacts): boolean =>
   facts.now === undefined || facts.now.state === "answered";
 
 /**
- * The marks on one item of *Needs you* drawn `as` a row or a card (§4.2):
+ * The marks on one item of *Needs you* drawn `as` a row or a card (§6.4):
  * *Done* when it became ✅ or left the index; *Answered elsewhere* on a card
  * a comment now answers that this page did not file; *Changed in the
  * document* when the text its card painted is not the document's now. And
@@ -397,7 +397,7 @@ export function marksOf(
   return { marks, newReply: facts.repliesNow > facts.repliesSeen };
 }
 
-/** The kinds of held update, as Refresh's title lists them (§4.3). */
+/** The kinds of held update, as Refresh's title lists them (§6.4). */
 export type UpdateKind =
   | "new reply"
   | "new question"
@@ -479,7 +479,7 @@ export interface UpdatesInput {
 type Role = "row" | "card" | null;
 
 /**
- * The held updates (§4.3): one per item a new layout would bring in, take
+ * The held updates (§6.4): one per item a new layout would bring in, take
  * out, change between row and card, or render again, and one for a reordered
  * roadmap, counted by kind. A row the reader opened compares as whatever the
  * data in hand makes it, since opening it was their own action.
@@ -495,7 +495,7 @@ export function heldUpdates(input: UpdatesInput): HeldUpdates {
   for (const e of fresh.cards) freshRoles.set(itemKey(e.question), "card");
 
   // The reader's own answers, as their boxes will leave them once closed: a
-  // card answered by its own box compares as the row it becomes (§4.1).
+  // card answered by its own box compares as the row it becomes (§6.4).
   let inPlace = input.inPlace;
   if (input.own !== undefined && input.own.size > 0) {
     const asDrawn = viewNeedsYou(
@@ -596,7 +596,7 @@ export function heldUpdates(input: UpdatesInput): HeldUpdates {
 }
 
 /**
- * Every *item* a layout lists (`docs/design/planning-to-do-list.md` §3.2,
+ * Every *item* a layout lists (`docs/reference/planning-index.md` §6.18,
  * coined there): one question or one document row, counted once even where
  * two groups list it, so a document in both *Ready to graduate* and
  * *Blocked* is one item. Items in folded groups count, and so do *Needs
@@ -620,7 +620,7 @@ export function layoutItemKeys(layout: PlanningLayout): Set<string> {
 }
 
 /**
- * The filter line's counts (§3.2): the items `filtered` lists, and those of
+ * The filter line's counts (§6.18): the items `filtered` lists, and those of
  * `all`, the same page unfiltered, that it does not.
  */
 export function filterItemCounts(
@@ -633,7 +633,7 @@ export function filterItemCounts(
   return { match: kept.size, hidden };
 }
 
-/** `18 match`, `1 matches`: the filter line's counts, first part (§3.2). */
+/** `18 match`, `1 matches`: the filter line's counts, first part (§6.18). */
 export const matchText = (match: number): string =>
   `${match.toLocaleString("en-US")} ${match === 1 ? "matches" : "match"}`;
 

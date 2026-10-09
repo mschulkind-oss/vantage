@@ -34,7 +34,7 @@ const filterLine = (page: Page) =>
 const notice = (page: Page) => page.getByTestId("filter-notice");
 /**
  * The filter line's counts, *N match · M hidden*, which replaced the notice's
- * first line (planning-to-do-list.md §3.2).
+ * first line (planning-index.md §6.18).
  */
 const counts = (page: Page) => page.getByTestId("planning-filter-counts");
 const needYou = (page: Page) => page.getByTestId("needs-you-count");
@@ -175,7 +175,7 @@ test.describe("the planning filter", () => {
     expect(await page.evaluate(() => history.length)).toBe(entries + 1);
   });
 
-  // planning-to-do-list.md §3.2, OQ-TD6, OQ-TD13: pressing *hidden* clears
+  // planning-index.md §6.16, OQ-TD6, OQ-TD13: pressing *hidden* clears
   // the filter as a new history entry, so Back brings it back; neither the
   // counts arriving nor the clear moves anything painted.
   test("clears the filter on hidden, as a history entry Back undoes, moving nothing painted", async ({

@@ -1,13 +1,13 @@
 /**
- * The planning page's two folded groups (`docs/design/planning-to-do-list.md`
- * §3.4): *Blocked*, and *Maintenance* with one sub-list per kind. Each is a
+ * The planning page's two folded groups (`docs/reference/planning-index.md`
+ * §6.2): *Blocked*, and *Maintenance* with one sub-list per kind. Each is a
  * heading line with its count, closed until the reader opens it, its state
  * remembered in this browser per group. Opened, a group lists one row per
  * item, never a card, the first `groupRows` of each list and then *Show all
  * N*; each kind with an agent request keeps Copy agent request on its
  * sub-heading.
  *
- * The rows are the layout's (§4): a row whose item has gone since is marked
+ * The rows are the layout's (§6.4): a row whose item has gone since is marked
  * *Done* and stays, and the counts are the data in hand's, changing live in
  * slots kept for them, so a new item counts before it is listed.
  */
@@ -84,7 +84,7 @@ const Done: React.FC<{ gone: boolean }> = ({ gone }) =>
     </span>
   ) : null;
 
-/** A question, by its document, id and title, each a link (§3.4). */
+/** A question, by its document, id and title, each a link (§6.2). */
 const QuestionRow: React.FC<{
   entry: QuestionEntry;
   href: (path: string) => string;
@@ -156,13 +156,13 @@ const DocumentRow: React.FC<{
   );
 };
 
-/** What the filter says beside an entry it leaves out (§3.2). */
+/** What the filter says beside an entry it leaves out (§6.18). */
 export const LEFT_OUT_BY_FILTER = "which this filter leaves out";
 
 /**
  * What a blocked document waits on, inline: each entry, linked, and, under a
  * filter, *which this filter leaves out* after each entry it does not keep
- * (`docs/design/planning-to-do-list.md` §3.2: the notice's *Waits on* line,
+ * (`docs/reference/planning-index.md` §6.18: the notice's *Waits on* line,
  * moved beside its document).
  */
 const WaitingOn: React.FC<{
@@ -433,7 +433,7 @@ export const PlanningGroups: React.FC<{
   return (
     <>
       {/* Which groups there are is the layout's: a group that comes after it
-          is counted in the updates slot until the next (§4.2). */}
+          is counted in the updates slot until the next (§6.4). */}
       {layout.blocked.length > 0 && (
         <section
           aria-labelledby="waiting"

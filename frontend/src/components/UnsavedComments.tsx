@@ -1,6 +1,6 @@
 /**
  * The app shell's word on comments not saved yet
- * (`docs/design/planning-to-do-list.md` §6.2). A comment box saves as the
+ * (`docs/reference/comment-autosave.md` §4.2). A comment box saves as the
  * reader types and keeps retrying a save that fails; one closed with text not
  * yet saved hands it to the same retries (`lib/commentAutosave.ts`). So while
  * any box is retrying, or closed with text still on its way, this says how

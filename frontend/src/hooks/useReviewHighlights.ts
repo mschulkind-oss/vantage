@@ -134,7 +134,7 @@ export function useReviewHighlights(
     // boxes open in it are lifted out first, with where their focus, caret,
     // selection and scroll were, and put back into the rebuilt layer as the
     // same elements: the reviewer typing in one never notices a save
-    // (docs/design/planning-to-do-list.md §6.1).
+    // (docs/reference/comment-autosave.md §6).
     const open = boxesIn(el);
     const held = open.map(liftBox);
     const heldResolved = new Set(

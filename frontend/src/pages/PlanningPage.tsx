@@ -8,12 +8,12 @@
  * The order is `derivePlanningSections`' alone, so filing an answer never
  * reorders the page.
  *
- * A to-do list (`docs/design/planning-to-do-list.md`): *Needs you* shows the
+ * A to-do list (`docs/reference/planning-index.md` §6.4): *Needs you* shows the
  * questions you have answered as one-line rows, then the page size of those
  * that need you as cards, then a count of the rest; *Blocked* and
  * *Maintenance* are folded groups of one-line rows. There are no pages.
  *
- * The movement rule (§4 of that design): the page lays out the load it last
+ * The movement rule (§6.4): the page lays out the load it last
  * made a layout from, never the newest one, and only the reader's own
  * actions make a layout — opening the page, a filter, a roadmap, a page size,
  * Refresh. Everything that arrives after a layout marks and counts what it
@@ -27,7 +27,7 @@
  * agent's work has Copy agent request, and the header has Copy answers +
  * maintenance (`components/PlanningCopyPanel.tsx`): Copy answers' text, then
  * the request for the kinds its panel checks, generated from the data in hand
- * when it is pressed (planning-to-do-list.md §5).
+ * when it is pressed (planning-index.md §6.7).
  *
  * Filtered (`docs/reference/planning-index.md` §6.11): a filter line at the
  * top of the column holds the Filter box, whose text is the URL's `filter=`,
@@ -36,7 +36,7 @@
  * types, and the URL follows it in one replace navigation after an idle
  * pause, or at once on Enter, a paste or the focus leaving the box (§6.16);
  * ✕ and *hidden* clear it as a new history entry, so Back brings it back
- * (planning-to-do-list.md §3.2). The filter line's *N match · M hidden* says
+ * (planning-index.md §6.16). The filter line's *N match · M hidden* says
  * what it keeps and hides. A typed text that keeps no entry at all waits for the URL to take
  * it, so a half-typed word does not empty the page between two keystrokes
  * that come within the idle pause of each other. An applied filter that
@@ -56,7 +56,7 @@
  *
  * Frame first (§6.3, §6.5): the route's first render is the header, the
  * filter line and the notices, with no card in it; there is no section bar
- * (planning-to-do-list.md §3.5). The sections fill the
+ * (planning-index.md §6.3). The sections fill the
  * region below in one later commit, from a complete set of page inputs —
  * blocks, reviews and diagrams (`hooks/usePlanningPageInputs.ts`) — and a set
  * stays on screen until the next one is complete. Nothing that arrives after
@@ -279,7 +279,7 @@ const NO_MARKS: readonly Mark[] = Object.freeze([]);
 
 /**
  * The line under *To fold into the ledger*: the ✅ questions the `compact`
- * request lists (planning-to-do-list.md §3.4, §5.2).
+ * request lists (planning-index.md §6.2).
  */
 const COMPACT_EXPLANATION =
   "Ruled, and waiting to be folded into the body they govern. An agent compacts each.";
@@ -527,7 +527,7 @@ type AgentRequestOf = (ids?: readonly PlanningRequestId[]) => string | null;
  * Expand all, or Collapse all: every question card on the page unfolded or
  * folded, and every card rendered after it opened the same way — on the next
  * visit too — until it is pressed again (§6.6). One of the header's view
- * toggles (`docs/design/planning-to-do-list.md` §3.1), beside the contents
+ * toggles (`docs/reference/planning-index.md` §6.3), beside the contents
  * column's and full width's, so it is in view wherever the reader has
  * scrolled; unlike them it is drawn at every width, and it folds into the
  * "⋯" with them, where `CardsTogglePanel` draws it.
@@ -720,7 +720,7 @@ const FilterNotice: React.FC<{
 
 /**
  * The filter notice's lines for the frame's filter, or `null` for none: only
- * *Not filtered* now (planning-to-do-list.md §3.2). An applied filter's
+ * *Not filtered* now (planning-index.md §6.18). An applied filter's
  * counts are the filter line's, *N match · M hidden*, and *Nothing matches*
  * stands in place of the sections.
  */
@@ -980,7 +980,7 @@ const RoadmapLine: React.FC<{
   onPick: (path: string) => void;
   /**
    * Drawn at the head of the planning outline, its parts one under another,
-   * rather than on *Needs you*'s heading line (planning-to-do-list.md §3.5).
+   * rather than on *Needs you*'s heading line (planning-index.md §6.8).
    */
   stacked?: boolean;
   /** Drawn on *Needs you*'s heading line: no margin of its own. */
@@ -1099,7 +1099,7 @@ const RoadmapLine: React.FC<{
 };
 
 /**
- * *Needs you* on screen (planning-to-do-list.md §4): the layout a set of
+ * *Needs you* on screen (planning-index.md §6.4): the layout a set of
  * inputs was laid out into when it came on screen, or at a Refresh, and
  * what the reader has done to it in place since.
  */
@@ -1133,7 +1133,7 @@ function questionsByItem(
 
 /**
  * The first item of the page at least partly in the pane, and how far below
- * the pane's top it starts: the place Refresh keeps (§4.3).
+ * the pane's top it starts: the place Refresh keeps (§6.4).
  */
 function firstOnScreen(pane: HTMLElement | null): {
   key: string | null;
@@ -1245,7 +1245,7 @@ const HEADLINE_FRAMES = 10;
 /**
  * Once `box`'s last save has landed, failed into its retries, or the reviews
  * deadline has passed: Refresh lays out after the boxes it closed have saved
- * (planning-to-do-list.md §4.3).
+ * (planning-index.md §6.4).
  */
 function boxSettled(box: CommentBox): Promise<void> {
   return new Promise((resolve) => {
@@ -1579,12 +1579,12 @@ export const PlanningPage: React.FC = () => {
   );
 
   // The page size: the one this browser remembers, read again at each
-  // layout the reader makes, and set by a choice on the end line (§3.3).
+  // layout the reader makes, and set by a choice on the end line (§6.4).
   const [pageSize, setPageSize] = useState(readPageSize);
-  // Refresh's count: each press is a new layout from the data in hand (§4.3).
+  // Refresh's count: each press is a new layout from the data in hand (§6.4).
   const [generation, setGeneration] = useState(0);
 
-  // The movement rule (planning-to-do-list.md §4): the page lays out the
+  // The movement rule (planning-index.md §6.4): the page lays out the
   // load it last made a layout from, its *basis* (a term this page coins),
   // never the newest one. A new layout takes the load in hand: opening the
   // page, a filter applied, a roadmap picked, a page size chosen, Refresh.
@@ -1630,7 +1630,7 @@ export const PlanningPage: React.FC = () => {
   // The roadmap, the filter and an understood filter's canonical text are
   // rewritten in place: the roadmap named when two or more route, gone when
   // fewer do; the filter in the link encoding (§6.16); and every old page
-  // parameter dropped (planning-to-do-list.md §7). The fragment stays: a link
+  // parameter dropped (planning-index.md §6.4). The fragment stays: a link
   // to a card or a section that needs its query rewritten still goes where
   // it points, once the sections are in (below). Setting the query alone
   // would drop it.
@@ -2085,8 +2085,8 @@ export const PlanningPage: React.FC = () => {
   const restFailed = reviewsFailed && shown?.inputs.reviewsFailed !== true;
   const [copied, setCopied] = useState(false);
   // Copy answers' text: what this tab's boxes hold, as last typed
-  // (planning-to-do-list.md §6.3). Copy answers + maintenance starts with
-  // it, byte for byte (§5.1).
+  // (comment-autosave.md §7). Copy answers + maintenance starts with
+  // it, byte for byte (§6.7).
   const answersText = useCallback(
     (): string | null =>
       answersPayload(
@@ -2240,7 +2240,7 @@ export const PlanningPage: React.FC = () => {
     shown.inputs.layout.filter !== layout.filter;
 
   // *Needs you* as the layout on screen made it, and what the reader has
-  // done to it since (planning-to-do-list.md §4). Made when a set of inputs
+  // done to it since (planning-index.md §6.4). Made when a set of inputs
   // the reader asked for comes on screen, and on each Refresh, from the
   // reviews in hand then; never from late data, which only marks it.
   const shownLayout = shown?.inputs.layout ?? null;
@@ -2250,7 +2250,7 @@ export const PlanningPage: React.FC = () => {
     [shownIndex],
   );
   const liveQuestions = useMemo(() => questionsByItem(index), [index]);
-  // Each block's questions, counted once per index (§4.2).
+  // Each block's questions, counted once per index (§6.4).
   const shownBlocks = useMemo(
     () => blockSizes(shownQuestions.values()),
     [shownQuestions],
@@ -2328,7 +2328,7 @@ export const PlanningPage: React.FC = () => {
   // elsewhere mark, and no held update.
   const [own, setOwn] = useState<ReadonlySet<string>>(() => new Set());
 
-  // What the page knows of an item at its layout and now (§4.2).
+  // What the page knows of an item at its layout and now (§6.4).
   const factsOf = useCallback(
     (key: string): QuestionFacts | undefined => {
       const painted = shownQuestions.get(key) ?? liveQuestions.get(key);
@@ -2409,7 +2409,7 @@ export const PlanningPage: React.FC = () => {
   );
   const updateCount = updatesTotal(updates);
   // The groups' items in hand, by the keys their rows are drawn with: a row
-  // whose item is gone is marked Done (§4.2).
+  // whose item is gone is marked Done (§6.4).
   const liveGroupKeys = useMemo(
     () =>
       liveLayout === null
@@ -2436,7 +2436,7 @@ export const PlanningPage: React.FC = () => {
     [liveLayout],
   );
 
-  // What the reader does in place (§4.1). Each reads the screen as it is
+  // What the reader does in place (§6.4). Each reads the screen as it is
   // when it lands, so two quick presses both count.
   const changeInPlace = useCallback(
     (change: (screen: Screen) => InPlace) =>
@@ -2454,7 +2454,7 @@ export const PlanningPage: React.FC = () => {
     return out;
   }, [shownQuestions]);
   // Where the focus goes once the reader's own action has changed the
-  // layout under it, after the commit that does (§4.1): an action that took
+  // layout under it, after the commit that does (§6.4): an action that took
   // away the control it was pressed with leaves the focus nowhere.
   const focusRef = useRef<FocusAfter | null>(null);
   const answeredHere = useCallback(
@@ -2521,7 +2521,7 @@ export const PlanningPage: React.FC = () => {
   });
   // Show on an answered row, Undo on its take, or its New reply: the row
   // opens into its card where it stands, once the card's block is in hand,
-  // so the card paints whole (§4.1).
+  // so the card paints whole (§6.4).
   const openItem = useCallback(
     async (key: string, entry: QuestionEntry) => {
       const { question } = entry;
@@ -2568,7 +2568,7 @@ export const PlanningPage: React.FC = () => {
     [repo, changeInPlace],
   );
 
-  // Refresh (§4.3): every open comment box closed first, which saves what it
+  // Refresh (§6.4): every open comment box closed first, which saves what it
   // holds (`lib/commentAutosave.ts`), and its saves waited for, at most the
   // reviews deadline; then a new layout from the data in hand, with the first
   // item on screen kept at the same height, or Needs you's top when it is
@@ -2604,7 +2604,7 @@ export const PlanningPage: React.FC = () => {
     placeRef.current = null;
     keepPlace(contentRef.current, place);
   }, [current]);
-  // A page size chosen on the end line: the setting and its effect (§3.3).
+  // A page size chosen on the end line: the setting and its effect (§6.4).
   const choosePageSize = useCallback((size: number) => {
     rememberPageSize(size);
     setPageSize(size);
@@ -2636,7 +2636,7 @@ export const PlanningPage: React.FC = () => {
   }, [current]);
 
   // The folded groups' open state, remembered per group and read once per
-  // visit (§3.4).
+  // visit (§6.2).
   const [groupsOpen, setGroupsOpen] = useState(() => ({
     blocked: readPreference("vantage:planningBlockedOpen") === "true",
     maintenance: readPreference("vantage:planningMaintenanceOpen") === "true",
@@ -2776,7 +2776,7 @@ export const PlanningPage: React.FC = () => {
   //
   // From the data in hand, under the layout's roadmap and filter: what the
   // groups' and the copy panel's counts read, live, so a request copies what
-  // its count says (planning-to-do-list.md §4.2, §5.1).
+  // its count says (planning-index.md §6.4, §6.7).
   const requestRoadmap = (shownLayout ?? frameLayout)?.roadmap ?? null;
   const requestOf = useCallback<AgentRequestOf>(
     (ids) => {
@@ -2804,7 +2804,7 @@ export const PlanningPage: React.FC = () => {
     },
     [index, requestRoadmap, frameFilter, frameKeeps, repo],
   );
-  // Copy answers + maintenance (§5.1): Copy answers' text, then the request
+  // Copy answers + maintenance (§6.7): Copy answers' text, then the request
   // for the kinds its panel checks.
   const copyWithMaintenance = useCallback(
     async (kinds: readonly PlanningRequestId[]): Promise<boolean> => {
@@ -2818,7 +2818,7 @@ export const PlanningPage: React.FC = () => {
     },
     [quotesLoading, countKnown, answersText, requestOf],
   );
-  // *On this page* (planning-to-do-list.md §3.5): the full cards' documents,
+  // *On this page* (planning-index.md §6.9): the full cards' documents,
   // then the answered rows, *Blocked* and *Maintenance*, from the layout on
   // screen, with the groups' counts in hand.
   const maintenanceTotal = useMemo(
@@ -2956,8 +2956,8 @@ export const PlanningPage: React.FC = () => {
     [repo, shownHashes],
   );
 
-  // One item of *Needs you*: a full card, or an answered row (§3.3), with the
-  // marks late data put on it (§4.2).
+  // One item of *Needs you*: a full card, or an answered row (§6.4), with the
+  // marks late data put on it (§6.4).
   const needsYouItem = (item: NeedsYouItem) => {
     const { question } = item.entry;
     const facts = factsOf(item.key);
@@ -3208,7 +3208,7 @@ export const PlanningPage: React.FC = () => {
       setAnnouncement("");
       jumpRef.current = null;
       // ✕ and *hidden* add a history entry, so Back brings the filter
-      // back (planning-to-do-list.md §3.2, OQ-TD6, OQ-TD13); Enter and a
+      // back (planning-index.md §6.16, OQ-TD6, OQ-TD13); Enter and a
       // paste replace it.
       // With the URL, in one render, so the page never shows the URL's old
       // filter between the box's and the new one.
@@ -3260,9 +3260,9 @@ export const PlanningPage: React.FC = () => {
     () => filterNoticeLines(frameNotUnderstood),
     [frameNotUnderstood],
   );
-  // The filter line's counts (planning-to-do-list.md §3.2): the items the
+  // The filter line's counts (planning-index.md §6.18): the items the
   // layout's filter keeps of the data in hand, and those it hides of the
-  // same page unfiltered, live as every count is (§4.2).
+  // same page unfiltered, live as every count is (§6.4).
   const liveUnfiltered = useMemo(
     () =>
       index === null ||
@@ -3337,7 +3337,7 @@ export const PlanningPage: React.FC = () => {
       .filter(Boolean)
       .join(" ") || undefined;
   // What the live region says once the URL takes the reader's filter: the
-  // counts where it said the notice (§3.2), then what else the summary says,
+  // counts where it said the notice (§6.18), then what else the summary says,
   // or the Not filtered notice.
   const spoken =
     filterNotice !== null
@@ -3420,7 +3420,7 @@ export const PlanningPage: React.FC = () => {
   // The roadmap picker (§6.8), and only one of it: at the head of the
   // planning outline while the outline is drawn, else on *Needs you*'s
   // heading line, or a line of its own where *Needs you* is not drawn
-  // (planning-to-do-list.md §3.5). Its options are the frame's.
+  // (planning-index.md §6.8). Its options are the frame's.
   const picker =
     frameReady &&
     frameSections !== null &&
@@ -3539,7 +3539,7 @@ export const PlanningPage: React.FC = () => {
           spacePending && "invisible",
         )}
       >
-        {/* Never in the "⋯", where an update would be hidden (§3.1). */}
+        {/* Never in the "⋯", where an update would be hidden (§6.3). */}
         <PlanningUpdates
           count={updateCount}
           title={updatesTitle(updates)}
@@ -3774,7 +3774,7 @@ export const PlanningPage: React.FC = () => {
                 <>
                   {/* The frame (§6.3): the progress line while the index
                       builds, then the notices. The section bar is gone
-                      (planning-to-do-list.md §3.5): the page's top is the
+                      (planning-index.md §6.3): the page's top is the
                       filter line, Needs you's heading and its first card.
                       The sections fill the region below in one later
                       commit. */}
@@ -3852,7 +3852,7 @@ export const PlanningPage: React.FC = () => {
                           {/* The roadmap picker where the column is not
                               drawn: on Needs you's heading line, the list
                               the roadmap orders, else on a line of its own
-                              (planning-to-do-list.md §3.5). */}
+                              (planning-index.md §6.8). */}
                           {!outlineShown && !needsYouDrawn && picker?.(false)}
                           {nothingMatches !== null ? (
                             <NothingMatches

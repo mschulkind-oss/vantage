@@ -1,5 +1,5 @@
 /**
- * The planning page's layout (`docs/design/planning-to-do-list.md` §3): what
+ * The planning page's layout (`docs/reference/planning-index.md` §6.2): what
  * *Needs you* and the two folded groups list, from the index alone, the
  * chosen roadmap, the applied filter and the page size. *Needs you* holds the
  * open questions the roadmap routes, in its order; which of them are answered
@@ -85,7 +85,7 @@ export type CardEntry =
 
 /**
  * The kinds *Maintenance* lists, in the order it lists them
- * (`planning-to-do-list.md` §3.4): each agent section, the ✅ questions to
+ * (`planning-index.md` §6.2): each agent section, the ✅ questions to
  * fold into the ledger (`compact`, a request and not a section of the
  * index), and the files the index could not read.
  */
@@ -160,7 +160,7 @@ export interface PlanningLayout {
 
 /**
  * The page size this browser remembers, else the default: one of
- * `planningLimits.pageSizes` (`planning-to-do-list.md` §3.3). Read at every
+ * `planningLimits.pageSizes` (`planning-index.md` §6.4). Read at every
  * layout the page makes, never followed live: a size another tab chose
  * applies here at the next one.
  */
@@ -250,7 +250,7 @@ export function sectionEntries(
 
 /**
  * The ✅ questions *Maintenance* lists to fold into the ledger
- * (`planning-to-do-list.md` §3.4): the ones the `compact` request lists,
+ * (`planning-index.md` §6.2): the ones the `compact` request lists,
  * from the same function (`answeredQuestions`, P7), so the page and
  * `vantage-check index --request compact` name the same questions. They wait
  * only for compaction, so they leave *Needs you*.
@@ -270,7 +270,7 @@ export function compactEntries(
 }
 
 /**
- * Lay the page out (`planning-to-do-list.md` §3): *Needs you*'s open
+ * Lay the page out (`planning-index.md` §6.2): *Needs you*'s open
  * questions, *Blocked* and *Maintenance*. `sections` are `sectionsOf(index,
  * roadmap, filter)`, and `filter` the canonical text they were filtered by,
  * which the layout names, as it names `pageSize`.
@@ -649,7 +649,7 @@ export function withRoadmap(
 /**
  * `search` without any section-id parameter, or `null` when it holds none:
  * the parameters that named a page before the page had none
- * (`planning-to-do-list.md` §7). An old link's pages are ignored, and the
+ * (`planning-index.md` §6.4). An old link's pages are ignored, and the
  * in-place rewrite drops them. Every other parameter, and the order of those
  * it keeps, is left as it is.
  */

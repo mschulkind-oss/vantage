@@ -1348,7 +1348,7 @@ th.review-block-hovered {
   border-color: rgb(96 165 250);
   box-shadow: 0 0 0 2px rgb(96 165 250 / 0.15);
 }
-/* A comment box's foot (docs/design/planning-to-do-list.md §6.1): the hint,
+/* A comment box's foot (docs/reference/comment-autosave.md §3.4): the hint,
    then where the box's saves stand, beside its one button, Close. Shared by
    every comment box, the hand-built inline ones and the React ones alike. */
 .comment-box-foot {

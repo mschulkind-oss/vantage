@@ -253,27 +253,27 @@ interface PlanningQuestionCardProps {
   /**
    * The comments its list shows until the reader opens or toggles it: the
    * document's comments as the layout painted them, so a reply arriving
-   * later changes no card's height (`docs/design/planning-to-do-list.md`
-   * P2). Its count, its chip and the page's scoping read `comments`, live.
+   * later changes no card's height (`docs/reference/planning-index.md`
+   * §12.1). Its count, its chip and the page's scoping read `comments`, live.
    * Without it, the list shows `comments`.
    */
   listComments?: readonly ReviewComment[];
-  /** Late data's marks on it, as text in its top line (§4.2). */
+  /** Late data's marks on it, as text in its top line (§6.4). */
   marks?: readonly Mark[];
-  /** The agent replied since it painted: the New reply mark (§4.2). */
+  /** The agent replied since it painted: the New reply mark (§6.4). */
   newReply?: boolean;
   /** New reply pressed: the list opens on the reply, and the page is told. */
   onNewReply?: (key: string) => void;
   /**
    * A comment filed from this card landed, its box closed holding text or a
-   * leaning taken: the page shrinks the card to a row (§4.1).
+   * leaning taken: the page shrinks the card to a row (§6.4).
    */
   onAnswered?: (key: string) => void;
   /**
    * Its **Answer…** box opened (`true`), or closed (`true` holding text,
    * `false` empty): while it is open, and once it has answered, what its
    * saves file is the reader's own answer here, never late data
-   * (`docs/design/planning-to-do-list.md` P2).
+   * (`docs/reference/planning-index.md` §12.1).
    */
   onAnswering?: (key: string, answering: boolean) => void;
   /**
@@ -484,7 +484,7 @@ interface CardState {
    * What it offered by the comments the layout painted (`listComments`),
    * which it goes on showing until the reader acts on the card: a late
    * comment or reply changes no control under them
-   * (`docs/design/planning-to-do-list.md` P2), it marks the card instead.
+   * (`docs/reference/planning-index.md` §12.1), it marks the card instead.
    */
   paintedOffer: QuestionOffer | null;
   /** The unit was laid out (`markCardParts`): false leaves it as rendered. */
@@ -575,7 +575,7 @@ const Headline: React.FC<{ question: PlanningQuestion; id: string }> = ({
   return (
     <h3
       id={id}
-      // Where the focus goes when a row opens into this card (§4.1).
+      // Where the focus goes when a row opens into this card (§6.4).
       tabIndex={-1}
       data-planning-card-headline
       className="mt-0 mb-1.5 text-[17px] leading-snug font-semibold text-slate-900 dark:text-slate-100"
@@ -710,7 +710,7 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
    * What the card showed when **Answer…** opened its box, which it goes on
    * showing until the box closes: the box saves as the reader types, and its
    * own saves must not change the card under them
-   * (`docs/design/planning-to-do-list.md` §6.3). The page still hears of every
+   * (`docs/reference/comment-autosave.md` §7). The page still hears of every
    * save (`onScoped`), so the numbers it shows stay live.
    */
   const [held, setHeld] = useState<{
@@ -997,7 +997,7 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
 
   // The count is the comments in hand. The list is what the box held while
   // it is open, and otherwise, until the reader opens or toggles it, the
-  // comments the layout painted (planning-to-do-list.md P2).
+  // comments the layout painted (planning-index.md §12.1).
   const liveListed = (comments ?? []).filter((c) =>
     state.scoped.includes(c.id),
   );
@@ -1032,7 +1032,7 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
     setHeld(null);
     onAnswering?.(cardKey, box.typed !== "");
     // As after a take: the list opens on what was filed, and the page
-    // shrinks the card to an answered row (planning-to-do-list.md §4.1).
+    // shrinks the card to an answered row (planning-index.md §6.4).
     if (box.typed !== "") {
       setOpen(true);
       onAnswerClosed?.(question.path, box.subject.commentId);
@@ -1040,7 +1040,7 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
     }
   };
   // A box closed from outside the popover, as Refresh closes every open box
-  // first (§4.3): the card stops drawing it, as its own Close does.
+  // first (§6.4): the card stops drawing it, as its own Close does.
   const closeAnswerRef = useRef(closeAnswer);
   useLayoutEffect(() => {
     closeAnswerRef.current = closeAnswer;

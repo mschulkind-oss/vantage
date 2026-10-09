@@ -56,7 +56,7 @@ var ErrReplyNotFound = errors.New("review: reply not found")
 // heard, so a create naming a comment the review already holds is an edit of
 // that comment's text ([Store.EditCommentText]), and nothing else about it
 // changes. The same text again changes nothing at all, so a pure retry does not
-// mark the comment edited (docs/design/planning-to-do-list.md §6.2).
+// mark the comment edited (docs/reference/comment-autosave.md §5).
 func (s *Store) AddComment(filePath, repo string, c model.ReviewComment, docContent string) (*model.ReviewData, error) {
 	defer s.lock(filePath, repo)()
 	data, err := s.getLocked(filePath, repo)

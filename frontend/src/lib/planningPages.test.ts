@@ -1,5 +1,5 @@
 /**
- * The planning page's layout (`docs/design/planning-to-do-list.md` §3),
+ * The planning page's layout (`docs/reference/planning-index.md` §6.2),
  * laid out from the index alone. Every limit is proven by configuring it down
  * in the limits module, never by growing a tree to a default.
  */
@@ -105,7 +105,7 @@ describe("each section's title", () => {
   });
 });
 
-describe("the layout (planning-to-do-list.md §3)", () => {
+describe("the layout (planning-index.md §6.2)", () => {
   const routed = (ids: string[], marker = OPEN) => ({
     "roadmap.md": `# Roadmap\n\n${ids.map((id) => `- [It](a.md#${id})`).join("\n")}\n`,
     "a.md": doc("stage: DESIGN", separate("OQ-A", ids.length, 0, marker)),

@@ -38,7 +38,7 @@
  * - **Esc never clears** (§6.17): it puts back the applied filter's text over a
  *   text that is not applied, and otherwise hands the focus back to the pane.
  * - **An applied filter's counts are in the hint's slot**
- *   (`docs/design/planning-to-do-list.md` §3.2): *18 match · 379 hidden*,
+ *   (`docs/reference/planning-index.md` §6.18): *18 match · 379 hidden*,
  *   and only *379 hidden* at a narrow width. The hint wins the slot while it
  *   shows. Pressing *hidden* clears the filter, as ✕ does, and both add a
  *   history entry, so Back brings the filter back (OQ-TD6, OQ-TD13); typing
@@ -69,7 +69,7 @@ export const FILTER_PLACEHOLDER = "path:docs/design/*.md is:open";
 export const FILTER_HINT = "Not applied: Enter says why";
 
 /**
- * An applied filter's counts (§3.2 of the to-do list design): the *items* it
+ * An applied filter's counts (§6.18): the *items* it
  * keeps and hides, an item being one question or one document row the page
  * lists, counted once.
  */
@@ -224,7 +224,7 @@ export const PlanningFilterLine: React.FC<{
 
   /**
    * ✕, and *hidden*: the filter cleared at once, as a new history entry so
-   * Back brings it back, and the focus in the box (§6.17, §3.2).
+   * Back brings it back, and the focus in the box (§6.17, §6.16).
    */
   const clear = () => {
     apply("", null, true);
@@ -397,7 +397,7 @@ export const PlanningFilterLine: React.FC<{
             stay for assistive technology, which the input's description
             names while they show. */}
         {/* The same slot holds an applied filter's counts, which the hint
-            wins while it shows (§3.2): as wide as both, kept from the
+            wins while it shows (§6.18): as wide as both, kept from the
             first paint, so neither arriving moves anything. */}
         <span
           data-testid="planning-filter-hint"
@@ -410,7 +410,7 @@ export const PlanningFilterLine: React.FC<{
                 <span data-testid="planning-filter-counts">
                   {/* Each part in room of its own, its text growing to the
                       right, so a count changing as the reader types moves
-                      nothing painted after it (planning-to-do-list.md §4.2):
+                      nothing painted after it (planning-index.md §6.4):
                       the number, its word, then *hidden*. */}
                   <span
                     className="inline-block text-left tabular-nums"

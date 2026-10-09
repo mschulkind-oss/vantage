@@ -1,6 +1,6 @@
 /**
- * The planning outline, *On this page* (`docs/design/planning-to-do-list.md`
- * §3.5), drawn from the layout on screen. Every limit is proven by
+ * The planning outline, *On this page* (`docs/reference/planning-index.md`
+ * §6.9), drawn from the layout on screen. Every limit is proven by
  * configuring it down in the limits module, never by growing a tree to a
  * default.
  */

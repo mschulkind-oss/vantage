@@ -49,19 +49,19 @@ export const PREFERENCE_KEYS = [
   /**
    * The planning page's page size: how many questions that need you it shows
    * as full cards, one of `planningLimits.pageSizes`, as a decimal string
-   * (`docs/design/planning-to-do-list.md` §3.3). Absent, the default.
+   * (`docs/reference/planning-index.md` §6.4). Absent, the default.
    */
   "vantage:planningPageSize",
   /**
    * Whether the planning page's folded *Blocked* and *Maintenance* groups are
-   * open, `"true"` or `"false"`; absent, closed (§3.4 of the same design).
+   * open, `"true"` or `"false"`; absent, closed (§6.2).
    */
   "vantage:planningBlockedOpen",
   "vantage:planningMaintenanceOpen",
   /**
    * The kinds of *Maintenance* that the planning page's Copy answers +
    * maintenance leaves out: their request ids, comma-separated, `""` for
-   * none (`lib/planningCopy.ts`, §5.1 of the same design). Absent, Ready to
+   * none (`lib/planningCopy.ts`, §6.7 of the same reference). Absent, Ready to
    * build alone is left out.
    */
   "vantage:planningCopyLeftOut",
@@ -161,16 +161,16 @@ export const UNSYNCED_PREFERENCES: Partial<
   "vantage:planningPageSize":
     "A page size changing is a new layout of Needs you, and only the reader's " +
     "own action may lay the page out again under them " +
-    "(planning-to-do-list.md P2). The page reads the preference at every " +
+    "(planning-index.md §12.1). The page reads the preference at every " +
     "layout it makes, so another tab's choice applies at this tab's next " +
     "Refresh, filter change or visit, with nothing to follow in between.",
   "vantage:planningBlockedOpen":
     "Opening or closing a group moves everything below it, which only the " +
-    "reader's own action may do (planning-to-do-list.md P2). Read once per " +
+    "reader's own action may do (planning-index.md §12.1). Read once per " +
     "visit, as the page opens.",
   "vantage:planningMaintenanceOpen":
     "Opening or closing a group moves everything below it, which only the " +
-    "reader's own action may do (planning-to-do-list.md P2). Read once per " +
+    "reader's own action may do (planning-index.md §12.1). Read once per " +
     "visit, as the page opens.",
   [PLANNING_ROADMAP_FAMILY]:
     "The planning page reads the remembered roadmap once per visit, by design " +
