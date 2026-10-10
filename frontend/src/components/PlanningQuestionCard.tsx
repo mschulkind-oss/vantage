@@ -266,9 +266,10 @@ interface PlanningQuestionCardProps {
   onNewReply?: (key: string) => void;
   /**
    * A comment filed from this card landed, its box closed holding text or a
-   * leaning taken: the page shrinks the card to a row (§6.4).
+   * leaning taken: the page shrinks the card to a row (§6.4), from `height`,
+   * the card's own as it was answered.
    */
-  onAnswered?: (key: string) => void;
+  onAnswered?: (key: string, height: number) => void;
   /**
    * Its **Answer…** box opened (`true`), or closed (`true` holding text,
    * `false` empty): while it is open, and once it has answered, what its
@@ -334,6 +335,11 @@ function keepCardTop(
   };
   if (typeof requestAnimationFrame !== "function") resume();
   else requestAnimationFrame(() => requestAnimationFrame(resume));
+}
+
+/** A card's height on screen, which its answered row shrinks from. */
+function heightOf(article: HTMLElement | null): number {
+  return article?.getBoundingClientRect().height ?? 0;
 }
 
 /** Whether any of `el` is inside the pane's visible rows. */
@@ -949,7 +955,7 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
           newReviewComment(now.anchor, text(now.host), now.fallbackText),
         );
         setOpen(true);
-        onAnswered?.(cardKey);
+        onAnswered?.(cardKey, heightOf(articleRef.current));
       } catch (e) {
         setError(commandErrorMessage(e, "Could not save the comment"));
       } finally {
@@ -1036,7 +1042,7 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
     if (box.typed !== "") {
       setOpen(true);
       onAnswerClosed?.(question.path, box.subject.commentId);
-      onAnswered?.(cardKey);
+      onAnswered?.(cardKey, heightOf(articleRef.current));
     }
   };
   // A box closed from outside the popover, as Refresh closes every open box
