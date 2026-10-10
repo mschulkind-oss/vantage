@@ -1152,3 +1152,21 @@ func TestWatcherDropsUnchangedGitStateEvent(t *testing.T) {
 	w.mu.Unlock()
 	require.Equal(t, 1, kept, "a real state change is kept")
 }
+
+// Changes counts flushed change batches, which is the signal the server's
+// activity warm reads to decide whether a repository needs walking again. An
+// empty batch is a no-op and must not advance it.
+func TestWatcherChangesCountsFlushedBatches(t *testing.T) {
+	root := t.TempDir()
+	m := NewManager(quietLogger(), nil)
+	w, err := NewWatcher(root, "repoX", m, nil, false, quietLogger())
+	require.NoError(t, err)
+
+	require.Zero(t, w.Changes())
+	w.flush(nil)
+	require.Zero(t, w.Changes(), "an empty batch is not a change")
+
+	w.flush([]string{"a.md"})
+	w.flush([]string{"b.md"})
+	require.Equal(t, uint64(2), w.Changes())
+}
