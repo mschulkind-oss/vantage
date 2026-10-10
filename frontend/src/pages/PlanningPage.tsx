@@ -2457,10 +2457,22 @@ export const PlanningPage: React.FC = () => {
   // layout under it, after the commit that does (§6.4): an action that took
   // away the control it was pressed with leaves the focus nowhere.
   const focusRef = useRef<FocusAfter | null>(null);
+  // The heights of cards answered here, by item key, each taken by the row
+  // it shrinks to as that row mounts (`shrinkToRow`). One its row never
+  // took, as when the card was already a row, is too old to use soon after.
+  const shrinkingRef = useRef(new Map<string, { from: number; at: number }>());
+  const shrunkFrom = useCallback((key: string) => {
+    const entry = shrinkingRef.current.get(key);
+    shrinkingRef.current.delete(key);
+    return entry !== undefined && performance.now() - entry.at < 2000
+      ? entry.from
+      : undefined;
+  }, []);
   const answeredHere = useCallback(
-    (cardKey: string) => {
+    (cardKey: string, height: number) => {
       const key = shownByRef.get(cardKey);
       if (key !== undefined) {
+        shrinkingRef.current.set(key, { from: height, at: performance.now() });
         focusRef.current = { key, on: "row", onlyIfLost: true };
         changeInPlace((s) => shrinkCard(s.inPlace, s.needsYou, key));
       }
@@ -2999,6 +3011,7 @@ export const PlanningPage: React.FC = () => {
             void openItem(item.key, item.entry);
           }}
           onOpenHere={saveScroll}
+          shrunkFrom={() => shrunkFrom(item.key)}
         />
       );
     }

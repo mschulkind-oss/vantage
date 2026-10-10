@@ -10,7 +10,7 @@
  * which only the reader's own actions change: the numbers here change live,
  * in slots kept for them, and nothing else does (§6.4).
  */
-import React from "react";
+import React, { useLayoutEffect, useRef } from "react";
 import { ChevronDown, Undo2 } from "lucide-react";
 import type { PlanningQuestion } from "vantage-md/planning";
 import {
@@ -93,6 +93,49 @@ export const NewReplyBar: React.FC = () => (
   />
 );
 
+/** How long a card answered here takes to shrink to its row. */
+const ROW_SHRINK_MS = 320;
+/** How long the row it shrank to stays tinted green after. */
+const ROW_FLASH_MS = 1600;
+/** The green the row starts from, painted over its own background. */
+const ROW_FLASH = "inset 0 0 0 100vmax rgb(34 197 94 / 0.22)";
+
+/**
+ * A card answered here becoming its row (§6.4), so the reader sees it go
+ * rather than finding the next question where it was: the row starts at the
+ * card's height, with its one line where the card's top was, and its bottom
+ * edge sweeps up to the line, carrying what is below up with it; then the row
+ * fades from green. The pane keeps its scroll while it does, so nothing above
+ * the row moves. For a reader who asked for less motion the row is at its
+ * height at once, and only the green fades: a change of color moves nothing.
+ */
+function shrinkToRow(row: HTMLElement, from: number): void {
+  if (typeof row.animate !== "function") return;
+  const still =
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const to = row.getBoundingClientRect().height;
+  if (!still && from > to) {
+    const pane = row.closest<HTMLElement>("[data-content-scroll]");
+    pane?.style.setProperty("overflow-anchor", "none");
+    // Border-box, so height less padding is the line's own height throughout.
+    const shrink = row.animate(
+      [
+        { height: `${from}px`, paddingBottom: `${from - to}px` },
+        { height: `${to}px`, paddingBottom: "0px" },
+      ],
+      { duration: ROW_SHRINK_MS, easing: "cubic-bezier(0.2, 0, 0, 1)" },
+    );
+    const resume = () => pane?.style.removeProperty("overflow-anchor");
+    shrink.onfinish = resume;
+    shrink.oncancel = resume;
+  }
+  row.animate([{ boxShadow: ROW_FLASH }, { boxShadow: "none" }], {
+    duration: ROW_FLASH_MS,
+    easing: "ease-in",
+  });
+}
+
 /**
  * An answered row (§6.4): one line, its marker, id and
  * title, the chip its card shows, Undo on a take that is still the whole
@@ -111,6 +154,11 @@ export const AnsweredRow: React.FC<{
   onUndo?: () => void;
   onNewReply: () => void;
   onOpenHere?: () => void;
+  /**
+   * The height of the card answered here that this row has just replaced,
+   * asked for once as the row mounts; `undefined` for any other row.
+   */
+  shrunkFrom?: () => number | undefined;
 }> = ({
   question,
   itemKey,
@@ -123,7 +171,16 @@ export const AnsweredRow: React.FC<{
   onUndo,
   onNewReply,
   onOpenHere,
+  shrunkFrom,
 }) => {
+  const rowRef = useRef<HTMLDivElement>(null);
+  const shrunkFromRef = useRef(shrunkFrom);
+  useLayoutEffect(() => {
+    const from = shrunkFromRef.current?.();
+    if (from !== undefined && rowRef.current !== null) {
+      shrinkToRow(rowRef.current, from);
+    }
+  }, []);
   const chip =
     answer === null
       ? null
@@ -141,6 +198,7 @@ export const AnsweredRow: React.FC<{
     onUndo !== undefined;
   return (
     <div
+      ref={rowRef}
       id={planningCardId(question.path, question.id, question.unitLine)}
       role="group"
       aria-label={question.title}

@@ -1135,6 +1135,18 @@ the item they acted on ([OQ-TD9](#why-its-this-way)):
 A card shrinks when its box closes, never as it is typed in, and nothing the reader
 does reorders *Needs you*: the next layout gathers the answered rows at the top.
 
+The shrink is shown, not cut: answered in place, the card would otherwise be
+replaced in one frame by its row and the next question, and the reader would see a
+new question where they were reading with nothing to say the old one had gone. So
+the row starts at the card's height, with its one line where the card's top was,
+and its bottom edge sweeps up to the line in about a third of a second, carrying
+what is below up with it; the pane keeps its scroll meanwhile, so nothing above the
+row moves. The row then fades from green over about a second and a half. For a
+reader whose system asks for reduced motion the row takes its height at once and
+only the green fades, since a change of color moves nothing. Only a card answered
+here plays it, never a row a layout lists (`shrinkToRow` in
+[`PlanningNeedsYou.tsx`](../../frontend/src/components/PlanningNeedsYou.tsx)).
+
 **Late data marks, and counts; it never lays out**
 ([OQ-TD10](#why-its-this-way), [§12](#12-late-data-never-moves-painted-content)).
 An index update, reviews arriving, an agent's reply or an answer made elsewhere

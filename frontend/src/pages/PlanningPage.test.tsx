@@ -28,7 +28,15 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { useLayoutEffect } from "react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  onTestFinished,
+  vi,
+} from "vitest";
 import {
   MemoryRouter,
   Route,
@@ -1216,6 +1224,107 @@ describe("your own actions (planning-index.md §6.4)", () => {
     expect(endLine()).toHaveTextContent(/^1 more needs you/);
     // An action of your own is no held update.
     expect(updatesButton()).toHaveAttribute("aria-hidden", "true");
+  });
+
+  /**
+   * Cards 240px tall and rows 36px, which jsdom does not lay out, and the
+   * animations played on rows, which it cannot play, recorded instead.
+   */
+  function watchShrinks(reducedMotion = false) {
+    const played: { el: Element; keyframes: Keyframe[]; ms: number }[] = [];
+    const rect = vi
+      .spyOn(Element.prototype, "getBoundingClientRect")
+      .mockImplementation(function (this: Element) {
+        const height =
+          this.tagName === "ARTICLE"
+            ? 240
+            : this.matches("[data-planning-row]")
+              ? 36
+              : 0;
+        return {
+          x: 0,
+          y: 0,
+          top: 0,
+          left: 0,
+          right: 0,
+          width: 0,
+          height,
+          bottom: height,
+          toJSON: () => ({}),
+        } as DOMRect;
+      });
+    const animate = function (
+      this: Element,
+      keyframes: Keyframe[],
+      options: KeyframeAnimationOptions,
+    ) {
+      played.push({ el: this, keyframes, ms: Number(options.duration) });
+      return { onfinish: null, oncancel: null } as unknown as Animation;
+    };
+    Object.defineProperty(Element.prototype, "animate", {
+      value: animate,
+      configurable: true,
+      writable: true,
+    });
+    const media = window.matchMedia;
+    window.matchMedia = ((query: string) => ({
+      matches: reducedMotion && query.includes("reduce"),
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    })) as unknown as typeof window.matchMedia;
+    onTestFinished(() => {
+      rect.mockRestore();
+      delete (Element.prototype as { animate?: unknown }).animate;
+      window.matchMedia = media;
+    });
+    return played;
+  }
+
+  it("shows the card answered here shrinking to its row, then the row fading from green", async () => {
+    pageSize(2);
+    const tree = todoTree(4);
+    seed(tree);
+    answer(tree, "OQ-T4");
+    const played = watchShrinks();
+    await renderPage();
+    // A row the reader did not just answer here plays nothing.
+    expect(rowIds()).toEqual(["OQ-T4"]);
+    expect(played).toEqual([]);
+    await act(async () => {
+      fireEvent.click(
+        within(cardFor("OQ-T1")).getByRole("button", {
+          name: "Take this leaning",
+        }),
+      );
+    });
+    await settle();
+    const row = screen.getByRole("group", { name: "OQ-T1: Question OQ-T1?" });
+    expect(played.map((p) => p.el)).toEqual([row, row]);
+    // From the card's height to the row's, its line kept at the top.
+    expect(played[0]!.keyframes).toEqual([
+      { height: "240px", paddingBottom: "204px" },
+      { height: "36px", paddingBottom: "0px" },
+    ]);
+    expect(played[1]!.keyframes[0]!.boxShadow).toMatch(/rgb\(34 197 94/);
+    expect(played[1]!.ms).toBeGreaterThan(played[0]!.ms);
+  });
+
+  it("only fades the row from green for a reader who asked for less motion", async () => {
+    pageSize(2);
+    seed(todoTree(3));
+    const played = watchShrinks(true);
+    await renderPage();
+    await act(async () => {
+      fireEvent.click(
+        within(cardFor("OQ-T1")).getByRole("button", {
+          name: "Take this leaning",
+        }),
+      );
+    });
+    await settle();
+    expect(played).toHaveLength(1);
+    expect(played[0]!.keyframes[0]).not.toHaveProperty("height");
+    expect(played[0]!.keyframes[0]!.boxShadow).toMatch(/rgb\(34 197 94/);
   });
 
   it("shrinks a card when its Answer… box closes holding text, never as it is typed in", async () => {
