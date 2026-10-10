@@ -1231,7 +1231,13 @@ describe("your own actions (planning-index.md §6.4)", () => {
    * animations played on rows, which it cannot play, recorded instead.
    */
   function watchShrinks(reducedMotion = false) {
-    const played: { el: Element; keyframes: Keyframe[]; ms: number }[] = [];
+    const played: {
+      el: Element;
+      keyframes: Keyframe[];
+      ms: number;
+      /** The row's own height in the DOM as the animation began. */
+      height: string;
+    }[] = [];
     const rect = vi
       .spyOn(Element.prototype, "getBoundingClientRect")
       .mockImplementation(function (this: Element) {
@@ -1258,7 +1264,12 @@ describe("your own actions (planning-index.md §6.4)", () => {
       keyframes: Keyframe[],
       options: KeyframeAnimationOptions,
     ) {
-      played.push({ el: this, keyframes, ms: Number(options.duration) });
+      played.push({
+        el: this,
+        keyframes,
+        ms: Number(options.duration),
+        height: (this as HTMLElement).style.height,
+      });
       return { onfinish: null, oncancel: null } as unknown as Animation;
     };
     Object.defineProperty(Element.prototype, "animate", {
@@ -1302,9 +1313,13 @@ describe("your own actions (planning-index.md §6.4)", () => {
     expect(played.map((p) => p.el)).toEqual([row, row]);
     // From the card's height to the row's, its line kept at the top.
     expect(played[0]!.keyframes).toEqual([
-      { height: "240px", paddingBottom: "204px" },
-      { height: "36px", paddingBottom: "0px" },
+      { height: "240px", paddingBottom: "calc(240px - 2.25rem)" },
+      { height: "2.25rem", paddingBottom: "0px" },
     ]);
+    // The row was drawn at the card's height, so no layout ever saw the page
+    // shorter: one near the end of the list would have pulled the pane's
+    // scroll back, moving everything down before the shrink began.
+    expect(played[0]!.height).toBe("240px");
     expect(played[1]!.keyframes[0]!.boxShadow).toMatch(/rgb\(34 197 94/);
     expect(played[1]!.ms).toBeGreaterThan(played[0]!.ms);
   });
@@ -1324,6 +1339,8 @@ describe("your own actions (planning-index.md §6.4)", () => {
     await settle();
     expect(played).toHaveLength(1);
     expect(played[0]!.keyframes[0]).not.toHaveProperty("height");
+    // Drawn tall for its first layout all the same, so it pulls no scroll.
+    expect(played[0]!.height).toBe("240px");
     expect(played[0]!.keyframes[0]!.boxShadow).toMatch(/rgb\(34 197 94/);
   });
 
