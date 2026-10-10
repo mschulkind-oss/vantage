@@ -63,7 +63,7 @@ func Middleware(store *Store) func(http.Handler) http.Handler {
 			next.ServeHTTP(rec, req)
 			durationMs := float64(time.Since(start).Microseconds()) / 1000
 
-			operation := req.Method + " " + collapseRepoPath(path)
+			operation := req.Method + " " + collapsePathParams(collapseRepoPath(path))
 			store.recordRequest(operation, durationMs, rec.status)
 
 			logRequest(operation, durationMs, rec.status)
@@ -88,6 +88,28 @@ func collapseRepoPath(path string) string {
 		return "/api/r/*/" + parts[4]
 	}
 	return "/api/r/*"
+}
+
+// collapsePathParams replaces an opaque identifier in a known path position
+// with "*", so endpoints added after the middleware — /themes/{id},
+// /spaces/{id}, and the review comment and reply ids — share one perf bucket
+// each instead of one per id. A segment is collapsed when the segment before it
+// is a parameter's introducer.
+func collapsePathParams(path string) string {
+	if len(path) == 0 || path[0] != '/' {
+		return path
+	}
+	parts := strings.Split(path, "/")
+	for i := 1; i < len(parts); i++ {
+		if parts[i] == "" {
+			continue
+		}
+		switch parts[i-1] {
+		case "themes", "spaces", "comments", "replies":
+			parts[i] = "*"
+		}
+	}
+	return strings.Join(parts, "/")
 }
 
 // logRequest emits a request-timing log line gated by duration: WARN above

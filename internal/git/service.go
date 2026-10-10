@@ -239,6 +239,8 @@ var readOnlyArgs = []string{"--no-optional-locks"}
 // caller is expected to degrade to an empty result. stderr is intentionally
 // discarded — git diagnostics never surface to the API.
 func (s *GitService) run(cwd string, timeout time.Duration, args ...string) ([]byte, error) {
+	defer perf.Default.Track(perf.CategoryGit, "exec:"+gitSubcommand(args))()
+
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
@@ -256,6 +258,19 @@ func (s *GitService) run(cwd string, timeout time.Duration, args ...string) ([]b
 		return nil, err
 	}
 	return stdout.Bytes(), nil
+}
+
+// gitSubcommand returns the git subcommand from args, skipping any leading
+// options. It names one subprocess spawn in the perf report, so time spent in
+// `exec:ls-files` is distinguishable from `exec:log` and from the method-level
+// operation that wrapped the call.
+func gitSubcommand(args []string) string {
+	for _, a := range args {
+		if !strings.HasPrefix(a, "-") {
+			return a
+		}
+	}
+	return "unknown"
 }
 
 // repoRelativePath converts path (relative to repoPath) into a path relative to
@@ -872,11 +887,26 @@ func sortRecentsDesc(rf []model.RecentFile) {
 // locations the ignore package reads.
 const workspaceIgnoreName = ".vantageignore"
 
-func (s *GitService) ignoreExcludeFromArgs() []string {
-	if !s.opts.UseIgnoreFiles {
-		return nil
+// walkExcludeArgs returns the argv that prunes recent-files discovery at the C
+// level, so git never descends into a dependency or build tree: one --exclude
+// per configured [Options.ExcludeDirs] entry, then the layered ignore files
+// when they are in use. The names are sorted so the argv is stable. This is
+// what keeps `git ls-files --others` from walking node_modules in the first
+// place; the post-filter in computeRecents would discard those paths anyway,
+// but only after git has read every directory in the tree.
+func (s *GitService) walkExcludeArgs() []string {
+	names := make([]string, 0, len(s.excludeDirs))
+	for name := range s.excludeDirs {
+		names = append(names, name)
 	}
-	var args []string
+	sort.Strings(names)
+	args := make([]string, 0, 2*len(names)+4)
+	for _, name := range names {
+		args = append(args, "--exclude="+name)
+	}
+	if !s.opts.UseIgnoreFiles {
+		return args
+	}
 	if up := ignore.DefaultUserIgnorePath(); up != "" && isFile(up) {
 		args = append(args, "--exclude-from", up)
 	}
@@ -903,19 +933,22 @@ func (s *GitService) ignoreExcludeFromArgs() []string {
 // roughly the slowest probe rather than their sum. A fourth probe (staged
 // names) runs afterward to catch staged-but-never-committed files.
 func (s *GitService) Recents(limit int, extensions []string, showHidden, showGitignored bool) []model.RecentFile {
-	return s.recents(limit, extensions, showHidden, showGitignored, true)
+	return s.recents(limit, extensions, showHidden, showGitignored, true, "get_recently_changed_files")
 }
 
 // RecentsUnreported is [GitService.Recents] without telling OnWalk how its walks
 // ended, for a caller that is no reader: the server's last-activity warm, whose
 // result nobody sees as a list of files.
 func (s *GitService) RecentsUnreported(limit int, extensions []string, showHidden, showGitignored bool) []model.RecentFile {
-	return s.recents(limit, extensions, showHidden, showGitignored, false)
+	return s.recents(limit, extensions, showHidden, showGitignored, false, "activity_warm_recents")
 }
 
 // recents is Recents, reporting its walks to OnWalk only when report is set.
-func (s *GitService) recents(limit int, extensions []string, showHidden, showGitignored, report bool) []model.RecentFile {
-	defer perf.Default.Track(perf.CategoryGit, "get_recently_changed_files")()
+// operation names the perf bucket: a reader's recents and the daemon's activity
+// warm run the same code, and folding them into one operation hid a 30s
+// background walk inside the latency of a user-facing request.
+func (s *GitService) recents(limit int, extensions []string, showHidden, showGitignored, report bool, operation string) []model.RecentFile {
+	defer perf.Default.Track(perf.CategoryGit, operation)()
 
 	if len(extensions) == 0 {
 		extensions = defaultExtensions
@@ -986,7 +1019,7 @@ func (s *GitService) computeRecents(limit int, extLower []string, showHidden, sh
 	for i, e := range extLower {
 		extGlobs[i] = "*" + e
 	}
-	excludeFrom := s.ignoreExcludeFromArgs()
+	excludeFrom := s.walkExcludeArgs()
 
 	var logOut, untrackedOut, statusOut string
 	g := new(errgroup.Group)

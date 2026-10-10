@@ -107,7 +107,7 @@ func (s *Store) recordRequest(operation string, durationMs float64, status int) 
 // Track times the body of a function and records the elapsed duration under the
 // given category and operation. It is deferred-safe: call it as
 //
-//	defer perf.Default.Track(perf.CategoryGit, "git_log")()
+//	defer perf.Default.Track(perf.CategoryGit, "get_history")()
 //
 // The returned closure must be invoked (typically immediately via defer) to
 // finalize the measurement. Because the closure runs during stack unwinding, the
