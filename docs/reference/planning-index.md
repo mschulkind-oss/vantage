@@ -1140,12 +1140,26 @@ replaced in one frame by its row and the next question, and the reader would see
 new question where they were reading with nothing to say the old one had gone. So
 the row starts at the card's height, with its one line where the card's top was,
 and its bottom edge sweeps up to the line in about a third of a second, carrying
-what is below up with it; the pane keeps its scroll meanwhile, so nothing above the
-row moves. The row then fades from green over about a second and a half. For a
-reader whose system asks for reduced motion the row takes its height at once and
-only the green fades, since a change of color moves nothing. Only a card answered
-here plays it, never a row a layout lists (`shrinkToRow` in
+what is below up with it, while the row's top and everything above it stay where
+they are on screen. The row then fades from green over about a second and a half.
+For a reader whose system asks for reduced motion the row takes its height at once
+and only the green fades, since a change of color moves nothing. Only a card
+answered here plays it, never a row a layout lists (`shrinkToRow` in
 [`PlanningNeedsYou.tsx`](../../frontend/src/components/PlanningNeedsYou.tsx)).
+
+Near the end of the list the page is shorter by the card once it has shrunk, and a
+browser keeps a pane's scroll within what it holds: left alone, it would pull the
+scroll back and slide everything on screen down as the row shrank. So the pane
+holds the room the card gave up as padding at its end, only as much as the reader
+was scrolled into, and gives it back as they scroll up, only once it is out of
+view, so giving it back moves nothing either
+([`scrollRoom.ts`](../../frontend/src/lib/scrollRoom.ts)). The row is drawn at the
+card's height before any layout sees it, with reduced motion too: a layout that
+saw it at one line first would already have pulled the scroll back. The browser's
+scroll anchoring is left on throughout: with the row's top on screen it anchors on
+the row or above it, neither of which moves. Turning it off for the shrink, as the
+first version did, made it correct a stale anchor once it came back on, a jump of
+the whole height the card gave up.
 
 **Late data marks, and counts; it never lays out**
 ([OQ-TD10](#why-its-this-way), [§12](#12-late-data-never-moves-painted-content)).

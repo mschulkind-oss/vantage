@@ -10,7 +10,7 @@
  * which only the reader's own actions change: the numbers here change live,
  * in slots kept for them, and nothing else does (§6.4).
  */
-import React, { useLayoutEffect, useRef } from "react";
+import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ChevronDown, Undo2 } from "lucide-react";
 import type { PlanningQuestion } from "vantage-md/planning";
 import {
@@ -31,6 +31,7 @@ import {
   type RowAnswer,
 } from "../lib/planningLayout";
 import { planningCardId } from "../lib/planningCardId";
+import { holdScrollRoom } from "../lib/scrollRoom";
 import { cn } from "../lib/utils";
 import { AppLink } from "./AppLink";
 
@@ -99,36 +100,55 @@ const ROW_SHRINK_MS = 320;
 const ROW_FLASH_MS = 1600;
 /** The green the row starts from, painted over its own background. */
 const ROW_FLASH = "inset 0 0 0 100vmax rgb(34 197 94 / 0.22)";
+/** An answered row's height in rem, which a shrink ends at unmeasured. */
+const ROW_REM = 2.25;
+const ROW_HEIGHT = `${ROW_REM}rem`;
+
+/** The row at a card's height: its line at the top, the rest padding. */
+function tallRow(from: number): React.CSSProperties {
+  // Border-box, so height less padding is the line's own height.
+  return {
+    height: `${from}px`,
+    paddingBottom: `calc(${from}px - ${ROW_HEIGHT})`,
+  };
+}
+
+function reducedMotion(): boolean {
+  return (
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  );
+}
 
 /**
  * A card answered here becoming its row (§6.4), so the reader sees it go
- * rather than finding the next question where it was: the row starts at the
- * card's height, with its one line where the card's top was, and its bottom
- * edge sweeps up to the line, carrying what is below up with it; then the row
- * fades from green. The pane keeps its scroll while it does, so nothing above
- * the row moves. For a reader who asked for less motion the row is at its
- * height at once, and only the green fades: a change of color moves nothing.
+ * rather than finding the next question where it was: the row is drawn at
+ * the card's height, with its one line where the card's top was, and its
+ * bottom edge sweeps up to the line, carrying what is below up with it; then
+ * the row fades from green. Its top stays where it is on screen, and so
+ * does everything above it. For a reader who asked for less motion the
+ * row is at its height at once, and only the green fades: a change of color
+ * moves nothing.
+ *
+ * Near the end of the list the page getting shorter by the card would have
+ * the browser pull the pane's scroll back, sliding everything on screen down
+ * as the row shrinks, so the pane holds that room at its end until it
+ * scrolls out of view (`holdScrollRoom`). The row is drawn tall for the
+ * same reason, even with less motion: a layout that saw it at one line
+ * first would already have pulled the scroll back.
  */
-function shrinkToRow(row: HTMLElement, from: number): void {
+function shrinkToRow(row: HTMLElement, from: number, move: boolean): void {
+  const pane = row.closest<HTMLElement>("[data-content-scroll]");
+  if (pane !== null) {
+    const rem = parseFloat(getComputedStyle(document.documentElement).fontSize);
+    holdScrollRoom(pane, from - ROW_REM * (rem || 16));
+  }
   if (typeof row.animate !== "function") return;
-  const still =
-    typeof window.matchMedia === "function" &&
-    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  const to = row.getBoundingClientRect().height;
-  if (!still && from > to) {
-    const pane = row.closest<HTMLElement>("[data-content-scroll]");
-    pane?.style.setProperty("overflow-anchor", "none");
-    // Border-box, so height less padding is the line's own height throughout.
-    const shrink = row.animate(
-      [
-        { height: `${from}px`, paddingBottom: `${from - to}px` },
-        { height: `${to}px`, paddingBottom: "0px" },
-      ],
+  if (move) {
+    row.animate(
+      [tallRow(from) as Keyframe, { height: ROW_HEIGHT, paddingBottom: "0px" }],
       { duration: ROW_SHRINK_MS, easing: "cubic-bezier(0.2, 0, 0, 1)" },
     );
-    const resume = () => pane?.style.removeProperty("overflow-anchor");
-    shrink.onfinish = resume;
-    shrink.oncancel = resume;
   }
   row.animate([{ boxShadow: ROW_FLASH }, { boxShadow: "none" }], {
     duration: ROW_FLASH_MS,
@@ -155,10 +175,12 @@ export const AnsweredRow: React.FC<{
   onNewReply: () => void;
   onOpenHere?: () => void;
   /**
-   * The height of the card answered here that this row has just replaced,
-   * asked for once as the row mounts; `undefined` for any other row.
+   * The height of the card answered here that this row replaces, read as
+   * the row mounts; `undefined` for any other row.
    */
-  shrunkFrom?: () => number | undefined;
+  shrinkFrom?: number;
+  /** `shrinkFrom` has been read, so the page can forget it. */
+  onShrunk?: () => void;
 }> = ({
   question,
   itemKey,
@@ -171,16 +193,33 @@ export const AnsweredRow: React.FC<{
   onUndo,
   onNewReply,
   onOpenHere,
-  shrunkFrom,
+  shrinkFrom,
+  onShrunk,
 }) => {
   const rowRef = useRef<HTMLDivElement>(null);
-  const shrunkFromRef = useRef(shrunkFrom);
+  // Only as it mounts: a card that became this row just now.
+  const [shrink] = useState(() =>
+    shrinkFrom === undefined
+      ? null
+      : { from: shrinkFrom, move: !reducedMotion() },
+  );
+  // Drawn at the card's height until the shrink has taken over from it.
+  const [tall, setTall] = useState(shrink !== null);
+  const played = useRef(false);
   useLayoutEffect(() => {
-    const from = shrunkFromRef.current?.();
-    if (from !== undefined && rowRef.current !== null) {
-      shrinkToRow(rowRef.current, from);
-    }
-  }, []);
+    const row = rowRef.current;
+    if (shrink === null || row === null || played.current) return;
+    played.current = true;
+    shrinkToRow(row, shrink.from, shrink.move);
+    setTall(false);
+  }, [shrink]);
+  const onShrunkRef = useRef(onShrunk);
+  useLayoutEffect(() => {
+    onShrunkRef.current = onShrunk;
+  });
+  useEffect(() => {
+    if (shrinkFrom !== undefined) onShrunkRef.current?.();
+  }, [shrinkFrom]);
   const chip =
     answer === null
       ? null
@@ -204,7 +243,10 @@ export const AnsweredRow: React.FC<{
       aria-label={question.title}
       data-planning-row
       data-planning-item={itemKey}
-      className="relative flex h-9 min-w-0 items-center gap-2 overflow-hidden rounded-lg border border-slate-200 bg-white px-4 text-sm whitespace-nowrap dark:border-slate-700 dark:bg-slate-800"
+      style={
+        tall && shrink !== null ? tallRow(shrink.from) : { height: ROW_HEIGHT }
+      }
+      className="relative flex min-w-0 items-center gap-2 overflow-hidden rounded-lg border border-slate-200 bg-white px-4 text-sm whitespace-nowrap dark:border-slate-700 dark:bg-slate-800"
     >
       {newReply && <NewReplyBar />}
       <span
