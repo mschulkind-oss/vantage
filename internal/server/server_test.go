@@ -1955,3 +1955,59 @@ func TestUnregisterForgetsARepositorysDegradations(t *testing.T) {
 	require.Len(t, got, 1)
 	require.Equal(t, "beta", got[0].Repo)
 }
+
+func TestShouldProbeActivity(t *testing.T) {
+	cases := []struct {
+		name                          string
+		cached, hasWatcher, reconcile bool
+		seen, current                 uint64
+		want                          bool
+	}{
+		{name: "no cached entry", cached: false, hasWatcher: true, want: true},
+		{name: "no watcher", cached: true, hasWatcher: false, want: true},
+		{name: "reconcile pass", cached: true, hasWatcher: true, reconcile: true, seen: 5, current: 5, want: true},
+		{name: "watcher unchanged", cached: true, hasWatcher: true, seen: 5, current: 5, want: false},
+		{name: "watcher changed", cached: true, hasWatcher: true, seen: 5, current: 6, want: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want,
+				shouldProbeActivity(tc.cached, tc.seen, tc.current, tc.hasWatcher, tc.reconcile))
+		})
+	}
+}
+
+// The activity warm excludes gitignored documents. An ignored .md is one no
+// reader can be shown, so it must not make a repository look active — and the
+// walk that found it was the one reading node_modules.
+func TestActivityWarmIgnoresGitignoredDocuments(t *testing.T) {
+	isolateUserDirs(t)
+	root := initRepo(t, map[string]string{"tracked.md": "# T\n"})
+	require.NoError(t, os.WriteFile(filepath.Join(root, ".gitignore"), []byte("ignored.md\n"), 0o644))
+
+	old := time.Now().Add(-2 * time.Hour)
+	require.NoError(t, os.Chtimes(filepath.Join(root, "tracked.md"), old, old))
+	now := time.Now()
+	require.NoError(t, os.WriteFile(filepath.Join(root, "ignored.md"), []byte("# I\n"), 0o644))
+	require.NoError(t, os.Chtimes(filepath.Join(root, "ignored.md"), now, now))
+
+	cfg := config.Defaults()
+	cfg.MultiRepo = true
+	cfg.Repos = []config.RepoConfig{{Name: "alpha", Path: root}}
+	require.NoError(t, cfg.Resolve())
+	srv, err := NewServer(cfg)
+	require.NoError(t, err)
+	git.ClearRecentFilesCache()
+	t.Cleanup(git.ClearRecentFilesCache)
+
+	srv.warmActivity(context.Background())
+
+	rec := doGET(t, srv.Handler(), "/api/repos")
+	require.Equal(t, http.StatusOK, rec.Code)
+	var repos []model.RepoInfo
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &repos))
+	require.Len(t, repos, 1)
+	require.NotNil(t, repos[0].LastActivity)
+	require.WithinDuration(t, old, *repos[0].LastActivity, 2*time.Second,
+		"a gitignored document must not make the repository look active")
+}

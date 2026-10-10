@@ -80,6 +80,19 @@ import (
 // being served after it appears or disappears.
 const defaultRefreshInterval = 30 * time.Second
 
+// activityWarmConcurrency bounds how many repositories warmActivity probes at
+// once. Each probe spawns several git processes, so an unbounded fan-out over a
+// directory of clones became a thundering herd of git subprocesses against the
+// same disk.
+const activityWarmConcurrency = 4
+
+// activityReconcileEvery is how many warmActivity passes may reuse watcher
+// change counts before one pass probes every repository anyway. At the default
+// 30s interval this is ten minutes, which bounds how long a change the watcher
+// missed — a failed watcher, an overflowed event queue, a folder the watch
+// limit refused — can stay invisible.
+const activityReconcileEvery = 20
+
 // repoServices is the server-side bundle for one repository: its name plus the
 // git and fs services scoped to it. It is the value the resolve middleware
 // converts into an [api.RepoServices] for the request context.
@@ -147,6 +160,16 @@ type Server struct {
 	// never mutate the live one.
 	activityMu sync.RWMutex
 	activity   map[string]model.RepoInfo
+	// activityChanges records, per repo name, the watcher change count at the
+	// last activity recompute. warmActivity reuses a repository's cached
+	// RepoInfo while its watcher reports no newer change, so a quiet repository
+	// costs no walk at all. Guarded by activityMu.
+	activityChanges map[string]uint64
+	// activityPasses counts warmActivity passes. Every [activityReconcileEvery]
+	// passes every repository is probed regardless of its watcher, so a change
+	// the watcher never reported cannot leave last_activity stale forever.
+	// Guarded by activityMu.
+	activityPasses int
 
 	// watchersMu guards watchers, which Run fills at startup and the refresh
 	// loop adds to and deletes from as repositories come and go.
@@ -972,6 +995,7 @@ func (s *Server) unregister(name string) {
 	next := maps.Clone(s.activity)
 	delete(next, name)
 	s.activity = next
+	delete(s.activityChanges, name)
 	s.activityMu.Unlock()
 }
 
@@ -1150,14 +1174,34 @@ func cloneProjects(loose *repoServices, repos []*repoServices) map[string]string
 	return out
 }
 
-// warmActivity recomputes last-activity for every repository concurrently and
-// swaps the cache atomically. A repo whose probe fails keeps a name-only
-// RepoInfo (last_activity null). It is a no-op in single-repo mode.
+// shouldProbeActivity reports whether warmActivity must recompute a
+// repository's RepoInfo rather than reuse the cached one. A repository with no
+// watcher, with no cached entry, or whose watcher has flushed a change since
+// the last recompute is always probed; reconcile forces every repository to be
+// probed on its pass. Extracted so the gate can be tested without a live
+// watcher.
+func shouldProbeActivity(cached bool, seenChanges, currentChanges uint64, hasWatcher, reconcile bool) bool {
+	if reconcile || !cached || !hasWatcher {
+		return true
+	}
+	return seenChanges != currentChanges
+}
+
+// warmActivity recomputes last-activity for the repositories whose watchers
+// report a change since the last pass and swaps the cache atomically. A
+// repository the watcher says has not moved keeps its cached RepoInfo and is
+// not walked. A repo whose probe fails keeps a name-only RepoInfo
+// (last_activity null). It is a no-op in single-repo mode.
 func (s *Server) warmActivity(_ context.Context) {
 	if !s.cfg.MultiRepo {
 		return
 	}
 	t0 := time.Now()
+
+	s.activityMu.Lock()
+	s.activityPasses++
+	reconcile := s.activityPasses%activityReconcileEvery == 0
+	s.activityMu.Unlock()
 
 	type result struct {
 		name string
@@ -1165,19 +1209,33 @@ func (s *Server) warmActivity(_ context.Context) {
 	}
 	repos := s.repoList()
 	results := make([]result, len(repos))
+	probed := 0
 
 	g := new(errgroup.Group)
+	g.SetLimit(activityWarmConcurrency)
 	for i, rs := range repos {
 		name := rs.name
+		changes, hasWatcher := s.watcherChanges(name)
+		prev, cached := s.cachedActivity(name)
+		if !shouldProbeActivity(cached, s.seenActivityChanges(name), changes, hasWatcher, reconcile) {
+			results[i] = result{name: name, info: prev}
+			continue
+		}
+		probed++
 		g.Go(func() error {
 			info := s.repoInfo(rs, repos)
 			// Unreported: this walk's result is nobody's list of files, so its
 			// timeout is no reader's (see TestTheActivityWarmReportsNoWalkTimeout).
-			if recents := rs.git.RecentsUnreported(1, nil, true, true); len(recents) > 0 {
+			//
+			// Gitignored files are excluded. An ignored document is one no reader
+			// can be shown, so it must not make a repository look active, and the
+			// walk that found it was the one reading node_modules.
+			if recents := rs.git.RecentsUnreported(1, nil, true, false); len(recents) > 0 {
 				t := recents[0].Date.UTC()
 				info.LastActivity = &t
 			}
 			results[i] = result{name: name, info: info}
+			s.recordActivityChanges(name, changes)
 			return nil
 		})
 	}
@@ -1192,5 +1250,48 @@ func (s *Server) warmActivity(_ context.Context) {
 	s.activity = next
 	s.activityMu.Unlock()
 
-	s.logger.Info("server: repo activity cache warmed", "repos", len(next), "took", time.Since(t0))
+	s.logger.Info("server: repo activity cache warmed", "repos", len(next), "probed", probed, "took", time.Since(t0))
+}
+
+// watcherChanges returns a repository's watcher change count and whether it has
+// a watcher at all. A repository without one is always probed, since nothing
+// else can say whether its activity moved.
+func (s *Server) watcherChanges(name string) (uint64, bool) {
+	s.watchersMu.Lock()
+	defer s.watchersMu.Unlock()
+	w, ok := s.watchers[name]
+	if !ok {
+		return 0, false
+	}
+	return w.Changes(), true
+}
+
+// cachedActivity returns a repository's cached RepoInfo and whether one is
+// cached. The map is copy-on-write, so the reference is read under the lock and
+// the value returned is a copy.
+func (s *Server) cachedActivity(name string) (model.RepoInfo, bool) {
+	s.activityMu.RLock()
+	defer s.activityMu.RUnlock()
+	info, ok := s.activity[name]
+	return info, ok
+}
+
+// seenActivityChanges returns the watcher change count recorded at the last
+// recompute for a repository, or zero when none has been recorded.
+func (s *Server) seenActivityChanges(name string) uint64 {
+	s.activityMu.RLock()
+	defer s.activityMu.RUnlock()
+	return s.activityChanges[name]
+}
+
+// recordActivityChanges remembers the watcher change count a probe observed. A
+// flush that lands while the probe is in flight leaves the recorded count stale
+// and makes the next pass probe again.
+func (s *Server) recordActivityChanges(name string, changes uint64) {
+	s.activityMu.Lock()
+	defer s.activityMu.Unlock()
+	if s.activityChanges == nil {
+		s.activityChanges = make(map[string]uint64)
+	}
+	s.activityChanges[name] = changes
 }

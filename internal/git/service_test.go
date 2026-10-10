@@ -761,3 +761,21 @@ func TestClearRecentFilesCacheOfADirectoryOfRepositoriesDropsTheirFilesToo(t *te
 	ClearRecentFilesCacheOf(parent)
 	require.ElementsMatch(t, []string{"alpha/a.md", "alpha/a2.md"}, paths())
 }
+
+// The untracked walk prunes the configured excluded directories at the git
+// level, not only in the post-filter. Without this argv git descends into
+// node_modules and every other dependency tree before Vantage throws the
+// results away, which is what saturated the disk.
+func TestWalkExcludeArgsPrunesConfiguredDirs(t *testing.T) {
+	svc := NewService(t.TempDir(), Options{ExcludeDirs: []string{"node_modules", "dist", ".git"}})
+	require.Equal(t,
+		[]string{"--exclude=.git", "--exclude=dist", "--exclude=node_modules"},
+		svc.walkExcludeArgs())
+}
+
+// With no configured directories and ignore files off, there is no argv at all;
+// the walk is exactly what it was before.
+func TestWalkExcludeArgsEmptyWithoutExclusions(t *testing.T) {
+	svc := NewService(t.TempDir(), Options{})
+	require.Empty(t, svc.walkExcludeArgs())
+}

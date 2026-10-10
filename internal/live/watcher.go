@@ -182,6 +182,10 @@ type Watcher struct {
 	// discovered would have kept watching a directory that is gone.
 	closed bool
 	stats  watcherStats
+	// changes counts flushed change batches over the watcher's lifetime. The
+	// server's activity warm reads it to tell whether anything has happened in a
+	// repository since its last recompute, so a quiet repository is not walked.
+	changes uint64
 	// watchFailedDirs is the lifetime count of directories whose watch could not
 	// be registered. It makes startup and heartbeat logs honest when the watcher
 	// is only partially armed.
@@ -726,6 +730,7 @@ func (w *Watcher) flush(batch []string) {
 	if len(batch) == 0 {
 		return
 	}
+	w.noteChange()
 	paths, removedDirs := splitBatch(batch)
 
 	gitsvc.ClearStatusCache()
@@ -767,6 +772,21 @@ func (w *Watcher) flush(batch []string) {
 	}
 	w.logger.Info("files changed", "count", len(paths), "removed_dirs", len(removedDirs))
 	w.manager.Broadcast(msg)
+}
+
+// Changes returns how many change batches this watcher has flushed. It is
+// monotonic for the watcher's lifetime.
+func (w *Watcher) Changes() uint64 {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.changes
+}
+
+// noteChange records one flushed change batch.
+func (w *Watcher) noteChange() {
+	w.mu.Lock()
+	w.changes++
+	w.mu.Unlock()
 }
 
 // removedDirSuffix marks a removed directory in the coalescer's batch, whose
