@@ -36,7 +36,7 @@ import {
   withFilter,
   withoutPages,
   withRoadmap,
-  type CardEntry,
+  type QuestionEntry,
 } from "./planningPages";
 import { setPlanningLimitsForTests } from "../planningScan/limits";
 import {
@@ -55,16 +55,23 @@ const BLOCKED = "\u{1F512}";
 /**
  * `count` open questions, `${prefix}1` on, each a one-item list under a
  * heading of its own, so each is a root-level block and a card of its own.
- * `pad` lines of prose make a card longer.
+ * `pad` lines of prose make a card longer; `blockedOn` gives each question
+ * that `blocked-on` list.
  */
-function separate(prefix: string, count: number, pad = 0, marker = OPEN) {
+function separate(
+  prefix: string,
+  count: number,
+  pad = 0,
+  marker = OPEN,
+  blockedOn?: string,
+) {
   return Array.from({ length: count }, (_, i) =>
     [
       `## Part ${prefix}${i + 1}`,
       "",
       `1. ${marker} **${prefix}${i + 1}: Question ${prefix}${i + 1}?**`,
       "",
-      `   ${questionDirective(marker, `${prefix}${i + 1}`)}`,
+      `   ${questionDirective(marker, `${prefix}${i + 1}`, null, blockedOn)}`,
       "",
       "   _Leaning:_ yes.",
       ...Array.from({ length: pad }, (_, j) => `   Line ${j} of the question.`),
@@ -94,8 +101,8 @@ function layoutOf(
   return layoutPlanningPage(index, sectionsOf(index), pageSize);
 }
 
-const ids = (entries: readonly CardEntry[]) =>
-  entries.map((e) => (e.kind === "question" ? e.question.id : `doc ${e.path}`));
+const ids = (entries: readonly QuestionEntry[]) =>
+  entries.map((e) => e.question.id);
 
 describe("each section's title", () => {
   it("is the shared planning module's, which vantage-check index prints", () => {
@@ -133,7 +140,7 @@ describe("the layout (planning-index.md §6.2)", () => {
     expect(layout.needsYou).toEqual([]);
     const compact = layout.maintenance.find((k) => k.id === "compact")!;
     expect(compact.kind).toBe("questions");
-    expect(ids(compact.items as CardEntry[])).toEqual([
+    expect(ids(compact.items as QuestionEntry[])).toEqual([
       "OQ-A1",
       "OQ-A2",
       "OQ-B1",
@@ -143,11 +150,16 @@ describe("the layout (planning-index.md §6.2)", () => {
   it("puts Blocked, and Maintenance's kinds in their order, leaving out an empty one", () => {
     const layout = layoutOf({
       "a.md": doc("stage: DESIGN", separate("OQ-A", 1)),
-      "b.md": doc("stage: DESIGN", separate("OQ-B", 1, 0, BLOCKED)),
+      // Blocked is a live referent, never a bare 🔒 (§3.3).
+      "b.md": doc(
+        "stage: DESIGN",
+        separate("OQ-B", 1, 0, BLOCKED, "a.md#OQ-A1"),
+      ),
       "built.md": doc("stage: BUILT", "Built."),
       "ready.md": doc("stage: DECIDED", "Decided."),
     });
     expect(ids(layout.blocked)).toEqual(["OQ-B1"]);
+    expect(layout.blocked.every((e) => e.kind === "question")).toBe(true);
     expect(layout.maintenance.map((k) => k.id)).toEqual([
       "unrouted",
       "ready",
@@ -249,7 +261,13 @@ describe("the chosen roadmap (planning-index.md §6.8)", () => {
     const chosen = sectionsOf(index, NESTED);
     const layout = layoutPlanningPage(index, chosen, 10);
     expect(layout.roadmap).toBe(NESTED);
-    expect(ids(layout.needsYou)).toEqual(["OQ-B1", "OQ-B2", "OQ-B3", "OQ-A2"]);
+    expect(ids(layout.needsYou)).toEqual([
+      "OQ-B1",
+      "OQ-B2",
+      "OQ-B3",
+      "OQ-A2",
+      "OQ-C1",
+    ]);
     expect(layoutPlanningPage(index, sectionsOf(index), 10).roadmap).toBe(
       "roadmap.md",
     );
@@ -257,6 +275,22 @@ describe("the chosen roadmap (planning-index.md §6.8)", () => {
     expect(sectionsOf(index, NESTED)).toBe(chosen);
     expect(sectionsOf(index, "roadmap.md")).toBe(sectionsOf(index));
     expect(sectionsOf(index, "c.md")).toBe(sectionsOf(index));
+  });
+
+  it("ends Needs you with the unrouted open questions by path, each marked Not on a roadmap (§6.2)", () => {
+    const layout = layoutPlanningPage(index, sectionsOf(index, NESTED), 10);
+    // The routed ones first, in the roadmap's order, marked by nothing. OQ-A1
+    // is the other roadmap's, so it is routed and not here.
+    const routed = layout.needsYou.slice(0, 4);
+    expect(ids(routed)).toEqual(["OQ-B1", "OQ-B2", "OQ-B3", "OQ-A2"]);
+    expect(routed.every((e) => e.notOnRoadmap !== true)).toBe(true);
+    // Then the questions no roadmap routes, by path and document order.
+    const unrouted = layout.needsYou.slice(4);
+    expect(ids(unrouted)).toEqual(["OQ-C1"]);
+    expect(unrouted.every((e) => e.notOnRoadmap === true)).toBe(true);
+    // The same questions stay Maintenance's routing worklist.
+    const kind = layout.maintenance.find((k) => k.id === "unrouted")!;
+    expect(kind.items).toHaveLength(1);
   });
 
   it("lists for Copy answers the questions of every roadmap, whichever is chosen", () => {
@@ -598,16 +632,18 @@ describe("the planning filter (planning-index.md §6.16)", () => {
   it("lists every document the sections list, rows included, for the second reviews request", () => {
     const sections = sectionsOf(index);
     const listed = listedDocuments(index, sections);
-    // Question documents, then each Blocked and stage row's.
+    // Question documents, then each stage row's. A document whose
+    // `depends-on` waits is no entry: its Ready and graduate rows go on
+    // without an entry of its own (§6.2).
     expect(new Set(listed)).toEqual(
       new Set([
         ...listedQuestions(index, sections).map((q) => q.path),
-        "docs/design/a-plan.md",
         "notes/b.md",
         "notes/e.md",
         "notes/f.md",
       ]),
     );
+    expect(listed).not.toContain("docs/design/a-plan.md");
     expect(listed).toHaveLength(new Set(listed).size);
     // Too large and Unreadable are no documents with reviews.
     expect(listed).not.toContain("docs/big.md");

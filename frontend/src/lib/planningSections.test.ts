@@ -11,11 +11,14 @@ import {
   PLANNING_NOTICES,
   buildPlanningIndex,
   derivePlanningSections,
+  findDocument,
   questionFor,
+  questionState,
   referenceSummary,
   referencedBy,
   roadmapsOf,
   routeQuestions,
+  waitingDependsOn,
   type PlanningConfig,
   type PlanningIndex,
   type PlanningRoadmap,
@@ -31,17 +34,23 @@ import {
 /** A loose list of questions, `OQ-<prefix>1`, `OQ-<prefix>2`, …, one per marker. */
 function questions(prefix: string, ...markers: string[]): string {
   return markers
-    .map((marker, i) =>
-      [
-        `1. ${marker} **OQ-${prefix}${i + 1}: Question ${i + 1}?**`,
-        "",
-        `   ${questionDirective(marker, `OQ-${prefix}${i + 1}`, "Yes.")}`,
-        "",
-        "   _Leaning:_ yes.",
-        "",
-      ].join("\n"),
-    )
+    .map((marker, i) => questionItem(`OQ-${prefix}${i + 1}`, marker))
     .join("\n");
+}
+
+/**
+ * One question item as `questions` writes it, carrying a `blocked-on` when
+ * given: what makes a question genuinely blocked (§3.3).
+ */
+function questionItem(id: string, marker: string, blockedOn?: string): string {
+  return [
+    `1. ${marker} **${id}: A question?**`,
+    "",
+    `   ${questionDirective(marker, id, "Yes.", blockedOn)}`,
+    "",
+    "   _Leaning:_ yes.",
+    "",
+  ].join("\n");
 }
 
 const doc = (header: string, body = "") =>
@@ -236,8 +245,8 @@ describe("several roadmaps (§4, §6.8)", () => {
   // Two roadmaps that route: the root's (the default) and docs/plans/'s. A
   // third is retired by its done stage. Between them:
   //   - OQ-A1 is routed by both, OQ-A2 only by the root's;
-  //   - OQ-B1 (open) and OQ-B2 (answered) only by docs/plans/'s, OQ-B3 is
-  //     blocked;
+  //   - OQ-B1 (open) and OQ-B2 (answered) only by docs/plans/'s, and OQ-B3 is
+  //     blocked: a 🔒 whose `blocked-on` names a question that still waits;
   //   - docs/c.md is linked only by the retired roadmap, so OQ-C1 is
   //     unrouted;
   //   - the root's roadmap links docs/plans/'s bare, which routes the one
@@ -269,7 +278,13 @@ describe("several roadmaps (§4, §6.8)", () => {
     ].join("\n"),
     "docs/old/roadmap.md": doc("stage: GRADUATED", "- [C](../c.md)"),
     "docs/a.md": doc("stage: DESIGN", questions("A", OPEN, OPEN)),
-    "docs/b.md": doc("stage: DESIGN", questions("B", OPEN, ANSWERED, BLOCKED)),
+    "docs/b.md": doc(
+      "stage: DESIGN",
+      [
+        questions("B", OPEN, ANSWERED),
+        questionItem("OQ-B3", BLOCKED, "a.md#OQ-A1"),
+      ].join("\n"),
+    ),
     "docs/c.md": doc("stage: DESIGN", questions("C", OPEN)),
   };
   const index = indexOf(tree, STAGES);
@@ -312,7 +327,7 @@ describe("several roadmaps (§4, §6.8)", () => {
       roadmap: "docs/plans/roadmap.md",
     });
     expect(sections.chosenRoadmap).toBe("docs/plans/roadmap.md");
-    // OQ-B3 is blocked, so it waits instead.
+    // OQ-B3 is blocked: its referent still waits, so it does not need you.
     expect(ids(sections.needsYou)).toEqual(["OQ-B1", "OQ-B2", "OQ-A1"]);
     expect(sections.needsYou.map((q) => q.heading)).toEqual([
       "Later",
@@ -398,12 +413,22 @@ describe("the sections (§6.2)", () => {
     "docs/answered.md": doc("stage: DESIGN", questions("N", ANSWERED)),
     "docs/design.md": doc(
       "stage: DESIGN\ndepends-on:\n  - waits-on.md#OQ-W1\n  - ruled.md#OQ-R1\n  - done.md\n  - ../../outside.md",
-      questions("D", OPEN, BLOCKED, OPEN),
+      [
+        questionItem("OQ-D1", OPEN),
+        // A 🔒 whose referent is an open question: genuinely blocked.
+        questionItem("OQ-D2", BLOCKED, "waits-on.md#OQ-W1"),
+        questionItem("OQ-D3", OPEN),
+      ].join("\n"),
     ),
     "docs/waits-on.md": doc("stage: SKETCH", questions("W", OPEN)),
+    // A 🔒 with nothing live to wait on: unactioned, so open.
     "docs/ruled.md": doc("stage: SKETCH", questions("R", BLOCKED)),
     "docs/done.md": doc("stage: GRADUATED", questions("G", OPEN, BLOCKED)),
-    "docs/ready.md": doc("stage: DECIDED", questions("Y", BLOCKED)),
+    // Decided, and blocked: a blocked question is not open, so it is Ready.
+    "docs/ready.md": doc(
+      "stage: DECIDED",
+      questionItem("OQ-Y1", BLOCKED, "waits-on.md#OQ-W1"),
+    ),
     "docs/built.md": doc("stage: BUILT"),
     "docs/built-open.md": doc("stage: BUILT", questions("BO", OPEN)),
     "docs/ready-open.md": doc("stage: DECIDED", questions("RO", OPEN)),
@@ -424,34 +449,62 @@ describe("the sections (§6.2)", () => {
       "OQ-BO1",
       "OQ-D3",
       "OQ-RO1",
+      "OQ-R1",
       "OQ-U1",
       "OQ-W1",
     ]);
   });
 
-  it("lists blocked questions and waiting documents under Blocked, by path", () => {
+  it("lists blocked questions, and what each waits on, under Blocked", () => {
+    const waitsOnTheOpenQuestion = [
+      {
+        kind: "target",
+        raw: "waits-on.md#OQ-W1",
+        target: "docs/waits-on.md",
+        fragment: "OQ-W1",
+      },
+    ];
     expect(sections.waiting).toEqual([
       {
-        kind: "document",
-        path: "docs/design.md",
-        waitingOn: [
-          expect.objectContaining({
-            target: "docs/waits-on.md",
-            fragment: "OQ-W1",
-          }),
-        ],
+        kind: "question",
+        question: ref(index, "OQ-D2"),
+        blockedOn: waitsOnTheOpenQuestion,
       },
-      { kind: "question", question: ref(index, "OQ-D2") },
-      { kind: "question", question: ref(index, "OQ-Y1") },
-      { kind: "question", question: ref(index, "OQ-R1") },
+      {
+        kind: "question",
+        question: ref(index, "OQ-Y1"),
+        blockedOn: waitsOnTheOpenQuestion,
+      },
     ]);
   });
 
-  it("does not wait on a blocked question, a done document, or a target outside the repository", () => {
-    // `ruled.md#OQ-R1` is blocked, not open (Plan Q6); `done.md` has an open
-    // question, but a done document never holds anything up (Plan Q11).
-    const [entry] = sections.waiting;
-    expect(entry?.kind === "document" && entry.waitingOn).toHaveLength(1);
+  it("reads a 🔒 with nothing live to wait on as open, not blocked", () => {
+    const ruled = questionFor(index, ref(index, "OQ-R1"));
+    expect(ruled?.state).toBe("blocked");
+    expect(ruled !== undefined && questionState(index, ruled)).toBe("open");
+    expect(sections.waiting.map((e) => e.question.id)).not.toContain("OQ-R1");
+    expect(sections.unrouted?.map((q) => q.id)).toContain("OQ-R1");
+  });
+
+  it("holds a blocked question, never the document whose depends-on waits", () => {
+    // `ruled.md#OQ-R1` is blocked by its marker, not open (Plan Q6); `done.md`
+    // has an open question, but a done document never holds anything up
+    // (Plan Q11); the outside target names no path.
+    const design = findDocument(index, "docs/design.md");
+    expect(design !== undefined && waitingDependsOn(index, design)).toEqual([
+      expect.objectContaining({
+        target: "docs/waits-on.md",
+        fragment: "OQ-W1",
+      }),
+    ]);
+    expect(sections.waiting.map((e) => e.kind)).toEqual([
+      "question",
+      "question",
+    ]);
+    expect(sections.waiting.map((e) => e.question.id)).toEqual([
+      "OQ-D2",
+      "OQ-Y1",
+    ]);
   });
 
   it("sorts documents into Ready to build, Ready to graduate and Stage conflict by role", () => {
@@ -542,6 +595,93 @@ describe("the sections (§6.2)", () => {
   });
 });
 
+describe("blocked and unactioned (§3.2)", () => {
+  // One document, bare-linked by the roadmap, so every question is routed:
+  //   - OQ-A1 (💬) is open, and the referent the others name;
+  //   - OQ-A2 (🔒) has no `blocked-on`: unactioned, so open;
+  //   - OQ-A3 (🔒) waits on OQ-A1: blocked;
+  //   - OQ-A4 (💬) waits on OQ-A1: blocked, though its marker says open;
+  //   - OQ-A5 (🔒) waits on an outside event: blocked, and it never clears;
+  //   - OQ-A6 (🔒) waits on OQ-A7, which is ✅ ruled: nothing waits, so open;
+  //   - OQ-A7 (✅) is ruled, awaiting compaction;
+  //   - OQ-A8 (🔒) waits on OQ-A9, which no document holds: open, and the
+  //     checker reports the marker.
+  const tree = {
+    "roadmap.md": "# Roadmap\n\n- [All of it](docs/a.md)\n",
+    "docs/a.md": doc(
+      "stage: DESIGN",
+      [
+        questionItem("OQ-A1", OPEN),
+        questionItem("OQ-A2", BLOCKED),
+        questionItem("OQ-A3", BLOCKED, "a.md#OQ-A1"),
+        questionItem("OQ-A4", OPEN, "a.md#OQ-A1"),
+        questionItem("OQ-A5", BLOCKED, "the 2.0 release"),
+        questionItem("OQ-A6", BLOCKED, "a.md#OQ-A7"),
+        questionItem("OQ-A7", ANSWERED),
+        questionItem("OQ-A8", BLOCKED, "a.md#OQ-A9"),
+      ].join("\n"),
+    ),
+  };
+  const index = indexOf(tree);
+  const sections = derivePlanningSections(index);
+  const stateOf = (id: string) => {
+    const question = questionFor(index, ref(index, id));
+    return question === undefined ? undefined : questionState(index, question);
+  };
+
+  it("blocks a 🔒 whose referent still waits, and names it", () => {
+    expect(sections.waiting[0]).toEqual({
+      kind: "question",
+      question: ref(index, "OQ-A3"),
+      blockedOn: [
+        {
+          kind: "target",
+          raw: "a.md#OQ-A1",
+          target: "docs/a.md",
+          fragment: "OQ-A1",
+        },
+      ],
+    });
+    expect(stateOf("OQ-A3")).toBe("blocked");
+  });
+
+  it("reads a 🔒 with no blocked-on as open, an unactioned question", () => {
+    expect(stateOf("OQ-A2")).toBe("open");
+    expect(sections.needsYou.map((q) => q.id)).toContain("OQ-A2");
+    expect(sections.waiting.map((e) => e.question.id)).not.toContain("OQ-A2");
+  });
+
+  it("blocks a 💬 whose referent still waits, though its marker says open", () => {
+    expect(stateOf("OQ-A4")).toBe("blocked");
+    expect(sections.waiting.map((e) => e.question.id)).toContain("OQ-A4");
+    expect(sections.needsYou.map((q) => q.id)).not.toContain("OQ-A4");
+  });
+
+  it("keeps an external blocker live, naming it, whatever closes", () => {
+    expect(stateOf("OQ-A5")).toBe("blocked");
+    expect(
+      sections.waiting.find((e) => e.question.id === "OQ-A5")?.blockedOn,
+    ).toEqual([{ kind: "external", name: "the 2.0 release" }]);
+  });
+
+  it("reads a 🔒 whose target closed, or resolves nowhere, as open", () => {
+    expect(stateOf("OQ-A6")).toBe("open");
+    expect(stateOf("OQ-A8")).toBe("open");
+    expect(sections.needsYou.map((q) => q.id)).toEqual(
+      expect.arrayContaining(["OQ-A6", "OQ-A8"]),
+    );
+  });
+
+  it("leaves Blocked holding exactly the three questions with a live referent", () => {
+    expect(sections.waiting.map((e) => e.question.id)).toEqual([
+      "OQ-A3",
+      "OQ-A4",
+      "OQ-A5",
+    ]);
+    expect(sections.unrouted).toEqual([]);
+  });
+});
+
 describe("without a roadmap (§6.2)", () => {
   const tree = {
     "docs/b.md": doc("status: draft", questions("B", OPEN, ANSWERED, OPEN)),
@@ -574,6 +714,7 @@ describe("without a roadmap (§6.2)", () => {
       expect(sections.unrouted).toBeNull();
       expect(sections.onOtherRoadmaps).toEqual([]);
       expect(sections.needsYou).toEqual([
+        { ...ref(index, "OQ-A1"), heading: null },
         { ...ref(index, "OQ-A2"), heading: null },
         { ...ref(index, "OQ-B1"), heading: null },
         { ...ref(index, "OQ-B3"), heading: null },
@@ -596,6 +737,7 @@ describe("without a roadmap (§6.2)", () => {
     expect(sections.chosenRoadmap).toBeNull();
     expect(sections.unrouted).toBeNull();
     expect(sections.needsYou.map((q) => q.id)).toEqual([
+      "OQ-A1",
       "OQ-A2",
       "OQ-B1",
       "OQ-B3",
@@ -970,7 +1112,11 @@ describe("the Referenced by summary (§7)", () => {
       {
         "docs/a.md": doc(
           "status: draft",
-          questions("A", OPEN, BLOCKED, ANSWERED),
+          [
+            questions("A", OPEN, ANSWERED),
+            // Blocked: its referent still waits, so it is not unrouted.
+            questionItem("OQ-A3", BLOCKED, "a.md#OQ-A1"),
+          ].join("\n"),
         ),
         "roadmap.md": "# Roadmap\n",
       },

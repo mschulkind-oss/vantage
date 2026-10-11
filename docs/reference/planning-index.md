@@ -519,13 +519,28 @@ candidates only when it prints them.
 
 A question is identified by **(document path, id)** and carries a **state**, a
 **title**, the **directive** that declared it (`question` or `oq`), a
-**leaning** (the directive's `leaning=`, which may be absent), and the lines it
-spans.
+**leaning** (the directive's `leaning=`, which may be absent), its
+**`blocked-on`** entries, and the lines it spans.
 
-- **State** is read from the emoji before its bold title, with the map the
-  directive vocabulary already defines: 💬 is *open*, 💬 🤷 is *open* flagged as
-  a preference, 🔒 is *blocked*, and ✅ is *answered*, awaiting compaction. A
-  question with no marker counts as *open*.
+- **State** is the marker reconciled with the question's referents. The marker
+  is the emoji before its bold title, with the map the directive vocabulary
+  already defines: 💬 is *open*, 💬 🤷 is *open* flagged as a preference, 🔒 is
+  *blocked*, and ✅ is *answered*, awaiting compaction. A question with no marker
+  counts as *open*. The marker is the author's claim; the referent decides, so a
+  question is **blocked** exactly when one of its `blocked-on` entries still
+  waits, and **open** otherwise. A 🔒 with nothing live to wait on is therefore
+  unactioned — an open question with an owner, not a blocked one — and a 💬
+  whose referent still waits is blocked. `vantage-check` reports the
+  disagreement (`planning/blocked-on-disagrees`, [§13.3](#133-the-planning-rules)).
+- **`blocked-on` names what a question waits on**, as a document's `depends-on`
+  names what a document does. It is a comma-separated list on the `question`
+  directive; an `oq` does not accept it, and a run holding an `oq` reads the
+  `oq` alone. An entry that resolves like a repo-relative path — it holds a `/`
+  or a `#`, or ends in `.md` — is a **target**, read exactly as a `depends-on`
+  entry is: one naming a question waits while that question is open (💬), and
+  one naming a document waits while that document has an open question. Any
+  other entry is an **external blocker name**, a name the index shows and can
+  never resolve, so it never clears itself: `blocked-on="the 1.0 release"`.
 - **Two names declare a question, and the state is never the name's.** A
   `question` declares one in any state; an `oq` is the name it replaces,
   deprecated and still read, which every viewer before 0.8 offers to answer
@@ -618,6 +633,13 @@ not a mapping — makes its whole file unreadable to the index, question
 directives included ([§15](#15-failure-modes)). A value of the wrong shape is ignored with a
 `HeaderProblem`, which the checker reports.
 
+**A `depends-on` that still waits no longer puts a document under *Blocked*.**
+*Blocked* lists questions only ([§6.2](#62-sections-top-to-bottom)), so a waiting
+`depends-on` marks its document's *Ready to build* or *Ready to graduate* row —
+`blocked on docs/a.md` — where the row has an actor and the mark stops an agent
+building something too early. A question names what it waits on with its own
+[`blocked-on`](#33-questions).
+
 **There is no `priority` key.** Priorities written separately into each document
 cannot be compared with each other (P5).
 
@@ -632,9 +654,9 @@ own words onto them under `[planning.stages]`:
 | `done` | not a live proposal | **contributes to no section:** its questions are not routed and appear nowhere on the page, a `depends-on` naming it never makes its dependent wait, and a roadmap with this role routes nothing. Badges, Referenced by and the file tree still show it |
 
 A document with no `stage`, or whose repository declares no stages (no
-`[planning.stages]` table, or an empty one), has no role. It still appears under
-*Needs you*, *Not on a roadmap* and *Blocked*, because those sections depend only
-on questions and links.
+`[planning.stages]` table, or an empty one), has no role. Its questions still
+appear under *Needs you*, *Not on a roadmap* and *Blocked*, because those
+sections depend only on questions and links.
 
 ### 3.5 What writers are told
 
@@ -880,11 +902,11 @@ everything else (`layoutPlanningPage` in `frontend/src/lib/planningPages.ts`).
 
 | Section (id) | Contains | Order | Actor | On the page |
 | :--- | :--- | :--- | :--- | :--- |
-| **Needs you** (`needs-you`) | Questions the chosen roadmap routes whose state is *open* or *answered* | the chosen roadmap's order | you | *Needs you*, its open questions only ([§6.4](#64-needs-you-as-a-to-do-list)); a ✅ one is under *Maintenance* |
+| **Needs you** (`needs-you`) | Questions the chosen roadmap routes whose state is *open* or *answered* | the chosen roadmap's order | you | *Needs you*: its open questions, then the unrouted open questions each marked *Not on a roadmap* ([§6.4](#64-needs-you-as-a-to-do-list)); a ✅ one is under *Maintenance* |
 | **Not on a roadmap** (`unrouted`) | Open questions no roadmap routes | path, then document order | agent | a kind of *Maintenance* |
-| **Blocked** (`waiting`) | Blocked questions; also documents with a `depends-on` entry that still waits. An entry naming a question waits while that question is open (💬); one naming a document waits while that document has an open question | path | nobody | the *Blocked* group |
-| **Ready to build** (`ready`) | Documents whose stage has the `ready` role and no open questions, *Blocked* or not | path | agent | a kind of *Maintenance* |
-| **Ready to graduate** (`graduate`) | Documents whose stage has the `built` role and no live questions, *Blocked* or not | path | agent | a kind of *Maintenance* |
+| **Blocked** (`waiting`) | Questions a live `blocked-on` referent blocks, each with the entries that still wait: a target waits as a `depends-on` entry does (a question while that question is open, a document while that document has an open question), and an external blocker name always | path | nobody | the *Blocked* group |
+| **Ready to build** (`ready`) | Documents whose stage has the `ready` role and no open questions, whether or not a `depends-on` still waits | path | agent | a kind of *Maintenance* |
+| **Ready to graduate** (`graduate`) | Documents whose stage has the `built` role and no live questions, whether or not a `depends-on` still waits | path | agent | a kind of *Maintenance* |
 | **Stage conflict** (`disagrees`) | Documents whose stage says `ready` or `built` while they still have open questions | path | agent | a kind of *Maintenance* |
 | **Too large** (`skipped`) / **Unreadable** (`could-not-read`) | [§16](#16-limits-and-bounds), [§15](#15-failure-modes) | path | you | kinds of *Maintenance* |
 
@@ -934,14 +956,14 @@ count *Needs you* differently, as two views of the same data at different times
   | Stage conflict | find which is wrong, the stage or the questions, and fix a wrong stage with an `open` one, or propose moving a follow-up question to a new document; rule and answer nothing, and ask the human for rulings |
   | To fold into the ledger (`compact`) | compact each ✅ question: fold its ruling into the body it governs, add a Decision Ledger row keeping its id, remove its directive, and repair the links to its anchor |
 
-  **A blocked document is marked, not left out.** *Ready to build* and *Ready to
-  graduate* keep a document *Blocked* also lists, because `sections.ready` and
-  `sections.graduate` mean that in the JSON and a published key keeps its
-  meaning (P0). So the request says what holds it, as `(stage DECIDED; blocked
-  on docs/a.md, 🔒 line 20)`: each `depends-on` entry that still waits, then
-  each 🔒 question of its own. When one of a kind's entries is so marked, the
-  kind's paragraph ends *Skip any entry marked blocked: it waits on something
-  else first.*
+  **A waiting document is marked, not left out.** *Ready to build* and *Ready to
+  graduate* keep a document whose own `depends-on` still waits, because
+  `sections.ready` and `sections.graduate` mean that in the JSON and a published
+  key keeps its meaning (P0). So the request says what holds it, as `(stage
+  DECIDED; blocked on docs/a.md)`: each `depends-on` entry that still waits, read
+  from the index itself, never from the filter. When one of a kind's entries is so
+  marked, the kind's paragraph ends *Skip any entry marked blocked: it waits on
+  something else first.*
 
   **The `done` role holds words that differ in meaning,** such as this
   repository's CURRENT for a reference and SUPERSEDED for a replaced design, so
@@ -982,8 +1004,9 @@ count *Needs you* differently, as two views of the same data at different times
   - **The text is a code span** (`codeSpan`), fenced with one more backtick than
     the longest run inside it and padded with a space where it starts or ends with
     a backtick, so the period after it is never read as part of a path.
-  - **Every blocked-on fact comes from the unfiltered sections**
-    ([§6.15](#615-what-a-filter-does-to-the-sections)), and `compact` reads the
+  - **Every blocked-on fact comes from the index itself,** never from the
+    filtered sections ([§6.15](#615-what-a-filter-does-to-the-sections)), so a
+    kept Ready row is marked whatever the filter hides; `compact` reads the
     filter's test of each ✅ question (`keeps`), since no filtered section holds
     them.
   - **A not-understood filter is not applied,** so its request has no `Filter:`
@@ -1012,9 +1035,10 @@ count *Needs you* differently, as two views of the same data at different times
   list and then *Show all N*. The rows are the layout's: a row whose item has gone
   from the data in hand since is marked *Done* and stays, and one that came after
   the layout is counted, not listed, until the next layout
-  ([§6.4](#64-needs-you-as-a-to-do-list)). A *Blocked* document row names what it waits on, and
-  under a filter adds *(which this filter leaves out)* after each target the
-  filter does not keep ([§6.18](#618-the-filters-counts-the-notice-and-nothing-matches)). A
+  ([§6.4](#64-needs-you-as-a-to-do-list)). A *Blocked* question row names what it waits on —
+  an external blocker by its name, a target linked and badged — and the filter notice
+  names each target a kept document waits on outside it
+  ([§6.18](#618-the-filters-counts-the-notice-and-nothing-matches)). A
   question listed in a group is answered from its document.
 - A document whose stage has the `done` role appears in no section.
 - **Nothing needs you.** If no document outside the `done` role has an open
@@ -1083,8 +1107,10 @@ and it commits inside the transition at once.
 
 ### 6.4 Needs you as a to-do list
 
-*Needs you* holds the chosen roadmap's open questions, in its order, laid out in
-three parts (`frontend/src/components/PlanningNeedsYou.tsx`,
+*Needs you* holds the routed open questions in the chosen roadmap's order, then
+the open questions no roadmap routes, by path and document order, each marked
+*Not on a roadmap*, laid out in three parts
+(`frontend/src/components/PlanningNeedsYou.tsx`,
 `frontend/src/lib/planningLayout.ts`):
 
 1. **Answered rows.** An *answered row* *(coined by the to-do list design, 2026-10-08)* is a question
@@ -1097,7 +1123,9 @@ three parts (`frontend/src/components/PlanningNeedsYou.tsx`,
 2. **Full cards.** The first *N* questions that need you, as cards, *N* the *page
    size* *(coined by the same design)*: 10, 20, 30 or 50, default 10, remembered in this
    browser (`vantage:planningPageSize`) and read again at each layout
-   ([OQ-TD8](#why-its-this-way)). There is no character budget: the full cards of
+   ([OQ-TD8](#why-its-this-way)). The routed questions come first in roadmap
+   order, then the unrouted ones, each card carrying the *Not on a roadmap* mark.
+   There is no character budget: the full cards of
    one layout paint in one commit, whatever the page size.
 3. **The end line.** *M more need you · show 10 | 20 | 30 | 50*, choosing a size
    being both the setting and its effect. With nothing more, the sizes alone; with
@@ -1106,8 +1134,11 @@ three parts (`frontend/src/components/PlanningNeedsYou.tsx`,
 
 The heading says *Needs you 12 · 15 answered*: the questions that need you, live,
 whatever the page size shows, and the answered rows listed. A ✅ question is not in
-*Needs you* ([OQ-TD4](#why-its-this-way)); *Blocked* and *Not on a roadmap*
-questions are not either. The answered rows are not a read state: whether a
+*Needs you* ([OQ-TD4](#why-its-this-way)), nor is a *Blocked* one. A question no
+roadmap routes is, at the end of the list, a card marked *Not on a roadmap* and
+counted with them, and it stays under *Not on a roadmap* in *Maintenance* as the agent's
+routing worklist — the same question listed twice on purpose, once to rule and
+once to route. The answered rows are not a read state: whether a
 question is answered is read from the review store, and the page stores nothing
 about which questions the reader has seen.
 
@@ -1701,7 +1732,7 @@ the page's `filter` URL parameter, and `vantage-check index --filter`
   then returns sections of the same shape with entries removed and none reordered.
   Every consumer that reads sections picks the filter up unchanged: the layout, the
   groups and their counts, the outline, the filter line's counts and the agent
-  request. *Blocked* still names
+  request. The filter notice still names
   the blockers a filter hides, and routing still uses the roadmaps it hides,
   because neither is recomputed ([§6.15](#615-what-a-filter-does-to-the-sections)).
 - **Plain data across the module's boundary.** A parsed filter (`PlanningFilter`)
@@ -1720,7 +1751,7 @@ the page's `filter` URL parameter, and `vantage-check index --filter`
 > [!WARNING]
 > **Do not filter the index before deriving.** A `depends-on` target missing from
 > the index never waits, and routing needs every roadmap and its link targets, so a
-> trimmed index moves blocked documents out of *Blocked*; with the roadmap filtered
+> trimmed index moves blocked questions out of *Blocked*; with the roadmap filtered
 > out too, as `path:/docs/design/x.md` does, *Needs you* loses its order and its ✅
 > questions, and the page shows a false *No roadmap* notice.
 > [§8.4](#84-the-index-on-the-main-thread) forbids trimming the index for a reason
@@ -1980,7 +2011,7 @@ text holds no control characters, so it can sit in any newline-joined cache key.
 
 | Value | Under a filter, on the page and in the checker's `filter.sections` |
 | :--- | :--- |
-| Every section's entries: *Needs you*, *Not on a roadmap*, *Blocked* (both kinds), *Ready to build*, *Ready to graduate*, *Stage conflict*, *Too large*, *Unreadable* | The kept entries, in the same order. A section the filter empties is not shown, and when it empties every one, *Nothing matches* stands in their place ([§6.18](#618-the-filters-counts-the-notice-and-nothing-matches)) |
+| Every section's entries: *Needs you*, *Not on a roadmap*, *Blocked*, *Ready to build*, *Ready to graduate*, *Stage conflict*, *Too large*, *Unreadable* | The kept entries, in the same order. A section the filter empties is not shown, and when it empties every one, *Nothing matches* stands in their place ([§6.18](#618-the-filters-counts-the-notice-and-nothing-matches)) |
 | *Needs you*, the groups and their kinds, their counts, the outline | From the filtered sections. Under *Nothing matches*, none of them |
 | The filter line's *N match · M hidden* | Items the filtered layout lists, and those of the unfiltered layout it does not ([§6.18](#618-the-filters-counts-the-notice-and-nothing-matches)) |
 | `onOtherRoadmaps`, and the line counting questions on other roadmaps | Kept questions only. They stay counted questions, never entries, and the filter notice names each roadmap that holds them, in the page's counts' tooltip ([§6.18](#618-the-filters-counts-the-notice-and-nothing-matches)) |
@@ -1988,7 +2019,7 @@ text holds no control characters, so it can sit in any newline-joined cache key.
 | The roadmap list, each roadmap's state, `chosenRoadmap`, `stagesDeclared` | Unchanged. A filter never changes which roadmap is chosen |
 | `nothingNeedsYou` | True when no open question in a live document is kept, so a kept question on another roadmap counts. The frame's line then reads *Nothing this filter keeps needs you*, unless the filter keeps no entry, where *Nothing matches* is said instead |
 | The head-of-sections line saying every open question has the human's answer | Over kept questions; not drawn under *Nothing matches* |
-| A *Blocked* document row | Kept when the filter keeps it as a row, with every blocker still named and linked, because the row comes from the whole derivation. An `is:` term drops it. The row marks each blocker the filter leaves out *(which this filter leaves out)*, and the checker's notice names them |
+| A document whose `depends-on` still waits | Kept when the filter keeps its row, since a *Ready to build* or *Ready to graduate* row is kept by its own test. Its blockers are read from the index, never from the filter, and the notice's *Waits on* clause names each target the filter leaves out ([§6.18](#618-the-filters-counts-the-notice-and-nothing-matches)) |
 | The roadmap notice, the no-stages notice, the refusal past `max-candidates` | Unchanged: they are facts about the repository |
 | Copy agent request, and the requests Copy answers + maintenance copies | The kept entries, with a `Filter:` line ([§6.2](#62-sections-top-to-bottom)) |
 | Copy answers | Pending comments on kept questions only ([§6.7](#67-answering-and-copy-answers)) |
@@ -1996,15 +2027,11 @@ text holds no control characters, so it can sit in any newline-joined cache key.
 The checker's JSON keeps `sections` unfiltered and carries these values as
 `filter.sections` ([§13.4](#134-vantage-check-index---filter)).
 
-**An agent request's blocked-on facts come from the unfiltered sections, always.**
+**An agent request's blocked-on facts come from the index itself, always.**
 A request marks a *Ready to build* or *Ready to graduate* row with what it is
-blocked on, found among the sections' *Blocked* entries (`blockedOn`), and a Ready
-document can still hold 🔒 questions, since *Ready to build* excludes only open
-ones. A filter that kept the row and dropped its 🔒 entries would erase the mark,
-and the agent would be told to build something that still waits. A text term does
-exactly that: `decided` keeps a row whose stage is `DECIDED` and drops every 🔒
-question of that document whose fields do not hold the word. So the request is
-handed the unfiltered sections for those facts, beside the filtered ones it lists.
+blocked on — each of the document's own `depends-on` entries that still waits
+(`blockedOn`) — so a kept row is marked whatever the filter keeps. The filtered
+sections the request lists supply its entries; its marks never come from them.
 
 ### 6.16 Typing, and the URL
 
@@ -2388,7 +2415,7 @@ forms:
 
 | Form | Says |
 | :--- | :--- |
-| Applied | A first line: the canonical text, then entries shown of the unfiltered total, kept documents of the paths the index lists when its path terms leave a path out, and how many kept entries are open questions, as ``Filtered by `path:/docs/design/x.md is:open`: 5 of 15 entries, in 1 of 20 paths, 5 of them open questions.`` Then one line per clause below that applies. Last, the checker's *Run without --filter to see the other 10.*, or *It hides no entry.* when it hides none. The page draws none of this as a line: the counts replace the first line, the tooltip carries the clauses but *Waits on*, which *Blocked* carries, and *hidden* does what the last line said |
+| Applied | A first line: the canonical text, then entries shown of the unfiltered total, kept documents of the paths the index lists when its path terms leave a path out, and how many kept entries are open questions, as ``Filtered by `path:/docs/design/x.md is:open`: 5 of 15 entries, in 1 of 20 paths, 5 of them open questions.`` Then one line per clause below that applies. Last, the checker's *Run without --filter to see the other 10.*, or *It hides no entry.* when it hides none. The page draws none of this as a line: the counts replace the first line, the tooltip carries every clause, and *hidden* does what the last line said |
 | Applied, nothing kept | The same, with none shown, and *Nothing matches* after it. It leaves out what *Nothing matches*' reason line says: the *Other roadmaps* clause when the questions it keeps are all on other roadmaps, and the unmatched lines when they are why it keeps no document. *Nothing this filter keeps needs you* is not said |
 | Unmatched term | One line per term, under the first: `` `path:docs/desing` matches no path the index lists. ``, unless the filter keeps nothing for that reason, which *Nothing matches* then says |
 | Not understood | ``Not filtered: this Vantage cannot read `<term>`.``, then what the language reads, with a real example, and *Every entry is shown.* Where there is no term to name, the reason stands in its place: an unclosed quote, or a filter past the term or code-point limit. The page draws this as a line under the filter line, in amber |
@@ -2405,12 +2432,12 @@ The clauses of the applied form, after its unmatched lines:
   every roadmap but the chosen one that routes a kept question, so a question two of
   them route counts under both, while the total counts it once.
 - **Blocked.** *3 of its questions are blocked and will need you later.* It counts
-  the 🔒 questions that every term of the filter but its `is:` terms keeps, and an
+  the blocked questions that every term of the filter but its `is:` terms keeps, and an
   `is:` term leaves out, so a human told "nothing needs you" knows whether a later
   round will come.
 - **Waits on.** *docs/design/x.md waits on docs/design/y.md, which this filter leaves
-  out.* One line for each kept document whose *Blocked* row, in the unfiltered
-  sections, names a target that is not a kept document, naming every such target. A
+  out.* One line for each kept document whose own `depends-on` still waits on a
+  target this filter does not keep, naming every such target. A
   `#OQ-…` target is named with its fragment, and adding `path:` for it brings in its
   whole document, since no key selects one question.
 
@@ -3453,8 +3480,10 @@ Built, with no questions left. An agent turns it into a reference doc.
   docs/d.md  [accepted · BUILT]
 ```
 
-A *Blocked* document's line names what it waits on, as `docs/c.md  blocked on
-docs/a.md`. When an agent section holds an entry, a line after the sections says
+A *Blocked* question's line names it and what it waits on, as `docs/a.md:20  🔒
+The retry budget?  blocked on the 2.0 release`, each entry by its external name
+or by its target as `dependsOnLabel` writes it. When an agent section holds an
+entry, a line after the sections says
 `Agent requests: vantage-check index --request`. Then comes the chosen roadmap's own
 source with each link's badge written inline in brackets. With `--format json` it
 prints the whole index plus those sections, with a format `version`, which is not the
@@ -3495,7 +3524,7 @@ the page, with no memory between runs:
   {
     "tool": "vantage-check",
     "toolVersion": "0.8.0",
-    "version": 2,
+    "version": 3,
     "root": "/home/me/project",
     "index": { "config": { "roadmaps": null, "…": "…" }, "…": "…" },
     "sections": {
@@ -3544,7 +3573,10 @@ the page, with no memory between runs:
   `sections`, `sectionGuide` and `roadmaps`. Version 1 had a single top-level
   `roadmap` and `index.config.roadmap`. A change to an existing key's shape or meaning
   bumps the version; a new key does not, which is why `sectionGuide` came in version 2
-  and `filter` ([§13.4](#134-vantage-check-index---filter)) came in it too.
+  and `filter` ([§13.4](#134-vantage-check-index---filter)) came in it too. Version 3
+  changed `sections.waiting`: an entry is a question with the `blocked-on` referents
+  that made it blocked, where version 2 also held a document row with its `depends-on`
+  entries.
 
 **`--request` prints an agent request instead** ([§6.2](#62-sections-top-to-bottom)):
 for the agent sections named after it — `unrouted`, `ready`, `graduate`,
@@ -3564,7 +3596,7 @@ the same under every roadmap.
 
 ### 13.3 The planning rules
 
-`check` has five planning rules (`packages/vantage-check/src/rules/registry.ts`;
+`check` has six planning rules (`packages/vantage-check/src/rules/registry.ts`;
 `vantage-check help` prints their ids, summaries and defaults):
 
 | Rule | Reports |
@@ -3572,11 +3604,12 @@ the same under every roadmap.
 | `planning/stage-vocabulary` | a `stage` outside the declared words; inert when no stages are declared, even at `error` |
 | `planning/depends-on-missing` | a `depends-on` entry whose target does not exist or lies outside the repository, or whose `#OQ-…` id appears nowhere in its target |
 | `planning/stage-disagrees` | the page's *Stage conflict* section |
+| `planning/blocked-on-disagrees` | a question whose marker disagrees with its `blocked-on` referent: a 🔒 with nothing that still waits, or a 💬 whose referent does |
 | `planning/unrouted` | the page's *Not on a roadmap* section: an open question no roadmap routes. Off by default; this repository runs it as a warning, so the gate lists those questions without failing |
 | `planning/question-length` | a question whose text, less its leaning and its Answer, runs past `max-words`, well past the few lines its card shows folded. The default's calibration is in `rules/questionLength.ts` and the [vantage-check guide](../../userguide/guides/vantage-check.md#what-it-checks); a repository whose questions run longer raises `max-words` or turns the rule off |
 
-The first four are the same derivations the page uses, so the page and the gate cannot
-disagree (P7); the fifth measures the questions the same scan finds.
+The first five are the same derivations the page uses, so the page and the gate cannot
+disagree (P7); the sixth measures the questions the same scan finds.
 
 - **They run in the post-pass** (`checkPlanning` in
   `packages/vantage-check/src/rules/planning.ts`), once, in `check`'s main thread, apart
@@ -4644,7 +4677,7 @@ is the only place most of the numbers are stated.
 | Referenced by headings per row | 4, then *+M more* | `HEADINGS_SHOWN` in `ReferencedBy.tsx` |
 | `planning/question-length` default | 120 words (`max-words`) | `QUESTION_WORDS_DEFAULT` in `rules/questionLength.ts` |
 | A question answered by a comment, its chip | *Leaning taken* for its own take, else *Answered — waiting on the agent* | `OQ_TAKEN_LABEL`, `OQ_ANSWERED_LABEL` in `frontend/src/hooks/useOpenQuestionButtons.ts` |
-| `index` JSON format version | 2 | `INDEX_FORMAT_VERSION` in `commands/index.ts` |
+| `index` JSON format version | 3 | `INDEX_FORMAT_VERSION` in `commands/index.ts` |
 
 ---
 
@@ -4690,6 +4723,10 @@ into the text above or are in git.
 | OQ-TD11 | Old links do not matter: page parameters are dropped by the in-place rewrite, and none is honored ([§6.4](#64-needs-you-as-a-to-do-list)) | 2026-10-08 |
 | OQ-TD12 | The page and the checker counting *Needs you* differently is acceptable: the checker counts ✅ and answered questions in it, and the page does not; they are views of the same data at different times, and converge once the agent acts. The index's sections and JSON keep their meaning ([§6.2](#62-sections-top-to-bottom)) | 2026-10-08 |
 | OQ-TD13 | ✕ adds a history entry when it clears the filter, as *hidden* does, so Back undoes either; Esc still never clears ([§6.17](#617-the-filter-line)) | 2026-10-09 |
+| — | *Blocked* lists questions, not documents; the change is at the derivation so the page, its counts, the outline and the checker agree, and `INDEX_FORMAT_VERSION` goes to 3 ([§3.3](#33-questions), [§6.2](#62-sections-top-to-bottom), [§13.2](#132-vantage-check-index)) | 2026-10-10 |
+| — | A question's block is a reference (`blocked-on`), the question-level twin of `depends-on`; an entry that is not repo-relative-path-shaped is an allowed external blocker name ([§3.3](#33-questions)) | 2026-10-10 |
+| — | A 🔒 with no live referent is unactioned, not blocked; it is an open question with an owner, and the checker reports it ([§6.2](#62-sections-top-to-bottom), [§13.3](#133-the-planning-rules)) | 2026-10-10 |
+| — | Unrouted open questions are cards at the end of *Needs you*, marked *Not on a roadmap*, which stays in *Maintenance* as the agent's routing worklist ([§6.2](#62-sections-top-to-bottom), [§6.4](#64-needs-you-as-a-to-do-list)) | 2026-10-10 |
 | Plan Q1 | Patterns keep the server's matcher, its quirks and RE2 dialect included; the checker ports it, and one shared fixture pins both readers ([§3.1](#31-candidates-and-planning-documents)) | 2026-09-28 |
 | Plan Q2 | A listed roadmap is read whenever it exists, even when `include` or `exclude` rules it out — per entry, since several roadmaps ([§4.1](#41-which-files-are-roadmaps)) | 2026-09-28 |
 | Plan Q3 | A static export gets no badges and no planning index; its planning page says so ([§15](#15-failure-modes)) | 2026-09-28 |

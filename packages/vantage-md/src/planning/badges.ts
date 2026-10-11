@@ -5,11 +5,17 @@
  * A badge is derived, never written: the viewer draws one after a rendered link
  * and `vantage-check index` prints one inline in brackets, and both ask this
  * module what it says, so the page and the CLI read the same (P7).
+ *
+ * What a question's badge says is its state as its `blocked-on` referent
+ * decides it (§3.3), the same state the planning page's sections use: a 🔒
+ * with nothing live to wait on is open, and a 💬 whose referent still waits is
+ * blocked.
  */
 
 import { VANTAGE_OQ_ID, VANTAGE_OQ_STATUS } from "../vantageDirectives.js";
 import type { DocStatus } from "../vantageFrontmatter.js";
 import { findDocument, type PlanningIndex } from "./model.js";
+import { questionState } from "./sections.js";
 import type { QuestionState } from "./scan.js";
 
 export type PlanningBadge =
@@ -20,11 +26,15 @@ export type PlanningBadge =
       stage: string | null;
       /** `false` only for a stage outside declared stages; `true` with none declared. */
       stageInVocabulary: boolean;
-      /** Open questions (💬). */
+      /** Questions the referent leaves open (§3.3), 💬 and unactioned 🔒 alike. */
       open: number;
-      /** Blocked questions (🔒). */
+      /** Questions a live `blocked-on` referent blocks (§3.3). */
       blocked: number;
     }
+  /**
+   * One question, by the state its referent decides (§3.3): a 🔒 with nothing
+   * left to wait on is open, and a 💬 whose referent still waits is blocked.
+   */
   | { kind: "question"; path: string; id: string; state: QuestionState }
   /** No directive carries the id, but the id is in the text: compacted. */
   | { kind: "ruled"; path: string; id: string }
@@ -67,7 +77,12 @@ export function badgeFor(
   if (id !== null && VANTAGE_OQ_ID.test(id)) {
     const question = doc.questions.find((q) => q.id === id);
     if (question !== undefined) {
-      return { kind: "question", path, id, state: question.state };
+      return {
+        kind: "question",
+        path,
+        id,
+        state: questionState(index, question),
+      };
     }
     // Compaction deletes the directive (§3.3), so one still there has not
     // been compacted, though it is no question the index holds.
@@ -85,8 +100,9 @@ export function badgeFor(
   let open = 0;
   let blocked = 0;
   for (const question of doc.questions) {
-    if (question.state === "open") open++;
-    if (question.state === "blocked") blocked++;
+    const state = questionState(index, question);
+    if (state === "open") open++;
+    if (state === "blocked") blocked++;
   }
   if (
     doc.status === null &&

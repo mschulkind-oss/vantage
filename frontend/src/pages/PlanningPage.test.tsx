@@ -195,11 +195,21 @@ vi.mock("../components/MarkdownViewer", async () => {
  * The corpus: one of everything §6.2 sorts
  * ------------------------------------------------------------------ */
 
-const q = (id: string, marker: string, leaning: string | null = "Yes.") =>
+/**
+ * A question, with `blockedOn` written as the directive's `blocked-on` when
+ * given: what makes a Blocked question genuinely blocked, since a bare 🔒 is
+ * unactioned, not blocked (design §3.3).
+ */
+const q = (
+  id: string,
+  marker: string,
+  leaning: string | null = "Yes.",
+  blockedOn?: string,
+) =>
   [
     `1. ${marker} **${id}: Question ${id}?**`,
     "",
-    `   ${questionDirective(marker, id, leaning)}`,
+    `   ${questionDirective(marker, id, leaning, blockedOn)}`,
     "",
     `   _Leaning:_ ${leaning ?? "none"}`,
     "",
@@ -225,7 +235,7 @@ const TREE: Record<string, string> = {
   "plans/design.md": doc(
     "status: in-review\nstage: DESIGN",
     q("OQ-D1", OPEN),
-    q("OQ-D2", BLOCKED),
+    q("OQ-D2", BLOCKED, "Yes.", "disagrees.md#OQ-X1"),
     q("OQ-D3", OPEN),
   ),
   "plans/answered.md": doc("stage: DESIGN", q("OQ-A1", ANSWERED)),
@@ -627,11 +637,13 @@ const documentsIn = (name: string) =>
 describe("the sections, top to bottom (§6.2)", () => {
   beforeEach(() => seed());
 
-  it("lists routed open questions under Needs you, in roadmap order, and a ✅ one under Maintenance (planning-index.md §6.4)", async () => {
+  it("lists the roadmap's open questions first, then the unrouted by path, and a ✅ one under Maintenance (planning-index.md §6.4)", async () => {
     await renderPage();
     expect(cardsIn("Needs you")).toEqual([
       "OQ-D1: Question OQ-D1?",
       "OQ-D3: Question OQ-D3?",
+      "OQ-X1: Question OQ-X1?",
+      "OQ-U1: Question OQ-U1?",
     ]);
     expect(listedIn("To fold into the ledger")).toEqual([
       "OQ-A1: Question OQ-A1?",
@@ -649,17 +661,50 @@ describe("the sections, top to bottom (§6.2)", () => {
     ).toBeNull();
   });
 
-  it("lists blocked questions and waiting documents under Blocked", async () => {
+  it("marks a card no roadmap routes Not on a roadmap, and no routed card (§6.2)", async () => {
+    await renderPage();
+    const mark = within(cardFor("OQ-U1")).getByRole("img", {
+      name: "Not on a roadmap",
+    });
+    expect(mark).toHaveTextContent("Not on a roadmap");
+    // A routed card carries its document's badge alone.
+    expect(
+      within(cardFor("OQ-D1")).queryByRole("img", {
+        name: "Not on a roadmap",
+      }),
+    ).toBeNull();
+  });
+
+  it("lists a blocked question under Blocked, naming what it waits on, and no document", async () => {
     await renderPage();
     expect(listedIn("Blocked")).toEqual(["OQ-D2: Question OQ-D2?"]);
-    expect(documentsIn("Blocked")).toEqual(["plans/deps.md"]);
-    const waits = within(section("Blocked")).getByText(/blocked on/);
+    // A document's `depends-on` is no Blocked entry: only questions are.
+    expect(documentsIn("Blocked")).toEqual([]);
+    const waits = within(section("Blocked")).getByText(/^blocked on/);
+    // The resolved target, named by the shared label helper.
     expect(
-      within(waits).getByRole("link", { name: "design.md#OQ-D1" }),
-    ).toHaveAttribute("href", "/plans/design.md#OQ-D1");
+      within(waits).getByRole("link", { name: "plans/disagrees.md#OQ-X1" }),
+    ).toHaveAttribute("href", "/plans/disagrees.md#OQ-X1");
     expect(
       within(waits).getByRole("img", { name: "open question" }),
     ).toBeTruthy();
+  });
+
+  it("names an external blocker, which no link resolves", async () => {
+    seed({
+      ...TREE,
+      "plans/other.md": doc(
+        "stage: DESIGN",
+        q("OQ-O1", BLOCKED, "Yes.", "the 2.0 release"),
+      ),
+    });
+    await renderPage();
+    const row = screen.getByRole("listitem", {
+      name: "OQ-O1: Question OQ-O1?",
+    });
+    const waits = within(row).getByText(/^blocked on/);
+    expect(waits).toHaveTextContent("blocked on the 2.0 release");
+    expect(within(waits).getByText("the 2.0 release").tagName).toBe("CODE");
   });
 
   // §6.2's Stage conflict holds both roles, and the checker's matching finding
@@ -871,6 +916,8 @@ describe("empty and degenerate states", () => {
     expect(cardsIn("Needs you")).toEqual([
       "OQ-D1: Question OQ-D1?",
       "OQ-D3: Question OQ-D3?",
+      "OQ-X1: Question OQ-X1?",
+      "OQ-U1: Question OQ-U1?",
     ]);
     expect(screen.queryByRole("combobox", { name: "Roadmap" })).toBeNull();
   });
@@ -1560,7 +1607,7 @@ describe("a group the layout did not have (§6.4)", () => {
         "stage: DESIGN",
         q("OQ-T1", OPEN),
         q("OQ-T2", OPEN),
-        q("OQ-T3", BLOCKED),
+        q("OQ-T3", BLOCKED, "Yes.", "the 2.0 release"),
       ),
       "plans/ready.md": doc("status: accepted\nstage: DECIDED", "Decided."),
     };
@@ -1906,7 +1953,9 @@ describe("what arrives late (planning-index.md §6.4)", () => {
     expect(section("Not on a roadmap")).toHaveAccessibleName(
       /^Not on a roadmap 3/,
     );
-    expect(updatesCount()).toHaveTextContent("3");
+    // OQ-U1's card leaves Needs you (done), the two new questions arrive
+    // there, and Maintenance both gains them and loses OQ-U1.
+    expect(updatesCount()).toHaveTextContent("6");
     await refresh();
     expect(listedIn("Not on a roadmap")).toEqual([
       "OQ-X1: Question OQ-X1?",
@@ -2091,7 +2140,7 @@ describe("the cards' blocks, from the scanner client (planning-index.md §10.4)"
     expect(asked[0]?.full).toBeFalsy();
     // Needs you's cards: no row, nor a ✅ question, has a card.
     expect(new Set(asked[0]?.want.map((w) => w.path))).toEqual(
-      new Set(["plans/design.md", "plans/unrouted.md"]),
+      new Set(["plans/design.md", "plans/disagrees.md", "plans/unrouted.md"]),
     );
     for (const want of asked[0]?.want ?? []) {
       expect(want.hash).toBe(contentHash(tree[want.path] ?? ""));
@@ -2126,6 +2175,7 @@ describe("the cards' blocks, from the scanner client (planning-index.md §10.4)"
       "OQ-D1: Question OQ-D1?",
       "OQ-D3: Question OQ-D3?",
       "OQ-U1: Question OQ-U1?",
+      "OQ-X1: Question OQ-X1?",
     ]);
   });
 
@@ -2220,7 +2270,7 @@ describe("the reviews, in one request (planning-index.md §9.3)", () => {
     // The rows' documents, which show no comment, come once the sections
     // have painted.
     expect(new Set(pathsOf(1))).toEqual(
-      new Set(["plans/deps.md", "plans/ready.md", "plans/built.md"]),
+      new Set(["plans/ready.md", "plans/built.md"]),
     );
     expect(reviewRequests()).toHaveLength(2);
     expect(reviewGets()).toEqual([]);
@@ -2231,7 +2281,10 @@ describe("the reviews, in one request (planning-index.md §9.3)", () => {
     // one listed document the first request leaves out.
     seed({
       ...TREE,
-      "plans/waits.md": doc("stage: DESIGN", q("OQ-W9", BLOCKED)),
+      "plans/waits.md": doc(
+        "stage: DESIGN",
+        q("OQ-W9", BLOCKED, "Yes.", "the 2.0 release"),
+      ),
     });
     pageSize(1);
     await renderPage();
@@ -2250,7 +2303,6 @@ describe("the reviews, in one request (planning-index.md §9.3)", () => {
         "plans/answered.md",
         "plans/unrouted.md",
         "plans/disagrees.md",
-        "plans/deps.md",
         "plans/ready.md",
         "plans/waits.md",
         "plans/built.md",
@@ -2265,7 +2317,7 @@ describe("the reviews, in one request (planning-index.md §9.3)", () => {
       );
     });
     await settle();
-    expect(cardsIn("Needs you")).toHaveLength(2);
+    expect(cardsIn("Needs you")).toHaveLength(4);
     expect(reviewRequests()).toHaveLength(2);
     expect(reviewGets()).toEqual([]);
   });
@@ -2334,7 +2386,8 @@ describe("page inputs, and one commit (planning-index.md §6.5)", () => {
       await new Promise((resolve) => setTimeout(resolve, 30));
     });
     await settle();
-    expect(cardsIn("Needs you")).toHaveLength(3);
+    // The routed ones, then OQ-X1, which no roadmap routes.
+    expect(cardsIn("Needs you")).toHaveLength(4);
     expect(commentsOn("OQ-U1")).toBeNull();
 
     held.release();
@@ -2358,7 +2411,7 @@ describe("page inputs, and one commit (planning-index.md §6.5)", () => {
     await settle();
     const region = screen.getByRole("alert");
     expect(region).toHaveTextContent("Comments could not be loaded.");
-    expect(cardsIn("Needs you")).toHaveLength(3);
+    expect(cardsIn("Needs you")).toHaveLength(4);
     expect(screen.getByRole("button", { name: COPY_ANSWERS })).toBeDisabled();
     expect(screen.getByTestId("pending-answers")).toHaveTextContent("–");
   });
@@ -2368,7 +2421,10 @@ describe("page inputs, and one commit (planning-index.md §6.5)", () => {
   it("says so, and keeps Copy answers disabled, when the second reviews request fails", async () => {
     seed({
       ...TREE,
-      "plans/waits.md": doc("stage: DESIGN", q("OQ-W9", BLOCKED)),
+      "plans/waits.md": doc(
+        "stage: DESIGN",
+        q("OQ-W9", BLOCKED, "Yes.", "the 2.0 release"),
+      ),
     });
     const real = vi.mocked(axios.post).getMockImplementation()!;
     let requests = 0;
@@ -2453,6 +2509,7 @@ describe("page inputs, and one commit (planning-index.md §6.5)", () => {
       "OQ-D1: Question OQ-D1?",
       "OQ-D3: Question OQ-D3?",
       "OQ-U1: Question OQ-U1?",
+      "OQ-X1: Question OQ-X1?",
     ]);
   });
 
@@ -2473,7 +2530,7 @@ describe("page inputs, and one commit (planning-index.md §6.5)", () => {
     expect(screen.getByTestId("viewer")).toBeTruthy();
     // No settling: what the first render commits.
     act(() => router.navigate!(-1));
-    expect(cardsIn("Needs you")).toHaveLength(3);
+    expect(cardsIn("Needs you")).toHaveLength(4);
   });
 
   // D1 (§6.3, §18): on `g p`, the `g` has asked for page 1's inputs, which
@@ -2499,7 +2556,7 @@ describe("page inputs, and one commit (planning-index.md §6.5)", () => {
     expect(screen.getByRole("search")).toBeTruthy();
     expect(screen.queryAllByRole("article")).toHaveLength(0);
     await releaseFrames();
-    expect(cardsIn("Needs you")).toHaveLength(3);
+    expect(cardsIn("Needs you")).toHaveLength(4);
     expect(warming.runs).toBe(0);
   });
 
@@ -2521,7 +2578,7 @@ describe("page inputs, and one commit (planning-index.md §6.5)", () => {
     expect(vi.mocked(axios.post).mock.calls.length).toBeLessThanOrEqual(
       posts + 1,
     );
-    expect(cardsIn("Needs you")).toHaveLength(3);
+    expect(cardsIn("Needs you")).toHaveLength(4);
   });
 
   it("reserves the pending count four digits, and shows – until every listed document is counted", async () => {
@@ -2825,6 +2882,7 @@ describe("several roadmaps (§6.8)", () => {
     expect(cardsIn("Needs you")).toEqual([
       "OQ-D1: Question OQ-D1?",
       "OQ-D3: Question OQ-D3?",
+      "OQ-X1: Question OQ-X1?",
     ]);
     // OQ-U1 is routed, by the other roadmap: neither Needs you here nor
     // Not on a roadmap, and counted on the line instead.
@@ -2876,6 +2934,7 @@ describe("several roadmaps (§6.8)", () => {
     expect(cardsIn("Needs you")).toEqual([
       "OQ-D1: Question OQ-D1?",
       "OQ-D3: Question OQ-D3?",
+      "OQ-X1: Question OQ-X1?",
     ]);
     await pick(NESTED);
     expect(picker().value).toBe(NESTED);
@@ -2885,12 +2944,13 @@ describe("several roadmaps (§6.8)", () => {
     expect(cardsIn("Needs you")).toEqual([
       "OQ-U1: Question OQ-U1?",
       "OQ-D3: Question OQ-D3?",
+      "OQ-X1: Question OQ-X1?",
     ]);
     expect(listedIn("Not on a roadmap")).toEqual(["OQ-X1: Question OQ-X1?"]);
     expect(screen.getByTestId("other-roadmaps")).toHaveTextContent(
       PLANNING_NOTICES.otherRoadmaps(2),
     );
-    expect(screen.getByTestId("needs-you-count")).toHaveTextContent("2");
+    expect(screen.getByTestId("needs-you-count")).toHaveTextContent("3");
     // No history entry: Back leaves the page.
     act(() => router.navigate!(-1));
     expect(router.location).toBe("/plans/a.md");
@@ -3205,6 +3265,31 @@ describe("filing from the page", () => {
         name: "Comments on this question",
       }),
     ).toBeNull();
+  });
+
+  it("files an unrouted question in place, whose reviews the page inputs brought (§6.2)", async () => {
+    seed();
+    await renderPage();
+    const card = cardFor("OQ-U1");
+    expect(
+      within(card).getByRole("img", { name: "Not on a roadmap" }),
+    ).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(
+        within(card).getByRole("button", { name: "Take this leaning" }),
+      );
+    });
+    // Its document is no roadmap's, and its reviews came with the page
+    // inputs all the same, so the card answers like any other.
+    expect(vi.mocked(axios.post)).toHaveBeenCalledWith(
+      "/api/review/comments",
+      expect.objectContaining({ comment: "Yes." }),
+      { params: { path: "plans/unrouted.md" } },
+    );
+    await settle();
+    expect(
+      screen.getByRole("group", { name: "OQ-U1: Question OQ-U1?" }),
+    ).toHaveTextContent("Leaning taken");
   });
 
   it("does not reorder the page", async () => {
@@ -3884,7 +3969,6 @@ describe("each section's explanation, and Copy agent request", () => {
             repository: ROOT,
             filter: {
               text: "path:plans/ready.md",
-              unfiltered: derivePlanningSections(index),
               keeps: keepsOf("path:plans/ready.md"),
             },
           },
@@ -3911,7 +3995,7 @@ describe("each section's explanation, and Copy agent request", () => {
         "plans/design.md": doc(
           "stage: DESIGN",
           q("OQ-D1", OPEN),
-          q("OQ-D2", BLOCKED),
+          q("OQ-D2", BLOCKED, "Yes.", "the 2.0 release"),
         ),
       },
       {},
@@ -4029,11 +4113,11 @@ describe("each section's explanation, and Copy agent request", () => {
     }
   });
 
-  it("says a blocked document is blocked on what it waits on", async () => {
+  it("says a Blocked question is blocked on what it waits on", async () => {
     await renderPage();
     expect(
       within(section("Blocked")).getByText(/^blocked on/),
-    ).toHaveTextContent("blocked on design.md#OQ-D1");
+    ).toHaveTextContent("blocked on plans/disagrees.md#OQ-X1");
   });
 
   // planning-index.md §6.2: a filtered page's request says so after
@@ -4057,7 +4141,6 @@ describe("each section's explanation, and Copy agent request", () => {
         repository: ROOT,
         filter: {
           text: "path:plans/ready.md",
-          unfiltered: derivePlanningSections(index),
           keeps: keepsOf("path:plans/desing path:plans/ready.md"),
         },
       }),
@@ -4182,7 +4265,6 @@ describe("each section's explanation, and Copy agent request", () => {
               viewer: VIEWER_RELEASE,
               filter: {
                 text: summary.requestText,
-                unfiltered: sectionsOf(index, "roadmap.md"),
                 keeps: keepsOf(text),
               },
             },
@@ -4255,7 +4337,7 @@ describe("a card's document name, then Back (§6.6)", () => {
       // A link that saves nothing on its way out.
       fireEvent.click(
         within(section("Blocked")).getByRole("link", {
-          name: "design.md#OQ-D1",
+          name: "plans/disagrees.md#OQ-X1",
         }),
       );
       expect(screen.getByTestId("viewer")).toBeTruthy();
@@ -4515,7 +4597,7 @@ describe("the planning outline, On this page (planning-index.md §6.9)", () => {
       "plans/other.md": doc(
         "stage: DESIGN",
         q("OQ-O1", OPEN),
-        q("OQ-O2", BLOCKED),
+        q("OQ-O2", BLOCKED, "Yes.", "the 2.0 release"),
       ),
       "plans/third.md": doc("stage: DESIGN", q("OQ-H1", OPEN)),
       "plans/ready.md": doc("status: accepted\nstage: DECIDED", "Decided."),
@@ -4721,7 +4803,7 @@ describe("the planning outline, On this page (planning-index.md §6.9)", () => {
     await renderPage();
     expect(outlineDocuments()).toEqual(["plans/design.md, 2 need you"]);
     expect(within(outline()).getByTestId("outline-more")).toHaveTextContent(
-      "and 1 more document",
+      "and 2 more documents",
     );
   });
 });
@@ -4823,7 +4905,12 @@ describe("Expand all and Collapse all (planning-index.md §6.6)", () => {
     const view = await renderPage();
     await press(toggle());
     await size("20");
-    expect(folds()).toEqual({ "OQ-L1": true, "OQ-L2": true, "OQ-L3": true });
+    expect(folds()).toEqual({
+      "OQ-L1": true,
+      "OQ-L2": true,
+      "OQ-L3": true,
+      "OQ-U1": true,
+    });
     view.unmount();
 
     // The next visit: every card is unfolded when it is put on the page, so
@@ -4840,7 +4927,12 @@ describe("Expand all and Collapse all (planning-index.md §6.6)", () => {
     await renderPage();
     flipped.push(...observer.takeRecords());
     observer.disconnect();
-    expect(folds()).toEqual({ "OQ-L1": true, "OQ-L2": true, "OQ-L3": true });
+    expect(folds()).toEqual({
+      "OQ-L1": true,
+      "OQ-L2": true,
+      "OQ-L3": true,
+      "OQ-U1": true,
+    });
     expect(flipped).toEqual([]);
     expect(toggle()).toHaveAccessibleName("Collapse all");
   });
@@ -4852,13 +4944,28 @@ describe("Expand all and Collapse all (planning-index.md §6.6)", () => {
 
     // Through a new layout, it is as the reader left it.
     await size("20");
-    expect(folds()).toEqual({ "OQ-L1": false, "OQ-L2": true, "OQ-L3": true });
+    expect(folds()).toEqual({
+      "OQ-L1": false,
+      "OQ-L2": true,
+      "OQ-L3": true,
+      "OQ-U1": true,
+    });
 
     // The next press brings every card to the page's, its own included.
     await press(toggle());
-    expect(folds()).toEqual({ "OQ-L1": false, "OQ-L2": false, "OQ-L3": false });
+    expect(folds()).toEqual({
+      "OQ-L1": false,
+      "OQ-L2": false,
+      "OQ-L3": false,
+      "OQ-U1": false,
+    });
     await press(toggle());
-    expect(folds()).toEqual({ "OQ-L1": true, "OQ-L2": true, "OQ-L3": true });
+    expect(folds()).toEqual({
+      "OQ-L1": true,
+      "OQ-L2": true,
+      "OQ-L3": true,
+      "OQ-U1": true,
+    });
     // And forgets the card's own fold.
     await size("2");
     expect(folds()).toEqual({ "OQ-L1": true, "OQ-L2": true });
@@ -4881,15 +4988,30 @@ describe("Expand all and Collapse all (planning-index.md §6.6)", () => {
     // tab's choice left folded.
     expect(toggle()).toHaveAccessibleName("Expand all");
     await size("20");
-    expect(folds()).toEqual({ "OQ-L1": false, "OQ-L2": false, "OQ-L3": true });
+    expect(folds()).toEqual({
+      "OQ-L1": false,
+      "OQ-L2": false,
+      "OQ-L3": true,
+      "OQ-U1": true,
+    });
     expect(toggle()).toHaveAccessibleName("Expand all");
     // So the first press here does what it says.
     await press(toggle());
-    expect(folds()).toEqual({ "OQ-L1": true, "OQ-L2": true, "OQ-L3": true });
+    expect(folds()).toEqual({
+      "OQ-L1": true,
+      "OQ-L2": true,
+      "OQ-L3": true,
+      "OQ-U1": true,
+    });
     expect(toggle()).toHaveAccessibleName("Collapse all");
     expect(readPreference(KEY)).toBe("true");
     await press(toggle());
-    expect(folds()).toEqual({ "OQ-L1": false, "OQ-L2": false, "OQ-L3": false });
+    expect(folds()).toEqual({
+      "OQ-L1": false,
+      "OQ-L2": false,
+      "OQ-L3": false,
+      "OQ-U1": false,
+    });
     expect(readPreference(KEY)).toBe("false");
   });
 
@@ -4933,7 +5055,11 @@ describe("a comment on a question is its answer (§6.7)", () => {
       "review-oq-answered",
     );
     expect(rowIds()).toEqual(["OQ-D1"]);
-    expect(cardsIn("Needs you")).toEqual(["OQ-D3: Question OQ-D3?"]);
+    expect(cardsIn("Needs you")).toEqual([
+      "OQ-D3: Question OQ-D3?",
+      "OQ-X1: Question OQ-X1?",
+      "OQ-U1: Question OQ-U1?",
+    ]);
     // Its sibling in the same list is not answered by it.
     expect(
       within(cardFor("OQ-D3")).getByRole("button", {
@@ -4965,7 +5091,8 @@ describe("a comment on a question is its answer (§6.7)", () => {
 
   it("says Nothing needs you on Needs you's end line once the last card is answered here", async () => {
     seed();
-    answer(TREE, "OQ-D1");
+    // OQ-X1 and OQ-U1, which no roadmap routes, are cards here too.
+    answer(TREE, "OQ-D1", "OQ-X1", "OQ-U1");
     await renderPage();
     expect(screen.getByTestId("needs-you-end")).toHaveTextContent(/^show /);
     await act(async () => {
@@ -4980,14 +5107,14 @@ describe("a comment on a question is its answer (§6.7)", () => {
       "Nothing needs you",
     );
     // Every row still listed, each with its chip.
-    expect(rowIds()).toEqual(["OQ-D1", "OQ-D3"]);
+    expect(rowIds()).toEqual(["OQ-D1", "OQ-X1", "OQ-U1", "OQ-D3"]);
     expect(
       screen.getByRole("group", { name: "OQ-D3: Question OQ-D3?" }),
     ).toHaveTextContent("Leaning taken");
   });
   it("draws it with the first sections when every answer is in their documents' reviews", async () => {
     seed();
-    answer(TREE, "OQ-D1", "OQ-D3");
+    answer(TREE, "OQ-D1", "OQ-D3", "OQ-X1", "OQ-U1");
     await renderPage();
     expect(screen.getByTestId("needs-you-end")).toHaveTextContent(
       "Nothing needs you",
@@ -4999,9 +5126,10 @@ describe("a comment on a question is its answer (§6.7)", () => {
     seed();
     answer(TREE, "OQ-D1", "OQ-D3");
     await renderPage();
+    // OQ-X1 and OQ-U1, unrouted, still need the reader.
     expect(
       screen.getByRole("heading", { level: 2, name: /^Needs you/ }),
-    ).toHaveTextContent(/^Needs you\s*0\s*·\s*2 answered$/);
+    ).toHaveTextContent(/^Needs you\s*2\s*·\s*2 answered$/);
   });
   describe("with several roadmaps", () => {
     const NESTED = "docs/plans/roadmap.md";
@@ -5337,7 +5465,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       expect(box().value).toBe("path:plans/design.md is:open");
       // An item is a question or a document row, counted once; no notice
       // line repeats the box.
-      expect(counts()).toBe("2 match · 8 hidden");
+      expect(counts()).toBe("2 match · 7 hidden");
       expect(notice()).toBeNull();
       // What the counts cannot say is in their tooltip.
       expect(clauses()).toBe(
@@ -5375,14 +5503,14 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       await renderPage("/.vantage/planning?filter=&x=1&filter=+");
       expect(router.location).toBe("/.vantage/planning?x=1");
       expect(notice()).toBeNull();
-      expect(cardsIn("Needs you")).toHaveLength(2);
+      expect(cardsIn("Needs you")).toHaveLength(4);
     });
 
     it("applies nothing it cannot read, shows every entry, names the term and leaves the address as written", async () => {
       const url =
         "/.vantage/planning?filter=path:plans/design.md+is:closed+is:open";
       await renderPage(url);
-      expect(cardsIn("Needs you")).toHaveLength(2);
+      expect(cardsIn("Needs you")).toHaveLength(4);
       expect(listedIn("Not on a roadmap")).toHaveLength(2);
       expect(querySection("Blocked")).not.toBeNull();
       expect(noticeLines()).toEqual([
@@ -5408,7 +5536,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       await renderPage("/.vantage/planning?filter=QUESTION+oq-d3");
       expect(cardsIn("Needs you")).toEqual(["OQ-D3: Question OQ-D3?"]);
       expect(querySection("Not on a roadmap")).toBeNull();
-      expect(counts()).toBe("1 matches · 9 hidden");
+      expect(counts()).toBe("1 matches · 8 hidden");
       expect(box()).not.toHaveAttribute("aria-invalid");
       expect(router.location).toBe("/.vantage/planning?filter=QUESTION+oq-d3");
 
@@ -5425,7 +5553,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       // Said once, as the reason it keeps nothing; Clear the filter is the
       // button under it.
       expect(notice()).toBeNull();
-      expect(counts()).toBe("0 match · 10 hidden");
+      expect(counts()).toBe("0 match · 9 hidden");
       expect(clauses()).toBeNull();
       expect(nothingMatchesLines()).toEqual([
         "Nothing matches path:plans/desing.",
@@ -5435,19 +5563,14 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       expect(screen.queryAllByRole("article")).toEqual([]);
     });
 
-    it("names a kept document's blocker the filter leaves out beside it in Blocked, with every blocker still on its row", async () => {
+    it("keeps no entry for a document whose depends-on waits: Blocked is questions only, so nothing matches", async () => {
       await renderPage("/.vantage/planning?filter=path:plans/deps.md");
-      expect(documentsIn("Blocked")).toEqual(["plans/deps.md"]);
-      expect(
-        within(section("Blocked")).getByText(/^blocked on/),
-      ).toHaveTextContent("blocked on design.md#OQ-D1");
-      // Beside the document, not in a notice (planning-index.md §6.18).
-      expect(
-        section("Blocked").querySelector("[data-planning-left-out]"),
-      ).toHaveTextContent("(which this filter leaves out)");
-      expect(notice()).toBeNull();
-      expect(counts()).toBe("1 matches · 9 hidden");
-      expect(clauses()).toBeNull();
+      // `plans/deps.md` holds no question, and its `depends-on` is what its
+      // own Ready or graduate row would be marked with, never an entry
+      // (design §3.2), so the filter keeps no entry at all.
+      expect(nothingMatches()).not.toBeNull();
+      expect(counts()).toBe("0 match · 9 hidden");
+      expect(querySection("Blocked")).toBeNull();
     });
 
     it("names each other roadmap holding a question it keeps, and a pick keeps the filter", async () => {
@@ -5457,7 +5580,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       // It keeps nothing here, so Nothing on this roadmap matches names the
       // roadmap, and the counts' tooltip does not say it again.
       expect(notice()).toBeNull();
-      expect(counts()).toBe("0 match · 9 hidden");
+      expect(counts()).toBe("0 match · 8 hidden");
       expect(clauses()).toBeNull();
       expect(nothingMatchesLines()?.[1]).toBe(
         `1 question it keeps is on another roadmap: ${NESTED} (1). The filter stays when you choose that roadmap.`,
@@ -5511,7 +5634,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
         "plans/design.md": doc(
           "status: in-review\nstage: DESIGN",
           q("OQ-D1", OPEN),
-          q("OQ-D2", BLOCKED),
+          q("OQ-D2", BLOCKED, "Yes.", "disagrees.md#OQ-X1"),
           q("OQ-D3", OPEN),
           q("OQ-D4", OPEN),
         ),
@@ -5531,7 +5654,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
         "OQ-D3: Question OQ-D3?",
         "OQ-D4: Question OQ-D4?",
       ]);
-      expect(counts()).toBe("3 match · 8 hidden");
+      expect(counts()).toBe("3 match · 7 hidden");
     });
 
     it("prints a line saying what it is filtered by, in place of the box", async () => {
@@ -5540,7 +5663,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       const printed = screen.getByTestId("planning-filter-print");
       expect(printed).toHaveClass("hidden", "print:block");
       expect(printed).toHaveTextContent(
-        /^Filter: path:plans\/design\.md, 3 match, 7 hidden$/,
+        /^Filter: path:plans\/design\.md, 3 match, 6 hidden$/,
       );
       cleanup();
       await renderPage();
@@ -5553,7 +5676,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       await renderPage("/.vantage/planning?filter=zz");
       // The counts say how much it hides; no notice line repeats the box.
       expect(notice()).toBeNull();
-      expect(counts()).toBe("0 match · 10 hidden");
+      expect(counts()).toBe("0 match · 9 hidden");
       expect(nothingMatchesLines()).toEqual(["Nothing matches zz.", WORDS]);
       const shown = nothingMatches()!;
       // The filter as code, in the page's own text size, in no warning's
@@ -5640,7 +5763,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       await renderPage("/.vantage/planning?filter=-md");
       expect(nothingMatchesLines()).toEqual([
         "Nothing matches -md.",
-        "Without -md it would keep 10 entries, and every one of them matches md.",
+        "Without -md it would keep 9 entries, and every one of them matches md.",
       ]);
       expect(
         Array.from(
@@ -5688,6 +5811,8 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       expect(cardsIn("Needs you")).toEqual([
         "OQ-D1: Question OQ-D1?",
         "OQ-D3: Question OQ-D3?",
+        "OQ-X1: Question OQ-X1?",
+        "OQ-U1: Question OQ-U1?",
       ]);
       expect(status()).toHaveTextContent(
         "The filter is cleared. Every entry is shown.",
@@ -5707,7 +5832,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       await renderPage("/.vantage/planning?filter=zz+is:closed");
       expect(noticeLines()[0]).toMatch(/^Not filtered: /);
       expect(nothingMatches()).toBeNull();
-      expect(cardsIn("Needs you")).toHaveLength(2);
+      expect(cardsIn("Needs you")).toHaveLength(4);
       // Nor on a page with no entry at all, where a filter that is
       // understood says there was none to match.
       const gone = { "plans/gone.md": TREE["plans/gone.md"]! };
@@ -5730,13 +5855,13 @@ describe("the planning filter (planning-index.md §6.11)", () => {
     });
 
     it("leaves Nothing this filter keeps needs you where the filter keeps an entry", async () => {
-      // A Blocked row alone.
-      await renderPage("/.vantage/planning?filter=path:plans/deps.md");
+      // A Ready to build row alone: an entry, and no open question.
+      await renderPage("/.vantage/planning?filter=path:plans/ready.md");
       expect(screen.getByTestId("nothing-needs-you")).toHaveTextContent(
         PLANNING_NOTICES.nothingFilteredNeedsYou,
       );
       expect(nothingMatches()).toBeNull();
-      expect(documentsIn("Blocked")).toEqual(["plans/deps.md"]);
+      expect(documentsIn("Ready to build")).toEqual(["plans/ready.md"]);
     });
   });
 
@@ -5805,7 +5930,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       );
       // The page on screen, its frame included, is still the unfiltered one.
       expect(cardsIn("Needs you")).toEqual(["OQ-D1: Question OQ-D1?"]);
-      expect(screen.getByTestId("needs-you-count")).toHaveTextContent("3");
+      expect(screen.getByTestId("needs-you-count")).toHaveTextContent("4");
       expect(notice()).toBeNull();
       expect(spinning()).toBe(true);
       expect(box().value).toBe("path:plans/unrouted.md");
@@ -5917,7 +6042,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       );
       expect(box().value).toBe("path:plans/design.md is:Open");
       expect(box()).toHaveAttribute("aria-invalid", "true");
-      expect(cardsIn("Needs you")).toHaveLength(2);
+      expect(cardsIn("Needs you")).toHaveLength(4);
       expect(noticeLines()[0]).toMatch(
         /^Not filtered: this Vantage cannot read is:Open\./,
       );
@@ -5931,14 +6056,14 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       );
       expect(box()).not.toHaveAttribute("aria-invalid");
       expect(querySection("Needs you")).toBeNull();
-      expect(counts()).toBe("0 match · 10 hidden");
+      expect(counts()).toBe("0 match · 9 hidden");
     });
 
     it("clears the filter on hidden as a new history entry, which Back undoes, and typing after it replaces it (planning-index.md §6.16)", async () => {
       await renderPage("/.vantage/planning?filter=path:plans/design.md", [
         "/plans/roadmap.md",
       ]);
-      expect(counts()).toBe("3 match · 7 hidden");
+      expect(counts()).toBe("3 match · 6 hidden");
       await act(async () => {
         fireEvent.click(screen.getByTestId("planning-filter-hidden"));
       });
@@ -5958,7 +6083,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
         "/.vantage/planning?filter=path:plans/design.md",
       );
       expect(box().value).toBe("path:plans/design.md");
-      expect(counts()).toBe("3 match · 7 hidden");
+      expect(counts()).toBe("3 match · 6 hidden");
       // Cleared again, a filter typed after it replaces the cleared entry,
       // so Back from it returns to the filter before.
       await act(async () => {
@@ -6000,7 +6125,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       expect(box().value).toBe("");
       expect(document.activeElement).toBe(box());
       expect(counts()).toBeNull();
-      expect(cardsIn("Needs you")).toHaveLength(2);
+      expect(cardsIn("Needs you")).toHaveLength(4);
       // Its slot stays, empty while there is no text.
       expect(
         screen.queryByRole("button", { name: "Clear the filter" }),
@@ -6041,16 +6166,16 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       expect(status()).toHaveTextContent(/^$/);
       // The counts, and what else the summary says, describe the box.
       expect(box()).toHaveAccessibleDescription(
-        "2 match, 8 hidden. 1 of its questions is blocked and will need you later.",
+        "2 match, 7 hidden. 1 of its questions is blocked and will need you later.",
       );
-      await enter("path:plans/deps.md");
-      // It keeps a Blocked row alone, so nothing it keeps needs you, which
-      // is said and describes the box too (planning-index.md §6.18).
+      await enter("path:plans/ready.md");
+      // It keeps a Ready to build row alone, so nothing it keeps needs you,
+      // which is said and describes the box too (planning-index.md §6.18).
       expect(status().textContent).toBe(
-        "1 matches, 9 hidden. Nothing this filter keeps needs you.",
+        "1 matches, 8 hidden. Nothing this filter keeps needs you.",
       );
       expect(box()).toHaveAccessibleDescription(
-        "Nothing this filter keeps needs you. 1 matches, 9 hidden.",
+        "Nothing this filter keeps needs you. 1 matches, 8 hidden.",
       );
       await act(async () => {
         fireEvent.click(
@@ -6078,7 +6203,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
         "nothing-matches-reason",
       );
       expect(status()).toHaveTextContent(
-        "0 match, 10 hidden. Nothing matches path:plans/answered.md is:open. Without is:open it would keep 1 entry, and it is not an open question.",
+        "0 match, 9 hidden. Nothing matches path:plans/answered.md is:open. Without is:open it would keep 1 entry, and it is not an open question.",
       );
       expect(box().getAttribute("aria-describedby")).toContain(
         `${headline.id} ${reason.id}`,
@@ -6089,7 +6214,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       expect(nothingMatches()).toBeNull();
       expect(status()).not.toHaveTextContent(/needs you\.$/);
       expect(status()).not.toHaveTextContent("Nothing matches");
-      expect(box()).toHaveAccessibleDescription("3 match, 7 hidden.");
+      expect(box()).toHaveAccessibleDescription("3 match, 6 hidden.");
     });
 
     it("says the notice of an Enter made while the index builds once the page is on screen", async () => {
@@ -6106,14 +6231,14 @@ describe("the planning filter (planning-index.md §6.11)", () => {
         "OQ-D1: Question OQ-D1?",
         "OQ-D3: Question OQ-D3?",
       ]);
-      expect(status()).toHaveTextContent(/^3 match, 7 hidden\.$/);
+      expect(status()).toHaveTextContent(/^3 match, 6 hidden\.$/);
     });
 
     it("forgets what it said on a navigation it did not cause, so the same filter applied again is said again", async () => {
       await renderPage();
       await enter("path:plans/design.md is:open");
       const said = status().textContent;
-      expect(said).toMatch(/^2 match, 8 hidden\./);
+      expect(said).toMatch(/^2 match, 7 hidden\./);
       // g p opens the bare page, whose region says nothing of a filter.
       act(() => scroller().focus());
       await press("g");
@@ -6176,6 +6301,8 @@ describe("the planning filter (planning-index.md §6.11)", () => {
     }
     const D1 = "OQ-D1: Question OQ-D1?";
     const D3 = "OQ-D3: Question OQ-D3?";
+    const X1 = "OQ-X1: Question OQ-X1?";
+    const U1 = "OQ-U1: Question OQ-U1?";
     const A1 = "OQ-A1: Question OQ-A1?";
     const filterOf = () =>
       new URLSearchParams(router.location.split("?")[1] ?? "").get("filter");
@@ -6232,7 +6359,13 @@ describe("the planning filter (planning-index.md §6.11)", () => {
         await settle();
         seen.push(cardsIn("Needs you"));
       }
-      expect(seen).toEqual([[D1, D3], [D1, D3], [D1, D3], [D1, D3], [D3]]);
+      expect(seen).toEqual([
+        [D1, D3, X1, U1],
+        [D1, D3, X1, U1],
+        [D1, D3, X1, U1],
+        [D1, D3],
+        [D3],
+      ]);
       // Rows hold no id, so a word only an id holds leaves them out.
       expect(querySection("Ready to build")).toBeNull();
       expect(filterShown()).toMatch(/^oq-d3$/);
@@ -6267,7 +6400,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       expect(hint()).toBe(FILTER_HINT);
       await enter();
       expect(filterOf()).toBe('path:plans/design.md "is');
-      expect(cardsIn("Needs you")).toEqual([D1, D3]);
+      expect(cardsIn("Needs you")).toEqual([D1, D3, X1, U1]);
       expect(noticeLines()[0]).toMatch(
         /^Not filtered: this Vantage cannot read an unclosed quote\./,
       );
@@ -6288,7 +6421,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       // hold; `is:` and `is:o` are not understood, so they leave that page
       // as it is, until `is:open` is read.
       expect(seen).toEqual(["is", "is", "is", "is:open"]);
-      expect(cardsIn("Needs you")).toEqual([D1, D3]);
+      expect(cardsIn("Needs you")).toEqual([D1, D3, X1, U1]);
     });
 
     // A typed text that keeps no entry at all waits for the idle pause, the
@@ -6327,7 +6460,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       for (const text of ["-", "-m"]) {
         await type(text);
         await settle();
-        expect(cardsIn("Needs you"), text).toEqual([D1, D3]);
+        expect(cardsIn("Needs you"), text).toEqual([D1, D3, X1, U1]);
         expect(notice(), text).toBeNull();
       }
       // `-mz` drops nothing, and applies with no pause.
@@ -6366,7 +6499,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       box().focus();
       // `z` is in no field of the tree's entries.
       await typeKeys("zz");
-      expect(cardsIn("Needs you")).toEqual([D1, D3]);
+      expect(cardsIn("Needs you")).toEqual([D1, D3, X1, U1]);
       await enter();
       expect(router.location).toBe("/.vantage/planning?filter=zz");
       expect(querySection("Needs you")).toBeNull();
@@ -6375,7 +6508,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
         fireEvent.click(clearX());
       });
       await settle();
-      expect(cardsIn("Needs you")).toEqual([D1, D3]);
+      expect(cardsIn("Needs you")).toEqual([D1, D3, X1, U1]);
       // A paste that is no planning link is typing written at once.
       await act(async () => {
         fireEvent.paste(box(), { clipboardData: { getData: () => "qq" } });
@@ -6389,7 +6522,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       });
       await settle();
       await typeKeys("zz");
-      expect(cardsIn("Needs you")).toEqual([D1, D3]);
+      expect(cardsIn("Needs you")).toEqual([D1, D3, X1, U1]);
       act(() => scroller().focus());
       await settle();
       expect(router.location).toBe("/.vantage/planning?filter=zz");
@@ -6444,7 +6577,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       await settle();
       expect(router.location).toBe("/.vantage/planning");
       expect(router.keys).toHaveLength(keys + 1);
-      expect(cardsIn("Needs you")).toEqual([D1, D3]);
+      expect(cardsIn("Needs you")).toEqual([D1, D3, X1, U1]);
       keys = router.keys.length;
       await idle();
       expect(router.keys).toHaveLength(keys);
@@ -6501,7 +6634,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       await settle();
       expect(router.location).toBe("/.vantage/planning");
       expect(box().value).toBe("");
-      expect(cardsIn("Needs you")).toEqual([D1, D3]);
+      expect(cardsIn("Needs you")).toEqual([D1, D3, X1, U1]);
     });
 
     it("drops a write still owed on a push", async () => {
@@ -6514,7 +6647,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       expect(box().value).toBe("");
       await idle();
       expect(router.location).toBe("/.vantage/planning?x=1");
-      expect(cardsIn("Needs you")).toEqual([D1, D3]);
+      expect(cardsIn("Needs you")).toEqual([D1, D3, X1, U1]);
     });
 
     it("speaks the notice once the URL takes the text, never per keystroke", async () => {
@@ -6526,11 +6659,11 @@ describe("the planning filter (planning-index.md §6.11)", () => {
         expect(status()).toHaveTextContent(/^$/);
       }
       await idle();
-      expect(status().textContent).toMatch(/^3 match, 7 hidden\./);
+      expect(status().textContent).toMatch(/^3 match, 6 hidden\./);
       await typeKeys("oq-d3", "oq-d");
-      expect(status().textContent).toMatch(/^3 match, 7 hidden\./);
+      expect(status().textContent).toMatch(/^3 match, 6 hidden\./);
       await idle();
-      expect(status().textContent).toMatch(/^1 matches, 9 hidden\./);
+      expect(status().textContent).toMatch(/^1 matches, 8 hidden\./);
     });
 
     it("carries a filter still owed into a roadmap pick", async () => {
@@ -6671,7 +6804,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       await renderPage("/.vantage/planning?filter=path:plans/design.md");
       act(() => router.navigate!("/.vantage/planning"));
       await settle();
-      expect(cardsIn("Needs you")).toEqual([D1, D3]);
+      expect(cardsIn("Needs you")).toEqual([D1, D3, X1, U1]);
       const held = () => heldPlanningPageInputs().cached.join("|");
       expect(held()).toContain("\npath:plans/design.md\n");
       box().focus();
@@ -7120,7 +7253,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       box().focus();
       await typeKeys("zz");
       // Held back: the last results stay, and nothing says nothing matches.
-      expect(cardsIn("Needs you")).toEqual([D1, D3]);
+      expect(cardsIn("Needs you")).toEqual([D1, D3, X1, U1]);
       expect(nothingMatches()).toBeNull();
       await idle(300);
       expect(filterOf()).toBe("zz");
@@ -7129,7 +7262,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       expect(status()).toHaveTextContent(/^$/);
       await idle(700);
       expect(status().textContent).toBe(
-        `0 match, 10 hidden. Nothing matches zz. ${WORDS}`,
+        `0 match, 9 hidden. Nothing matches zz. ${WORDS}`,
       );
       expect(document.activeElement).toBe(box());
       // A key more, which also keeps nothing and is held, then the button:
@@ -7146,7 +7279,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       await settle();
       expect(filterOf()).toBeNull();
       expect(box().value).toBe("");
-      expect(cardsIn("Needs you")).toEqual([D1, D3]);
+      expect(cardsIn("Needs you")).toEqual([D1, D3, X1, U1]);
       await idle();
       expect(filterOf()).toBeNull();
     });
@@ -7224,7 +7357,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       expect(said.filter((s) => s !== "")).toEqual([]);
       await idle(600);
       expect(said.filter((s) => s !== "")).toEqual([
-        expect.stringMatching(/^3 match, 7 hidden\./),
+        expect.stringMatching(/^3 match, 6 hidden\./),
       ]);
       // Leaving the box says what is owed at once.
       said.length = 0;
@@ -7236,7 +7369,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       await settle();
       observer.disconnect();
       expect(said.filter((s) => s !== "")).toEqual([
-        expect.stringMatching(/^1 matches, 9 hidden\./),
+        expect.stringMatching(/^1 matches, 8 hidden\./),
       ]);
     });
 
@@ -7255,7 +7388,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       expect(filterOf()).toBe("oq-d3");
       expect(document.activeElement).toBe(scroller());
       expect(scroller().scrollTop).toBe(0);
-      expect(status().textContent).toMatch(/^1 matches, 9 hidden\./);
+      expect(status().textContent).toMatch(/^1 matches, 8 hidden\./);
       // A text it cannot read keeps the focus, for the reader to correct
       // what the notice names, and the pane where it was.
       box().focus();
@@ -7297,7 +7430,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
         "plans/design.md": doc(
           "status: in-review\nstage: DESIGN",
           q("OQ-D1", OPEN),
-          q("OQ-D2", BLOCKED),
+          q("OQ-D2", BLOCKED, "Yes.", "disagrees.md#OQ-X1"),
           q("OQ-D3", OPEN),
           q("OQ-D4", OPEN),
         ),
@@ -7442,7 +7575,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       expect(router.location).toBe("/.vantage/planning");
       expect(box().value).toBe("");
       expect(notice()).toBeNull();
-      expect(cardsIn("Needs you")).toHaveLength(2);
+      expect(cardsIn("Needs you")).toHaveLength(4);
       // With the focus in the box and text unapplied: Back still wins.
       await press("/");
       await type("unapplied");
@@ -7599,7 +7732,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       expect(router.location).toBe(
         "/.vantage/planning?filter=path:plans/design.md",
       );
-      expect(status()).toHaveTextContent(/^3 match, 7 hidden\./);
+      expect(status()).toHaveTextContent(/^3 match, 6 hidden\./);
     });
 
     it("chooses for a link's roadmap that does not route what the page would, in one replace, and says the notice", async () => {
@@ -8438,11 +8571,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       expect(reviewRequests()).toHaveLength(2);
       // The second holds the rows' documents, which no question holds.
       expect(rest).toEqual(
-        expect.arrayContaining([
-          "plans/deps.md",
-          "plans/ready.md",
-          "plans/built.md",
-        ]),
+        expect.arrayContaining(["plans/ready.md", "plans/built.md"]),
       );
       expect(new Set([...first!, ...rest!])).toEqual(
         new Set([
@@ -8450,7 +8579,6 @@ describe("the planning filter (planning-index.md §6.11)", () => {
           "plans/answered.md",
           "plans/unrouted.md",
           "plans/disagrees.md",
-          "plans/deps.md",
           "plans/ready.md",
           "plans/built.md",
         ]),

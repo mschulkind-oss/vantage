@@ -304,10 +304,11 @@ describe("agent requests", () => {
     expect(request(indexOf(TREE, { stages: reversed }))).toBe(request(index));
   });
 
-  // Ready to build and Ready to graduate keep a document Blocked also lists
-  // (§6.2), and `sections.ready` keeps that meaning in the JSON (P0), so the
-  // request is where an agent learns not to build ahead of a ruling.
-  it("marks a document Blocked also lists, and says to skip it", () => {
+  // Ready to build and Ready to graduate keep a document whose own
+  // `depends-on` still waits (§6.2), and `sections.ready` keeps that meaning
+  // in the JSON (P0), so the request is where an agent learns not to build
+  // ahead of a ruling.
+  it("marks a row with what its own depends-on waits on, and says to skip it", () => {
     const LOCKED = "\u{1F512}";
     const blocked = indexOf(
       {
@@ -318,7 +319,7 @@ describe("agent requests", () => {
           [
             `1. ${LOCKED} **OQ-B1: Upstream first?**`,
             "",
-            `   ${questionDirective(LOCKED, "OQ-B1")}`,
+            `   ${questionDirective(LOCKED, "OQ-B1", null, "a.md#OQ-A1")}`,
             "",
             "   Waits on an upstream release.",
             "",
@@ -331,16 +332,14 @@ describe("agent requests", () => {
     );
     const sections = derivePlanningSections(blocked);
     expect(sections.ready).toEqual(["docs/b.md", "docs/c.md"]);
-    expect(sections.waiting.map((w) => w.kind)).toEqual([
-      "document",
-      "question",
-      "document",
-    ]);
+    // A blocked question is not open, so the row stays Ready; Blocked lists
+    // the question, never the document.
+    expect(sections.waiting.map((w) => w.question.id)).toEqual(["OQ-B1"]);
 
     const text = request(blocked, ["ready", "graduate"]) ?? "";
     const lines = text.split("\n");
     expect(lines).toContain(
-      "- docs/b.md  (stage DECIDED; blocked on docs/a.md#OQ-A1, \u{1F512} OQ-B1)",
+      "- docs/b.md  (stage DECIDED; blocked on docs/a.md#OQ-A1)",
     );
     expect(lines).toContain("- docs/c.md  (stage DECIDED)");
     expect(lines).toContain("- docs/d.md  (stage BUILT; blocked on docs/a.md)");
@@ -555,7 +554,7 @@ describe("the compact request", () => {
     const text = planningAgentRequest(index, sections, {
       repository: REPO,
       ids: ["compact"],
-      filter: { text: "OQ-B2", unfiltered: sections, keeps },
+      filter: { text: "OQ-B2", keeps },
     });
 
     expect(text).toContain("Filter: `OQ-B2`.");

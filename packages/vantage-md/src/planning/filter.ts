@@ -41,7 +41,10 @@ import type {
 import {
   isLive,
   questionFor,
+  questionNeedsYou,
+  questionState,
   routeQuestions,
+  waitingDependsOn,
   type PlanningSections,
   type QuestionRef,
   type WaitingEntry,
@@ -744,11 +747,19 @@ function stateKeeps(c: Compiled, state: QuestionState | null): boolean {
   return state === null || !c.dropsStates.has(state);
 }
 
-/** The four tests of §6.12, for a question. */
-function keepsQuestionWith(c: Compiled, q: PlanningFilterQuestion): boolean {
+/**
+ * The four tests of §6.12, for a question, in `state`: its marker's, or the
+ * state the referent decides (§3.3) where the index is at hand, so `is:open`
+ * finds a 🔒 nothing live waits on and misses a 💬 whose referent still waits.
+ */
+function keepsQuestionWith(
+  c: Compiled,
+  q: PlanningFilterQuestion,
+  state: QuestionState = q.state,
+): boolean {
   return (
     c.keepsPath(q.path) &&
-    stateKeeps(c, q.state) &&
+    stateKeeps(c, state) &&
     textKeeps(c, () => questionFields(q))
   );
 }
@@ -771,6 +782,11 @@ function keepsRowWith(
  * state passes the `is:` and `-is:` terms, every text term matches one of its
  * id, title, leaning and path, and no `-` text term matches any of them.
  * Same key OR, different keys AND.
+ *
+ * `question.state` is the state tested, as its marker wrote it: this carries
+ * no index, so it cannot resolve a referent (§3.3). `applyPlanningFilter`,
+ * which has one, tests the state the referent decides instead, so the page and
+ * the checker read `is:open` the way the sections do.
  */
 export function filterKeepsQuestion(
   filter: UnderstoodPlanningFilter,
@@ -984,9 +1000,9 @@ function entryCount(sections: PlanningSections): number {
 interface EntryTests {
   /** A question entry: Needs you, Not on a roadmap, a Blocked question. */
   keepsRef: (ref: QuestionRef) => boolean;
-  /** A document's row: a Blocked document, or a stage section's row. */
+  /** A document's row: a stage section's row. */
   keepsDocumentRow: (path: string) => boolean;
-  /** A Blocked entry, a question's or a document's. */
+  /** A Blocked question, the only entry Blocked holds (§6.2). */
   keepsWaiting: (entry: WaitingEntry) => boolean;
   /** A Too large or Unreadable entry. */
   keepsEntry: (entry: { path: string }) => boolean;
@@ -1003,7 +1019,9 @@ function entryTests(index: PlanningIndex, c: Compiled): EntryTests {
     fieldsOf(ref, () => [ref.id, ref.path]);
   const keepsRef = (ref: QuestionRef): boolean => {
     const q = questionOf(index, ref);
-    if (q !== undefined) return keepsQuestionWith(c, q);
+    if (q !== undefined) {
+      return keepsQuestionWith(c, q, questionState(index, q));
+    }
     return (
       c.keepsPath(ref.path) &&
       stateKeeps(c, null) &&
@@ -1018,10 +1036,7 @@ function entryTests(index: PlanningIndex, c: Compiled): EntryTests {
   return {
     keepsRef,
     keepsDocumentRow,
-    keepsWaiting: (entry) =>
-      entry.kind === "document"
-        ? keepsDocumentRow(entry.path)
-        : keepsRef(entry.question),
+    keepsWaiting: (entry) => keepsRef(entry.question),
     keepsEntry: (entry) =>
       keepsRowWith(c, entry.path, () => fieldsOf(entry, () => [entry.path])),
   };
@@ -1187,8 +1202,8 @@ export function applyPlanningFilter(
           const q = questionOf(index, ref);
           return (
             q !== undefined &&
-            (q.state === "open" || q.state === "answered") &&
-            keepsQuestionWith(c, q)
+            questionNeedsYou(index, q) &&
+            keepsQuestionWith(c, q, questionState(index, q))
           );
         }),
       ]),
@@ -1206,7 +1221,9 @@ export function applyPlanningFilter(
       (doc) =>
         isLive(index, doc) &&
         doc.questions.some(
-          (q) => q.state === "open" && keepsQuestionWith(c, q),
+          (q) =>
+            questionState(index, q) === "open" &&
+            keepsQuestionWith(c, q, questionState(index, q)),
         ),
     ),
     needsYou,
@@ -1245,8 +1262,10 @@ export function applyPlanningFilter(
             .map((term) => term.text)
             .join(" ");
 
-  const isOpenRef = (ref: QuestionRef) =>
-    questionOf(index, ref)?.state === "open";
+  const isOpenRef = (ref: QuestionRef) => {
+    const q = questionOf(index, ref);
+    return q !== undefined && questionState(index, q) === "open";
+  };
   // Every roadmap but the chosen one that routes a kept question the chosen
   // one does not list, with how many it routes (§6.15). A question two of them
   // route counts once in `onOtherRoadmaps` and once under each roadmap here.
@@ -1259,27 +1278,26 @@ export function applyPlanningFilter(
     return count === 0 ? [] : [{ path, count }];
   });
   const waitsOutside: PlanningFilterSummary["waitsOutside"] = [];
+  for (const doc of index.documents) {
+    if (!isLive(index, doc) || !c.keepsPath(doc.path)) continue;
+    for (const on of waitingDependsOn(index, doc)) {
+      // `waitingDependsOn` keeps only entries naming a live document.
+      if (on.target !== null && !c.keepsPath(on.target)) {
+        waitsOutside.push({ path: doc.path, target: dependsOnLabel(on) });
+      }
+    }
+  }
   let blockedLeftOut = 0;
   for (const entry of sections.waiting) {
-    if (entry.kind === "question") {
-      // Kept by every term but the `is:` terms, and left out by one of them.
-      const q = questionOf(index, entry.question);
-      if (
-        q !== undefined &&
-        c.keepsPath(q.path) &&
-        textKeeps(c, () => questionFields(q)) &&
-        !stateKeeps(c, q.state)
-      ) {
-        blockedLeftOut++;
-      }
-      continue;
-    }
-    if (!c.keepsPath(entry.path)) continue;
-    for (const on of entry.waitingOn) {
-      // `waits` keeps only entries naming a live document of the index.
-      if (on.target !== null && !c.keepsPath(on.target)) {
-        waitsOutside.push({ path: entry.path, target: dependsOnLabel(on) });
-      }
+    // Kept by every term but the `is:` terms, and left out by one of them.
+    const q = questionOf(index, entry.question);
+    if (
+      q !== undefined &&
+      c.keepsPath(q.path) &&
+      textKeeps(c, () => questionFields(q)) &&
+      !stateKeeps(c, questionState(index, q))
+    ) {
+      blockedLeftOut++;
     }
   }
 

@@ -11,21 +11,36 @@ import {
 } from "vantage-md/planning";
 import { indexOf, questionDirective } from "../test/planning";
 
-/** A loose list of questions, one per marker, ids `OQ-1`, `OQ-2`, … */
-function questions(...markers: string[]): string {
+/**
+ * A loose list of questions, one per marker, ids `OQ-1`, `OQ-2`, … A marker
+ * given as `{ marker, blockedOn }` writes a `blocked-on` too (§3.3), so the
+ * referent — not the marker — is what makes that question blocked.
+ */
+function questions(
+  ...markers: (string | { marker: string; blockedOn: string })[]
+): string {
   return markers
-    .map((marker, i) =>
-      [
-        `1. ${marker} **OQ-${i + 1}: Question ${i + 1}?**`,
+    .map((entry, i) => {
+      const marker = typeof entry === "string" ? entry : entry.marker;
+      const blockedOn = typeof entry === "string" ? undefined : entry.blockedOn;
+      const id = `OQ-${i + 1}`;
+      return [
+        `1. ${marker} **${id}: Question ${i + 1}?**`,
         "",
-        `   ${questionDirective(marker, `OQ-${i + 1}`, "Yes.")}`,
+        `   ${questionDirective(marker, id, "Yes.", blockedOn)}`,
         "",
         "   _Leaning:_ yes.",
         "",
-      ].join("\n"),
-    )
+      ].join("\n");
+    })
     .join("\n");
 }
+
+// OQ-1 is open and the referent OQ-2 and OQ-3 name; OQ-2 is a 💬 whose referent
+// still waits, so it is blocked; OQ-3 is a 🔒 that waits on the same open
+// question, so it is blocked; OQ-4 is ruled; OQ-5 is a 🔒 with nothing live to
+// wait on, so it is open too.
+const WAITS_ON_OQ_1 = { blockedOn: "bootstrap.md#OQ-1" } as const;
 
 const TREE = {
   "roadmap.md": "# Roadmap\n",
@@ -37,7 +52,13 @@ const TREE = {
     "",
     "# Bootstrap",
     "",
-    questions("\u{1F4AC}", "\u{1F4AC}", "\u{1F512}", "✅"),
+    questions(
+      "\u{1F4AC}",
+      { marker: "\u{1F4AC}", ...WAITS_ON_OQ_1 },
+      { marker: "\u{1F512}", ...WAITS_ON_OQ_1 },
+      "✅",
+      "\u{1F512}",
+    ),
     "## Decision Ledger",
     "",
     "| OQ-B9 | Ruled long ago |",
@@ -101,11 +122,11 @@ describe("what a badge says (§5.2)", () => {
       stage: "DESIGN",
       stageInVocabulary: true,
       open: 2,
-      blocked: 1,
+      blocked: 2,
     });
-    expect(b && badgeText(b)).toBe("in-review · DESIGN · 💬 2 · 🔒 1");
+    expect(b && badgeText(b)).toBe("in-review · DESIGN · 💬 2 · 🔒 2");
     expect(b && badgeSpeech(b)).toBe(
-      "in review, design, 2 open questions, 1 blocked question",
+      "in review, design, 2 open questions, 2 blocked questions",
     );
   });
 
@@ -115,10 +136,15 @@ describe("what a badge says (§5.2)", () => {
     );
   });
 
+  // The referent decides the state, not the marker (§3.3): a 💬 whose
+  // `blocked-on` still waits is blocked, and a 🔒 with nothing live to wait on
+  // is open.
   it.each([
     ["OQ-1", "open", "💬 open", "open question"],
+    ["OQ-2", "blocked", "🔒 blocked", "blocked question"],
     ["OQ-3", "blocked", "🔒 blocked", "blocked question"],
     ["OQ-4", "answered", "✅ answered", "answered question"],
+    ["OQ-5", "open", "💬 open", "open question"],
   ])("shows %s's state: %s", (id, state, text, speech) => {
     const b = badge("docs/design/bootstrap.md", id);
     expect(b).toEqual({
