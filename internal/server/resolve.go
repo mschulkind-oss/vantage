@@ -13,6 +13,7 @@ import (
 
 	"github.com/mschulkind-oss/vantage/internal/api"
 	"github.com/mschulkind-oss/vantage/internal/buildinfo"
+	"github.com/mschulkind-oss/vantage/internal/live"
 	"github.com/mschulkind-oss/vantage/internal/model"
 	"github.com/mschulkind-oss/vantage/internal/perf"
 )
@@ -192,11 +193,13 @@ func (s *Server) handleRecentAllMulti(w http.ResponseWriter, r *http.Request) {
 // handlePerfDiagnosticsMulti handles GET /perf/diagnostics in daemon mode. It
 // builds the timing report once and, when include_shape=true, attaches each
 // repository's anonymized shape under repo_1..repo_n keys (registration order),
-// matching the historical multi-repo shape contract.
+// matching the historical multi-repo shape contract. It always attaches the
+// anonymized aggregate of the live watchers' lifetime counters.
 func (s *Server) handlePerfDiagnosticsMulti(w http.ResponseWriter, r *http.Request) {
 	diag := s.perf.Diagnostics()
 	diag.Meta.AppVersion = buildinfo.Version()
 	diag.Meta.GitSha = buildinfo.ShortCommit()
+	diag.Watchers = s.watcherStats()
 
 	if queryBool(r, "include_shape", false) {
 		excl := excludeSet(s.cfg.ExcludeDirs)
@@ -209,6 +212,39 @@ func (s *Server) handlePerfDiagnosticsMulti(w http.ResponseWriter, r *http.Reque
 	}
 
 	writeJSONOK(w, diag)
+}
+
+// watcherStats sums the lifetime snapshot of every live watcher into one
+// anonymized aggregate, or returns nil when no watcher is running (so the
+// report omits the section). The watcher map is copied under the lock before
+// Stats is read, since Stats takes the watcher's own lock.
+func (s *Server) watcherStats() *perf.WatcherStats {
+	s.watchersMu.Lock()
+	watchers := make([]*live.Watcher, 0, len(s.watchers))
+	for _, w := range s.watchers {
+		watchers = append(watchers, w)
+	}
+	s.watchersMu.Unlock()
+	if len(watchers) == 0 {
+		return nil
+	}
+
+	var total perf.WatcherStats
+	for _, w := range watchers {
+		st := w.Stats()
+		total.Repos += st.Repos
+		total.WatchedDirs += st.WatchedDirs
+		total.WatchFailedDirs += st.WatchFailedDirs
+		total.EventsTotal += st.EventsTotal
+		total.Kept += st.Kept
+		total.DroppedExt += st.DroppedExt
+		total.DroppedIgnore += st.DroppedIgnore
+		total.DroppedOutside += st.DroppedOutside
+		total.DroppedSameFP += st.DroppedSameFP
+		total.DroppedStale += st.DroppedStale
+		total.DroppedAttrib += st.DroppedAttrib
+	}
+	return &total
 }
 
 // ---------------------------------------------------------------------------

@@ -465,9 +465,11 @@ func (s *GitService) Status() map[string]string {
 
 	cacheKey := s.repoPath
 	if cached, ok := statusCache.get(cacheKey); ok {
+		perf.Default.Count("status_cache_hit")
 		slog.Debug("git: status cache hit", "entries", len(cached))
 		return cached
 	}
+	perf.Default.Count("status_cache_miss")
 
 	out, err := s.run(s.workingDir, timeoutDefault, "status", "--porcelain=v1", "-unormal")
 	if err != nil {
@@ -966,9 +968,11 @@ func (s *GitService) recents(limit int, extensions []string, showHidden, showGit
 		showGitignored: showGitignored,
 	}
 	if cached, ok := recentFilesCache.get(key); ok {
+		perf.Default.Count("recent_files_cache_hit")
 		slog.Debug("git: recent-files cache hit", "items", len(cached))
 		return cached
 	}
+	perf.Default.Count("recent_files_cache_miss")
 
 	result := s.computeRecents(limit, extLower, showHidden, showGitignored, report)
 	recentFilesCache.set(key, result)

@@ -156,11 +156,22 @@ func TestPrintPerfReport(t *testing.T) {
 		Services: perf.ServicesSection{
 			Total: 7,
 			ByOperation: map[string]perf.OperationStats{
-				"git.status": {Count: 5, P50: 0.5, P95: 600, Max: 700},
+				"git.status": {Category: perf.CategoryGit, Count: 5, P50: 0.5, P95: 600, Max: 700},
 			},
 		},
 		SlowRequests: []perf.SlowRequest{
 			{Operation: "GET /api/files/all", DurationMs: 250, Status: &status},
+		},
+		SlowServices: []perf.SlowOperation{
+			{Operation: "activity_warm_recents", DurationMs: 1234},
+		},
+		Counters: map[string]int{
+			"recent_files_cache_hit":  7,
+			"recent_files_cache_miss": 2,
+		},
+		Watchers: &perf.WatcherStats{
+			Repos: 1, WatchedDirs: 30, WatchFailedDirs: 3,
+			EventsTotal: 400, Kept: 9, DroppedExt: 300, DroppedIgnore: 80,
 		},
 		Meta: perf.Meta{AppVersion: "1.2.3", GitSha: "abc1234", UptimeS: 90},
 		RepoShape: map[string]perf.RepoShape{
@@ -168,6 +179,7 @@ func TestPrintPerfReport(t *testing.T) {
 				TotalFiles:            100,
 				TotalDirs:             20,
 				MaxDepth:              4,
+				WalkMs:                42,
 				ExtensionDistribution: map[string]int{".md": 90, ".txt": 10},
 				DirEntryCount:         perf.DirEntryCount{P50: 5, P95: 30, Max: 50},
 			},
@@ -184,11 +196,26 @@ func TestPrintPerfReport(t *testing.T) {
 	require.Contains(t, out, "Total API requests: 42")
 	require.Contains(t, out, "GET /api/tree")
 	require.Contains(t, out, "git.status")
+	require.Contains(t, out, "Category", "service table gains a category column")
 	require.Contains(t, out, "Slow Requests")
 	require.Contains(t, out, "GET /api/files/all")
+	require.Contains(t, out, "Slow Services")
+	require.Contains(t, out, "activity_warm_recents")
+	require.Contains(t, out, "Counters:")
+	require.Contains(t, out, "recent_files_cache_hit: 7")
+	require.Contains(t, out, "recent_files_cache_miss: 2")
+	require.Contains(t, out, "Watchers:")
+	require.Contains(t, out, "Watched dirs: 30")
+	require.Contains(t, out, "Dropped: ext=300, ignore=80")
 	require.Contains(t, out, "Repository Shape")
 	require.Contains(t, out, "notes:")
+	require.Contains(t, out, "Walk: 42ms")
 	require.Contains(t, out, ".md: 90")
+
+	// A report without watcher stats (single-repo mode) renders no section.
+	var nbuf bytes.Buffer
+	printPerfReport(&nbuf, &perf.Diagnostics{}, false)
+	require.NotContains(t, nbuf.String(), "Watchers:")
 
 	// Colored output emits ANSI escapes.
 	var cbuf bytes.Buffer

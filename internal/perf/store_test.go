@@ -1,6 +1,7 @@
 package perf
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -142,4 +143,82 @@ func TestPercentileRounding(t *testing.T) {
 // TestEmptyPercentiles confirms an empty bucket yields the zero summary.
 func TestEmptyPercentiles(t *testing.T) {
 	require.Equal(t, OperationStats{}, computePercentiles(nil, true))
+}
+
+// TestServiceBucketCarriesCategory confirms every service bucket reports the
+// category of the records that fed it, so the perf report can label each
+// operation git or fs. Request buckets carry the request category too.
+func TestServiceBucketCarriesCategory(t *testing.T) {
+	s := NewStore()
+	s.Record(CategoryGit, "exec:git", 4.0)
+	s.Record(CategoryFS, "list_directory", 2.0)
+	s.recordRequest("GET /api/x", 1.0, 200)
+
+	diag := s.Diagnostics()
+	require.Equal(t, CategoryGit, diag.Services.ByOperation["exec:git"].Category)
+	require.Equal(t, CategoryFS, diag.Services.ByOperation["list_directory"].Category)
+	require.Equal(t, CategoryRequest, diag.Requests.ByEndpoint["GET /api/x"].Category)
+}
+
+// TestSlowServicesThresholdAndSort verifies slow_services filters service
+// records by the same threshold as slow_requests, excludes requests, sorts
+// descending by duration, and caps at the shared slow limit.
+func TestSlowServicesThresholdAndSort(t *testing.T) {
+	s := NewStore()
+	s.recordRequest("GET /api/slow", 900.0, 200) // request: excluded here
+	s.Record(CategoryGit, "fast_git", 10.0)      // below threshold
+	s.Record(CategoryFS, "slow_fs", 250.0)
+	s.Record(CategoryGit, "slower_git", 700.0)
+
+	diag := s.Diagnostics()
+	require.Len(t, diag.SlowServices, 2)
+	require.Equal(t, "slower_git", diag.SlowServices[0].Operation)
+	require.Equal(t, "slow_fs", diag.SlowServices[1].Operation)
+
+	for i := 0; i < slowRequestLimit+5; i++ {
+		s.Record(CategoryGit, "bulk_git", 300.0)
+	}
+	require.Len(t, s.Diagnostics().SlowServices, slowRequestLimit, "capped at the shared slow limit")
+}
+
+// TestCountersTracksAndClears confirms Store.Count tallies named counters,
+// Diagnostics surfaces them, and Clear empties them along with the timings.
+func TestCountersTrackAndClear(t *testing.T) {
+	s := NewStore()
+	s.Count("recent_files_cache_hit")
+	s.Count("recent_files_cache_hit")
+	s.Count("recent_files_cache_miss")
+
+	diag := s.Diagnostics()
+	require.Equal(t, 2, diag.Counters["recent_files_cache_hit"])
+	require.Equal(t, 1, diag.Counters["recent_files_cache_miss"])
+
+	s.Clear()
+	require.Empty(t, s.Diagnostics().Counters, "Clear zeroes the named counters")
+}
+
+// TestCountersOmitEmpty confirms a store with no counters marshals without the
+// counters key, so the report's shape is additive for existing readers.
+func TestCountersOmitEmpty(t *testing.T) {
+	body, err := json.Marshal(NewStore().Diagnostics())
+	require.NoError(t, err)
+	require.NotContains(t, string(body), `"counters"`)
+}
+
+// TestWatchersJSON confirms an attached WatcherStats round-trips under the
+// watchers key with the dropped breakdown intact.
+func TestWatchersJSON(t *testing.T) {
+	diag := Diagnostics{Watchers: &WatcherStats{
+		Repos: 2, WatchedDirs: 30, WatchFailedDirs: 1, EventsTotal: 400,
+		Kept: 7, DroppedExt: 300, DroppedIgnore: 80, DroppedOutside: 10,
+		DroppedSameFP: 2, DroppedStale: 1, DroppedAttrib: 0,
+	}}
+	body, err := json.Marshal(diag)
+	require.NoError(t, err)
+	var back Diagnostics
+	require.NoError(t, json.Unmarshal(body, &back))
+	require.NotNil(t, back.Watchers)
+	require.Equal(t, 2, back.Watchers.Repos)
+	require.Equal(t, 30, back.Watchers.WatchedDirs)
+	require.Equal(t, 80, back.Watchers.DroppedIgnore)
 }
