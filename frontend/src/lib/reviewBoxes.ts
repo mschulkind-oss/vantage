@@ -123,16 +123,18 @@ export function newCommentBox(
 export function editCommentBox(
   target: ReviewTarget,
   comment: ReviewComment,
+  options: { onSaved?: OnSaved } = {},
 ): CommentBox {
   const live = liveBoxFor(target, comment.id, ["edit", "comment"]);
   if (live && !live.isOpen && live.subject.kind === "edit") return live;
   const text = live ? live.getState().text : comment.comment;
   if (live && !live.isOpen) live.retire();
+  const tell = told(target, options.onSaved);
   return new CommentBox(
     { kind: "edit", target, commentId: comment.id, label: "Edited comment" },
     {
-      update: (t) => saveCommentText(target, comment.id, t),
-      asNew: asNewComment(target, comment),
+      update: (t) => saveCommentText(target, comment.id, t).then(tell),
+      asNew: asNewComment(target, comment, options.onSaved),
     },
     { text, created: true, saved: comment.comment },
   );

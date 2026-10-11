@@ -1872,6 +1872,35 @@ th.review-block-hovered {
   color: rgb(252 165 165);
   background: rgb(248 113 113 / 0.12);
 }
+/* Edit, beside a pending comment: the leaning's Undo's peer, and the same
+   quiet borderless treatment, so an answered row reads as one object with a
+   single action each. Constructive rather than destructive, so its hover is
+   blue where Undo's is red. */
+.review-oq-edit {
+  font-size: 11px;
+  font-weight: 500;
+  color: rgb(100 116 139);
+  background: none;
+  border: none;
+  border-radius: 4px;
+  padding: 2px 6px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    color 0.15s,
+    background 0.15s;
+}
+.review-oq-edit:hover {
+  color: rgb(37 99 235);
+  background: rgb(59 130 246 / 0.08);
+}
+.dark .review-oq-edit {
+  color: rgb(148 163 184);
+}
+.dark .review-oq-edit:hover {
+  color: rgb(96 165 250);
+  background: rgb(59 130 246 / 0.15);
+}
 
 /* Flash used when jumping to a comment from the sidebar. */
 .review-inline-comment--flash .review-inline-comment-body {
@@ -2662,7 +2691,8 @@ th.review-block-hovered {
   .review-oq-taken,
   .review-oq-answered,
   .review-oq-answer,
-  .review-oq-undo {
+  .review-oq-undo,
+  .review-oq-edit {
     display: none !important;
   }
 

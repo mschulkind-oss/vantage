@@ -50,6 +50,13 @@ interface PlanningOutlineProps {
   picker: React.ReactNode;
   /** The URL of an entry: the page, at the element `target` names. */
   hrefOf: (target: string) => string;
+  /**
+   * The URL of a document's entry: the page scoped to that document, at its
+   * first card. A document entry is the page filtered to it (§6.9), so its
+   * link carries that filter for a modified click and a new tab; a line's is
+   * `hrefOf`.
+   */
+  hrefOfDocument: (document: OutlineDocument) => string;
   onLine: (line: OutlineLine) => void;
   onDocument: (document: OutlineDocument) => void;
 }
@@ -59,6 +66,7 @@ export const PlanningOutline: React.FC<PlanningOutlineProps> = ({
   active,
   picker,
   hrefOf,
+  hrefOfDocument,
   onLine,
   onDocument,
 }) => (
@@ -93,7 +101,7 @@ export const PlanningOutline: React.FC<PlanningOutlineProps> = ({
             <li key={document.path}>
               <OutlineDocumentLink
                 document={document}
-                href={hrefOf(document.target)}
+                href={hrefOfDocument(document)}
                 active={
                   active.section === "needs-you" &&
                   active.path === document.path

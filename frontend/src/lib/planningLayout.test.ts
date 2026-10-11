@@ -17,7 +17,7 @@ import {
   layoutNeedsYou,
   marksOf,
   openRow,
-  rowAnswer,
+  rowAnswers,
   shrinkCard,
   updatesTitle,
   updatesTotal,
@@ -442,7 +442,7 @@ describe("held updates (§6.4)", () => {
   });
 });
 
-describe("an answered row's chip (§6.4)", () => {
+describe("an answered row's answers (§6.4)", () => {
   const comment = (over: Partial<ReviewComment>): ReviewComment =>
     ({
       id: "c1",
@@ -454,23 +454,33 @@ describe("an answered row's chip (§6.4)", () => {
       ...over,
     }) as ReviewComment;
 
-  it("says Leaning taken for a pending take, and answered for any other pending comment", () => {
-    expect(rowAnswer([comment({})], "Yes.")?.kind).toBe("taken");
-    expect(rowAnswer([comment({ comment: "No." })], "Yes.")?.kind).toBe(
-      "answered",
-    );
-    expect(rowAnswer([], "Yes.")).toBeNull();
+  it("names the take as the leaning and every other comment as a comment", () => {
+    const take = comment({});
+    const other = comment({ id: "c2", comment: "No." });
+    expect(rowAnswers([take], "Yes.")).toEqual({
+      leaning: { comment: take, pending: true },
+      comments: [],
+    });
+    expect(rowAnswers([other], "Yes.")).toEqual({
+      leaning: null,
+      comments: [other],
+    });
+    expect(rowAnswers([take, other], "Yes.")).toEqual({
+      leaning: { comment: take, pending: true },
+      comments: [other],
+    });
+    expect(rowAnswers([], "Yes.")).toBeNull();
   });
 
-  it("says what became of a take the agent replied to", () => {
+  it("says a take the agent replied to no longer waits", () => {
     const replied = comment({
       reactions: [
         { actor: "agent", kind: "addressed", timestamp: 2, summary: "Done." },
       ] as ReviewComment["reactions"],
     });
-    expect(rowAnswer([replied], "Yes.")).toMatchObject({
-      kind: "retake",
-      replied: true,
+    expect(rowAnswers([replied], "Yes.")?.leaning).toEqual({
+      comment: replied,
+      pending: false,
     });
     expect(agentReplies([replied])).toBe(1);
   });

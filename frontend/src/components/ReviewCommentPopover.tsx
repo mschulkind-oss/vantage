@@ -6,6 +6,8 @@ import type { CommentBox } from "../lib/commentAutosave";
 import { CommentBoxFoot, CommentBoxTextarea } from "./CommentBoxFields";
 
 interface ReviewCommentPopoverProps {
+  /** The header's words: *Add Comment*, or *Edit Comment* for an edit box. */
+  label?: string;
   selectedText: string;
   rect: DOMRect;
   /**
@@ -29,6 +31,7 @@ interface ReviewCommentPopoverProps {
  * (`docs/reference/comment-autosave.md` §3.2).
  */
 export const ReviewCommentPopover: React.FC<ReviewCommentPopoverProps> = ({
+  label = "Add Comment",
   selectedText,
   rect,
   makeBox,
@@ -109,7 +112,7 @@ export const ReviewCommentPopover: React.FC<ReviewCommentPopoverProps> = ({
       <div className="px-3 py-2 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
         <div className="flex items-center gap-1.5 text-xs font-medium text-slate-500 dark:text-slate-400">
           <MessageSquarePlus size={12} />
-          Add Comment
+          {label}
         </div>
         <button
           type="button"

@@ -1115,11 +1115,15 @@ the open questions no roadmap routes, by path and document order, each marked
 
 1. **Answered rows.** An *answered row* *(coined by the to-do list design, 2026-10-08)* is a question
    answered by a comment ([§6.7](#67-answering-and-copy-answers)), still waiting
-   on the agent, drawn as one line: its marker, id and title, the chip its card
-   would show (*Answered — waiting on the agent*, or *Leaning taken* with its
-   Undo), and **Show**, which opens it into its card in place. They come first,
-   in roadmap order. The first 5 show, then *… N more answered · Show* opens the
-   rest in place; the 5 is fixed ([OQ-TD9](#why-its-this-way)).
+   on the agent, drawn as its marker, id and title, then the answers it holds,
+   and **Show**, which opens it into its card in place. The leaning a take filed
+   is drawn apart from the comments the reader wrote — italic, behind a
+   *Leaning* label — because the reader did not write it, and it offers **Undo**
+   while it is still the whole thread, muted once the agent has replied; each
+   comment offers **Edit** while it is pending. Both are cut to `answerChars`,
+   the whole of the text on hover. It has no chip: the answers themselves say what was answered. They
+   come first, in roadmap order. The first 5 show, then *… N more answered · Show*
+   opens the rest in place; the 5 is fixed ([OQ-TD9](#why-its-this-way)).
 2. **Full cards.** The first *N* questions that need you, as cards, *N* the *page
    size* *(coined by the same design)*: 10, 20, 30 or 50, default 10, remembered in this
    browser (`vantage:planningPageSize`) and read again at each layout
@@ -1158,6 +1162,7 @@ the item they acted on ([OQ-TD9](#why-its-this-way)):
 | :--- | :--- |
 | A card's comment box closes holding text, or its leaning is taken | The card shrinks to an answered row where it is, and the first question past the page size, if any, joins the end of the cards. The focus, whose control went, goes to the row's Show |
 | Undo on a take | The row opens back into its card where it is; the card that joined stays |
+| Edit on a row's comment, or a card comment's | The comment box opens on it; the row's, and the card's list, show the live reviews while it is open, and its text changes where it stands |
 | Show on a row, or its New reply | Opens it into its card in place; the focus goes to the card's heading |
 | *… N more answered · Show* | Opens the rest in place; the focus goes to the first row it brought in |
 | A row opened by Show or Undo is answered again | It shrinks back to its row, and no second card joins |
@@ -1169,10 +1174,11 @@ does reorders *Needs you*: the next layout gathers the answered rows at the top.
 The shrink is shown, not cut: answered in place, the card would otherwise be
 replaced in one frame by its row and the next question, and the reader would see a
 new question where they were reading with nothing to say the old one had gone. So
-the row starts at the card's height, with its one line where the card's top was,
-and its bottom edge sweeps up to the line in about a third of a second, carrying
-what is below up with it, while the row's top and everything above it stay where
-they are on screen. The row then fades from green over about a second and a half.
+the row starts at the card's height, with its content where the card's top was,
+and its bottom edge sweeps up to the row's own height in about a third of a
+second, carrying what is below up with it, while the row's top and everything
+above it stay where they are on screen. The row then fades from green over about
+a second and a half.
 For a reader whose system asks for reduced motion the row takes its height at once
 and only the green fades, since a change of color moves nothing. Only a card
 answered here plays it, never a row a layout lists (`shrinkToRow` in
@@ -1331,7 +1337,8 @@ Each question appears as a card:
   leaning is not offered again, which would file a duplicate. The comment is
   listed below, marked *waiting on the agent* while it is pending.
 - **Any comments already filed on it,** each marked *waiting on the agent* while
-  it is still pending, painted with the card through the gate of
+  it is still pending, with **Edit** on a pending one that opens the comment box
+  on it, painted with the card through the gate of
   [§6.5](#65-page-inputs-and-one-commit). Comments that arrive later go only into
   the card's comment count, which is always there, until it is opened.
 - **Memoized.** A card re-renders only when its own question, block, badge or
@@ -1657,12 +1664,17 @@ drawn from the layout on screen (`frontend/src/lib/planningOutline.ts`,
 - **The documents of *Needs you*'s full cards,** in list order, each by its file
   name with the folder under it and, after the name, how many of its questions
   need you in the layout, cards and the rest; up to a cap, then a line with how
-  many more. Clicking one scrolls to its first card, with no history entry, 16 px
-  below the pane's top as the contents column brings a heading
-  (`ANCHOR_MARGIN`), and focuses its first control. The cards above it draw the
-  fold controls at their cuts in a pass of their own (`afterClampMeasures`), so
-  the scroll is made again once they have, before anything paints. The count
-  wraps under the name rather than take its width: the file name wins (S6).
+  many more. Clicking one scopes the page to that document — it applies
+  `path:/<its path>`, replacing the filter as the document's own planning-page
+  link does ([§6.14](#614-what-is-not-understood-and-canonical-text),
+  [OQ-PF4](#why-its-this-way)) — and then scrolls to its first card, with no
+  history entry, 16 px below the pane's top as the contents column brings a
+  heading (`ANCHOR_MARGIN`), and focuses its first control. A path no filter can
+  name, or the filter already applied, is the scroll alone. The cards above it
+  draw the fold controls at their cuts in a pass of their own
+  (`afterClampMeasures`), so the scroll is made again once they have, before
+  anything paints. The count wraps under the name rather than take its width:
+  the file name wins (S6).
 - **Then one line each** for the answered rows, *Blocked* and *Maintenance*, with
   their counts: the answered rows while there are any, a group while the layout
   has it, its count live, so a group whose count falls to 0 keeps its line and a
@@ -1675,13 +1687,14 @@ drawn from the layout on screen (`frontend/src/lib/planningOutline.ts`,
   screen is.
 - **Every entry is a link,** to the page with the entry's target as the fragment,
   as `#pq-plans%2Fb.md--L12` or `#maintenance`; a row's id, which a link may
-  name, is `pr-`, its section, `--`, and its path encoded. A page opened on such
-  a link scrolls to that entry once its sections are in, where the click would
-  have, and so does one whose query the page rewrites as it opens: the rewrite
-  keeps the fragment. Under a filter every link carries the whole query,
-  `filter=` in the link encoding
-  ([§13.5](#135-handing-the-human-a-filtered-page)), so its address reads back
-  whole when pasted into the box.
+  name, is `pr-`, its section, `--`, and its path encoded. A document's differs:
+  it carries the filter that scopes the page to that document, so a modified
+  click opens what the plain click would have shown. A page opened on such a link
+  scrolls to that entry once its sections are in, where the click would have, and
+  so does one whose query the page rewrites as it opens: the rewrite keeps the
+  fragment. Under a filter every link carries the whole query, `filter=` in the
+  link encoding ([§13.5](#135-handing-the-human-a-filtered-page)), so its address
+  reads back whole when pasted into the box.
 - **The roadmap picker** stands at its head when two or more roadmaps route, its
   path and count whole, wrapping in the column's width. On a narrow screen, where
   the column is not drawn, it is on *Needs you*'s heading line. Nothing of the
@@ -4244,9 +4257,12 @@ What each place holds, independent of the repository's size where it can be:
     is always *Needs you*.
   - **No request for *Too large* or *Unreadable* files,** which the index lists but
     cannot describe beyond their size or error.
-  - **No reply or edit box on the planning page.** A question the agent answered
-    back is answered again with **Answer…**, or in its document's thread
-    ([`comment-autosave.md`](comment-autosave.md#8-non-goals)).
+  - **No reply box on the planning page.** A question the agent answered back is
+    answered again with **Answer…**, or in its document's thread
+    ([`comment-autosave.md`](comment-autosave.md#8-non-goals)). **Edit** on an
+    answered row's comment, and on a card comment, opens the comment box on it
+    ([§6.4](#64-needs-you-as-a-to-do-list), [OQ-TD14](#why-its-this-way)); a
+    reply is still its document's.
 - **Coordinating tabs.** Two tabs may scan the same repository once each.
 - **Paging Referenced by's list**, which is one document's and collapsed by default.
 - **The other layout-shift sources** named under
@@ -4673,6 +4689,7 @@ is the only place most of the numbers are stated.
 | Review answers previews per page | 20 comments | `ANSWERS_PER_PAGE` in [PlanningPendingAnswers](../../frontend/src/components/PlanningPendingAnswers.tsx) |
 | Quote context | 2 lines either side | `quoteContextLines` |
 | Documents in the outline | 50 | `outlineDocuments` |
+| Characters of a leaning or a comment an answered row shows | 160, then cut | `answerChars` |
 | The hold | 150 ms after the content arrives; for a space's answer, after the repositories arrive, or the page mounts | `holdMs`; `usePlanningSpaceHold` in `frontend/src/lib/planningSpace.ts` |
 | Referenced by headings per row | 4, then *+M more* | `HEADINGS_SHOWN` in `ReferencedBy.tsx` |
 | `planning/question-length` default | 120 words (`max-words`) | `QUESTION_WORDS_DEFAULT` in `rules/questionLength.ts` |
@@ -4723,6 +4740,8 @@ into the text above or are in git.
 | OQ-TD11 | Old links do not matter: page parameters are dropped by the in-place rewrite, and none is honored ([§6.4](#64-needs-you-as-a-to-do-list)) | 2026-10-08 |
 | OQ-TD12 | The page and the checker counting *Needs you* differently is acceptable: the checker counts ✅ and answered questions in it, and the page does not; they are views of the same data at different times, and converge once the agent acts. The index's sections and JSON keep their meaning ([§6.2](#62-sections-top-to-bottom)) | 2026-10-08 |
 | OQ-TD13 | ✕ adds a history entry when it clears the filter, as *hidden* does, so Back undoes either; Esc still never clears ([§6.17](#617-the-filter-line)) | 2026-10-09 |
+| OQ-TD14 | An answered row shows the leaning it filed and the comments the reader wrote, each cut to `answerChars`, with **Undo** on a leaning that is still the whole thread and **Edit** on a pending comment; the leaning is italic behind a *Leaning:* label, since the reader did not write it. It replaces the row's chip. This overrules the [§17](#17-non-goals) non-goal *No reply or edit box on the planning page* for edits only: a reply is still its document's, and a question the agent answered back is still answered again with **Answer…**. A card's pending comments get the same **Edit**. Ruled in conversation over editing the first pending comment alone, since the row can show them all ([§6.4](#64-needs-you-as-a-to-do-list), [§6.7](#67-answering-and-copy-answers)) | 2026-10-11 |
+| OQ-PF10 | A click on a document in the planning outline scopes the page to it, applying `path:/<its path>` as the document's own planning-page link does, rather than scrolling to its card in the whole list; its link carries that filter for a modified click. [OQ-PF4](#why-its-this-way)'s rejection of a per-card *show only this document* control stands: this is the outline's entry, not a control on the card or row, and it keeps the scroll. Ruled in conversation ([§6.9](#69-the-planning-outline), [§6.11](#611-the-planning-filter)) | 2026-10-11 |
 | — | *Blocked* lists questions, not documents; the change is at the derivation so the page, its counts, the outline and the checker agree, and `INDEX_FORMAT_VERSION` goes to 3 ([§3.3](#33-questions), [§6.2](#62-sections-top-to-bottom), [§13.2](#132-vantage-check-index)) | 2026-10-10 |
 | — | A question's block is a reference (`blocked-on`), the question-level twin of `depends-on`; an entry that is not repo-relative-path-shaped is an allowed external blocker name ([§3.3](#33-questions)) | 2026-10-10 |
 | — | A 🔒 with no live referent is unactioned, not blocked; it is an open question with an owner, and the checker reports it ([§6.2](#62-sections-top-to-bottom), [§13.3](#133-the-planning-rules)) | 2026-10-10 |
