@@ -201,7 +201,8 @@ test.describe("the planning page", () => {
     // Answered here, the card is a row where it stood
     // (planning-index.md §6.4).
     const answered = row(page, LAST);
-    await expect(answered.getByText("Leaning taken")).toBeVisible();
+    // The row shows the leaning it filed, not a chip (planning-index.md §6.4).
+    await expect(answered.getByText("The plain way.")).toBeVisible();
     await expect(page.getByTestId("pending-answers")).toHaveText("1");
     // Shown again, the card lists what it filed.
     await answered.getByRole("button", { name: /^Show/ }).click();
@@ -453,7 +454,7 @@ test.describe("the planning page", () => {
     // question joins the end of the cards.
     await third.getByRole("button", { name: "Take this leaning" }).click();
     const answered = row(page, "OQ-P1: Which way for part 1?");
-    await expect(answered.getByText("Leaning taken")).toBeVisible();
+    await expect(answered.getByText("The plain way.")).toBeVisible();
     await expect(
       card(page, "OQ-P9: Which way for part 9?"),
     ).toBeVisible();

@@ -384,6 +384,15 @@ function serveReviews(): void {
     }
     throw new Error(`unexpected POST ${url}`);
   });
+  vi.mocked(axios.patch).mockImplementation(async (url, body, config) => {
+    const path = (config?.params as { path: string }).path;
+    const id = decodeURIComponent(String(url).split("/").pop() ?? "");
+    const text = (body as { comment: string }).comment;
+    reviews[path] = (reviews[path] ?? []).map((c) =>
+      c.id === id ? { ...c, comment: text } : c,
+    );
+    return { data: { file_path: path, comments: reviews[path] } };
+  });
 }
 
 /* ------------------------------------------------------------------ *
@@ -1167,9 +1176,9 @@ describe("Needs you as a to-do list (planning-index.md §6.4)", () => {
       within(section("Needs you")).getByRole("heading", { level: 2 }),
     ).toHaveTextContent("Needs you 3 · 6 answered");
     expect(section("Needs you")).toHaveTextContent("… 1 more answered · Show");
-    // Each row is one line: its id, title, chip and Show.
+    // Each row: its id, title, answers and Show.
     const row = screen.getByRole("group", { name: "OQ-T2: Question OQ-T2?" });
-    expect(row).toHaveTextContent("Answered — waiting on the agent");
+    expect(row).toHaveTextContent("My answer to OQ-T2.");
     expect(within(row).getByRole("button", { name: /^Show/ })).toBeTruthy();
     await act(async () => {
       fireEvent.click(
@@ -1267,7 +1276,7 @@ describe("your own actions (planning-index.md §6.4)", () => {
     expect(cardIds()).toEqual(["OQ-T2", "OQ-T3"]);
     expect(
       screen.getByRole("group", { name: "OQ-T1: Question OQ-T1?" }),
-    ).toHaveTextContent("Leaning taken");
+    ).toHaveTextContent("Leaning: Yes.");
     expect(endLine()).toHaveTextContent(/^1 more needs you/);
     // An action of your own is no held update.
     expect(updatesButton()).toHaveAttribute("aria-hidden", "true");
@@ -1358,10 +1367,11 @@ describe("your own actions (planning-index.md §6.4)", () => {
     await settle();
     const row = screen.getByRole("group", { name: "OQ-T1: Question OQ-T1?" });
     expect(played.map((p) => p.el)).toEqual([row, row]);
-    // From the card's height to the row's, its line kept at the top.
+    // From the card's height to the row's own, measured, its content kept at
+    // the top.
     expect(played[0]!.keyframes).toEqual([
-      { height: "240px", paddingBottom: "calc(240px - 2.25rem)" },
-      { height: "2.25rem", paddingBottom: "0px" },
+      { height: "240px" },
+      { height: "36px" },
     ]);
     // The row was drawn at the card's height, so no layout ever saw the page
     // shorter: one near the end of the list would have pulled the pane's
@@ -1468,6 +1478,58 @@ describe("your own actions (planning-index.md §6.4)", () => {
         name: "Take this leaning",
       }),
     ).toBeTruthy();
+  });
+
+  it("edits an answered row's comment where it stands, keeping the row (§6.4)", async () => {
+    pageSize(2);
+    const tree = todoTree(3);
+    seed(tree);
+    answer(tree, "OQ-T1");
+    await renderPage();
+    const row = screen.getByRole("group", {
+      name: "OQ-T1: Question OQ-T1?",
+    });
+    expect(row).toHaveTextContent("My answer to OQ-T1.");
+    await act(async () => {
+      fireEvent.click(within(row).getByRole("button", { name: "Edit" }));
+    });
+    await settle();
+    expect(screen.getByText("Edit Comment")).toBeTruthy();
+    const box = screen.getByPlaceholderText(/comment/i);
+    expect((box as HTMLTextAreaElement).value).toBe("My answer to OQ-T1.");
+    fireEvent.change(box, { target: { value: "A better answer." } });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+    });
+    await settle();
+    expect(within(row).getByText("A better answer.")).toBeTruthy();
+    // Its text changed where it stood: the row is still a row.
+    expect(rowIds()).toEqual(["OQ-T1"]);
+  });
+
+  it("edits a card's pending comment from its list (§6.4)", async () => {
+    pageSize(2);
+    const tree = todoTree(3);
+    seed(tree);
+    answer(tree, "OQ-T1");
+    await renderPage();
+    await act(async () => {
+      fireEvent.click(
+        within(
+          screen.getByRole("group", { name: "OQ-T1: Question OQ-T1?" }),
+        ).getByRole("button", { name: /^Show/ }),
+      );
+    });
+    await settle();
+    const card = cardFor("OQ-T1");
+    await act(async () => {
+      fireEvent.click(within(card).getByRole("button", { name: "Edit" }));
+    });
+    await settle();
+    expect(screen.getByText("Edit Comment")).toBeTruthy();
+    expect(
+      (screen.getByPlaceholderText(/comment/i) as HTMLTextAreaElement).value,
+    ).toBe("My answer to OQ-T1.");
   });
 
   it("makes a new layout on Refresh, gathering the answered rows at the top", async () => {
@@ -3258,7 +3320,7 @@ describe("filing from the page", () => {
     await settle();
     expect(
       screen.getByRole("group", { name: "OQ-D3: Question OQ-D3?" }),
-    ).toHaveTextContent("Leaning taken");
+    ).toHaveTextContent("Leaning: Yes.");
     // Its sibling in the same document and the same list lists nothing.
     expect(
       within(cardFor("OQ-D1")).queryByRole("list", {
@@ -3289,7 +3351,7 @@ describe("filing from the page", () => {
     await settle();
     expect(
       screen.getByRole("group", { name: "OQ-U1: Question OQ-U1?" }),
-    ).toHaveTextContent("Leaning taken");
+    ).toHaveTextContent("Leaning: Yes.");
   });
 
   it("does not reorder the page", async () => {
@@ -4621,7 +4683,7 @@ describe("the planning outline, On this page (planning-index.md §6.9)", () => {
     expect(outline()).not.toHaveTextContent("ready.md");
   });
 
-  it("goes to a document's first card, with no history entry, and the focus to its first control", async () => {
+  it("scopes the page to a document's filter and goes to its first card, with no history entry", async () => {
     seed();
     const scrolled = vi.fn();
     Element.prototype.scrollIntoView = scrolled;
@@ -4632,7 +4694,12 @@ describe("the planning outline, On this page (planning-index.md §6.9)", () => {
         fireEvent.click(outlineDocument("plans/design.md"));
       });
       await settle();
-      expect(router.location).toBe("/.vantage/planning");
+      // The click applied the document's own filter, as its planning-page
+      // link would, replacing whatever was there, and no history entry was
+      // added (§6.9, OQ-PF10).
+      expect(router.location).toBe(
+        "/.vantage/planning?filter=path:/plans/design.md",
+      );
       const card = cardFor("OQ-D1");
       expect(card.id).toBe(cardId("plans/design.md", "OQ-D1"));
       expect(scrolled.mock.contexts).toContain(card);
@@ -4694,9 +4761,11 @@ describe("the planning outline, On this page (planning-index.md §6.9)", () => {
     seed();
     await renderPage();
     const design = outlineDocument("plans/design.md");
+    // A document's link carries the filter that scopes the page to it, so a
+    // modified click opens what the plain click would show (§6.9).
     expect(design).toHaveAttribute(
       "href",
-      `/.vantage/planning#${cardId("plans/design.md", "OQ-D1")}`,
+      `/.vantage/planning?filter=path:/plans/design.md#${cardId("plans/design.md", "OQ-D1")}`,
     );
     expect(outlineLine("waiting")).toHaveAttribute(
       "href",
@@ -5046,14 +5115,13 @@ describe("Expand all and Collapse all (planning-index.md §6.6)", () => {
 describe("a comment on a question is its answer (§6.7)", () => {
   const ANSWERED_CHIP = "Answered — waiting on the agent";
 
-  it("lists a question your comment answers as an answered row with its card's chip, and copies it (planning-index.md §6.4)", async () => {
+  it("lists a question your comment answers as an answered row with its answer, and copies it (planning-index.md §6.4)", async () => {
     seed();
     answer(TREE, "OQ-D1");
     await renderPage();
     const row = screen.getByRole("group", { name: "OQ-D1: Question OQ-D1?" });
-    expect(within(row).getByText(ANSWERED_CHIP)).toHaveClass(
-      "review-oq-answered",
-    );
+    expect(within(row).getByText("My answer to OQ-D1.")).toBeTruthy();
+    expect(within(row).getByRole("button", { name: "Edit" })).toBeTruthy();
     expect(rowIds()).toEqual(["OQ-D1"]);
     expect(cardsIn("Needs you")).toEqual([
       "OQ-D3: Question OQ-D3?",
@@ -5106,11 +5174,11 @@ describe("a comment on a question is its answer (§6.7)", () => {
     expect(screen.getByTestId("needs-you-end")).toHaveTextContent(
       "Nothing needs you",
     );
-    // Every row still listed, each with its chip.
+    // Every row still listed, each with its answers.
     expect(rowIds()).toEqual(["OQ-D1", "OQ-X1", "OQ-U1", "OQ-D3"]);
     expect(
       screen.getByRole("group", { name: "OQ-D3: Question OQ-D3?" }),
-    ).toHaveTextContent("Leaning taken");
+    ).toHaveTextContent("Leaning: Yes.");
   });
   it("draws it with the first sections when every answer is in their documents' reviews", async () => {
     seed();
@@ -5182,11 +5250,11 @@ describe("a comment on a question is its answer (§6.7)", () => {
         "data-reserve",
         PLANNING_NOTICES.otherRoadmaps(1),
       );
-      // Listed as an answered row, with its chip.
+      // Listed as an answered row, with its answer.
       expect(
         within(
           screen.getByRole("group", { name: "OQ-D1: Question OQ-D1?" }),
-        ).getByText(ANSWERED_CHIP),
+        ).getByText("My answer to OQ-D1."),
       ).toBeTruthy();
     });
 
@@ -7625,18 +7693,18 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       seed(TWO);
       localStorage.setItem("vantage:tocOpen", "true");
       await renderPage();
-      const text = "path:plans/*.md is:open";
+      const text = "path:plans/*.md";
       await enter(text);
       expect(router.location).toBe(
-        "/.vantage/planning?filter=path:plans/%2A.md+is:open&roadmap=roadmap.md",
+        "/.vantage/planning?filter=path:plans/%2A.md&roadmap=roadmap.md",
       );
+      // A line's link carries the whole query; a document's carries the
+      // filter that scopes the page to it (§6.9).
       const outlineLink = screen
         .getByRole("navigation", { name: "On this page" })
-        .querySelector<HTMLAnchorElement>(
-          '[data-testid=outline-document][data-path="plans/design.md"]',
-        )!;
+        .querySelector<HTMLAnchorElement>('[data-outline-line="maintenance"]')!;
       expect(outlineLink.getAttribute("href")).toMatch(
-        /^\/\.vantage\/planning\?filter=path:plans\/%2A\.md\+is:open&roadmap=roadmap\.md#/,
+        /^\/\.vantage\/planning\?filter=path:plans\/%2A\.md&roadmap=roadmap\.md#/,
       );
       const entered = `http://localhost:8000${router.location}`;
       await act(async () => {
@@ -7646,7 +7714,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       });
       await settle();
       expect(router.location).toBe(
-        "/.vantage/planning?filter=path:plans/%2A.md+is:open&roadmap=docs%2Fplans%2Froadmap.md",
+        "/.vantage/planning?filter=path:plans/%2A.md&roadmap=docs%2Fplans%2Froadmap.md",
       );
       for (const address of [entered, outlineLink.href]) {
         cleanup();

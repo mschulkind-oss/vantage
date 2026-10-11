@@ -636,7 +636,7 @@ test.describe("several roadmaps", () => {
       // An answered row of Needs you, first (planning-index.md §6.4).
       const a1 = page.getByRole("group", { name: /^OQ-A1:/ });
       await expect(
-        a1.getByText("Answered — waiting on the agent", { exact: true }),
+        a1.getByText("My answer to OQ-A1.", { exact: true }),
       ).toBeVisible();
       await cardsIn(page, "Needs you").toEqual([
         "OQ-A2: How soon does alpha ship?",
@@ -669,7 +669,7 @@ test.describe("several roadmaps", () => {
       await expect(
         page
           .getByRole("group", { name: /^OQ-B1:/ })
-          .getByText("Answered — waiting on the agent", { exact: true }),
+          .getByText("My answer to OQ-B1.", { exact: true }),
       ).toBeVisible();
       await expect(picker(page).locator("option")).toHaveText([
         "roadmap.md (1 needs you)",

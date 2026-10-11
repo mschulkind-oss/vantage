@@ -103,6 +103,7 @@ import {
   PLANNING_NOTICES,
   PLANNING_SPACE_PARAM,
   badgeFor,
+  documentFilter,
   filterKeepsQuestion,
   isPlanningSpaceId,
   parsePlanningFilter,
@@ -257,7 +258,7 @@ import {
   matchText,
   marksOf,
   openRow,
-  rowAnswer,
+  rowAnswers,
   shrinkCard,
   updatesTitle,
   updatesTotal,
@@ -1110,6 +1111,11 @@ interface Screen {
   repliesSeen: ReadonlyMap<string, number>;
   /** The reviews it painted: what each card's comment list shows. */
   painted: Readonly<Record<string, readonly ReviewComment[]>>;
+  /**
+   * Those reviews placed on each question it laid out, by `questionKey`: the
+   * answers an answered row shows, so late data cannot change its lines.
+   */
+  paintedByQuestion: ReadonlyMap<string, readonly ReviewComment[]>;
   inPlace: InPlace;
 }
 
@@ -2300,6 +2306,7 @@ export const PlanningPage: React.FC = () => {
       answeredThen,
       repliesSeen,
       painted: reviews.byPath,
+      paintedByQuestion: commentsThen,
       inPlace: NOTHING_IN_PLACE,
     };
     setScreen(current);
@@ -2471,6 +2478,9 @@ export const PlanningPage: React.FC = () => {
         setShrinking((prev) => new Map(prev).set(key, height));
         focusRef.current = { key, on: "row", onlyIfLost: true };
         changeInPlace((s) => shrinkCard(s.inPlace, s.needsYou, key));
+        // The reader's own answer, take or comment alike: its row shows the
+        // live reviews, not the ones the layout painted, at once.
+        setOwn((prev) => (prev.has(key) ? prev : new Set(prev).add(key)));
       }
     },
     [shownByRef, changeInPlace],
@@ -2927,10 +2937,6 @@ export const PlanningPage: React.FC = () => {
     },
     [askedIsFlip, typedPast, writeNow, goTo],
   );
-  const jumpToDocument = useCallback(
-    (document: OutlineDocument) => jumpTo(document.target, false),
-    [jumpTo],
-  );
   const jumpToLine = useCallback(
     (line: OutlineLine) => jumpTo(line.target, line.id !== "answered"),
     [jumpTo],
@@ -2940,6 +2946,18 @@ export const PlanningPage: React.FC = () => {
     (target: string): string => {
       const query = planningQuery(appliedSearch);
       return `${location.pathname}${query === "" ? "" : `?${query}`}#${target}`;
+    },
+    [appliedSearch, location.pathname],
+  );
+  // A document's link: the page scoped to it, as its own planning-page link
+  // is, at its first card.
+  const outlineDocumentHref = useCallback(
+    (document: OutlineDocument): string => {
+      const filter = documentFilter(document.path);
+      const search =
+        filter === null ? appliedSearch : withFilter(appliedSearch, filter);
+      const query = planningQuery(search);
+      return `${location.pathname}${query === "" ? "" : `?${query}`}#${document.target}`;
     },
     [appliedSearch, location.pathname],
   );
@@ -2974,33 +2992,39 @@ export const PlanningPage: React.FC = () => {
         : marksOf(facts, item.as);
     if (item.as === "row") {
       const now = liveQuestions.get(item.key);
+      // The answers it shows: live for a question the reader answered here
+      // this visit, else the reviews the layout painted, so a reply or an
+      // answer made elsewhere never changes the row's lines (§12.1).
+      const answers = rowAnswers(
+        own.has(item.key)
+          ? now === undefined
+            ? undefined
+            : liveComments.get(questionKey(now))
+          : current?.paintedByQuestion.get(questionKey(question)),
+        question.leaning ?? OQ_DEFAULT_LEANING,
+      );
       return (
         <AnsweredRow
           key={item.key}
           question={question}
           itemKey={item.key}
           href={`${buildPath(question.path)}${question.id === null ? "" : `#${question.id}`}`}
-          answer={rowAnswer(
-            now === undefined ? undefined : liveComments.get(questionKey(now)),
-            question.leaning ?? OQ_DEFAULT_LEANING,
-          )}
+          answers={answers}
           marks={marks}
           newReply={newReply}
           opening={opening.has(item.key)}
           onShow={() => void openItem(item.key, item.entry)}
-          onUndo={() => {
-            const answer =
-              now === undefined
-                ? null
-                : rowAnswer(
-                    liveComments.get(questionKey(now)),
-                    question.leaning ?? OQ_DEFAULT_LEANING,
-                  );
-            if (answer === null || answer.kind === "answered") return;
-            void undoComment(question.path, answer.comment.id).then(() =>
+          onUndo={(comment) => {
+            void undoComment(question.path, comment.id).then(() =>
               openItem(item.key, item.entry),
             );
           }}
+          onEdit={() =>
+            setOwn((prev) =>
+              prev.has(item.key) ? prev : new Set(prev).add(item.key),
+            )
+          }
+          onSaved={boxSaved}
           onNewReply={() => {
             seeReply(item.key);
             void openItem(item.key, item.entry);
@@ -3255,6 +3279,39 @@ export const PlanningPage: React.FC = () => {
     if (filterClearRef.current !== null) filterClearRef.current();
     else applyFilter("", null, true);
   }, [applyFilter]);
+  // A document's outline entry scopes the page to it (§6.9): the click applies
+  // `path:/<its path>`, replacing the filter as the document's own planning-page
+  // link does (§6.14, OQ-PF4), and its first card is brought into view once the
+  // filtered layout is the one on screen. A path no filter can name, or the
+  // filter already applied, is the page's own jump.
+  const documentJumpRef = useRef<{ target: string; filter: string } | null>(
+    null,
+  );
+  const jumpToDocument = useCallback(
+    (document: OutlineDocument) => {
+      const filter = documentFilter(document.path);
+      if (filter === null || frameFilter === filter) {
+        jumpTo(document.target, false);
+        return;
+      }
+      documentJumpRef.current = { target: document.target, filter };
+      applyFilter(filter, null, false);
+    },
+    [frameFilter, jumpTo, applyFilter],
+  );
+  useLayoutEffect(() => {
+    const jump = documentJumpRef.current;
+    if (
+      jump === null ||
+      shownLayout === null ||
+      shownLayout.filter !== jump.filter ||
+      document.getElementById(jump.target) === null
+    ) {
+      return;
+    }
+    documentJumpRef.current = null;
+    bringTargetIntoView(jump.target, contentRef.current);
+  }, [shownLayout]);
   // A roadmap's button under *Nothing on this roadmap matches*: what the
   // Roadmap menu does, the filter kept, and the focus put in the box, as
   // Clear the filter puts it, since the button is gone once it is chosen.
@@ -3677,6 +3734,7 @@ export const PlanningPage: React.FC = () => {
                 active={outlineActive}
                 picker={picker?.(true) ?? null}
                 hrefOf={outlineHref}
+                hrefOfDocument={outlineDocumentHref}
                 onLine={jumpToLine}
                 onDocument={jumpToDocument}
               />

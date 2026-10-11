@@ -91,12 +91,16 @@ import type {
   PlanningBadge,
   PlanningQuestion,
 } from "vantage-md/planning";
-import { ExternalLink, MessageSquarePlus } from "lucide-react";
+import { ExternalLink, MessageSquarePlus, Pencil } from "lucide-react";
 import { MarkdownViewer } from "./MarkdownViewer";
 import { PlanningBadgeChip, type PlanningMark } from "./PlanningBadge";
 import { ReviewCommentPopover } from "./ReviewCommentPopover";
 import type { CommentBox, ReviewTarget } from "../lib/commentAutosave";
-import { newCommentBox, type OnSaved } from "../lib/reviewBoxes";
+import {
+  editCommentBox,
+  newCommentBox,
+  type OnSaved,
+} from "../lib/reviewBoxes";
 import { AppLink } from "./AppLink";
 import {
   OQ_ANSWERED_HINT,
@@ -722,6 +726,11 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
     text: string;
     anchor: CommentAnchor;
     target: ReviewTarget;
+  } | null>(null);
+  // The comment a press on Edit opened, with the button's rect it is drawn by.
+  const [editing, setEditing] = useState<{
+    rect: DOMRect;
+    comment: ReviewComment;
   } | null>(null);
   /**
    * What the card showed when **Answer…** opened its box, which it goes on
@@ -1362,6 +1371,32 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
                 ) : c.resolved ? (
                   <span className="ml-2 text-[11px]">dismissed</span>
                 ) : null}
+                {isPendingForAgent(c) && writable && (
+                  <button
+                    type="button"
+                    data-planning-comment-edit
+                    className="review-oq-edit ml-2"
+                    title="Edit comment"
+                    onClick={(e) => {
+                      if (reviewTarget(question.path) === null) return;
+                      // The list goes on the live comments, so the edit shows
+                      // as it is typed rather than from what the layout
+                      // painted (planning-index.md §6.4).
+                      setOpen(true);
+                      setEditing({
+                        rect: e.currentTarget.getBoundingClientRect(),
+                        comment: c,
+                      });
+                    }}
+                  >
+                    <Pencil
+                      size={12}
+                      aria-hidden="true"
+                      className="mr-0.5 inline"
+                    />
+                    Edit
+                  </button>
+                )}
                 {reply !== undefined && !c.resolved && (
                   <div className="mt-0.5 pl-3 text-[12px] text-slate-500 dark:text-slate-400">
                     Agent: {reply.summary}
@@ -1382,6 +1417,21 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
             makeAnswerBox(answering.target, answering.anchor, answering.text)
           }
           onClose={closeAnswer}
+        />
+      )}
+      {editing !== null && (
+        <ReviewCommentPopover
+          label="Edit Comment"
+          selectedText={
+            editing.comment.fallback_text ?? editing.comment.comment
+          }
+          rect={editing.rect}
+          makeBox={() =>
+            editCommentBox(reviewTarget(question.path)!, editing.comment, {
+              onSaved: onBoxSaved,
+            })
+          }
+          onClose={() => setEditing(null)}
         />
       )}
     </article>

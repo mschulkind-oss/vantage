@@ -11,29 +11,27 @@
  * in slots kept for them, and nothing else does (§6.4).
  */
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { ChevronDown, Undo2 } from "lucide-react";
+import { ChevronDown, Pencil, Undo2 } from "lucide-react";
 import type { PlanningQuestion } from "vantage-md/planning";
-import {
-  OQ_ANSWERED_HINT,
-  OQ_ANSWERED_LABEL,
-  OQ_TAKEN_DISMISSED_LABEL,
-  OQ_TAKEN_LABEL,
-  OQ_TAKEN_REPLIED_LABEL,
-  OQ_UNDO_LABEL,
-  takeUndoable,
-} from "../hooks/useOpenQuestionButtons";
+import { OQ_UNDO_LABEL, takeUndoable } from "../hooks/useOpenQuestionButtons";
 import {
   MARK_LABELS,
   NEW_REPLY_LABEL,
   type Mark,
   type NeedsYouItem,
   type NeedsYouView,
-  type RowAnswer,
+  type RowAnswers,
 } from "../lib/planningLayout";
+import { editCommentBox, type OnSaved } from "../lib/reviewBoxes";
+import { isStaticMode } from "../lib/staticMode";
 import { planningCardId } from "../lib/planningCardId";
+import { planningLimits } from "../planningScan/limits";
 import { holdScrollRoom } from "../lib/scrollRoom";
+import { isPendingForAgent, reviewTarget } from "../stores/useReviewStore";
+import type { ReviewComment } from "../types";
 import { cn } from "../lib/utils";
 import { AppLink } from "./AppLink";
+import { ReviewCommentPopover } from "./ReviewCommentPopover";
 
 /** A count in a slot as wide as `room` digits, so its changes move nothing. */
 export const LiveCount: React.FC<{
@@ -100,17 +98,31 @@ const ROW_SHRINK_MS = 320;
 const ROW_FLASH_MS = 1600;
 /** The green the row starts from, painted over its own background. */
 const ROW_FLASH = "inset 0 0 0 100vmax rgb(34 197 94 / 0.22)";
-/** An answered row's height in rem, which a shrink ends at unmeasured. */
+/**
+ * A one-line answered row's height in rem: the fallback when the row's own
+ * height cannot be measured, as under jsdom.
+ */
 const ROW_REM = 2.25;
-const ROW_HEIGHT = `${ROW_REM}rem`;
 
-/** The row at a card's height: its line at the top, the rest padding. */
+/**
+ * The row drawn at the card's height. Its column is top-aligned, so the
+ * height is all the room and the content stays where the card's top was while
+ * the room below it closes.
+ */
 function tallRow(from: number): React.CSSProperties {
-  // Border-box, so height less padding is the line's own height.
-  return {
-    height: `${from}px`,
-    paddingBottom: `calc(${from}px - ${ROW_HEIGHT})`,
-  };
+  return { height: `${from}px` };
+}
+
+/** The row's own height, with the answers it shows, measured without paint. */
+function rowHeight(row: HTMLElement): number {
+  const height = row.style.height;
+  row.style.height = "auto";
+  const measured = row.getBoundingClientRect().height;
+  row.style.height = height;
+  return (
+    measured ||
+    parseFloat(getComputedStyle(document.documentElement).fontSize) * ROW_REM
+  );
 }
 
 function reducedMotion(): boolean {
@@ -137,18 +149,20 @@ function reducedMotion(): boolean {
  * same reason, even with less motion: a layout that saw it at one line
  * first would already have pulled the scroll back.
  */
-function shrinkToRow(row: HTMLElement, from: number, move: boolean): void {
+function shrinkToRow(
+  row: HTMLElement,
+  from: number,
+  to: number,
+  move: boolean,
+): void {
   const pane = row.closest<HTMLElement>("[data-content-scroll]");
-  if (pane !== null) {
-    const rem = parseFloat(getComputedStyle(document.documentElement).fontSize);
-    holdScrollRoom(pane, from - ROW_REM * (rem || 16));
-  }
+  if (pane !== null) holdScrollRoom(pane, from - to);
   if (typeof row.animate !== "function") return;
   if (move) {
-    row.animate(
-      [tallRow(from) as Keyframe, { height: ROW_HEIGHT, paddingBottom: "0px" }],
-      { duration: ROW_SHRINK_MS, easing: "cubic-bezier(0.2, 0, 0, 1)" },
-    );
+    row.animate([{ height: `${from}px` }, { height: `${to}px` }], {
+      duration: ROW_SHRINK_MS,
+      easing: "cubic-bezier(0.2, 0, 0, 1)",
+    });
   }
   row.animate([{ boxShadow: ROW_FLASH }, { boxShadow: "none" }], {
     duration: ROW_FLASH_MS,
@@ -157,21 +171,31 @@ function shrinkToRow(row: HTMLElement, from: number, move: boolean): void {
 }
 
 /**
- * An answered row (§6.4): one line, its marker, id and
- * title, the chip its card shows, Undo on a take that is still the whole
- * thread, and Show, which opens it into its card where it stands.
+ * An answered row (§6.4): its marker, id and title; the leaning it filed and
+ * the comments the reader wrote, each cut to `answerChars` with the whole of
+ * it in the tooltip; Undo on a leaning that is still the whole thread, Edit on
+ * a pending comment; and Show, which opens it into its card where it stands. The leaning is drawn as the text the reader did not write:
+ * italic, behind a *Leaning:* label.
  */
 export const AnsweredRow: React.FC<{
   question: PlanningQuestion;
   itemKey: string;
   href: string;
-  answer: RowAnswer;
+  /** The leaning and comments it shows; `null` when nothing answered it. */
+  answers: RowAnswers | null;
   marks: readonly Mark[];
   newReply: boolean;
   /** Its card is on its way, for Show or Undo: inert, not disabled. */
   opening: boolean;
   onShow: () => void;
-  onUndo?: () => void;
+  onUndo?: (comment: ReviewComment) => void;
+  /**
+   * A press on Edit, so the page knows this item is the reader's own and
+   * shows it from the live reviews, not the ones the layout painted.
+   */
+  onEdit?: () => void;
+  /** Told of every save of an edit box, as a card's box tells the page. */
+  onSaved?: OnSaved;
   onNewReply: () => void;
   onOpenHere?: () => void;
   /**
@@ -185,12 +209,14 @@ export const AnsweredRow: React.FC<{
   question,
   itemKey,
   href,
-  answer,
+  answers,
   marks,
   newReply,
   opening,
   onShow,
   onUndo,
+  onEdit,
+  onSaved,
   onNewReply,
   onOpenHere,
   shrinkFrom,
@@ -210,7 +236,7 @@ export const AnsweredRow: React.FC<{
     const row = rowRef.current;
     if (shrink === null || row === null || played.current) return;
     played.current = true;
-    shrinkToRow(row, shrink.from, shrink.move);
+    shrinkToRow(row, shrink.from, rowHeight(row), shrink.move);
     setTall(false);
   }, [shrink]);
   const onShrunkRef = useRef(onShrunk);
@@ -220,21 +246,25 @@ export const AnsweredRow: React.FC<{
   useEffect(() => {
     if (shrinkFrom !== undefined) onShrunkRef.current?.();
   }, [shrinkFrom]);
-  const chip =
-    answer === null
-      ? null
-      : answer.kind === "answered"
-        ? OQ_ANSWERED_LABEL
-        : answer.kind === "taken"
-          ? OQ_TAKEN_LABEL
-          : answer.replied
-            ? OQ_TAKEN_REPLIED_LABEL
-            : OQ_TAKEN_DISMISSED_LABEL;
+  const leaning = answers?.leaning ?? null;
+  // Undo while the take is still the whole thread, whether or not the agent
+  // has replied, as a card offers it.
   const undoable =
-    answer !== null &&
-    answer.kind !== "answered" &&
-    takeUndoable(answer.comment) &&
-    onUndo !== undefined;
+    leaning !== null && takeUndoable(leaning.comment) && onUndo !== undefined;
+  const writable = !isStaticMode();
+  // The comment a press on Edit opened, with the button's rect it is drawn by.
+  const [editing, setEditing] = useState<{
+    rect: DOMRect;
+    comment: ReviewComment;
+  } | null>(null);
+  const openEdit = (
+    e: React.MouseEvent<HTMLButtonElement>,
+    comment: ReviewComment,
+  ) => {
+    if (reviewTarget(question.path) === null) return;
+    onEdit?.();
+    setEditing({ rect: e.currentTarget.getBoundingClientRect(), comment });
+  };
   return (
     <div
       ref={rowRef}
@@ -243,103 +273,150 @@ export const AnsweredRow: React.FC<{
       aria-label={question.title}
       data-planning-row
       data-planning-item={itemKey}
-      style={
-        tall && shrink !== null ? tallRow(shrink.from) : { height: ROW_HEIGHT }
-      }
-      className="relative flex min-w-0 items-center gap-2 overflow-hidden rounded-lg border border-slate-200 bg-white px-4 text-sm whitespace-nowrap dark:border-slate-700 dark:bg-slate-800"
+      style={tall && shrink !== null ? tallRow(shrink.from) : undefined}
+      className="relative flex min-w-0 flex-col rounded-lg border border-slate-200 bg-white px-4 py-1 text-sm dark:border-slate-700 dark:bg-slate-800"
     >
       {newReply && <NewReplyBar />}
-      <span
-        aria-hidden="true"
-        className="shrink-0 text-green-600 dark:text-green-400"
-      >
-        ✓
-      </span>
-      <AppLink
-        to={href}
-        onBeforeNavigate={() => onOpenHere?.()}
-        className="shrink-0 font-medium text-blue-600 no-underline hover:underline dark:text-blue-400"
-      >
-        {question.id ?? question.path}
-      </AppLink>
-      <span className="min-w-0 flex-1 truncate text-slate-700 dark:text-slate-200">
-        {question.title}
-      </span>
-      {/* Every slot after the title keeps its room whatever it holds, so a
-          late change of a mark, the chip or Undo moves nothing in the row
-          (planning-index.md §12.1). */}
-      <span className="flex w-20 shrink-0 justify-end">
-        <ItemMarks marks={marks} newReply={newReply} onNewReply={onNewReply} />
-      </span>
-      <span className="inline-grid shrink-0 justify-items-start">
-        {/* Drawn from `data-reserve` by the stylesheet, so the room adds no
-            text to the page (`ReservedLabel`'s ghosts). */}
-        {CHIP_LABELS.map((label) => (
-          <span
-            key={label}
-            aria-hidden="true"
-            className="hdr-reserve-ghost [grid-area:1/1]"
-          >
-            <span data-reserve={label} className="review-oq-taken" />
-          </span>
-        ))}
-        {chip !== null && (
-          <span
-            className={cn(
-              "[grid-area:1/1]",
-              answer?.kind === "answered"
-                ? "review-oq-answered"
-                : answer?.kind === "taken"
-                  ? "review-oq-taken"
-                  : "review-oq-taken review-oq-taken--past",
-            )}
-            title={answer?.kind === "answered" ? OQ_ANSWERED_HINT : undefined}
-          >
-            {chip}
-          </span>
-        )}
-      </span>
-      <span
-        className={cn("shrink-0", !undoable && "invisible")}
-        aria-hidden={undoable ? undefined : true}
-      >
+      <div className="flex min-w-0 items-center gap-2 whitespace-nowrap">
+        <span
+          aria-hidden="true"
+          className="shrink-0 text-green-600 dark:text-green-400"
+        >
+          ✓
+        </span>
+        <AppLink
+          to={href}
+          onBeforeNavigate={() => onOpenHere?.()}
+          className="shrink-0 font-medium text-blue-600 no-underline hover:underline dark:text-blue-400"
+        >
+          {question.id ?? question.path}
+        </AppLink>
+        <span className="min-w-0 flex-1 truncate text-slate-700 dark:text-slate-200">
+          {question.title}
+        </span>
+        {/* Every slot after the title keeps its room whatever it holds, so a
+            late change of a mark moves nothing in the row (§12.1). */}
+        <span className="flex w-20 shrink-0 justify-end">
+          <ItemMarks
+            marks={marks}
+            newReply={newReply}
+            onNewReply={onNewReply}
+          />
+        </span>
         <button
           type="button"
-          className="review-oq-undo"
-          title="Delete the review comment the take filed"
-          tabIndex={undoable ? undefined : -1}
+          data-planning-row-show
+          aria-label={`Show ${question.title}`}
           aria-disabled={opening ? "true" : undefined}
           onClick={() => {
-            if (undoable && !opening) onUndo?.();
+            if (!opening) onShow();
           }}
+          className="shrink-0 rounded px-1.5 py-0.5 text-[11px] font-medium text-slate-600 transition-colors hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700"
         >
-          <Undo2 size={12} aria-hidden="true" className="mr-0.5 inline" />
-          {OQ_UNDO_LABEL}
+          Show
         </button>
-      </span>
-      <button
-        type="button"
-        data-planning-row-show
-        aria-label={`Show ${question.title}`}
-        aria-disabled={opening ? "true" : undefined}
-        onClick={() => {
-          if (!opening) onShow();
-        }}
-        className="shrink-0 rounded px-1.5 py-0.5 text-[11px] font-medium text-slate-600 transition-colors hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700"
-      >
-        Show
-      </button>
+      </div>
+      {answers !== null &&
+        (leaning !== null || answers.comments.length > 0) && (
+          <ul
+            aria-label="Answers on this question"
+            className="mt-0.5 space-y-0.5 border-t border-slate-100 pt-1 text-[12px] dark:border-slate-700"
+          >
+            {leaning !== null && (
+              <li
+                data-planning-answer="leaning"
+                className="flex min-w-0 items-center gap-1.5"
+              >
+                <span className="shrink-0 text-slate-500 dark:text-slate-400">
+                  <em>Leaning:</em>{" "}
+                </span>
+                <span
+                  className={cn(
+                    "min-w-0 flex-1 truncate italic",
+                    leaning.pending
+                      ? "text-slate-600 dark:text-slate-300"
+                      : "text-slate-500 dark:text-slate-400",
+                  )}
+                  title={leaning.comment.comment}
+                >
+                  {answerText(leaning.comment.comment)}
+                </span>
+                {undoable && (
+                  <button
+                    type="button"
+                    className="review-oq-undo shrink-0"
+                    title="Delete the review comment the take filed"
+                    aria-disabled={opening ? "true" : undefined}
+                    onClick={() => {
+                      if (!opening) onUndo?.(leaning.comment);
+                    }}
+                  >
+                    <Undo2
+                      size={12}
+                      aria-hidden="true"
+                      className="mr-0.5 inline"
+                    />
+                    {OQ_UNDO_LABEL}
+                  </button>
+                )}
+              </li>
+            )}
+            {answers.comments.map((c) => (
+              <li
+                key={c.id}
+                data-planning-answer="comment"
+                className={cn(
+                  "flex min-w-0 items-center gap-1.5 text-slate-700 dark:text-slate-300",
+                  c.resolved && "text-slate-500 dark:text-slate-400",
+                )}
+              >
+                <span className="min-w-0 flex-1 truncate" title={c.comment}>
+                  {answerText(c.comment)}
+                </span>
+                {isPendingForAgent(c) && writable && (
+                  <button
+                    type="button"
+                    data-planning-comment-edit
+                    className="review-oq-edit shrink-0"
+                    title="Edit comment"
+                    onClick={(e) => openEdit(e, c)}
+                  >
+                    <Pencil
+                      size={12}
+                      aria-hidden="true"
+                      className="mr-0.5 inline"
+                    />
+                    Edit
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      {editing !== null && (
+        <ReviewCommentPopover
+          label="Edit Comment"
+          selectedText={
+            editing.comment.fallback_text ?? editing.comment.comment
+          }
+          rect={editing.rect}
+          makeBox={() =>
+            editCommentBox(reviewTarget(question.path)!, editing.comment, {
+              onSaved,
+            })
+          }
+          onClose={() => setEditing(null)}
+        />
+      )}
     </div>
   );
 };
 
-/** Every chip an answered row can show, whose room its slot keeps. */
-const CHIP_LABELS = [
-  OQ_ANSWERED_LABEL,
-  OQ_TAKEN_LABEL,
-  OQ_TAKEN_REPLIED_LABEL,
-  OQ_TAKEN_DISMISSED_LABEL,
-];
+/** A leaning or a comment as far as `answerChars`, then a cut. */
+function answerText(text: string): string {
+  const max = planningLimits.answerChars;
+  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+}
 
 /** `1 more answered`, `10 more answered`. */
 const moreAnswered = (n: number) =>
