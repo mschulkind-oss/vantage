@@ -7,12 +7,13 @@ import "sort"
 // are part of the perf-report contract: a "request" bucket carries p99 while a
 // service bucket omits it (see Diagnostics.Services).
 type OperationStats struct {
-	Count int     `json:"count"`
-	P50   float64 `json:"p50"`
-	P95   float64 `json:"p95"`
-	P99   float64 `json:"p99,omitempty"`
-	Max   float64 `json:"max"`
-	Avg   float64 `json:"avg"`
+	Category string  `json:"category,omitempty"`
+	Count    int     `json:"count"`
+	P50      float64 `json:"p50"`
+	P95      float64 `json:"p95"`
+	P99      float64 `json:"p99,omitempty"`
+	Max      float64 `json:"max"`
+	Avg      float64 `json:"avg"`
 }
 
 // SlowRequest is one request that exceeded the slow threshold. Status is a
@@ -22,6 +23,13 @@ type SlowRequest struct {
 	Operation  string  `json:"operation"`
 	DurationMs float64 `json:"duration_ms"`
 	Status     *int    `json:"status"`
+}
+
+// SlowOperation is one service (git/fs) call that exceeded the slow threshold.
+// It mirrors SlowRequest without the request-only status.
+type SlowOperation struct {
+	Operation  string  `json:"operation"`
+	DurationMs float64 `json:"duration_ms"`
 }
 
 // RequestsSection aggregates request-category timings keyed by endpoint
@@ -67,16 +75,37 @@ type DirEntryCount struct {
 	Max int `json:"max"`
 }
 
+// WatcherStats is the anonymized, lifetime aggregate of the file watchers, one
+// repository per live watcher. It is gathered by the server from
+// live.Watcher.Stats and attached to Diagnostics; single-repo mode reaches no
+// watcher and leaves the section absent.
+type WatcherStats struct {
+	Repos           int `json:"repos"`
+	WatchedDirs     int `json:"watched_dirs"`
+	WatchFailedDirs int `json:"watch_failed_dirs"`
+	EventsTotal     int `json:"events_total"`
+	Kept            int `json:"kept"`
+	DroppedExt      int `json:"dropped_ext"`
+	DroppedIgnore   int `json:"dropped_ignore"`
+	DroppedOutside  int `json:"dropped_outside"`
+	DroppedSameFP   int `json:"dropped_same_fp"`
+	DroppedStale    int `json:"dropped_stale"`
+	DroppedAttrib   int `json:"dropped_attrib"`
+}
+
 // Diagnostics is the full perf report. It is the shared wire type between the
 // server (which marshals it) and the perf-report client (which unmarshals it),
-// so the JSON tags here are the contract. RepoShape is populated by the server
-// after Store.Diagnostics returns and so carries omitempty.
+// so the JSON tags here are the contract. RepoShape and Watchers are populated
+// by the server after Store.Diagnostics returns and so carry omitempty.
 type Diagnostics struct {
 	Requests     RequestsSection      `json:"requests"`
 	Services     ServicesSection      `json:"services"`
 	SlowRequests []SlowRequest        `json:"slow_requests"`
+	SlowServices []SlowOperation      `json:"slow_services"`
+	Counters     map[string]int       `json:"counters,omitempty"`
 	Meta         Meta                 `json:"meta"`
 	RepoShape    map[string]RepoShape `json:"repo_shape,omitempty"`
+	Watchers     *WatcherStats        `json:"watchers,omitempty"`
 }
 
 // round1 rounds a millisecond value to one decimal place, matching the
