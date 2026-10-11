@@ -434,18 +434,14 @@ test.describe("a question card's fold", () => {
         el.id.replace(/OQ-F1$/, "OQ-F5"),
       );
       const target = card(page, "OQ-L1");
-      // The outline's jump to later.md goes past OQ-F11, above OQ-L1, which
-      // has a cut of its own to draw.
+      // The outline's entry scopes the page to later.md, whose first card is
+      // OQ-L1, and lands there (§6.9).
       await page
         .getByRole("navigation", { name: "On this page" })
         .locator('[data-testid=outline-document][data-path="later.md"]')
         .click();
+      await expect(page).toHaveURL(/filter=path:\/later\.md/);
       await expect(target).toBeVisible();
-      await expect(
-        unfolded
-          ? collapse(card(page, "OQ-F11"))
-          : expand(card(page, "OQ-F11")),
-      ).toBeVisible();
       await page.waitForTimeout(500);
       // ANCHOR_MARGIN in lib/anchorScroll.ts.
       expect(

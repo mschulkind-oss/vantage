@@ -240,39 +240,41 @@ export const agentReplies = (
     0,
   );
 
-/** What an answered row's chip says (§6.4): the card's own chip. */
-export type RowAnswer =
-  | { kind: "taken"; comment: ReviewComment }
-  | { kind: "answered" }
-  | { kind: "retake"; comment: ReviewComment; replied: boolean }
-  | null;
+/**
+ * What an answered row shows (§6.4): the leaning filed on the question, with
+ * whether it still waits on the agent, and the comments on it. The row draws
+ * the leaning apart from the comments — italic, behind a *Leaning:* label —
+ * because the reader did not write it.
+ */
+export interface RowAnswers {
+  /** The take filed on the question, and whether it still waits. */
+  leaning: { comment: ReviewComment; pending: boolean } | null;
+  /** Every other comment on the question, in their order. */
+  comments: readonly ReviewComment[];
+}
 
 /**
- * The chip of an answered row, from the comments placed on its question:
+ * The answers of an answered row, from the comments placed on its question:
  * `take` is the text Take this leaning files for it. A row has no rendered
  * block to read the take's anchor from, so a take is the comment on it that
- * selects nothing and says `take`.
+ * selects nothing and says `take`. `null` when nothing answers the question.
  */
-export function rowAnswer(
+export function rowAnswers(
   comments: readonly ReviewComment[] | undefined,
   take: string,
-): RowAnswer {
+): RowAnswers | null {
   const on = comments ?? [];
+  if (on.length === 0) return null;
   const taken = on.find(
     (c) => c.comment === take && (c.anchor?.selection_length ?? 0) === 0,
   );
-  if (taken !== undefined && isPendingForAgent(taken)) {
-    return { kind: "taken", comment: taken };
-  }
-  if (on.some(isPendingForAgent)) return { kind: "answered" };
-  if (taken !== undefined) {
-    return {
-      kind: "retake",
-      comment: taken,
-      replied: (taken.reactions ?? []).some((r) => r.actor === "agent"),
-    };
-  }
-  return null;
+  return {
+    leaning:
+      taken === undefined
+        ? null
+        : { comment: taken, pending: isPendingForAgent(taken) },
+    comments: on.filter((c) => c !== taken),
+  };
 }
 
 /** A mark late data puts on an item (§6.4). */

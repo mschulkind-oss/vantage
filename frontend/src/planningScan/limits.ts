@@ -109,6 +109,12 @@ export interface PlanningLimits {
    * design names no such number, so this one is coined here.
    */
   outlineDocuments: number;
+  /**
+   * Characters of a leaning or a comment an answered row shows before it cuts
+   * the rest; the whole text is the row's tooltip. No ruling names a number,
+   * so this one is coined here.
+   */
+  answerChars: number;
 
   /* ---- A document's first paint (§12.3) ---- */
 
@@ -146,6 +152,7 @@ export const DEFAULT_PLANNING_LIMITS: Readonly<PlanningLimits> = Object.freeze({
   pendingCountDigits: 4,
   quoteContextLines: 2,
   outlineDocuments: 50,
+  answerChars: 160,
 
   holdMs: 150,
 });
