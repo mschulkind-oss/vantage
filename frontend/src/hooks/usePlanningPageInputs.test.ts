@@ -130,7 +130,8 @@ describe("one set of inputs", () => {
     const ready = readyOf();
     const inputs = await inputsOf(ready);
     expect(asked).toHaveLength(1);
-    // Needs you's two cards; OQ-B1, not on a roadmap, is a row with no block.
+    // Needs you's cards: a.md's two, and b.md's, which no roadmap routes and
+    // Needs you lists all the same (§6.2).
     expect(asked[0]).toEqual([
       {
         path: "plans/a.md",
@@ -140,6 +141,11 @@ describe("one set of inputs", () => {
       {
         path: "plans/a.md",
         hash: ready.hashes["plans/a.md"],
+        startLine: expect.any(Number),
+      },
+      {
+        path: "plans/b.md",
+        hash: ready.hashes["plans/b.md"],
         startLine: expect.any(Number),
       },
     ]);
@@ -319,7 +325,11 @@ describe("one set of inputs", () => {
     });
     const inputs = await inputsOf(ready);
     expect(refreshed).toHaveBeenCalledTimes(1);
-    expect(refreshed).toHaveBeenCalledWith("", ["plans/a.md"], []);
+    expect(refreshed).toHaveBeenCalledWith(
+      "",
+      ["plans/a.md", "plans/b.md"],
+      [],
+    );
     expect([...inputs.blocks.values()].every((b) => b === null)).toBe(true);
     // Another page size asks about the same files under the same hashes:
     // they are not refreshed again, and nothing waits.
@@ -592,9 +602,10 @@ describe("prefetchPlanningPage", () => {
     ]);
     prefetchPlanningPage("");
     await new Promise((resolve) => setTimeout(resolve, 0));
-    // OQ-A1's block, which the filtered set did not hold.
+    // OQ-A1's block, which the filtered set did not hold, and OQ-B1's, whose
+    // question no roadmap routes.
     expect(asked).toHaveLength(2);
-    expect(asked[1]?.map((w) => w.path)).toEqual(["plans/a.md"]);
+    expect(asked[1]?.map((w) => w.path)).toEqual(["plans/a.md", "plans/b.md"]);
   });
 
   it("asks for nothing while the index builds, when it is refused, or in a static export", async () => {

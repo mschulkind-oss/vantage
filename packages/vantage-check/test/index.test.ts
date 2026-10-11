@@ -129,10 +129,9 @@ describe("index, as text", () => {
         "  docs/a.md:14  💬 OQ-A2: Question A2?",
         "  docs/e.md:8  💬 OQ-E1: Question E1?",
         "",
-        "Blocked (2)",
+        "Blocked (1)",
         "Waiting on a question, a document or an outside event. Nothing to do here.",
-        "  docs/a.md:20  🔒 OQ-A3: Question A3?",
-        "  docs/c.md  blocked on docs/a.md#OQ-A2",
+        "  docs/a.md:20  🔒 OQ-A3: Question A3?  blocked on the 2.0 release",
         "",
         "Ready to build (1)",
         "Decided, with no open questions. An agent builds it.",
@@ -278,9 +277,11 @@ describe("index, as JSON", () => {
     // this one the format's, with the tool's under its own name.
     expect(payload.toolVersion).toBe(VERSION);
     expect(payload.version).toBe(INDEX_FORMAT_VERSION);
-    // Version 2: `sections.roadmap` and the top-level `roadmap` are gone, for
-    // `sections.roadmaps` and a top-level `roadmaps` (§13).
-    expect(payload.version).toBe(2);
+    // Version 3: Blocked holds blocked questions only — each with the
+    // `blocked-on` referents that made it blocked — and no document row. A
+    // question's marker is the author's claim; the referent decides its
+    // state (§13).
+    expect(payload.version).toBe(3);
     expect(payload.root).toBe(root);
   });
 
@@ -553,7 +554,7 @@ describe("index, with several roadmaps", () => {
     );
   });
 
-  it("prints JSON version 2: every roadmap, the chosen one, and what the others route", async () => {
+  it("prints JSON version 3: every roadmap, the chosen one, and what the others route", async () => {
     const { code, payload } = await indexJson(
       makeTree(SEVERAL),
       "--roadmap",
@@ -561,7 +562,7 @@ describe("index, with several roadmaps", () => {
     );
 
     expect(code).toBe(EXIT_OK);
-    expect(payload.version).toBe(2);
+    expect(payload.version).toBe(3);
     expect(payload.sections.roadmaps).toEqual([
       { path: "roadmap.md", state: "routes", needsYouCount: 1 },
       { path: "docs/old/roadmap.md", state: "done", needsYouCount: 0 },
@@ -1340,8 +1341,8 @@ describe("index --filter, with words, phrases and exclusions", () => {
     expect(text.code).toBe(EXIT_OK);
     expect(text.stderr).toBe("");
     expect(text.stdout.split("\n").slice(0, 3)).toEqual([
-      "Filtered by `nothing-holds-this`: 0 of 13 entries, none of them open questions.",
-      "Run without --filter to see the other 13.",
+      "Filtered by `nothing-holds-this`: 0 of 12 entries, none of them open questions.",
+      "Run without --filter to see the other 12.",
       `Planning page: ${linkIn(root, "filter=nothing-holds-this")}`,
     ]);
 
@@ -1351,7 +1352,7 @@ describe("index --filter, with words, phrases and exclusions", () => {
       "nothing-holds-this",
     );
     expect(code).toBe(EXIT_OK);
-    expect(payload.filter.entries).toEqual({ shown: 0, of: 13 });
+    expect(payload.filter.entries).toEqual({ shown: 0, of: 12 });
     expect(entryKeys(payload.filter.sections)).toEqual([]);
 
     const request = await index(
@@ -1375,9 +1376,9 @@ describe("index --filter, with words, phrases and exclusions", () => {
     expect(code).toBe(EXIT_OK);
     expect(stderr).toBe("");
     expect(stdout.split("\n").slice(0, 3)).toEqual([
-      "Filtered by `stage:ready`: 0 of 13 entries, none of them open questions.",
+      "Filtered by `stage:ready`: 0 of 12 entries, none of them open questions.",
       "`stage:` is not a filter key, so `stage:ready` is searched as text. The keys are `path:` and `is:`.",
-      "Run without --filter to see the other 13.",
+      "Run without --filter to see the other 12.",
     ]);
   });
 
@@ -1481,7 +1482,7 @@ describe("index --filter, as text", () => {
     expect(stderr).toBe("");
     expect(stdout).toBe(
       [
-        "Filtered by `path:docs/c.md path:/docs/e.md`: 4 of 13 entries, in 2 of 10 paths, 1 of them an open question.",
+        "Filtered by `path:docs/c.md path:/docs/e.md`: 3 of 12 entries, in 2 of 10 paths, 1 of them an open question.",
         "docs/c.md waits on docs/a.md#OQ-A2, which this filter leaves out.",
         "Run without --filter to see the other 9.",
         `Planning page: ${linkIn(root, "filter=path:docs/c.md+path:/docs/e.md")}`,
@@ -1491,10 +1492,6 @@ describe("index --filter, as text", () => {
         "Not on a roadmap (1)",
         "Open questions no roadmap links to. An agent proposes where each goes; you confirm.",
         "  docs/e.md:8  💬 OQ-E1: Question E1?",
-        "",
-        "Blocked (1)",
-        "Waiting on a question, a document or an outside event. Nothing to do here.",
-        "  docs/c.md  blocked on docs/a.md#OQ-A2",
         "",
         "Ready to build (1)",
         "Decided, with no open questions. An agent builds it.",
@@ -1536,9 +1533,9 @@ describe("index --filter, as text", () => {
     expect(code).toBe(EXIT_OK);
     expect(stdout.split("\n\n")[0]).toBe(
       [
-        "Filtered by `path:/docs/a.md is:open`: 2 of 13 entries, in 1 of 10 paths, 2 of them open questions.",
+        "Filtered by `path:/docs/a.md is:open`: 2 of 12 entries, in 1 of 10 paths, 2 of them open questions.",
         "1 of its questions is blocked and will need you later.",
-        "Run without --filter to see the other 11.",
+        "Run without --filter to see the other 10.",
         `Planning page: ${linkIn(root, "filter=path:/docs/a.md+is:open")}`,
         PASTE_HINT,
         SPACE_HINT,
@@ -1557,8 +1554,8 @@ describe("index --filter, as text", () => {
     expect(code).toBe(EXIT_OK);
     expect(stdout.split("\n\n").slice(0, 3)).toEqual([
       [
-        "Filtered by `path:docs/d.md`: 1 of 13 entries, in 1 of 10 paths, none of them open questions.",
-        "Run without --filter to see the other 12.",
+        "Filtered by `path:docs/d.md`: 1 of 12 entries, in 1 of 10 paths, none of them open questions.",
+        "Run without --filter to see the other 11.",
         `Planning page: ${linkIn(root, "filter=path:docs/d.md")}`,
         PASTE_HINT,
         SPACE_HINT,
@@ -1875,7 +1872,7 @@ describe("index --filter, keeping no entry", () => {
       "--filter",
       "path:docs/old.md",
     );
-    expect(payload.filter.entries).toEqual({ shown: 0, of: 13 });
+    expect(payload.filter.entries).toEqual({ shown: 0, of: 12 });
     expect(Object.keys(payload.filter)).toEqual([
       "text",
       "canonical",
@@ -2009,7 +2006,7 @@ describe("index --filter, as JSON", () => {
       canonical: "path:/docs/a.md is:open",
       link: linkIn(root, "filter=path:/docs/a.md+is:open"),
       documents: { kept: 1, of: 10 },
-      entries: { shown: 2, of: 13 },
+      entries: { shown: 2, of: 12 },
       openQuestions: 2,
       blockedLeftOut: 1,
       otherRoadmaps: [],
@@ -2072,7 +2069,6 @@ describe("index --request --filter", () => {
         ...(ids.length === 0 ? {} : { ids }),
         filter: {
           text: "path:docs/c.md path:/docs/e.md",
-          unfiltered: sections,
           keeps: (q) => filterKeepsQuestion(understood(text), q),
         },
       });
@@ -2159,7 +2155,6 @@ describe("index --filter over the fixture of forms", () => {
       repository: root,
       filter: {
         text: entry.canonical,
-        unfiltered: sections,
         keeps: (q) => filterKeepsQuestion(understood(entry.text), q),
       },
     });

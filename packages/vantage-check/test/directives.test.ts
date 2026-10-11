@@ -1530,11 +1530,11 @@ describe("the `question` directive", () => {
     expect(await check(twice)).toEqual(["vantage/oq-id-duplicate"]);
   });
 
-  it("takes exactly `oq`'s keys, and reports any other as unknown", async () => {
+  it("takes `oq`'s keys and `blocked-on`, and reports any other as unknown", async () => {
     const report = await one(blocked("question id=OQ-1 state=blocked"));
     expect(ruleIds(report)).toEqual(["vantage/unknown-key"]);
     expect(report.findings[0]?.message).toContain(
-      "`question` accepts `id` or `leaning`",
+      "`question` accepts `id`, `leaning` or `blocked-on`",
     );
   });
 

@@ -197,11 +197,9 @@ import {
   withFilter,
   withRoadmap,
   MAINTENANCE_KIND_IDS,
-  type CardEntry,
   type MaintenanceKindId,
   type QuestionEntry,
   type PlanningLayout,
-  type SectionId,
 } from "../lib/planningPages";
 import { planningPath } from "../lib/planningRoute";
 import {
@@ -735,18 +733,16 @@ function filterNoticeLines(
 /**
  * What else an applied filter's summary says that its counts cannot, as the
  * notice's own sentences (§6.18): its unmatched terms, unknown keys, other
- * roadmaps and blocked questions left out. Not its first line, which the
- * counts replace; not the *Waits on* lines, which *Blocked* draws beside
- * their documents; and not its last, which *hidden* does.
+ * roadmaps, blocked questions left out, and the targets a kept document waits
+ * on outside it. Not its first line, which the counts replace; nor its last,
+ * which *hidden* does.
  */
 function summaryClauses(summary: PlanningFilterSummary): string[] {
-  const waiting = [...new Set(summary.waitsOutside.map((w) => w.path))];
   return PLANNING_NOTICES.filtered(summary, "page")
     .slice(1)
     .map(spokenLine)
     .filter(
       (line) =>
-        !waiting.some((path) => line.startsWith(`${path} waits on `)) &&
         !line.startsWith("Clear the filter to see") &&
         line !== "It hides no entry.",
     );
@@ -1280,21 +1276,19 @@ function groupOf(
     return "maintenance";
   }
   if (layout === null) return null;
-  const ids = (entries: readonly CardEntry[], section: string) =>
+  const ids = (entries: readonly QuestionEntry[]) =>
     entries.map((entry) =>
-      entry.kind === "question"
-        ? planningCardId(
-            entry.question.path,
-            entry.question.id,
-            entry.question.unitLine,
-          )
-        : planningRowId(section as SectionId, entry.path),
+      planningCardId(
+        entry.question.path,
+        entry.question.id,
+        entry.question.unitLine,
+      ),
     );
-  if (ids(layout.blocked, "waiting").includes(target)) return "blocked";
+  if (ids(layout.blocked).includes(target)) return "blocked";
   for (const kind of layout.maintenance) {
     const rows =
       kind.kind === "questions"
-        ? ids(kind.items, kind.id)
+        ? ids(kind.items)
         : kind.kind === "documents"
           ? kind.items.map((path) => planningRowId(kind.id, path))
           : [];
@@ -2808,7 +2802,6 @@ export const PlanningPage: React.FC = () => {
           ? {
               filter: {
                 text: summary.requestText,
-                unfiltered: sectionsOf(index, requestRoadmap),
                 // `compact` lists ✅ questions from the whole index.
                 ...(frameKeeps === undefined ? {} : { keeps: frameKeeps }),
               },
@@ -3042,6 +3035,7 @@ export const PlanningPage: React.FC = () => {
         preview={asPreview}
         onShowQuestion={showQuestion}
         badge={shownIndex === null ? null : badgeOf(shownIndex, question.path)}
+        notOnRoadmap={item.entry.notOnRoadmap === true}
         comments={reviews.byPath[question.path]}
         listComments={
           current?.inPlace.opened.has(item.key)
@@ -3915,7 +3909,6 @@ export const PlanningPage: React.FC = () => {
                                 gone={groupGone}
                                 explanationOf={explanationOf}
                                 requestOf={requestOf}
-                                waitsOutside={frameSummary?.waitsOutside}
                                 onOpenHere={saveScroll}
                               />
                             </>

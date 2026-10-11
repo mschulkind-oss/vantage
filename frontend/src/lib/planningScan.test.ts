@@ -38,12 +38,19 @@ function scan(source: string, isRoadmap = false): ScanResult {
 /**
  * A loose list item holding one question, in the convention's layout: a
  * `question` directive in every state, restating the question's leaning.
+ * `blockedOn`, when given, is written as the directive's `blocked-on=`.
  */
-function item(marker: string, id: string, leaning = "Take it."): string {
+function item(
+  marker: string,
+  id: string,
+  leaning = "Take it.",
+  blockedOn?: string,
+): string {
+  const blocked = blockedOn === undefined ? "" : ` blocked-on="${blockedOn}"`;
   return [
     `1. ${marker} **${id}: A question?**`,
     "",
-    `   <!-- vantage: question id=${id} leaning="${leaning}" -->`,
+    `   <!-- vantage: question id=${id} leaning="${leaning}"${blocked} -->`,
     "",
     `   _Leaning:_ ${leaning}`,
     "",
@@ -357,6 +364,7 @@ describe("a question (§3.3)", () => {
       marker: "\u{1F4AC}",
       title: "OQ-B1: A question?",
       leaning: "Back of the queue.",
+      blockedOn: [],
       line: 12,
       unitLine: 7,
       unitEndLine: 13,
@@ -759,6 +767,73 @@ describe("a question (§3.3)", () => {
       null,
       null,
     ]);
+  });
+
+  it("reads blocked-on as a list of targets and external blocker names (§3.3)", () => {
+    const source = item(
+      "\u{1F512}",
+      "OQ-1",
+      "Take it.",
+      "docs/a.md, the 1.0 release",
+    );
+    // A path entry resolves as a document's `depends-on` does, from the
+    // document's own directory; from a root document it names itself.
+    expect(planning(source, "plan.md").questions[0]?.blockedOn).toEqual([
+      { kind: "target", raw: "docs/a.md", target: "docs/a.md", fragment: null },
+      { kind: "external", name: "the 1.0 release" },
+    ]);
+  });
+
+  it("reads a one-word external blocker as external, not as a path", () => {
+    const source = item("\u{1F512}", "OQ-1", "Take it.", "v1.0");
+    expect(planning(source, "plan.md").questions[0]?.blockedOn).toEqual([
+      { kind: "external", name: "v1.0" },
+    ]);
+  });
+
+  it("reads an entry as a path only when it has a /, a #, or a .md ending", () => {
+    const source = item(
+      "\u{1F512}",
+      "OQ-1",
+      "Take it.",
+      "README.md, notes/a.md, a.md#OQ-9, the 1.0 release",
+    );
+    expect(planning(source, "plan.md").questions[0]?.blockedOn).toEqual([
+      { kind: "target", raw: "README.md", target: "README.md", fragment: null },
+      {
+        kind: "target",
+        raw: "notes/a.md",
+        target: "notes/a.md",
+        fragment: null,
+      },
+      { kind: "target", raw: "a.md#OQ-9", target: "a.md", fragment: "OQ-9" },
+      { kind: "external", name: "the 1.0 release" },
+    ]);
+  });
+
+  it("resolves a blocked-on target and its #OQ-… fragment as depends-on does", () => {
+    const source = item("\u{1F512}", "OQ-1", "Take it.", "../plans/b.md#OQ-B2");
+    expect(planning(source).questions[0]?.blockedOn).toEqual([
+      {
+        kind: "target",
+        raw: "../plans/b.md#OQ-B2",
+        target: "docs/plans/b.md",
+        fragment: "OQ-B2",
+      },
+    ]);
+  });
+
+  it("reads no blocked-on when the directive gives none, and none off an `oq`", () => {
+    expect(planning(item("\u{1F512}", "OQ-1")).questions[0]?.blockedOn).toEqual(
+      [],
+    );
+    const source = [
+      '<!-- vantage: oq id=OQ-2 blocked-on="docs/a.md" -->',
+      "",
+      "An `oq` does not accept the key.",
+      "",
+    ].join("\n");
+    expect(planning(source).questions[0]?.blockedOn).toEqual([]);
   });
 
   it("reads which name declared each question, an `oq` in a run winning", () => {

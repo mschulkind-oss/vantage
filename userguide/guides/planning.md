@@ -60,15 +60,25 @@ header, their questions and their links.
 
 **Questions.** A question is a `question` or an `oq` directive, identified by
 its document and its `id`. Its state comes from the emoji before its bold
-title:
+title, checked against what the question's `blocked-on` names:
 
 | Marker | State |
 | :--- | :--- |
 | 💬 | open |
 | 💬 🤷 | open, and a matter of preference |
-| 🔒 | blocked on something upstream |
+| 🔒 | blocked, while its `blocked-on` names something that still waits |
 | ✅ | answered, and waiting to be compacted |
 | none | open |
+
+The marker is what the document claims; `blocked-on`, written on the `question`
+directive as a comma-separated list (`blocked-on="docs/a.md, the 1.0 release"`),
+is what decides. An entry that is a path, optionally with `#OQ-…`, resolves like
+a document's `depends-on`: it waits while its question or document is still open.
+Any other entry is an **external blocker name** — an outside event the index
+shows and can never clear. A 🔒 with nothing live to wait on is not blocked at
+all: it is an **unactioned** open question, one nobody has answered yet, and
+`vantage-check` reports it (`planning/blocked-on-disagrees`), as it does a 💬
+whose referent still waits.
 
 A question written without a directive does not exist to the index, so a
 question keeps its `question` directive in every state, and changing its state
@@ -168,9 +178,9 @@ What the badge says depends on what the link names:
 
 | The link names | The badge shows |
 | :--- | :--- |
-| a document | its status chip, its `stage`, then `💬 N` open and `🔒 M` blocked questions, e.g. `in-review · DESIGN · 💬 5`. Zero counts are left out. |
+| a document | its status chip, its `stage`, then `💬 N` open and `🔒 M` blocked questions, e.g. `in-review · DESIGN · 💬 5`. Zero counts are left out, and a question counts as its `blocked-on` referent decides it |
 | a heading, `x.md#some-heading` | the same as a link to the document |
-| a question, `x.md#OQ-X`, whose directive is there | its state: `💬 open`, `🔒 blocked` or `✅ answered` |
+| a question, `x.md#OQ-X`, whose directive is there | its state as its referent decides it: `💬 open`, `🔒 blocked` or `✅ answered`, so a 🔒 nothing live waits on says `💬 open` |
 | an id whose directive is there, but is not a question: one above a table, say, or inside raw HTML | `⚠ not a question`. It was never compacted, so it is not ruled. `vantage-check` reports one above a table (`vantage/orphan`) |
 | a question whose directive is gone, but whose id is still in the text | `✅ ruled`: compacting a question keeps its id in the Decision Ledger, so Vantage never has to read the ledger |
 | a question whose id is nowhere in the document | `⚠ not found`. `vantage-check` reports the dead anchor too (`link/dead-section-anchor`) |
@@ -430,8 +440,8 @@ From top to bottom, leaving out any that are empty:
 
 | Section | Holds | Who acts | Each entry shows |
 | :--- | :--- | :--- | :--- |
-| **Needs you** | Open questions the shown roadmap [routes](#the-roadmap), in its order | you | the questions you have answered as one-line rows, then the question's [card](#a-questions-card) ([below](#needs-you)) |
-| **Blocked**, folded | Blocked questions, and documents with a `depends-on` entry that still waits: one naming a question waits while it is open (💬), and one naming a document waits while that document has an open question | nobody: what it waits on comes first | one row: a question by its document, id and title; a document by its name and badge, then *blocked on* each entry it waits on |
+| **Needs you** | Open questions the shown roadmap [routes](#the-roadmap), in its order, then the open questions no roadmap routes, each marked *Not on a roadmap* | you | the questions you have answered as one-line rows, then the question's [card](#a-questions-card) ([below](#needs-you)) |
+| **Blocked**, folded | Questions a live `blocked-on` referent blocks | nobody: what it waits on comes first | one row: the question by its document, id and title, then *blocked on* each entry it waits on |
 | **Maintenance**, folded | Everything an agent should already have done, one list per kind, and the files the index could not read | an agent, or you for *Too large* and *Unreadable* | one row per entry ([below](#the-folded-groups)) |
 
 *Maintenance*'s kinds, in its order:
@@ -439,8 +449,8 @@ From top to bottom, leaving out any that are empty:
 | Kind | Holds |
 | :--- | :--- |
 | **Not on a roadmap** | Open questions no roadmap routes, by path |
-| **Ready to build** | Documents whose stage has the `ready` role and no open questions; one can be under *Blocked* too |
-| **Ready to graduate** | Documents whose stage has the `built` role and no questions left; one can be under *Blocked* too |
+| **Ready to build** | Documents whose stage has the `ready` role and no open questions, whether or not a `depends-on` still waits |
+| **Ready to graduate** | Documents whose stage has the `built` role and no questions left, whether or not a `depends-on` still waits |
 | **Stage conflict** | Documents whose stage says `ready` or `built` while they still have open questions |
 | **To fold into the ledger** | ✅ questions: ruled, and waiting for an agent to fold the ruling into the document and record it |
 | **Too large** | Candidates over the size limit ([below](#limits)): the path, its size and the limit |
@@ -539,7 +549,9 @@ carries no `roadmap`.
    and **Show**, which opens it into its card in place. The first five show;
    *… 3 more answered · Show* opens the rest in place.
 2. **Cards.** The first questions that need you, as cards: 10 of them, or the
-   page size you choose.
+   page size you choose. The questions on the shown roadmap come first, in its
+   order; then the open questions no roadmap routes, each card marked **Not on a
+   roadmap**.
 3. **The last line,** *12 more need you · show 10 | 20 | 30 | 50*. Choosing a
    size shows that many cards at once, and this browser remembers it for the
    next visit. With nothing past the cards it offers the sizes alone, and once
@@ -550,7 +562,10 @@ carries no `roadmap`.
 Its heading counts the questions that need you, whatever the page size shows,
 and the answered rows it lists, as *Needs you 12 · 15 answered*. A ✅ question
 is not here: it waits only for an agent to fold it into the ledger, and
-*Maintenance* lists it.
+*Maintenance* lists it. A question no roadmap routes is here, at the end of the
+cards and counted with them, and also under *Not on a roadmap* in *Maintenance*,
+where an agent proposes its place: the same question once to answer and once to
+route.
 
 **Answering moves only what you answered.** When a card's comment box closes
 holding your answer, or you take its leaning, the card shrinks to an answered
@@ -686,10 +701,12 @@ What the card offers follows the question's state:
 | :--- | :--- | :--- | :--- |
 | 💬 open, or no marker | yes | yes | yes |
 | ✅ answered | — | — | — |
-| 🔒 blocked | — | — | — |
+| 🔒 blocked, with a live `blocked-on` | — | — | — |
 
-A ✅ or 🔒 question has no card: *Maintenance* and *Blocked* list it as a row,
-and it is answered from its document.
+A ✅ question, and a 🔒 one whose `blocked-on` still waits, has no card:
+*Maintenance* and *Blocked* list it as a row, and it is answered from its
+document. A 🔒 with nothing live to wait on is unactioned, so it keeps its card
+like any open question.
 
 - **Take this leaning** files the question's leaning as a review comment on
   it: the same comment review mode's own **Take this leaning** button files in
@@ -877,14 +894,14 @@ is not shown, so it has no button.
 | Section | The request asks the agent to |
 | :--- | :--- |
 | Not on a roadmap | propose where each question belongs on a roadmap, with a one-clause reason, and leave the order for you to confirm. It decides no priority |
-| Ready to build | build each document from its plan, then give it a stage with the `built` role. If one should not be built, it asks you before retiring it, with the stage with the `done` role you choose. It skips a document marked blocked, one *Blocked* lists too |
+| Ready to build | build each document from its plan, then give it a stage with the `built` role. If one should not be built, it asks you before retiring it, with the stage with the `done` role you choose. It skips a document marked blocked, one whose `depends-on` still waits |
 | Ready to graduate | rewrite each as a reference document of the system as built, verified against the code, saying what it covers and the commit it was verified at, with the stage your other reference documents carry; then delete the design document and any plan written for it, repoint every link and citation of them, in documents, code comments and tests, and keep every question id that other documents cite resolvable |
 | Stage conflict | find whether the stage or the open questions are wrong, from the document and the code, and set a wrong stage back to one with the `open` role, or propose moving a follow-up question to a new document. It rules and answers nothing: where a question looks settled, it tells you what it found and asks you for the ruling |
 | To fold into the ledger | fold each ✅ question's ruling into the part of its document it governs, record it in the document's Decision Ledger under the same id, remove the question's directive, and repair the links to it ([`vantage-check index`](vantage-check.md#vantage-check-index)'s `compact` request) |
 
 Every request names the repository, by the absolute path of its root, and
 each entry by its path, with its question's id and title or the document's
-stage, and for a document *Blocked* lists too, what it waits on. It ends with
+stage, and for a document whose `depends-on` still waits, what it waits on. It ends with
 how to check the work: run `vantage-check` on the Markdown files changed, then
 `vantage-check index`. Vantage writes the text when you press the button, from
 the index on screen, so it names what the documents say now, in the stage
@@ -938,9 +955,9 @@ leaves out what it matches:
 
 | Term | Keeps |
 | :--- | :--- |
-| A word, such as `generator`, or a phrase, such as `"command surface"` | Entries that hold it, in any case. A question is matched by its id, its title, its leaning and its document's path; a row under *Blocked*, *Ready to build*, *Ready to graduate* or *Stage conflict* by its path, its `stage` and its `next`; a *Too large* or *Unreadable* entry by its path. A phrase is matched whole, spaces included |
-| `path:<pattern>` | Entries whose path holds the pattern, in any case: for a question, its document's path; for a row under *Blocked*, *Ready to build* or any other section that lists documents, the row's own path |
-| `is:open` | Questions still open: 💬, 💬 🤷 or no marker. Never a 🔒 or ✅ question, and never a document's row |
+| A word, such as `generator`, or a phrase, such as `"command surface"` | Entries that hold it, in any case. A question is matched by its id, its title, its leaning and its document's path; a row under *Ready to build*, *Ready to graduate* or *Stage conflict* by its path, its `stage` and its `next`; a *Too large* or *Unreadable* entry by its path. A phrase is matched whole, spaces included |
+| `path:<pattern>` | Entries whose path holds the pattern, in any case: for a question, its document's path; for a row under *Ready to build* or any other section that lists documents, the row's own path |
+| `is:open` | Questions the referent leaves open: 💬, 💬 🤷 or no marker, and a 🔒 nothing live waits on. Never a blocked question, whatever its marker, and never a ✅ one, and never a document's row |
 | `-` and a term, such as `-payload`, `-path:docs/archive` or `-is:open` | Everything but what that term keeps. `-is:open` leaves out open questions and keeps every row |
 
 - **Every word must match, and `path:` terms keep any of their matches.** So
@@ -1051,14 +1068,13 @@ with them:
   see them; the filter stays.* A question only another roadmap routes is in
   no section, so it is counted here rather than shown.
 - **Blocked questions left out:** *3 of its questions are blocked and will
-  need you later.* It counts the 🔒 questions the rest of the filter keeps and
-  `is:open` leaves out, so you know whether another round of rulings will
+  need you later.* It counts the blocked questions the rest of the filter keeps
+  and `is:open` leaves out, so you know whether another round of rulings will
   come.
 
-**A document waiting outside the filter** is marked where it is listed: its
-*Blocked* row says *(which this filter leaves out)* after each document it
-waits on that the filter does not keep. Add a `path:` term for that document to
-see what it holds.
+**A document waiting outside the filter** is named in the filter notice: *docs/design/x.md
+waits on docs/design/y.md, which this filter leaves out.* Add a `path:` term for
+that document to see what it holds.
 
 No notice line under the box repeats the filter: the only notices left there
 are *Not filtered*, for a filter Vantage does not understand, and, when nothing
@@ -1192,8 +1208,8 @@ is encoded too, so a sentence's period after a pasted address cannot take it.
 #### Everything else under a filter
 
 - The [contents column](#the-contents-column) follows the filtered sections.
-- A *Blocked* row the filter keeps still names every document it waits on,
-  marking those it leaves out.
+- A *Blocked* question the filter keeps still names every entry it waits on,
+  and the notice names each target a kept document waits on outside it.
 - [Copy answers](#copy-answers) and the [agent requests](#agent-requests)
   cover only what the filter keeps, as their sections say, and with
   [several roadmaps](#several-roadmaps) the menu counts only the questions it

@@ -29,10 +29,12 @@ import { PLANNING_FILTER_LIMITS } from "./filterLimits.js";
 import { PLANNING_SECTION_TITLES, codeSpan } from "./guide.js";
 import { findDocument, type PlanningIndex } from "./model.js";
 import type {
+  BlockedOn,
   DependsOn,
   PlanningDocument,
   PlanningLink,
   PlanningQuestion,
+  QuestionState,
 } from "./scan.js";
 
 /** A question, by document and line; `id` too, so a stale reference misses. */
@@ -47,9 +49,18 @@ export interface RoutedQuestion extends QuestionRef {
   heading: string | null;
 }
 
-export type WaitingEntry =
-  | { kind: "question"; question: QuestionRef }
-  | { kind: "document"; path: string; waitingOn: DependsOn[] };
+/**
+ * A blocked question (§6.2), with the referents that make it blocked: its
+ * `blocked-on` entries that still wait. Blocked lists questions only — a
+ * document's `depends-on` is what its Ready and graduate rows are marked
+ * with, never an entry of its own.
+ */
+export interface WaitingEntry {
+  kind: "question";
+  question: QuestionRef;
+  /** What made it blocked: a live target, or an external name (§3.3). */
+  blockedOn: BlockedOn[];
+}
 
 /**
  * A roadmap's *state* (§4.2, a term defined in §2): whether it routes,
@@ -98,6 +109,10 @@ export interface PlanningSections {
   onOtherRoadmaps: OtherRoadmapQuestion[];
   /** Open questions no roadmap routes; `null` when none is chosen. */
   unrouted: QuestionRef[] | null;
+  /**
+   * Questions a live referent blocks (§3.3), each with what waits. Never a
+   * document: a document blocked by its `depends-on` is not an entry here.
+   */
   waiting: WaitingEntry[];
   /** The three stage sections are `null` when no stages are declared. */
   ready: string[] | null;
@@ -649,7 +664,13 @@ const refOf = (q: PlanningQuestion): QuestionRef => ({
 
 const keyOf = (ref: QuestionRef): string => `${ref.path}\n${ref.line}`;
 
-const isOpen = (q: PlanningQuestion): boolean => q.state === "open";
+/**
+ * Whether the referent leaves a question open, unactioned (§3.3): one Needs
+ * you lists, or Not on a roadmap holds. A 🔒 with nothing live to wait on is
+ * open; a 💬 with a live referent is not.
+ */
+const isOpen = (index: PlanningIndex, q: PlanningQuestion): boolean =>
+  questionState(index, q) === "open";
 
 /**
  * The questions one link of `roadmap` routes (§4.3), or `null` when it routes
@@ -765,11 +786,24 @@ interface Routing {
   routes: { path: string; doc: PlanningDocument; routed: RoutedQuestion[] }[];
 }
 
+/**
+ * Whether a question talks to you as the referent decides it (§6.2): open —
+ * the unactioned case included — or ✅, answered and awaiting compaction. A
+ * blocked one does not, whatever its marker says.
+ */
+export function questionNeedsYou(
+  index: PlanningIndex,
+  question: PlanningQuestion,
+): boolean {
+  const state = questionState(index, question);
+  return state === "open" || state === "answered";
+}
+
 /** Whether a routed question needs a ruling, or an answer compacted. */
 function needsYouFilter(index: PlanningIndex): (ref: QuestionRef) => boolean {
   return (ref) => {
-    const state = questionFor(index, ref)?.state;
-    return state === "open" || state === "answered";
+    const question = questionFor(index, ref);
+    return question !== undefined && questionNeedsYou(index, question);
   };
 }
 
@@ -802,15 +836,22 @@ export function roadmapsOf(index: PlanningIndex): PlanningRoadmap[] {
  * has no questions to leave unrouted.
  */
 function unroutedIn(
+  index: PlanningIndex,
   docs: readonly PlanningDocument[],
   routed: readonly RoutedQuestion[],
 ): QuestionRef[] {
   const routedKeys = new Set(routed.map(keyOf));
   return docs.flatMap((doc) =>
     doc.questions
-      .filter((q) => isOpen(q) && !routedKeys.has(keyOf(refOf(q))))
+      .filter((q) => isOpen(index, q) && !routedKeys.has(keyOf(refOf(q))))
       .map(refOf),
   );
+}
+
+/** The resolved fields a `depends-on` entry and a `blocked-on` target both carry. */
+interface Referent {
+  target: string | null;
+  fragment: string | null;
 }
 
 /**
@@ -818,16 +859,61 @@ function unroutedIn(
  * waits while that question is open, and one naming a document waits while
  * that document has an open question (Plan Q6). A target outside the
  * repository, outside the index, or with the `done` role never waits
- * (Plan Q11).
+ * (Plan Q11). The marker decides the target's own state, as the scan read it.
  */
-function waits(index: PlanningIndex, entry: DependsOn): boolean {
+function waits(index: PlanningIndex, entry: Referent): boolean {
   if (entry.target === null) return false;
   const doc = findDocument(index, entry.target);
   if (doc === undefined || !isLive(index, doc)) return false;
   if (entry.fragment !== null && VANTAGE_OQ_ID.test(entry.fragment)) {
-    return doc.questions.some((q) => q.id === entry.fragment && isOpen(q));
+    return doc.questions.some(
+      (q) => q.id === entry.fragment && q.state === "open",
+    );
   }
-  return doc.questions.some(isOpen);
+  return doc.questions.some((q) => q.state === "open");
+}
+
+/**
+ * Whether one `blocked-on` entry still waits (§3.3): a target waits as a
+ * document's `depends-on` entry does, and an external blocker is a name the
+ * index can never resolve, so it never clears itself.
+ */
+function blockedOnWaits(index: PlanningIndex, entry: BlockedOn): boolean {
+  return entry.kind === "external" || waits(index, entry);
+}
+
+/** The `blocked-on` entries of `question` that still wait: its live referents (§3.3). */
+export function waitingBlockedOn(
+  index: PlanningIndex,
+  question: PlanningQuestion,
+): BlockedOn[] {
+  return question.blockedOn.filter((entry) => blockedOnWaits(index, entry));
+}
+
+/**
+ * The `depends-on` entries of `doc` that still wait (§6.2): what its Ready to
+ * build and Ready to graduate rows are marked as blocked on, once Blocked
+ * lists questions alone.
+ */
+export function waitingDependsOn(
+  index: PlanningIndex,
+  doc: PlanningDocument,
+): DependsOn[] {
+  return doc.dependsOn.filter((entry) => waits(index, entry));
+}
+
+/**
+ * A question's state as its referent decides it (§3.3, §6.2): blocked while a
+ * `blocked-on` entry still waits, answered while its marker says ✅, and
+ * otherwise open — so a 🔒 with nothing live to wait on is an unactioned open
+ * question, never a blocked one.
+ */
+export function questionState(
+  index: PlanningIndex,
+  question: PlanningQuestion,
+): QuestionState {
+  if (question.state === "answered") return "answered";
+  return waitingBlockedOn(index, question).length > 0 ? "blocked" : "open";
 }
 
 /**
@@ -862,26 +948,26 @@ export function derivePlanningSections(
       }
     }
     unrouted = unroutedIn(
+      index,
       live,
       routes.flatMap((route) => route.routed),
     );
   } else {
     needsYou = live.flatMap((doc) =>
-      doc.questions.filter(isOpen).map((q) => ({ ...refOf(q), heading: null })),
+      doc.questions
+        .filter((q) => isOpen(index, q))
+        .map((q) => ({ ...refOf(q), heading: null })),
     );
     unrouted = null;
   }
 
   const waiting: WaitingEntry[] = [];
   for (const doc of live) {
-    const waitingOn = doc.dependsOn.filter((entry) => waits(index, entry));
-    if (waitingOn.length > 0) {
-      waiting.push({ kind: "document", path: doc.path, waitingOn });
-    }
     for (const q of doc.questions) {
-      if (q.state === "blocked") {
-        waiting.push({ kind: "question", question: refOf(q) });
-      }
+      const blockedOn = waitingBlockedOn(index, q);
+      // An answered question is ruled: it waits on nothing, whatever it names.
+      if (blockedOn.length === 0 || q.state === "answered") continue;
+      waiting.push({ kind: "question", question: refOf(q), blockedOn });
     }
   }
 
@@ -891,7 +977,8 @@ export function derivePlanningSections(
     stagesDeclared
       ? live.filter((doc) => keep(roleOf(index, doc), doc)).map((d) => d.path)
       : null;
-  const hasOpen = (doc: PlanningDocument) => doc.questions.some(isOpen);
+  const hasOpen = (doc: PlanningDocument) =>
+    doc.questions.some((q) => isOpen(index, q));
 
   return {
     roadmaps,
@@ -1037,6 +1124,7 @@ export function referenceSummary(
     routes.length === 0 || doc === undefined || !isLive(index, doc)
       ? 0
       : unroutedIn(
+          index,
           [doc],
           routes.flatMap((route) => route.routed),
         ).length;

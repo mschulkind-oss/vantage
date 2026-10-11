@@ -67,15 +67,16 @@ async function messages(cwd: string, ...args: string[]): Promise<string[]> {
 }
 
 describe("the registry", () => {
-  it("registers the five rules with their defaults", () => {
+  it("registers the six rules with their defaults", () => {
     expect(PLANNING_RULES.map((id) => [id, ruleMeta(id)?.default])).toEqual([
       ["planning/stage-vocabulary", "error"],
       ["planning/depends-on-missing", "error"],
       ["planning/stage-disagrees", "warning"],
+      ["planning/blocked-on-disagrees", "error"],
       ["planning/unrouted", "off"],
       ["planning/question-length", "warning"],
     ]);
-    expect(RULES.filter((r) => r.id.startsWith("planning/"))).toHaveLength(5);
+    expect(RULES.filter((r) => r.id.startsWith("planning/"))).toHaveLength(6);
   });
 
   // This repository's own .vantage.toml turns `planning/unrouted` up to a
@@ -365,7 +366,10 @@ describe("planning/stage-disagrees", () => {
     [
       "answered and blocked questions only",
       "DECIDED",
-      questions("A", ANSWERED, BLOCKED),
+      questions("A", ANSWERED, {
+        marker: BLOCKED,
+        blockedOn: "the 2.0 release",
+      }),
     ],
     ["an open stage", "DESIGN", questions("A", OPEN)],
     ["the done role", "RETIRED", questions("A", OPEN)],
@@ -380,6 +384,106 @@ describe("planning/stage-disagrees", () => {
     });
 
     expect(await planning(root, "a.md")).toEqual([]);
+  });
+});
+
+describe("planning/blocked-on-disagrees", () => {
+  // Every marker here agrees with its referent: a 💬 with no `blocked-on` is
+  // open, and a 🔒 whose referent is an outside event is blocked.
+  const agrees = () =>
+    repo({
+      ".vantage.toml": STAGES_TOML,
+      "roadmap.md": "# Roadmap\n\n- [All of it](a.md)\n",
+      "a.md": doc(
+        "status: draft\nstage: DESIGN",
+        [
+          questions("A", OPEN),
+          "",
+          questions("B", { marker: BLOCKED, blockedOn: "the 2.0 release" }),
+        ].join("\n"),
+      ),
+    });
+
+  it("reports a 🔒 with nothing that still waits, at its item", async () => {
+    const tree = repo({
+      "roadmap.md": "# Roadmap\n\n- [All of it](a.md)\n",
+      "a.md": doc("status: draft\nstage: DESIGN", questions("A", BLOCKED)),
+    });
+
+    expect(await planning(tree, "a.md")).toEqual([
+      "a.md:8 planning/blocked-on-disagrees",
+    ]);
+    const [message] = await messages(tree, "a.md");
+    expect(message).toContain("is marked \u{1F512} (blocked)");
+    expect(message).toContain("names nothing that still waits");
+    // The fix is the author's: a referent, or the other marker.
+    expect(message).toContain("give it a `blocked-on` entry");
+    expect(message).toContain("move the marker to \u{1F4AC} (open)");
+    const { code, payload } = await check(tree, "a.md");
+    expect(code).toBe(EXIT_FINDINGS);
+    expect(payload.findings[0]?.severity).toBe("error");
+  });
+
+  it("reports a 🔒 whose referents have all closed", async () => {
+    const tree = repo({
+      "roadmap.md": "# Roadmap\n\n- [All of it](a.md)\n",
+      "a.md": doc(
+        "status: draft\nstage: DESIGN",
+        [
+          questions("A", ANSWERED),
+          "",
+          questions("B", {
+            marker: BLOCKED,
+            blockedOn: "a.md#OQ-A1",
+          }),
+        ].join("\n"),
+      ),
+    });
+
+    expect(await planning(tree, "a.md")).toEqual([
+      "a.md:15 planning/blocked-on-disagrees",
+    ]);
+  });
+
+  it("reports a 💬 whose referent still waits, naming what it waits on", async () => {
+    const tree = repo({
+      "roadmap.md": "# Roadmap\n\n- [All of it](a.md)\n",
+      "a.md": doc(
+        "status: draft\nstage: DESIGN",
+        [
+          questions("A", OPEN),
+          "",
+          questions("B", {
+            marker: OPEN,
+            blockedOn: "a.md#OQ-A1",
+          }),
+        ].join("\n"),
+      ),
+    });
+
+    expect(await planning(tree, "a.md")).toEqual([
+      "a.md:15 planning/blocked-on-disagrees",
+    ]);
+    const [message] = await messages(tree, "a.md");
+    expect(message).toContain("is marked \u{1F4AC} (open)");
+    expect(message).toContain("still waits on a.md#OQ-A1");
+    expect(message).toContain("move the marker to \u{1F512} (blocked)");
+  });
+
+  it("is silent when every marker agrees with its referent", async () => {
+    const tree = agrees();
+
+    expect(await planning(tree, "a.md")).toEqual([]);
+  });
+
+  it("is inert when it is off", async () => {
+    const tree = repo({
+      ".vantage.toml": `${STAGES_TOML}\n[check.rules]\n"planning/blocked-on-disagrees" = "off"\n`,
+      "roadmap.md": "# Roadmap\n\n- [All of it](a.md)\n",
+      "a.md": doc("status: draft\nstage: DESIGN", questions("A", BLOCKED)),
+    });
+
+    expect(await planning(tree, "a.md")).toEqual([]);
   });
 });
 
@@ -432,7 +536,14 @@ describe("planning/unrouted", () => {
 
   it("is quiet on blocked and answered questions", async () => {
     const root = tree("", {
-      "docs/a.md": doc("status: draft", questions("A", BLOCKED, ANSWERED)),
+      "docs/a.md": doc(
+        "status: draft",
+        questions(
+          "A",
+          { marker: BLOCKED, blockedOn: "the 2.0 release" },
+          ANSWERED,
+        ),
+      ),
     });
 
     expect(await planning(root, "docs/a.md")).toEqual([]);
@@ -588,13 +699,19 @@ describe("planning/question-length", () => {
    * a title of three ("OQ-L1: Which wins?") and the rest below it, then its
    * directive, a leaning of `leaning` words and the empty Answer.
    */
-  const question = (id: string, words: number, leaning = 3, marker = OPEN) =>
+  const question = (
+    id: string,
+    words: number,
+    leaning = 3,
+    marker = OPEN,
+    blockedOn?: string,
+  ) =>
     [
       `1. ${marker} **${id}: Which wins?**`,
       "",
       `   ${prose(words - 3)}`,
       "",
-      `   <!-- vantage: question id=${id} leaning="The last." -->`,
+      `   <!-- vantage: question id=${id} leaning="The last."${blockedOn === undefined ? "" : ` blocked-on="${blockedOn}"`} -->`,
       "",
       `   _Leaning:_ ${prose(leaning)}`,
       "",
@@ -674,7 +791,7 @@ describe("planning/question-length", () => {
 
   it("measures every state a card is shown for", async () => {
     const body = [
-      question("OQ-L1", 130, 3, BLOCKED),
+      question("OQ-L1", 130, 3, BLOCKED, "the 2.0 release"),
       question("OQ-L2", 130, 3, ANSWERED).replace("1. ", "2. "),
     ].join("\n");
 
@@ -1032,6 +1149,37 @@ describe("the narrow index agrees with the full one", () => {
   });
 });
 
+describe("a referent outside the run", () => {
+  const tree = (stage: string, blockedOn: string) => ({
+    ".vantage.toml": `${STAGES_TOML}\n${UNROUTED_ON}`,
+    "roadmap.md": "# Roadmap\n\n- [A](docs/a.md)\n",
+    "docs/a.md": doc(
+      `status: draft\nstage: ${stage}`,
+      questions("A", { marker: BLOCKED, blockedOn }),
+    ),
+    "docs/b.md": doc("status: draft\nstage: DESIGN", questions("B", OPEN)),
+  });
+
+  // A question's state is its marker reconciled with its `blocked-on`
+  // referent (§3.3), and that referent may be a document the run is not
+  // checking. It is read too, as a roadmap is read for `unrouted`, so a
+  // one-file run answers as the whole index does: a live referent leaves the
+  // 🔒 blocked, the document decided, and nothing to report.
+  it("reads a blocked-on target the run is not checking", async () => {
+    const root = repo(tree("DECIDED", "b.md#OQ-B1"));
+
+    expect(await planning(root, "docs/a.md")).toEqual([]);
+  });
+
+  it("still reports a referent that names no question that waits", async () => {
+    const root = repo(tree("DESIGN", "b.md#OQ-B9"));
+
+    expect(await planning(root, "docs/a.md")).toEqual([
+      "docs/a.md:8 planning/blocked-on-disagrees",
+    ]);
+  });
+});
+
 describe("the narrow index agrees with the full one, over several roadmaps", () => {
   // Every roadmap.md is found by name, one of them retired, one excluded,
   // and each routes a different part of docs/a.md.
@@ -1045,7 +1193,13 @@ describe("the narrow index agrees with the full one, over several roadmaps", () 
       "status: draft\nstage: DESIGN",
       questions("A", OPEN, OPEN, OPEN),
     ),
-    "docs/b.md": doc("status: draft", questions("B", OPEN, BLOCKED)),
+    "docs/b.md": doc(
+      "status: draft",
+      questions("B", OPEN, {
+        marker: BLOCKED,
+        blockedOn: "the 2.0 release",
+      }),
+    ),
   };
 
   it("for every document, checked alone", async () => {

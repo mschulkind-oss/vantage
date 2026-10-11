@@ -13,8 +13,8 @@ import {
   badgeFor,
   badgeText,
   buildPlanningIndex,
+  blockedOnLabel,
   codeSpan,
-  dependsOnLabel,
   derivePlanningSections,
   filterKeepsQuestion,
   findDocument,
@@ -131,7 +131,7 @@ export interface IndexOptions {
  * the tool's version `version`; this one says `toolVersion` for that, so the
  * word here can mean the format, and a later change to the shape can say so.
  */
-export const INDEX_FORMAT_VERSION = 2;
+export const INDEX_FORMAT_VERSION = 3;
 
 /** A candidate project, scanned: the index and the text each document had. */
 interface ScannedProject {
@@ -525,7 +525,6 @@ function requestOut(
     const { requestText, canonical } = applied.filtered.summary;
     options.filter = {
       text: requestText ?? canonical,
-      unfiltered: applied.unfiltered,
       // `compact` lists from the whole index, so it needs the filter's own
       // question test.
       ...(filter === null
@@ -867,10 +866,9 @@ function renderText(
     section(
       "waiting",
       sections,
-      sections.waiting.map((entry) =>
-        entry.kind === "question"
-          ? questionLine(index, entry.question)
-          : `${entry.path}  blocked on ${entry.waitingOn.map(dependsOnLabel).join(", ")}`,
+      sections.waiting.map(
+        (entry) =>
+          `${questionLine(index, entry.question)}  blocked on ${entry.blockedOn.map(blockedOnLabel).join(", ")}`,
       ),
     ),
   );

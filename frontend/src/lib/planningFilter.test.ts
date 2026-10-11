@@ -46,6 +46,7 @@ import {
   filterForms,
   filterFormsIndex,
   indexOf,
+  questionDirective,
   sectionEntryKeys,
 } from "../test/planning";
 
@@ -1308,6 +1309,38 @@ describe("applying a filter to the sections (§6.11, §6.15)", () => {
     expect(sections.ready).toEqual([]);
   });
 
+  it("reads is:open by the referent, never the marker (§3.3)", () => {
+    const OPEN = "\u{1F4AC}";
+    const BLOCKED = "\u{1F512}";
+    const question = (id: string, marker: string, blockedOn?: string): string =>
+      [
+        `1. ${marker} **${id}: Question ${id}?**`,
+        "",
+        `   ${questionDirective(marker, id, null, blockedOn)}`,
+        "",
+        "   _Leaning:_ yes.",
+        "",
+      ].join("\n");
+    // OQ-A2 is a bare 🔒, which nothing live waits on: unactioned, so open.
+    // OQ-A3's 💬 names a live question: blocked, whatever its marker says.
+    const index = indexOf({
+      "docs/a.md": `---\nstage: DESIGN\n---\n\n# A\n\n${question("OQ-A1", OPEN)}\n${question("OQ-A2", BLOCKED)}\n${question("OQ-A3", OPEN, "b.md#OQ-B1")}\n`,
+      "docs/b.md": `---\nstage: DESIGN\n---\n\n# B\n\n${question("OQ-B1", OPEN)}\n`,
+    });
+    const sections = derivePlanningSections(index);
+    const kept = (text: string): string[] => {
+      const { sections: filtered } = apply(text, index, sections);
+      return [
+        ...filtered.needsYou,
+        ...filtered.waiting.map((entry) => entry.question),
+      ]
+        .map((ref) => ref.id ?? `line ${ref.line}`)
+        .sort();
+    };
+    expect(kept("is:open")).toEqual(["OQ-A1", "OQ-A2", "OQ-B1"]);
+    expect(kept("-is:open")).toEqual(["OQ-A3"]);
+  });
+
   it("leaves a section that does not exist as it is", () => {
     const index = indexOf({
       "docs/a.md": "---\nstatus: draft\n---\n\n# A\n",
@@ -1471,16 +1504,23 @@ describe("applying a filter to the sections (§6.11, §6.15)", () => {
     expect(sections.nothingNeedsYou).toBe(false);
   });
 
-  it("keeps a Blocked row by its path with every blocker, and drops it under is:open", () => {
-    const row = (sections: PlanningSections) =>
-      sections.waiting.find(
-        (entry) => entry.kind === "document" && entry.path === "notes/b.md",
-      );
-    expect(row(apply("path:notes/b.md").sections)).toEqual(row(SECTIONS));
-    expect(row(SECTIONS)).toMatchObject({
-      waitingOn: [{ target: "docs/design/sub/c.md", fragment: "OQ-C1" }],
-    });
-    expect(row(apply("path:notes/b.md is:open").sections)).toBeUndefined();
+  it("keeps a Blocked question by its path with its blocker, and drops it under is:open", () => {
+    const waiting = (sections: PlanningSections) =>
+      sections.waiting.map((entry) => entry.question.id);
+    const blocked = (sections: PlanningSections) =>
+      sections.waiting.find((entry) => entry.question.id === "OQ-B1");
+    expect(waiting(SECTIONS)).toEqual(["OQ-A2", "OQ-B1"]);
+    expect(blocked(SECTIONS)?.blockedOn).toEqual([
+      {
+        kind: "target",
+        raw: "../docs/design/sub/c.md#OQ-C1",
+        target: "docs/design/sub/c.md",
+        fragment: "OQ-C1",
+      },
+    ]);
+    expect(waiting(apply("path:notes/b.md").sections)).toEqual(["OQ-B1"]);
+    // A 🔒 question is not open, so an `is:` term drops it.
+    expect(waiting(apply("path:notes/b.md is:open").sections)).toEqual([]);
   });
 
   it("names each target a kept document waits on that it leaves out, fragment included", () => {
@@ -1525,7 +1565,6 @@ describe("applying a filter to the sections (§6.11, §6.15)", () => {
   it("keeps a row by its path, stage or next, never by an is: term, and whatever -is:open says", () => {
     const keys = (text: string) => sectionEntryKeys(apply(text).sections);
     expect(keys("decided")).toEqual([
-      "waiting notes/b.md",
       "ready notes/b.md",
       "disagrees notes/f.md",
     ]);
@@ -1560,7 +1599,7 @@ describe("applying a filter to the sections (§6.11, §6.15)", () => {
 
   it("counts entries, kept documents and open questions", () => {
     const all = sectionEntryKeys(SECTIONS).length;
-    expect(all).toBe(20);
+    expect(all).toBe(18);
     expect(apply("path:/docs/design/a.md is:open").summary).toMatchObject({
       canonical: "path:/docs/design/a.md is:open",
       entries: { shown: 3, of: all },
@@ -1648,7 +1687,7 @@ describe("the agent request under a filter (§6.15, §6.2)", () => {
     const plain = planningAgentRequest(INDEX, SECTIONS, { repository })!;
     const filtered = planningAgentRequest(INDEX, sections, {
       repository,
-      filter: { text: summary.requestText!, unfiltered: SECTIONS },
+      filter: { text: summary.requestText! },
     })!;
     expect(filtered).toBe(
       plain.replace(
@@ -1665,7 +1704,6 @@ describe("the agent request under a filter (§6.15, §6.2)", () => {
       repository,
       filter: {
         text: summary.requestText!,
-        unfiltered: SECTIONS,
         keeps: (q) => filterKeepsQuestion(understood("path:/notes"), q),
       },
     })!;
@@ -1682,7 +1720,7 @@ describe("the agent request under a filter (§6.15, §6.2)", () => {
         repository,
         // The sections alone: the document's ✅ question is a `compact` item.
         ids: PLANNING_AGENT_SECTION_IDS,
-        filter: { text: nothing.summary.requestText!, unfiltered: SECTIONS },
+        filter: { text: nothing.summary.requestText! },
       }),
     ).toBeNull();
   });
@@ -1693,7 +1731,7 @@ describe("the agent request under a filter (§6.15, §6.2)", () => {
     expect(
       planningAgentRequest(INDEX, sections, {
         repository,
-        filter: { text, unfiltered: SECTIONS },
+        filter: { text },
       }),
     ).toContain(
       'Filter: ``path:"a`b.md" path:/notes``. Only the entries it keeps are listed.',
@@ -1701,29 +1739,31 @@ describe("the agent request under a filter (§6.15, §6.2)", () => {
   });
 
   // `decided` keeps notes/b.md's Ready row by its stage, and drops its 🔒
-  // OQ-B1, whose fields do not hold the word, and the Blocked row's own
-  // waiting entry with it: the case §6.15 reads the unfiltered sections for.
-  it("reads what a row is blocked on from the unfiltered sections", () => {
+  // OQ-B1, whose fields do not hold the word. What the row is blocked on is
+  // read from the index itself (§6.15), so no filter term can lose it.
+  it("reads what a row is blocked on from the index, not from the filtered sections", () => {
     const { sections, summary } = apply("decided");
     expect(sectionEntryKeys(sections)).toContain("ready notes/b.md");
     expect(sectionEntryKeys(sections)).not.toContain(
       "waiting notes/b.md#OQ-B1",
     );
     const blocked =
-      "- notes/b.md  (stage DECIDED; blocked on docs/design/sub/c.md#OQ-C1, \u{1F512} OQ-B1)";
+      "- notes/b.md  (stage DECIDED; blocked on docs/design/sub/c.md#OQ-C1)";
     const filtered = planningAgentRequest(INDEX, sections, {
       repository,
       ids: ["ready"],
-      filter: { text: summary.requestText!, unfiltered: SECTIONS },
+      filter: { text: summary.requestText! },
     })!;
     expect(filtered).toContain(blocked);
     expect(filtered).toContain("Skip any entry marked blocked");
-    // Read from the filtered sections, the annotation would lose OQ-B1.
-    const wrong = planningAgentRequest(INDEX, sections, {
+    // Same annotation without the filter: the document's own `depends-on` is
+    // what the row is marked with, and the index holds it whatever a filter
+    // hides.
+    const plain = planningAgentRequest(INDEX, sections, {
       repository,
       ids: ["ready"],
     })!;
-    expect(wrong).not.toContain(blocked);
+    expect(plain).toContain(blocked);
   });
 
   it("has no Filter: line when every term was an unmatched -path: term", () => {
@@ -1732,7 +1772,7 @@ describe("the agent request under a filter (§6.15, §6.2)", () => {
     expect(
       planningAgentRequest(INDEX, sections, {
         repository,
-        filter: { text: summary.requestText!, unfiltered: SECTIONS },
+        filter: { text: summary.requestText! },
       }),
     ).toBe(planningAgentRequest(INDEX, SECTIONS, { repository }));
   });
@@ -2171,16 +2211,16 @@ describe("Nothing matches, when a filter keeps no entry (§6.18)", () => {
   it("leaves out of the notice what its reason line says, and on the page the line Clear the filter is a button for", () => {
     const { summary } = apply("oq-c1");
     expect(notice(summary, "checker")).toEqual([
-      "Filtered by `oq-c1`: 0 of 20 entries, none of them open questions.",
-      "Run without --filter to see the other 20.",
+      "Filtered by `oq-c1`: 0 of 18 entries, none of them open questions.",
+      "Run without --filter to see the other 18.",
     ]);
     expect(notice(summary, "page")).toEqual([
-      "Filtered by `oq-c1`: 0 of 20 entries, none of them open questions.",
+      "Filtered by `oq-c1`: 0 of 18 entries, none of them open questions.",
     ]);
     // A path: term that matches no path is the reason, and said once, there.
     const unmatched = apply("path:docs/desing").summary;
     expect(notice(unmatched, "page")).toEqual([
-      "Filtered by `path:docs/desing`: 0 of 20 entries, in 0 of 19 paths, none of them open questions.",
+      "Filtered by `path:docs/desing`: 0 of 18 entries, in 0 of 19 paths, none of them open questions.",
     ]);
     expect(page(unmatched)).toEqual([
       "Nothing matches `path:docs/desing`.",
@@ -2190,10 +2230,10 @@ describe("Nothing matches, when a filter keeps no entry (§6.18)", () => {
     const kept = apply("path:sub path:docs/desing").summary;
     expect(kept.nothingMatches).toBeNull();
     expect(notice(kept, "page")).toEqual([
-      "Filtered by `path:sub path:docs/desing`: 1 of 20 entries, in 1 of 19 paths, 1 of them an open question.",
+      "Filtered by `path:sub path:docs/desing`: 1 of 18 entries, in 1 of 19 paths, 1 of them an open question.",
       "`path:docs/desing` matches no path the index lists.",
       "1 more question it keeps is on another roadmap: `x/roadmap.md` (1). Choose that roadmap to see it; the filter stays.",
-      "Clear the filter to see the other 19.",
+      "Clear the filter to see the other 17.",
     ]);
     // A filter over a page with no entry still says it hides none.
     const empty = indexOf({ "a.md": "---\nstatus: draft\n---\n\n# A\n" });
@@ -2258,9 +2298,9 @@ describe("Nothing matches, when a filter keeps no entry (§6.18)", () => {
       { code: "is:open" },
       " it would keep 1 entry, and it is not an open question.",
     ]);
-    // notes/b.md's two rows and its blocked question, and notes/e.md's row.
+    // notes/b.md's Ready row and its blocked question, and notes/e.md's row.
     expect(reason("path:notes/b.md path:notes/e.md is:open")).toBe(
-      "Without `is:open` it would keep 4 entries, and none of them is an open question.",
+      "Without `is:open` it would keep 3 entries, and none of them is an open question.",
     );
     expect(reason("oq-f1 -is:open")).toBe(
       "Without `-is:open` it would keep 1 entry, and it is an open question.",
@@ -2299,24 +2339,24 @@ describe("Nothing matches, when a filter keeps no entry (§6.18)", () => {
       terms: ["-md"],
       withState: false,
       // OQ-C1 too, which only x/roadmap.md routes.
-      entries: 20,
+      entries: 18,
       onOtherRoadmaps: 1,
       otherRoadmaps: 1,
     });
     expect(page(summary)).toEqual([
       "Nothing matches `-md`.",
-      "Without `-md` it would keep 20 entries, and every one of them matches `md`.",
+      "Without `-md` it would keep 18 entries, and every one of them matches `md`.",
     ]);
     expect(PLANNING_NOTICES.nothingMatches(summary, "page")?.[1]).toEqual([
       "Without ",
       { code: "-md" },
-      " it would keep 20 entries",
+      " it would keep 18 entries",
       ", and every one of them matches ",
       { code: "md" },
       ".",
     ]);
     expect(reason("-m")).toBe(
-      "Without `-m` it would keep 20 entries, and every one of them matches `m`.",
+      "Without `-m` it would keep 18 entries, and every one of them matches `m`.",
     );
     // notes/e.md's row, whose next step says to graduate it.
     expect(reason("path:notes/e.md -graduate")).toBe(
@@ -2368,33 +2408,33 @@ describe("the filter notice (§6.18)", () => {
     expect(first).toEqual([
       "Filtered by ",
       { code: "path:/docs/design/a.md is:open" },
-      ": 3 of 20 entries, in 1 of 19 paths, 3 of them open questions.",
+      ": 3 of 18 entries, in 1 of 19 paths, 3 of them open questions.",
     ]);
     expect(checker(summary)).toEqual([
-      "Filtered by `path:/docs/design/a.md is:open`: 3 of 20 entries, in 1 of 19 paths, 3 of them open questions.",
+      "Filtered by `path:/docs/design/a.md is:open`: 3 of 18 entries, in 1 of 19 paths, 3 of them open questions.",
       "1 of its questions is blocked and will need you later.",
-      "Run without --filter to see the other 17.",
+      "Run without --filter to see the other 15.",
     ]);
-    expect(page(summary).at(-1)).toBe("Clear the filter to see the other 17.");
+    expect(page(summary).at(-1)).toBe("Clear the filter to see the other 15.");
   });
 
   it("names each unmatched term on a line of its own", () => {
     expect(
       checker(apply("path:docs/desing path:notes/e.md path:x/y").summary),
     ).toEqual([
-      "Filtered by `path:docs/desing path:notes/e.md path:x/y`: 1 of 20 entries, in 1 of 19 paths, none of them open questions.",
+      "Filtered by `path:docs/desing path:notes/e.md path:x/y`: 1 of 18 entries, in 1 of 19 paths, none of them open questions.",
       "`path:docs/desing` matches no path the index lists.",
       "`path:x/y` matches no path the index lists.",
-      "Run without --filter to see the other 19.",
+      "Run without --filter to see the other 17.",
     ]);
   });
 
   it("names the other roadmaps holding kept questions, in each reader's words", () => {
     const { summary } = apply("path:docs/design/sub/c.md is:open");
     expect(checker(summary)).toEqual([
-      "Filtered by `path:docs/design/sub/c.md is:open`: 1 of 20 entries, in 1 of 19 paths, 1 of them an open question.",
+      "Filtered by `path:docs/design/sub/c.md is:open`: 1 of 18 entries, in 1 of 19 paths, 1 of them an open question.",
       "1 more question it keeps is on another roadmap: `x/roadmap.md` (1). Rerun with --roadmap naming it.",
-      "Run without --filter to see the other 19.",
+      "Run without --filter to see the other 17.",
     ]);
     expect(page(summary)[1]).toBe(
       "1 more question it keeps is on another roadmap: `x/roadmap.md` (1). Choose that roadmap to see it; the filter stays.",
@@ -2427,10 +2467,10 @@ describe("the filter notice (§6.18)", () => {
     const { summary, sections } = apply("path:notes/b.md is:open");
     expect(sections.nothingNeedsYou).toBe(true);
     expect(checker(summary)).toEqual([
-      "Filtered by `path:notes/b.md is:open`: 0 of 20 entries, in 1 of 19 paths, none of them open questions.",
+      "Filtered by `path:notes/b.md is:open`: 0 of 18 entries, in 1 of 19 paths, none of them open questions.",
       "1 of its questions is blocked and will need you later.",
       "notes/b.md waits on docs/design/sub/c.md#OQ-C1, which this filter leaves out.",
-      "Run without --filter to see the other 20.",
+      "Run without --filter to see the other 18.",
     ]);
     expect(PLANNING_NOTICES.nothingFilteredNeedsYou).toBe(
       "Nothing this filter keeps needs you.",
@@ -2512,8 +2552,8 @@ describe("the filter notice (§6.18)", () => {
     // no path term leaving a path out, the notice counts no paths, which
     // would read as every one kept.
     expect(checker(apply("nothing-holds-this").summary)).toEqual([
-      "Filtered by `nothing-holds-this`: 0 of 20 entries, none of them open questions.",
-      "Run without --filter to see the other 20.",
+      "Filtered by `nothing-holds-this`: 0 of 18 entries, none of them open questions.",
+      "Run without --filter to see the other 18.",
     ]);
     expect(apply("nothing-holds-this").summary.documents).toEqual({
       kept: 19,

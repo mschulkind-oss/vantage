@@ -152,7 +152,7 @@ button, no chip, no Undo.
 
 1. 🔒 **OQ-9: Is a blocked question declared without a button?**
 
-   <!-- vantage: question id=OQ-9 -->
+   <!-- vantage: question id=OQ-9 blocked-on="the specimens above" -->
 
    It waits on the specimens above, so there is no leaning to take yet.
 

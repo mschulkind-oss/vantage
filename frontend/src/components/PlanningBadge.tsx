@@ -31,6 +31,20 @@ import {
 } from "vantage-md/planning";
 
 /**
+ * The *Not on a roadmap* mark (§6.2): a question no roadmap routes, whose
+ * card *Needs you* still lists. The one badge the page derives of its own —
+ * the index knows the question, not where the page puts it — drawn by
+ * `PlanningBadgeChip` so it keeps the badges' markup, tone and words beside
+ * the document's own.
+ */
+export type PlanningMark = { kind: "not-on-a-roadmap" };
+
+/** What `PlanningBadgeChip` draws: a derived badge, or the page's own mark. */
+export type PlanningChipBadge = PlanningBadge | PlanningMark;
+
+const NOT_ON_A_ROADMAP_LABEL = "Not on a roadmap";
+
+/**
  * Marks every badge, whichever way it was drawn. `REVIEW_UI_SELECTOR` names it,
  * so no hash, outline entry or snapshot reads a badge's text, and the review
  * click handler bails on it: clicking a badge does nothing (§5.3).
@@ -41,7 +55,7 @@ const WARNING = "vantage-planning-badge__part--warning";
 
 interface BadgeMarkup {
   /** The value of `PLANNING_BADGE_ATTR`: the badge's kind. */
-  kind: PlanningBadge["kind"];
+  kind: PlanningChipBadge["kind"];
   label: string;
   parts: { text: string; className: string }[];
 }
@@ -73,7 +87,14 @@ function shownStage(stage: string): string {
     : `${chars.slice(0, STAGE_SHOWN - 1).join("")}…`;
 }
 
-function badgeMarkup(badge: PlanningBadge): BadgeMarkup {
+function badgeMarkup(badge: PlanningChipBadge): BadgeMarkup {
+  if (badge.kind === "not-on-a-roadmap") {
+    return {
+      kind: badge.kind,
+      label: NOT_ON_A_ROADMAP_LABEL,
+      parts: [part(NOT_ON_A_ROADMAP_LABEL, WARNING)],
+    };
+  }
   const label = badgeSpeech(badge);
   if (badge.kind !== "document") {
     const tone =
@@ -112,7 +133,7 @@ function badgeMarkup(badge: PlanningBadge): BadgeMarkup {
 }
 
 /** The badge as a React element. */
-export function PlanningBadgeChip({ badge }: { badge: PlanningBadge }) {
+export function PlanningBadgeChip({ badge }: { badge: PlanningChipBadge }) {
   const markup = badgeMarkup(badge);
   return (
     <span

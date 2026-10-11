@@ -211,11 +211,19 @@ says, which is why `vantage-check` reports an `oq` on a 🔒 or ✅ question as 
 error (`vantage/question-name`) and any other `oq` as a warning that quotes the
 `question` to write (`vantage/oq-deprecated`).
 
-The two take the same keys with one grammar: `id`, the question's anchor, and
-`leaning`, the comment **Take this leaning** files. Both are optional, and
-nothing else is accepted, so a key added later is one older viewers drop pair by
-pair. A `leaning` on a 🔒 or ✅ question is allowed and simply not offered. A run
-holding both names is one question, read exactly as a viewer that predates
+The `question` name takes `id`, the question's anchor, `leaning`, the comment
+**Take this leaning** files, and `blocked-on`, a comma-separated list naming what
+the question waits on. `oq` takes `id` and `leaning` and nothing else. Every key
+is optional, and nothing beyond these is accepted, so a key added later is one
+older viewers drop pair by pair. A `blocked-on` entry that is a repo-relative
+path, optionally with `#OQ-…`, resolves like a `depends-on` entry and waits while
+its target still does; any other entry is an external blocker name the index
+shows and can never clear ([`planning-index.md`
+§3.3](planning-index.md#33-questions)). A `leaning` on a 🔒 or ✅ question is
+allowed and simply not offered. `blocked-on` is only ever on `question`: a run
+holding an `oq` reads the `oq` alone, which is the one reading every viewer
+agrees on. A run holding both names is one question, read exactly as a viewer
+that predates
 `question` reads it: that viewer drops every `question` in the run and reads the
 `oq` alone, so the run counts as an `oq` and only the `oq`'s keys apply,
 wherever it stands in the run; a key only a `question` beside it sets applies in

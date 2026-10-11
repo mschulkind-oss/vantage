@@ -274,6 +274,12 @@ export const RULES: readonly RuleMeta[] = [
     default: "warning",
   },
   {
+    id: "planning/blocked-on-disagrees",
+    summary:
+      "A question marker that disagrees with its `blocked-on` referent: a 🔒 with nothing that still waits, or a 💬 whose referent does",
+    default: "error",
+  },
+  {
     id: "planning/unrouted",
     summary:
       "An open question no roadmap links to, directly or through its document (off by default)",

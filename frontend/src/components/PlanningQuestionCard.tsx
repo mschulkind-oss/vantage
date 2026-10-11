@@ -93,7 +93,7 @@ import type {
 } from "vantage-md/planning";
 import { ExternalLink, MessageSquarePlus } from "lucide-react";
 import { MarkdownViewer } from "./MarkdownViewer";
-import { PlanningBadgeChip } from "./PlanningBadge";
+import { PlanningBadgeChip, type PlanningMark } from "./PlanningBadge";
 import { ReviewCommentPopover } from "./ReviewCommentPopover";
 import type { CommentBox, ReviewTarget } from "../lib/commentAutosave";
 import { newCommentBox, type OnSaved } from "../lib/reviewBoxes";
@@ -148,6 +148,11 @@ import { ItemMarks, NewReplyBar } from "./PlanningNeedsYou";
 /** No marks: one object, so a card's props stay equal render to render. */
 const NO_MARKS: readonly Mark[] = Object.freeze([]);
 
+/** The *Not on a roadmap* mark (§6.2), one object for the same reason. */
+const NOT_ON_A_ROADMAP: PlanningMark = Object.freeze({
+  kind: "not-on-a-roadmap",
+});
+
 /** Marks the elements between the card and the question's unit. */
 export const CARD_PATH_ATTR = "data-planning-card-path";
 /** Marks the question's unit, which is shown whole. */
@@ -201,6 +206,11 @@ interface PlanningQuestionCardProps {
   onShowQuestion?: (question: PlanningQuestion) => Promise<CardBlock | null>;
   /** The document's own badge, or `null` when it has nothing to show. */
   badge: PlanningBadge | null;
+  /**
+   * No roadmap routes this question: the card carries the *Not on a roadmap*
+   * mark (§6.2), so the reader can see it has no place in the order.
+   */
+  notOnRoadmap?: boolean;
   /** The document's review comments, or `undefined` until they load. */
   comments: readonly ReviewComment[] | undefined;
   /**
@@ -620,6 +630,7 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
   preview = false,
   onShowQuestion,
   badge,
+  notOnRoadmap = false,
   comments,
   commentsLate = false,
   href,
@@ -1106,6 +1117,7 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
           {question.path}
         </AppLink>
         {badge !== null && <PlanningBadgeChip badge={badge} />}
+        {notOnRoadmap && <PlanningBadgeChip badge={NOT_ON_A_ROADMAP} />}
         <ItemMarks
           marks={marks}
           newReply={newReply}

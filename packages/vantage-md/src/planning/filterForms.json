@@ -15,14 +15,14 @@
       "my notes.md": "---\nstatus: draft\n---\n\n# A root document whose name needs quoting\n\n",
       "y/a.md/inner.md": "---\nstatus: draft\n---\n\n# In a folder named like a file elsewhere\n\n",
       "y/my notes.md/inner.md": "---\nstatus: draft\n---\n\n# In a folder named like a file elsewhere, with a space\n\n",
-      "docs/design/a.md": "---\nstatus: draft\nstage: DESIGN\n---\n\n# The design\n\n1. \ud83d\udcac **OQ-A1: The first?**\n\n   <!-- vantage: question id=OQ-A1 leaning=\"Yes.\" -->\n\n   _Leaning:_ yes.\n\n2. \ud83d\udd12 \u23f8 **OQ-A2: Paused on an outside event?**\n\n   <!-- vantage: question id=OQ-A2 -->\n\n   Settled or waiting.\n\n3. \ud83d\udcac **OQ-A3: The outer one?**\n\n   <!-- vantage: question id=OQ-A3 leaning=\"Yes.\" -->\n\n   _Leaning:_ yes.\n\n   1. \u2705 **OQ-A4: The inner one, ruled?**\n\n      <!-- vantage: question id=OQ-A4 -->\n\n      Settled or waiting.\n\n4. \ud83d\udcac \ud83e\udd37 **OQ-A5: A matter of preference?**\n\n   <!-- vantage: question id=OQ-A5 -->\n\n   Either will do.\n",
+      "docs/design/a.md": "---\nstatus: draft\nstage: DESIGN\n---\n\n# The design\n\n1. \ud83d\udcac **OQ-A1: The first?**\n\n   <!-- vantage: question id=OQ-A1 leaning=\"Yes.\" -->\n\n   _Leaning:_ yes.\n\n2. \ud83d\udd12 \u23f8 **OQ-A2: Paused on an outside event?**\n\n   <!-- vantage: question id=OQ-A2 blocked-on=\"the 2.0 release\" -->\n\n   Settled or waiting.\n\n3. \ud83d\udcac **OQ-A3: The outer one?**\n\n   <!-- vantage: question id=OQ-A3 leaning=\"Yes.\" -->\n\n   _Leaning:_ yes.\n\n   1. \u2705 **OQ-A4: The inner one, ruled?**\n\n      <!-- vantage: question id=OQ-A4 -->\n\n      Settled or waiting.\n\n4. \ud83d\udcac \ud83e\udd37 **OQ-A5: A matter of preference?**\n\n   <!-- vantage: question id=OQ-A5 -->\n\n   Either will do.\n",
       "docs/design/a-plan.md": "---\nstatus: draft\nstage: SKETCH\ndepends-on:\n  - a.md\n---\n\n# The design's plan\n\n",
       "docs/design/sub/c.md": "---\nstatus: draft\nstage: DESIGN\n---\n\n# A design in a subfolder\n\n1. \ud83d\udcac **OQ-C1: Routed by another roadmap?**\n\n   <!-- vantage: question id=OQ-C1 leaning=\"Yes.\" -->\n\n   _Leaning:_ yes.\n\n2. \ud83d\udcac **OQ-C2: On no roadmap?**\n\n   <!-- vantage: question id=OQ-C2 leaning=\"Quietly.\" -->\n\n   _Leaning:_ quietly.\n",
       "docs/designx/d.md": "---\nstatus: draft\nstage: DESIGN\n---\n\n# Beside docs/design, not in it\n\n1. \ud83d\udcac **OQ-D1: Outside docs/design?**\n\n   <!-- vantage: question id=OQ-D1 leaning=\"Yes.\" -->\n\n   _Leaning:_ yes.\n",
       "x/docs/design/a.md": "---\nstatus: draft\nstage: DESIGN\n---\n\n# The same path, one folder down\n\n1. \ud83d\udcac **Not at the root?**\n\n   <!-- vantage: question id=OQ-X1 leaning=\"Yes.\" -->\n\n   _Leaning:_ yes.\n",
       "docs/my notes.md": "---\nstatus: draft\nstage: DESIGN\n---\n\n# A path with a space\n\n1. \ud83d\udcac **OQ-N1: With a space?**\n\n   <!-- vantage: question id=OQ-N1 leaning=\"Yes.\" -->\n\n   _Leaning:_ yes.\n\n2. **OQ-N2: With no marker?**\n\n   <!-- vantage: question id=OQ-N2 leaning=\"Yes.\" -->\n\n   _Leaning:_ yes.\n",
       "docs/caf\u00e9.md": "---\nstatus: draft\nstage: DESIGN\n---\n\n# A path in NFC\n\n1. \ud83d\udcac **OQ-K1: Non-ASCII?**\n\n   <!-- vantage: question id=OQ-K1 leaning=\"Yes.\" -->\n\n   _Leaning:_ yes.\n",
-      "notes/b.md": "---\nstatus: accepted\nstage: DECIDED\ndepends-on:\n  - ../docs/design/sub/c.md#OQ-C1\n---\n\n# Decided, and blocked\n\n1. \ud83d\udd12 **OQ-B1: Waits on something?**\n\n   <!-- vantage: question id=OQ-B1 -->\n\n   Settled or waiting.\n",
+      "notes/b.md": "---\nstatus: accepted\nstage: DECIDED\ndepends-on:\n  - ../docs/design/sub/c.md#OQ-C1\n---\n\n# Decided, and blocked\n\n1. \ud83d\udd12 **OQ-B1: Waits on something?**\n\n   <!-- vantage: question id=OQ-B1 blocked-on=\"../docs/design/sub/c.md#OQ-C1\" -->\n\n   Settled or waiting.\n",
       "notes/e.md": "---\nstatus: accepted\nstage: BUILT\nnext: Graduate into the reference\n---\n\n# Built\n\n",
       "notes/f.md": "---\nstatus: accepted\nstage: DECIDED\n---\n\n# Decided, with a question open\n\n1. \ud83d\udcac **OQ-F1: Still open?**\n\n   <!-- vantage: question id=OQ-F1 leaning=\"Yes.\" -->\n\n   _Leaning:_ yes.\n",
       "notes/broken.md": "---\nstatus: [never closed\n---\n\n# Unreadable\n",
@@ -254,7 +254,6 @@
         "unrouted docs/design/sub/c.md#OQ-C2",
         "unrouted docs/designx/d.md#OQ-D1",
         "unrouted x/docs/design/a.md#OQ-X1",
-        "waiting docs/design/a-plan.md",
         "waiting docs/design/a.md#OQ-A2"
       ],
       "unmatched": [],
@@ -286,7 +285,6 @@
         "needs-you docs/design/a.md#OQ-A5",
         "unrouted docs/design/sub/c.md#OQ-C2",
         "unrouted x/docs/design/a.md#OQ-X1",
-        "waiting docs/design/a-plan.md",
         "waiting docs/design/a.md#OQ-A2"
       ],
       "unmatched": [],
@@ -327,7 +325,6 @@
         "unrouted docs/designx/d.md#OQ-D1",
         "unrouted docs/my notes.md#OQ-N1",
         "unrouted docs/my notes.md#OQ-N2",
-        "waiting docs/design/a-plan.md",
         "waiting docs/design/a.md#OQ-A2",
         "skipped docs/big.md"
       ],
@@ -372,7 +369,6 @@
         "unrouted docs/my notes.md#OQ-N1",
         "unrouted docs/my notes.md#OQ-N2",
         "unrouted x/docs/design/a.md#OQ-X1",
-        "waiting docs/design/a-plan.md",
         "waiting docs/design/a.md#OQ-A2",
         "skipped docs/big.md"
       ],
@@ -405,7 +401,6 @@
         "needs-you docs/design/a.md#OQ-A5",
         "unrouted docs/design/sub/c.md#OQ-C2",
         "unrouted x/docs/design/a.md#OQ-X1",
-        "waiting docs/design/a-plan.md",
         "waiting docs/design/a.md#OQ-A2"
       ],
       "unmatched": [],
@@ -455,7 +450,6 @@
         "unrouted docs/my notes.md#OQ-N1",
         "unrouted docs/my notes.md#OQ-N2",
         "unrouted notes/f.md#OQ-F1",
-        "waiting notes/b.md",
         "waiting notes/b.md#OQ-B1",
         "ready notes/b.md",
         "graduate notes/e.md",
@@ -500,7 +494,6 @@
         "needs-you docs/design/a.md#OQ-A4",
         "needs-you docs/design/a.md#OQ-A5",
         "unrouted x/docs/design/a.md#OQ-X1",
-        "waiting docs/design/a-plan.md",
         "waiting docs/design/a.md#OQ-A2"
       ],
       "unmatched": [],
@@ -528,7 +521,6 @@
         "needs-you docs/design/a.md#OQ-A4",
         "needs-you docs/design/a.md#OQ-A5",
         "unrouted x/docs/design/a.md#OQ-X1",
-        "waiting docs/design/a-plan.md",
         "waiting docs/design/a.md#OQ-A2"
       ],
       "unmatched": [],
@@ -556,7 +548,6 @@
         "unrouted docs/my notes.md#OQ-N1",
         "unrouted docs/my notes.md#OQ-N2",
         "unrouted notes/f.md#OQ-F1",
-        "waiting notes/b.md",
         "waiting notes/b.md#OQ-B1",
         "ready notes/b.md",
         "graduate notes/e.md",
@@ -619,9 +610,7 @@
         "unrouted docs/my notes.md#OQ-N2",
         "unrouted notes/f.md#OQ-F1",
         "unrouted x/docs/design/a.md#OQ-X1",
-        "waiting docs/design/a-plan.md",
         "waiting docs/design/a.md#OQ-A2",
-        "waiting notes/b.md",
         "waiting notes/b.md#OQ-B1",
         "ready notes/b.md",
         "graduate notes/e.md",
@@ -698,7 +687,6 @@
         "unrouted docs/my notes.md#OQ-N1",
         "unrouted docs/my notes.md#OQ-N2",
         "unrouted x/docs/design/a.md#OQ-X1",
-        "waiting docs/design/a-plan.md",
         "waiting docs/design/a.md#OQ-A2",
         "skipped docs/big.md"
       ],
@@ -910,7 +898,6 @@
         "needs-you docs/design/a.md#OQ-A5",
         "unrouted docs/design/sub/c.md#OQ-C2",
         "unrouted docs/designx/d.md#OQ-D1",
-        "waiting docs/design/a-plan.md",
         "waiting docs/design/a.md#OQ-A2"
       ],
       "unmatched": [],
@@ -942,7 +929,6 @@
         "needs-you docs/design/a.md#OQ-A5",
         "unrouted docs/design/sub/c.md#OQ-C2",
         "unrouted x/docs/design/a.md#OQ-X1",
-        "waiting docs/design/a-plan.md",
         "waiting docs/design/a.md#OQ-A2"
       ],
       "unmatched": [],
@@ -988,9 +974,7 @@
         "docs/design/a-plan.md"
       ],
       "questions": [],
-      "keeps": [
-        "waiting docs/design/a-plan.md"
-      ],
+      "keeps": [],
       "unmatched": [],
       "unknownKeys": []
     },
@@ -1004,7 +988,6 @@
         "notes/b.md#OQ-B1"
       ],
       "keeps": [
-        "waiting notes/b.md",
         "waiting notes/b.md#OQ-B1",
         "ready notes/b.md"
       ],
@@ -1177,7 +1160,6 @@
         "unrouted docs/design/sub/c.md#OQ-C2",
         "unrouted docs/designx/d.md#OQ-D1",
         "unrouted x/docs/design/a.md#OQ-X1",
-        "waiting docs/design/a-plan.md",
         "waiting docs/design/a.md#OQ-A2"
       ],
       "unmatched": [],
@@ -1309,9 +1291,7 @@
         "unrouted docs/my notes.md#OQ-N2",
         "unrouted notes/f.md#OQ-F1",
         "unrouted x/docs/design/a.md#OQ-X1",
-        "waiting docs/design/a-plan.md",
         "waiting docs/design/a.md#OQ-A2",
-        "waiting notes/b.md",
         "waiting notes/b.md#OQ-B1",
         "ready notes/b.md",
         "graduate notes/e.md",
@@ -1350,7 +1330,6 @@
         "unrouted docs/design/sub/c.md#OQ-C2",
         "unrouted docs/designx/d.md#OQ-D1",
         "unrouted x/docs/design/a.md#OQ-X1",
-        "waiting docs/design/a-plan.md",
         "waiting docs/design/a.md#OQ-A2"
       ],
       "unmatched": [],
@@ -1567,7 +1546,6 @@
         "unrouted docs/design/sub/c.md#OQ-C2",
         "unrouted docs/designx/d.md#OQ-D1",
         "unrouted x/docs/design/a.md#OQ-X1",
-        "waiting docs/design/a-plan.md",
         "waiting docs/design/a.md#OQ-A2"
       ],
       "unmatched": [],
@@ -1713,7 +1691,6 @@
         "unrouted docs/my notes.md#OQ-N1",
         "unrouted docs/my notes.md#OQ-N2",
         "unrouted notes/f.md#OQ-F1",
-        "waiting notes/b.md",
         "waiting notes/b.md#OQ-B1",
         "ready notes/b.md",
         "graduate notes/e.md",
@@ -1769,7 +1746,6 @@
       ],
       "keeps": [
         "needs-you docs/design/a.md#OQ-A4",
-        "waiting docs/design/a-plan.md",
         "waiting docs/design/a.md#OQ-A2"
       ],
       "unmatched": [],
@@ -2073,9 +2049,7 @@
         "y/my notes.md/inner.md"
       ],
       "questions": [],
-      "keeps": [
-        "waiting docs/design/a-plan.md"
-      ],
+      "keeps": [],
       "unmatched": [],
       "unknownKeys": []
     },
@@ -2105,7 +2079,6 @@
       ],
       "questions": [],
       "keeps": [
-        "waiting notes/b.md",
         "ready notes/b.md",
         "disagrees notes/f.md"
       ],
@@ -2264,7 +2237,6 @@
       ],
       "questions": [],
       "keeps": [
-        "waiting notes/b.md",
         "ready notes/b.md",
         "disagrees notes/f.md"
       ],
@@ -2463,7 +2435,6 @@
         "unrouted docs/design/sub/c.md#OQ-C2",
         "unrouted docs/designx/d.md#OQ-D1",
         "unrouted x/docs/design/a.md#OQ-X1",
-        "waiting docs/design/a-plan.md",
         "waiting docs/design/a.md#OQ-A2"
       ],
       "unmatched": [],
@@ -2498,7 +2469,6 @@
         "unrouted docs/design/sub/c.md#OQ-C2",
         "unrouted docs/designx/d.md#OQ-D1",
         "unrouted x/docs/design/a.md#OQ-X1",
-        "waiting docs/design/a-plan.md",
         "waiting docs/design/a.md#OQ-A2"
       ],
       "unmatched": [],
@@ -2568,7 +2538,6 @@
         "notes/b.md#OQ-B1"
       ],
       "keeps": [
-        "waiting notes/b.md",
         "waiting notes/b.md#OQ-B1",
         "ready notes/b.md",
         "graduate notes/e.md",
@@ -2666,7 +2635,6 @@
         "unrouted notes/f.md#OQ-F1",
         "unrouted x/docs/design/a.md#OQ-X1",
         "waiting docs/design/a.md#OQ-A2",
-        "waiting notes/b.md",
         "waiting notes/b.md#OQ-B1",
         "ready notes/b.md",
         "graduate notes/e.md",
@@ -2761,9 +2729,7 @@
         "unrouted docs/my notes.md#OQ-N2",
         "unrouted notes/f.md#OQ-F1",
         "unrouted x/docs/design/a.md#OQ-X1",
-        "waiting docs/design/a-plan.md",
         "waiting docs/design/a.md#OQ-A2",
-        "waiting notes/b.md",
         "waiting notes/b.md#OQ-B1",
         "ready notes/b.md",
         "graduate notes/e.md",
@@ -2949,9 +2915,7 @@
         "unrouted docs/my notes.md#OQ-N2",
         "unrouted notes/f.md#OQ-F1",
         "unrouted x/docs/design/a.md#OQ-X1",
-        "waiting docs/design/a-plan.md",
         "waiting docs/design/a.md#OQ-A2",
-        "waiting notes/b.md",
         "waiting notes/b.md#OQ-B1",
         "ready notes/b.md",
         "graduate notes/e.md",
@@ -3170,7 +3134,6 @@
         "needs-you docs/design/a.md#OQ-A5",
         "unrouted docs/designx/d.md#OQ-D1",
         "unrouted x/docs/design/a.md#OQ-X1",
-        "waiting docs/design/a-plan.md",
         "waiting docs/design/a.md#OQ-A2"
       ],
       "unmatched": [],
@@ -3402,7 +3365,6 @@
         "unrouted docs/my notes.md#OQ-N1",
         "unrouted docs/my notes.md#OQ-N2",
         "unrouted x/docs/design/a.md#OQ-X1",
-        "waiting docs/design/a-plan.md",
         "waiting docs/design/a.md#OQ-A2",
         "skipped docs/big.md"
       ],
@@ -3475,7 +3437,6 @@
         "unrouted docs/my notes.md#OQ-N1",
         "unrouted docs/my notes.md#OQ-N2",
         "unrouted x/docs/design/a.md#OQ-X1",
-        "waiting docs/design/a-plan.md",
         "waiting docs/design/a.md#OQ-A2",
         "skipped docs/big.md"
       ],
@@ -3511,7 +3472,6 @@
         "unrouted docs/design/sub/c.md#OQ-C2",
         "unrouted docs/designx/d.md#OQ-D1",
         "unrouted x/docs/design/a.md#OQ-X1",
-        "waiting docs/design/a-plan.md",
         "waiting docs/design/a.md#OQ-A2"
       ],
       "unmatched": [],
@@ -3570,9 +3530,7 @@
         "unrouted docs/my notes.md#OQ-N2",
         "unrouted notes/f.md#OQ-F1",
         "unrouted x/docs/design/a.md#OQ-X1",
-        "waiting docs/design/a-plan.md",
         "waiting docs/design/a.md#OQ-A2",
-        "waiting notes/b.md",
         "waiting notes/b.md#OQ-B1",
         "ready notes/b.md",
         "graduate notes/e.md",
@@ -3636,9 +3594,7 @@
         "unrouted docs/my notes.md#OQ-N2",
         "unrouted notes/f.md#OQ-F1",
         "unrouted x/docs/design/a.md#OQ-X1",
-        "waiting docs/design/a-plan.md",
         "waiting docs/design/a.md#OQ-A2",
-        "waiting notes/b.md",
         "waiting notes/b.md#OQ-B1",
         "ready notes/b.md",
         "graduate notes/e.md",
@@ -3729,7 +3685,6 @@
         "needs-you docs/design/a.md#OQ-A5",
         "unrouted docs/design/sub/c.md#OQ-C2",
         "unrouted x/docs/design/a.md#OQ-X1",
-        "waiting docs/design/a-plan.md",
         "waiting docs/design/a.md#OQ-A2"
       ],
       "unmatched": [],
@@ -3788,9 +3743,7 @@
         "unrouted docs/my notes.md#OQ-N2",
         "unrouted notes/f.md#OQ-F1",
         "unrouted x/docs/design/a.md#OQ-X1",
-        "waiting docs/design/a-plan.md",
         "waiting docs/design/a.md#OQ-A2",
-        "waiting notes/b.md",
         "waiting notes/b.md#OQ-B1",
         "ready notes/b.md",
         "graduate notes/e.md",
@@ -3854,9 +3807,7 @@
         "unrouted docs/my notes.md#OQ-N2",
         "unrouted notes/f.md#OQ-F1",
         "unrouted x/docs/design/a.md#OQ-X1",
-        "waiting docs/design/a-plan.md",
         "waiting docs/design/a.md#OQ-A2",
-        "waiting notes/b.md",
         "waiting notes/b.md#OQ-B1",
         "ready notes/b.md",
         "graduate notes/e.md",
@@ -3920,9 +3871,7 @@
         "unrouted docs/my notes.md#OQ-N2",
         "unrouted notes/f.md#OQ-F1",
         "unrouted x/docs/design/a.md#OQ-X1",
-        "waiting docs/design/a-plan.md",
         "waiting docs/design/a.md#OQ-A2",
-        "waiting notes/b.md",
         "waiting notes/b.md#OQ-B1",
         "ready notes/b.md",
         "graduate notes/e.md",
@@ -3986,9 +3935,7 @@
         "unrouted docs/my notes.md#OQ-N2",
         "unrouted notes/f.md#OQ-F1",
         "unrouted x/docs/design/a.md#OQ-X1",
-        "waiting docs/design/a-plan.md",
         "waiting docs/design/a.md#OQ-A2",
-        "waiting notes/b.md",
         "waiting notes/b.md#OQ-B1",
         "ready notes/b.md",
         "graduate notes/e.md",
@@ -4049,9 +3996,7 @@
         "unrouted docs/my notes.md#OQ-N2",
         "unrouted notes/f.md#OQ-F1",
         "unrouted x/docs/design/a.md#OQ-X1",
-        "waiting docs/design/a-plan.md",
         "waiting docs/design/a.md#OQ-A2",
-        "waiting notes/b.md",
         "waiting notes/b.md#OQ-B1",
         "ready notes/b.md",
         "graduate notes/e.md",
@@ -4159,9 +4104,7 @@
         "unrouted docs/my notes.md#OQ-N2",
         "unrouted notes/f.md#OQ-F1",
         "unrouted x/docs/design/a.md#OQ-X1",
-        "waiting docs/design/a-plan.md",
         "waiting docs/design/a.md#OQ-A2",
-        "waiting notes/b.md",
         "waiting notes/b.md#OQ-B1",
         "ready notes/b.md",
         "graduate notes/e.md",
@@ -4225,9 +4168,7 @@
         "unrouted docs/my notes.md#OQ-N2",
         "unrouted notes/f.md#OQ-F1",
         "unrouted x/docs/design/a.md#OQ-X1",
-        "waiting docs/design/a-plan.md",
         "waiting docs/design/a.md#OQ-A2",
-        "waiting notes/b.md",
         "waiting notes/b.md#OQ-B1",
         "ready notes/b.md",
         "graduate notes/e.md",
@@ -4302,9 +4243,7 @@
         "unrouted docs/my notes.md#OQ-N2",
         "unrouted notes/f.md#OQ-F1",
         "unrouted x/docs/design/a.md#OQ-X1",
-        "waiting docs/design/a-plan.md",
         "waiting docs/design/a.md#OQ-A2",
-        "waiting notes/b.md",
         "waiting notes/b.md#OQ-B1",
         "ready notes/b.md",
         "graduate notes/e.md",
@@ -4368,9 +4307,7 @@
         "unrouted docs/my notes.md#OQ-N2",
         "unrouted notes/f.md#OQ-F1",
         "unrouted x/docs/design/a.md#OQ-X1",
-        "waiting docs/design/a-plan.md",
         "waiting docs/design/a.md#OQ-A2",
-        "waiting notes/b.md",
         "waiting notes/b.md#OQ-B1",
         "ready notes/b.md",
         "graduate notes/e.md",
@@ -4467,9 +4404,7 @@
         "unrouted docs/my notes.md#OQ-N2",
         "unrouted notes/f.md#OQ-F1",
         "unrouted x/docs/design/a.md#OQ-X1",
-        "waiting docs/design/a-plan.md",
         "waiting docs/design/a.md#OQ-A2",
-        "waiting notes/b.md",
         "waiting notes/b.md#OQ-B1",
         "ready notes/b.md",
         "graduate notes/e.md",
@@ -4511,7 +4446,6 @@
         "unrouted docs/design/sub/c.md#OQ-C2",
         "unrouted docs/designx/d.md#OQ-D1",
         "unrouted x/docs/design/a.md#OQ-X1",
-        "waiting docs/design/a-plan.md",
         "waiting docs/design/a.md#OQ-A2"
       ],
       "unmatched": [],
@@ -4546,7 +4480,6 @@
         "unrouted docs/design/sub/c.md#OQ-C2",
         "unrouted docs/designx/d.md#OQ-D1",
         "unrouted x/docs/design/a.md#OQ-X1",
-        "waiting docs/design/a-plan.md",
         "waiting docs/design/a.md#OQ-A2"
       ],
       "unmatched": [],
@@ -4571,7 +4504,6 @@
         "needs-you docs/design/a.md#OQ-A3",
         "needs-you docs/design/a.md#OQ-A4",
         "needs-you docs/design/a.md#OQ-A5",
-        "waiting docs/design/a-plan.md",
         "waiting docs/design/a.md#OQ-A2"
       ],
       "unmatched": [],
@@ -4612,7 +4544,6 @@
         "unrouted docs/designx/d.md#OQ-D1",
         "unrouted docs/my notes.md#OQ-N1",
         "unrouted docs/my notes.md#OQ-N2",
-        "waiting docs/design/a-plan.md",
         "waiting docs/design/a.md#OQ-A2",
         "skipped docs/big.md"
       ],
@@ -4654,7 +4585,6 @@
         "unrouted docs/designx/d.md#OQ-D1",
         "unrouted docs/my notes.md#OQ-N1",
         "unrouted docs/my notes.md#OQ-N2",
-        "waiting docs/design/a-plan.md",
         "waiting docs/design/a.md#OQ-A2",
         "skipped docs/big.md"
       ],
@@ -4680,7 +4610,6 @@
         "needs-you docs/design/a.md#OQ-A3",
         "needs-you docs/design/a.md#OQ-A4",
         "needs-you docs/design/a.md#OQ-A5",
-        "waiting docs/design/a-plan.md",
         "waiting docs/design/a.md#OQ-A2"
       ],
       "unmatched": [],
@@ -4708,7 +4637,6 @@
         "needs-you docs/design/a.md#OQ-A4",
         "needs-you docs/design/a.md#OQ-A5",
         "unrouted x/docs/design/a.md#OQ-X1",
-        "waiting docs/design/a-plan.md",
         "waiting docs/design/a.md#OQ-A2"
       ],
       "unmatched": [],
@@ -4955,7 +4883,6 @@
         "unrouted docs/designx/d.md#OQ-D1",
         "unrouted docs/my notes.md#OQ-N1",
         "unrouted docs/my notes.md#OQ-N2",
-        "waiting docs/design/a-plan.md",
         "waiting docs/design/a.md#OQ-A2",
         "skipped docs/big.md"
       ],
@@ -5000,8 +4927,6 @@
         "unrouted docs/my notes.md#OQ-N1",
         "unrouted docs/my notes.md#OQ-N2",
         "unrouted notes/f.md#OQ-F1",
-        "waiting docs/design/a-plan.md",
-        "waiting notes/b.md",
         "waiting notes/b.md#OQ-B1",
         "ready notes/b.md",
         "graduate notes/e.md",

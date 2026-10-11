@@ -16,11 +16,14 @@
  */
 
 import { COMPACTION_RULE } from "../styleGuide.js";
-import { VANTAGE_OQ_STATUS } from "../vantageDirectives.js";
 import type { PlanningConfig, StageRole } from "./config.js";
 import { findDocument, type PlanningIndex } from "./model.js";
-import type { DependsOn, PlanningQuestion } from "./scan.js";
-import type { PlanningSections, QuestionRef } from "./sections.js";
+import type { BlockedOn, DependsOn, PlanningQuestion } from "./scan.js";
+import {
+  waitingDependsOn,
+  type PlanningSections,
+  type QuestionRef,
+} from "./sections.js";
 
 /** Every section, by the id its URL parameter and heading carry, in page order. */
 export const PLANNING_SECTION_IDS = [
@@ -315,19 +318,15 @@ export interface PlanningAgentRequestOptions {
    */
   viewer?: string;
   /**
-   * An applied planning filter (§6.2), with
-   * `sections` the filtered sections. `text` is the filter's canonical text
-   * less its unmatched terms, which a `Filter:` line after `Repository:`
-   * carries as a code span; `unfiltered` are the sections it was applied to,
-   * which every blocked-on fact is read from (§6.15), since a filter can keep a
-   * Ready row and leave out what Blocked holds it for. Absent, or with an
-   * empty `text`, which a filter of unmatched `-path:` terms alone leaves and
-   * which keeps every entry, the request is byte for byte what it was before
-   * filters.
+   * An applied planning filter (§6.2), with `sections` the filtered sections.
+   * `text` is the filter's canonical text less its unmatched terms, which a
+   * `Filter:` line after `Repository:` carries as a code span. Absent, or with
+   * an empty `text`, which a filter of unmatched `-path:` terms alone leaves
+   * and which keeps every entry, the request is byte for byte what it was
+   * before filters.
    */
   filter?: {
     text: string;
-    unfiltered: PlanningSections;
     /**
      * The filter's test of one question, `filterKeepsQuestion` with the
      * understood filter bound. `compact` lists ✅ questions from the whole
@@ -387,11 +386,10 @@ export function planningAgentRequest(
   const keeps = options.filter?.keeps;
   const ids = planningRequestsWithEntries(index, sections, options.ids, keeps);
   if (ids.length === 0) return null;
-  const blockedFrom = options.filter?.unfiltered ?? sections;
   const blocks = ids.map((id) =>
     id === "compact"
       ? compactBlock(index, keeps)
-      : requestBlock(index, sections, blockedFrom, id),
+      : requestBlock(index, sections, id),
   );
   const filter =
     options.filter === undefined || options.filter.text === ""
@@ -434,34 +432,29 @@ function checker(viewer: string | undefined): string {
 
 /**
  * What a section that keeps a blocked document asks of its entries: nothing
- * when none is blocked. `ready` and `graduate` keep a document that Blocked
- * also lists (§6.2), and their JSON keeps that meaning (P0), so the request
- * is where an agent is told to leave it alone.
+ * when none is blocked. `ready` and `graduate` keep a document whose own
+ * `depends-on` still waits (§6.2), and their JSON keeps that meaning (P0), so
+ * the request is where an agent is told to leave it alone.
  */
 const SKIP_BLOCKED =
   " Skip any entry marked blocked: it waits on something else first.";
 
 /**
- * One section's block: its heading line, then one line per entry. The entries
- * are `sections`'; what each is blocked on is read from `blockedFrom`, the
- * sections before any filter (§6.15).
+ * One section's block: its heading line, then one line per entry. A document's
+ * blocked-on facts are read from the index itself (§6.15), never from the
+ * filter, so a kept Ready row is marked whatever the filter hides.
  */
 function requestBlock(
   index: PlanningIndex,
   sections: PlanningSections,
-  blockedFrom: PlanningSections,
   id: PlanningAgentSectionId,
 ): string {
   const { config } = index;
   const title = `${PLANNING_SECTION_TITLES[id]} (${count(agentSectionCount(sections, id))})`;
   /** Each document's line, and the skip clause when one of them is blocked. */
   const documents = (paths: readonly string[], open = false) => {
-    const items = paths.map((path) =>
-      documentItem(index, blockedFrom, path, open),
-    );
-    const blocked = paths.some(
-      (path) => blockedOn(index, blockedFrom, path).length > 0,
-    );
+    const items = paths.map((path) => documentItem(index, path, open));
+    const blocked = paths.some((path) => blockedOn(index, path).length > 0);
     return { items, skip: blocked ? SKIP_BLOCKED : "" };
   };
   switch (id) {
@@ -595,48 +588,44 @@ function questionItem(index: PlanningIndex, ref: QuestionRef): string {
 }
 
 /**
- * A `depends-on` entry as Blocked names it: `docs/a.md`, `docs/a.md#OQ-A1`,
- * or as written when it names no file of the repository.
+ * A `depends-on` entry — or a `blocked-on` target, whose fields are the same —
+ * as Blocked names it: `docs/a.md`, `docs/a.md#OQ-A1`, or as written when it
+ * names no file of the repository.
  */
-export function dependsOnLabel(entry: DependsOn): string {
+export function dependsOnLabel(
+  entry: Pick<DependsOn, "raw" | "target" | "fragment">,
+): string {
   return `${entry.target ?? entry.raw}${entry.fragment === null ? "" : `#${entry.fragment}`}`;
 }
 
 /**
- * What Blocked holds a document for (§6.2): each of its `depends-on` entries
- * that still waits, then each of its 🔒 questions, a question with no id
- * named by its line. Empty when Blocked does not list it.
+ * A `blocked-on` entry (§3.3) as a message names it: an external blocker by
+ * its name, a target as `dependsOnLabel` names one.
  */
-function blockedOn(
-  index: PlanningIndex,
-  sections: PlanningSections,
-  path: string,
-): string[] {
-  const on: string[] = [];
-  for (const entry of sections.waiting) {
-    if (entry.kind === "document") {
-      if (entry.path === path) on.push(...entry.waitingOn.map(dependsOnLabel));
-    } else if (entry.question.path === path) {
-      const { id, line } = entry.question;
-      const q = questionOf(index, entry.question);
-      on.push(
-        `${VANTAGE_OQ_STATUS.blocked} ${id ?? `line ${q?.unitLine ?? line}`}`,
-      );
-    }
-  }
-  return on;
+export function blockedOnLabel(entry: BlockedOn): string {
+  return entry.kind === "external" ? entry.name : dependsOnLabel(entry);
 }
 
 /**
- * `- docs/c.md  (stage DECIDED)`; for a document Blocked also lists, what it
- * waits on: `(stage DECIDED; blocked on docs/a.md#OQ-A1, 🔒 OQ-C1)`; and with
- * `open`, the document's open questions: `(stage BUILT; open: OQ-E1, line
- * 20)`, a question with no id named by its line. `blockedFrom` is the
- * sections Blocked is read from, which are never filtered.
+ * What a Ready to build or Ready to graduate row is marked as blocked on
+ * (§6.2): each of the document's own `depends-on` entries that still waits, as
+ * Blocked names one. Empty when nothing it waits on is live.
+ */
+function blockedOn(index: PlanningIndex, path: string): string[] {
+  const doc = findDocument(index, path);
+  return doc === undefined
+    ? []
+    : waitingDependsOn(index, doc).map(dependsOnLabel);
+}
+
+/**
+ * `- docs/c.md  (stage DECIDED)`; for a document whose `depends-on` still
+ * waits, what it waits on: `(stage DECIDED; blocked on docs/a.md#OQ-A1)`; and
+ * with `open`, the document's open questions: `(stage BUILT; open: OQ-E1, line
+ * 20)`, a question with no id named by its line.
  */
 function documentItem(
   index: PlanningIndex,
-  blockedFrom: PlanningSections,
   path: string,
   open = false,
 ): string {
@@ -645,7 +634,7 @@ function documentItem(
   if (doc !== undefined && doc.stage !== null) {
     facts.push(`stage ${doc.stage}`);
   }
-  const blocked = blockedOn(index, blockedFrom, path);
+  const blocked = blockedOn(index, path);
   if (blocked.length > 0) facts.push(`blocked on ${blocked.join(", ")}`);
   if (open && doc !== undefined) {
     const named = doc.questions

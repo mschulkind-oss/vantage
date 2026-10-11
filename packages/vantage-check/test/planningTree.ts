@@ -20,16 +20,24 @@ import { makeTree } from "./helpers.js";
  * A loose list of questions, `OQ-<prefix>1`, `OQ-<prefix>2`, …, one per
  * marker, each with a directive and a leaning, as the design-doc convention
  * writes them: a `question` directive in every state, restating the leaning,
- * which only an open question offers to take.
+ * which only an open question offers to take. A marker given as
+ * `{ marker, blockedOn }` writes a `blocked-on` too (§3.3), so the referent —
+ * not the marker — is what makes that question blocked.
  */
-export function questions(prefix: string, ...markers: string[]): string {
+export function questions(
+  prefix: string,
+  ...markers: (string | { marker: string; blockedOn: string })[]
+): string {
   return markers
-    .map((marker, i) => {
+    .map((entry, i) => {
+      const marker = typeof entry === "string" ? entry : entry.marker;
+      const blocked =
+        typeof entry === "string" ? "" : ` blocked-on="${entry.blockedOn}"`;
       const id = `OQ-${prefix}${i + 1}`;
       return [
         `${i + 1}. ${marker} **${id}: Question ${prefix}${i + 1}?**`,
         "",
-        `   <!-- vantage: question id=${id} leaning="Yes." -->`,
+        `   <!-- vantage: question id=${id} leaning="Yes."${blocked} -->`,
         "",
         "   _Leaning:_ yes.",
         "",
@@ -107,7 +115,12 @@ export const FULL_TREE: Record<string, string> = {
   "docs/a.md": doc(
     "status: in-review\nstage: DESIGN",
     [
-      questions("A", OPEN, OPEN, BLOCKED),
+      // OQ-A3 is genuinely blocked: a 🔒 whose referent is an outside event,
+      // which never clears.
+      questions("A", OPEN, OPEN, {
+        marker: BLOCKED,
+        blockedOn: "the 2.0 release",
+      }),
       "See [the readme](../README.md), [a draft](../drafts/x.md),",
       "[a package](../node_modules/pkg/x.md) and [myself](#title).",
     ].join("\n"),
@@ -229,11 +242,7 @@ export function entryKeys(sections: PlanningSections): string[] {
     const entries = (sections[key] ?? []) as readonly Entry[];
     return entries.map((entry) => {
       if (typeof entry === "string") return `${id} ${entry}`;
-      if ("kind" in entry) {
-        return entry.kind === "document"
-          ? `${id} ${entry.path}`
-          : question(id, entry.question);
-      }
+      if ("kind" in entry) return question(id, entry.question);
       if ("line" in entry) return question(id, entry);
       return `${id} ${entry.path}`;
     });

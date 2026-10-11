@@ -114,7 +114,7 @@ and declares the answered and the blocked one without offering anything.
 
 1. 🔒 **OQ-3: Is a blocked question distinguishable from a merely open one?**
 
-   <!-- vantage: question id=OQ-3 -->
+   <!-- vantage: question id=OQ-3 blocked-on="an upstream decision" -->
 
    _Leaning:_ only by the emoji today.
 
