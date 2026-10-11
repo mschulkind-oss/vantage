@@ -996,8 +996,8 @@ sections emptied:
 - **`sections`** is the filtered sections, in the shape of the top-level
   `sections`.
 
-A refused project prints `"filter": null`. The format version stays 2, because
-the key is new and no existing one changed.
+A refused project prints `"filter": null`. A new key does not bump the format
+version.
 
 **`--request --filter`** prints the [agent request](#agent-requests) for the
 entries the filter keeps, with the `Filter:` line the planning page's **Copy
