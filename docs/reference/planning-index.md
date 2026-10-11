@@ -3518,7 +3518,7 @@ the page, with no memory between runs:
   which was read, and *not read* for one that is `missing`, `skipped` or
   `unreadable`. The other roadmaps' sources are not printed; `--roadmap` prints any
   one of them.
-- **JSON** is format version 2:
+- **JSON** is format version 3:
 
   ```json
   {
@@ -3727,8 +3727,8 @@ written with its fragment. `unknownKeys` lists each unknown key's word once, in 
 order written, so a script sees the hint the text prints. `filter.sections` has the
 shape of `sections` and the values of
 [§6.15](#615-what-a-filter-does-to-the-sections). A refused project prints `null` for
-`filter`, as it does for `sections`. The format version stays 2, because a new key
-does not bump it, and the summary's other names (`requestText`, `unmatched`,
+`filter`, as it does for `sections`. The format version does not change for a new
+key, and the summary's other names (`requestText`, `unmatched`,
 `onOtherRoadmaps`, `nothingMatches`) are no keys of it.
 
 **`--request --filter`** prints the filtered request with its `Filter:` line

@@ -326,11 +326,12 @@ first folder is in that map to the clone's project, with the folder dropped
 (`projectFor`). Every other path stays in the loose project.
 
 `/api/repos` serves each project's entry from a cache, and the map is recomputed
-whenever the server refreshes that cache (`warmActivity`): at startup, on each
-rescan pass, and whenever a WebSocket connects while no other is open. A rescan
+when the server probes that repository's activity (`warmActivity`): at startup,
+on a pass whose watcher has reported a change, on the periodic reconcile pass,
+and whenever a WebSocket connects while no other is open. A rescan
 refreshes it before it pushes `repos_changed`, so a clone the rescan adds is in
 the map when the browser refetches. A symlink to a clone made between passes is
-missing from it until the next pass.
+missing from it until the next pass that probes the repository.
 
 ### 4.4 When there is a loose project
 
@@ -705,6 +706,8 @@ prose uses with where each is defined.
 | Value | Setting | Defined in |
 | :--- | :--- | :--- |
 | Rescan interval (the refresh loop) | 30 s | `defaultRefreshInterval` in `internal/server` |
+| Activity probes at once | 4 repositories | `activityWarmConcurrency` in `internal/server` |
+| Forced activity reconcile | every 20 passes, ten minutes at the default interval | `activityReconcileEvery` in `internal/server` |
 | The tip's probe timeout | 200 ms | `serviceProbeTimeout` in `cmd/vantage` |
 | Wait for a started service to answer | 3 s, asked every 100 ms | `serviceStartWait`, `awaitService` |
 | The service's default address | `127.0.0.1:8000`, shown as `http://localhost:8000` | `config.Defaults`, `displayServiceHost` |
