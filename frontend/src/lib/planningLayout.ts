@@ -30,7 +30,6 @@ import { planningCardId } from "./planningCardId";
 import { questionKey } from "./planningAnswers";
 import {
   placeComment,
-  type CardEntry,
   type MaintenanceKind,
   type PlanningLayout,
   type QuestionEntry,
@@ -436,10 +435,8 @@ export function updatesTitle(updates: HeldUpdates): string {
 }
 
 /** The keys of a *Blocked* list or a *Maintenance* kind, for the diff. */
-export function groupKeys(entries: readonly CardEntry[]): string[] {
-  return entries.map((entry) =>
-    entry.kind === "question" ? itemKey(entry.question) : `doc\n${entry.path}`,
-  );
+export function groupKeys(entries: readonly QuestionEntry[]): string[] {
+  return entries.map((entry) => itemKey(entry.question));
 }
 
 /** The keys of every *Maintenance* item, kind by kind. */
@@ -464,7 +461,7 @@ export interface UpdatesInput {
   /** *Needs you*'s open questions in hand, in the roadmap's order. */
   freshOrder: readonly QuestionEntry[];
   /** *Blocked* and *Maintenance* in hand. */
-  freshBlocked: readonly CardEntry[];
+  freshBlocked: readonly QuestionEntry[];
   freshMaintenance: readonly MaintenanceKind[];
   /** Each item's facts, by `itemKey`, for every item of either. */
   facts: (key: string) => QuestionFacts | undefined;

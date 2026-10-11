@@ -97,6 +97,12 @@ export interface PlanningQuestion {
    * empty. A 🔒 or ✅ question may carry one, which nothing offers to take.
    */
   leaning: string | null;
+  /**
+   * `blocked-on=`, split on commas and trimmed; empty when the directive gives
+   * none (§3.3). An `oq` does not accept the key, so a question declared with
+   * one carries no entries.
+   */
+  blockedOn: BlockedOn[];
   /** File line of the block the in-page button anchors on. */
   line: number;
   /**
@@ -171,6 +177,27 @@ export interface DependsOn {
   /** File line of the entry; 1 when it cannot be placed. */
   line: number;
 }
+
+/**
+ * One `blocked-on` entry (§3.3): what one question waits on. A target is
+ * resolved as a document's `depends-on` entry is; an external blocker is a
+ * name the index can show but never clear, for an entry that does not look
+ * like a repo path.
+ */
+export type BlockedOn =
+  | {
+      kind: "target";
+      /** The entry as written, for the checker to quote. */
+      raw: string;
+      /** Resolved like a link; `null` when it names no path in the repo. */
+      target: string | null;
+      fragment: string | null;
+    }
+  | {
+      kind: "external";
+      /** The blocker's name as written, trimmed. */
+      name: string;
+    };
 
 /** A header value that is ignored, and why (§3.4, Plan Q20). */
 export interface HeaderProblem {
@@ -514,6 +541,7 @@ function anchorTagWithin(target: RootContent): string | "unknown" | undefined {
 }
 
 interface ScanState {
+  path: string;
   bodyLineOffset: number;
   questions: Omit<PlanningQuestion, "path" | "id" | "cardChars">[];
   /** The merged `id=` of each question, before duplicates are resolved. */
@@ -682,6 +710,43 @@ function withheldRaw(
 }
 
 /**
+ * One question's `blocked-on=`, split on commas (§3.3). An entry that does
+ * not look like a repo path at all — no `/`, no `#`, and not ending in `.md` —
+ * is an external blocker name, a phrase the index shows and can never clear,
+ * whatever whitespace it holds. Everything else resolves as a document's
+ * `depends-on` entry does.
+ */
+function blockedOn(path: string, value: string | undefined): BlockedOn[] {
+  if (value === undefined) return [];
+  const entries: BlockedOn[] = [];
+  for (const written of value.split(",")) {
+    const raw = written.trim();
+    if (raw === "") continue;
+    if (!raw.includes("/") && !raw.includes("#") && !raw.endsWith(".md")) {
+      entries.push({ kind: "external", name: raw });
+      continue;
+    }
+    const resolved = resolveRepoLink(path, raw);
+    // Out of the repository there is no target, but the fragment is still what
+    // the author wrote, for the checker to quote, as `depends-on` keeps it.
+    const hash = raw.indexOf("#");
+    const fragment =
+      resolved !== null
+        ? resolved.fragment
+        : hash === -1 || hash === raw.length - 1
+          ? null
+          : raw.slice(hash + 1);
+    entries.push({
+      kind: "target",
+      raw,
+      target: resolved?.path ?? null,
+      fragment,
+    });
+  }
+  return entries;
+}
+
+/**
  * Record `target` as a question when the run holds a question directive and
  * the target could host a button. Both names declare a question in exactly the
  * same places, in every state, so a question that changes state is found where
@@ -766,6 +831,7 @@ function question(
     marker,
     title,
     leaning: leaning === "" ? null : leaning,
+    blockedOn: blockedOn(state.path, keys.get("blocked-on")),
     line,
     unitLine,
     unitEndLine,
@@ -1237,6 +1303,7 @@ export function scanPlanningDocument(
   readAlerts(root);
 
   const state: ScanState = {
+    path,
     bodyLineOffset: parsed.bodyLineOffset,
     questions: [],
     rawIds: [],

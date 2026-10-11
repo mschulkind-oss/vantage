@@ -40,8 +40,8 @@ import {
   filterKeepsQuestion,
   parsePlanningFilter,
   questionFor,
+  questionState,
   sectionExplanation,
-  type DependsOn,
   type FilteredPlanningSections,
   type PlanningFilterSummary,
   type PlanningIndex,
@@ -76,12 +76,13 @@ export interface QuestionEntry {
   question: PlanningQuestion;
   /** Its block is past `cardChars`, so its card is a preview card. */
   preview: boolean;
+  /**
+   * The question no roadmap routes (§6.2): *Needs you* appends its card,
+   * marked *Not on a roadmap*, and *Maintenance* lists the same question as
+   * the agent's routing worklist.
+   */
+  notOnRoadmap?: boolean;
 }
-
-/** One entry of Needs you, Not on a roadmap or Blocked. */
-export type CardEntry =
-  | QuestionEntry
-  | { kind: "document"; path: string; waitingOn: readonly DependsOn[] };
 
 /**
  * The kinds *Maintenance* lists, in the order it lists them
@@ -148,12 +149,14 @@ export interface PlanningLayout {
   filter: string;
   /** How many questions that need you are full cards. Part of its name. */
   pageSize: number;
-  /** *Needs you*'s open questions, in the roadmap's order; ✅ ones leave it. */
+  /** *Needs you*'s open questions: the routed ones in the roadmap's order, then
+   * the unrouted ones by path and document order, each marked *Not on a
+   * roadmap*. ✅ ones leave it. */
   needsYou: readonly QuestionEntry[];
   /** The line under *Needs you*'s heading. */
   needsYouExplanation: string;
-  /** What *Blocked* holds: 🔒 questions and documents that still wait. */
-  blocked: readonly CardEntry[];
+  /** What *Blocked* holds: questions a live referent blocks (§6.2). */
+  blocked: readonly QuestionEntry[];
   /** *Maintenance*'s non-empty kinds, in `MAINTENANCE_KIND_IDS` order. */
   maintenance: readonly MaintenanceKind[];
 }
@@ -200,7 +203,7 @@ function questionsOf(
 
 /** One section's entries, all of them, before they are paged. */
 export type SectionEntries =
-  | { id: SectionId; kind: "cards"; entries: CardEntry[] }
+  | { id: SectionId; kind: "cards"; entries: QuestionEntry[] }
   | { id: SectionId; kind: "rows"; entries: string[] }
   | { id: SectionId; kind: "skipped"; entries: PlanningIndex["skipped"] }
   | { id: SectionId; kind: "unreadable"; entries: PlanningIndex["unreadable"] };
@@ -214,13 +217,8 @@ export function sectionEntries(
   index: PlanningIndex,
   sections: PlanningSections,
 ): SectionEntries[] {
-  const waiting: CardEntry[] = sections.waiting.flatMap(
-    (entry): CardEntry[] => {
-      if (entry.kind === "document") {
-        return [
-          { kind: "document", path: entry.path, waitingOn: entry.waitingOn },
-        ];
-      }
+  const waiting: QuestionEntry[] = sections.waiting.flatMap(
+    (entry): QuestionEntry[] => {
       const question = questionFor(index, entry.question);
       return question === undefined ? [] : [questionEntry(question)];
     },
@@ -274,6 +272,11 @@ export function compactEntries(
  * questions, *Blocked* and *Maintenance*. `sections` are `sectionsOf(index,
  * roadmap, filter)`, and `filter` the canonical text they were filtered by,
  * which the layout names, as it names `pageSize`.
+ *
+ * *Needs you* is the routed open questions in the roadmap's order, then the
+ * unrouted open questions by path and document order, each marked *Not on a
+ * roadmap*; the state is the referent's (`questionState`), so a 🔒 nothing
+ * live waits on is an unactioned card and a 💬 whose referent waits is not.
  */
 export function layoutPlanningPage(
   index: PlanningIndex,
@@ -284,14 +287,20 @@ export function layoutPlanningPage(
   const entries = new Map(
     sectionEntries(index, sections).map((section) => [section.id, section]),
   );
-  const cardsOf = (id: SectionId): CardEntry[] => {
+  const cardsOf = (id: SectionId): QuestionEntry[] => {
     const section = entries.get(id);
     return section?.kind === "cards" ? section.entries : [];
   };
-  const needsYou = cardsOf("needs-you").filter(
-    (entry): entry is QuestionEntry =>
-      entry.kind === "question" && entry.question.state === "open",
+  const routed = cardsOf("needs-you").filter(
+    (entry) => questionState(index, entry.question) === "open",
   );
+  const needsYou = [
+    ...routed,
+    ...cardsOf("unrouted").map((entry): QuestionEntry => ({
+      ...entry,
+      notOnRoadmap: true,
+    })),
+  ];
   const maintenance: MaintenanceKind[] = [];
   for (const id of MAINTENANCE_KIND_IDS) {
     if (id === "compact") {
@@ -302,13 +311,7 @@ export function layoutPlanningPage(
     const section = entries.get(id);
     if (section === undefined) continue;
     if (id === "unrouted" && section.kind === "cards") {
-      maintenance.push({
-        id,
-        kind: "questions",
-        items: section.entries.filter(
-          (entry): entry is QuestionEntry => entry.kind === "question",
-        ),
-      });
+      maintenance.push({ id, kind: "questions", items: section.entries });
     } else if (
       (id === "ready" || id === "graduate" || id === "disagrees") &&
       section.kind === "rows"
@@ -685,21 +688,17 @@ export function listedQuestions(
 }
 
 /**
- * Every document any section lists: the documents of `listedQuestions`, and
- * the document of every Blocked row and every stage row (Ready to build,
- * Ready to graduate, Stage conflict), in page order. Over the unfiltered
- * sections, what a visit's second reviews request reads
- * (§6.7), so no filter change, nor a flip to a later
- * page of rows, asks for a third.
+ * Every document any section lists: the documents of `listedQuestions` and of
+ * every stage row (Ready to build, Ready to graduate, Stage conflict), in page
+ * order. Over the unfiltered sections, what a visit's second reviews request
+ * reads (§6.7), so no filter change, nor a flip to a later page of rows, asks
+ * for a third.
  */
 export function listedDocuments(
   index: PlanningIndex,
   sections: PlanningSections,
 ): string[] {
   const paths = new Set(listedQuestions(index, sections).map((q) => q.path));
-  for (const entry of sections.waiting) {
-    if (entry.kind === "document") paths.add(entry.path);
-  }
   for (const path of [
     ...(sections.ready ?? []),
     ...(sections.graduate ?? []),

@@ -503,17 +503,24 @@ describe("the filter line's items (§6.18)", () => {
   };
   const index = indexOf(tree, { stages: STAGED });
 
-  it("counts a document two groups list once, and every question past the page size", () => {
-    const layout = layoutPlanningPage(index, sectionsOf(index), 1);
+  it("counts an unrouted question Needs you and Not on a roadmap both list once, and no Blocked document", () => {
+    const withLoose = { ...tree, "plans/loose.md": doc(q("OQ-V1")) };
+    const loose = indexOf(withLoose, { stages: STAGED });
+    const layout = layoutPlanningPage(loose, sectionsOf(loose), 1);
     const kinds = layout.maintenance.map((k) => k.id);
     expect(kinds).toContain("ready");
-    expect(layout.blocked.some((e) => e.kind === "document")).toBe(true);
+    // A document's `depends-on` is no Blocked entry: it is what its Ready row
+    // is marked with (§6.2).
+    expect(layout.blocked).toEqual([]);
+    expect(layout.blocked.some((e) => e.kind === "document")).toBe(false);
     const keys = layoutItemKeys(layout);
-    expect([...keys].filter((k) => k === "doc\nplans/built.md")).toHaveLength(
-      1,
-    );
-    // Three questions, the built document once.
-    expect(keys.size).toBe(4);
+    // OQ-V1 is a card of Needs you and a row of Not on a roadmap, one item.
+    const v1 = loose.documents
+      .flatMap((d) => d.questions)
+      .find((x) => x.id === "OQ-V1")!;
+    expect([...keys].filter((k) => k === itemKey(v1))).toHaveLength(1);
+    // Four questions, the built document once.
+    expect(keys.size).toBe(5);
   });
 
   it("counts what a filter keeps, and what it hides of the unfiltered page", () => {

@@ -402,12 +402,14 @@ const STYLE_KEYS: KeyTable = {
  * and `leaning` is a sentence (§8.3) — so neither can be value-allowlisted,
  * which is recorded here as `null` rather than left to a caller to guess.
  *
- * `question` takes exactly `oq`'s keys and nothing more. Starting narrow is
- * the forward-compatible choice: a key added later is one older viewers drop
- * pair by pair, while a key accepted now could never be given a meaning (P0).
- * A `leaning` on a 🔒 or ✅ question is allowed and simply not offered
+ * `question` takes `oq`'s keys, and `blocked-on` beside them. Starting narrow
+ * is the forward-compatible choice: a key added later is one older viewers
+ * drop pair by pair, while a key accepted now could never be given a meaning
+ * (P0). A `leaning` on a 🔒 or ✅ question is allowed and simply not offered
  * (`questionOffersTake`), so changing a question's state changes only its
- * marker.
+ * marker. `blocked-on` names what a question waits on, so it is only ever on
+ * `question`: an `oq` does not accept it, and a run holding an `oq` reads the
+ * `oq` alone, which is the one reading every viewer agrees on.
  *
  * `fallback` takes no keys: whether a block is withheld is the whole of what
  * it says, and a key added later is dropped pair by pair by this release, as
@@ -417,7 +419,7 @@ export const DIRECTIVE_VOCABULARY: DirectiveVocabulary = {
   section: STYLE_KEYS,
   block: STYLE_KEYS,
   oq: { id: null, leaning: null },
-  question: { id: null, leaning: null },
+  question: { id: null, leaning: null, "blocked-on": null },
   fallback: {},
 };
 

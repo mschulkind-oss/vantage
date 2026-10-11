@@ -15,17 +15,17 @@ import React, { useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import {
   badgeFor,
-  dependsOnLabel,
+  blockedOnLabel,
   findDocument,
   isPlanningRequestId,
-  type DependsOn,
+  waitingBlockedOn,
   type PlanningIndex,
+  type PlanningQuestion,
   type PlanningRequestId,
 } from "vantage-md/planning";
 import { MARK_LABELS, itemKey } from "../lib/planningLayout";
 import {
   MAINTENANCE_TITLES,
-  type CardEntry,
   type MaintenanceKind,
   type MaintenanceKindId,
   type PlanningLayout,
@@ -90,7 +90,9 @@ const QuestionRow: React.FC<{
   href: (path: string) => string;
   gone: boolean;
   onOpenHere?: () => void;
-}> = ({ entry, href, gone, onOpenHere }) => {
+  /** What the row adds after the title: a Blocked question's blockers. */
+  children?: React.ReactNode;
+}> = ({ entry, href, gone, onOpenHere, children }) => {
   const { question } = entry;
   return (
     <li
@@ -120,6 +122,7 @@ const QuestionRow: React.FC<{
         {question.marker ? `${question.marker} ` : ""}
         {question.title}
       </span>
+      {children}
       <Done gone={gone} />
     </li>
   );
@@ -156,60 +159,50 @@ const DocumentRow: React.FC<{
   );
 };
 
-/** What the filter says beside an entry it leaves out (§6.18). */
-export const LEFT_OUT_BY_FILTER = "which this filter leaves out";
-
 /**
- * What a blocked document waits on, inline: each entry, linked, and, under a
- * filter, *which this filter leaves out* after each entry it does not keep
- * (`docs/reference/planning-index.md` §6.18: the notice's *Waits on* line,
- * moved beside its document).
+ * What a Blocked question waits on, inline (§6.2): every `blocked-on` entry
+ * that still waits — an external blocker by its name in code, a target linked
+ * and badged — each written by the shared `blockedOnLabel`.
  */
-const WaitingOn: React.FC<{
-  from: string;
-  entries: readonly DependsOn[];
+const BlockedOn: React.FC<{
+  question: PlanningQuestion;
   index: PlanningIndex;
   href: (path: string) => string;
-  leftOut?: ReadonlySet<string>;
-}> = ({ from, entries, index, href, leftOut }) => (
-  <span className="min-w-0 truncate text-[13px] text-slate-600 dark:text-slate-400">
-    blocked on{" "}
-    {entries.map((entry, at) => {
-      const badge =
-        entry.target === null
-          ? null
-          : badgeFor(index, from, {
-              path: entry.target,
-              fragment: entry.fragment,
-            });
-      return (
-        <React.Fragment key={`${entry.raw}\n${entry.line}`}>
-          {at > 0 && ", "}
-          {entry.target === null ? (
-            <code>{entry.raw}</code>
-          ) : (
-            <AppLink
-              to={`${href(entry.target)}${entry.fragment ? `#${entry.fragment}` : ""}`}
-              className="text-blue-600 no-underline hover:underline dark:text-blue-400"
-            >
-              {entry.raw}
-            </AppLink>
-          )}
-          {badge !== null && <PlanningBadgeChip badge={badge} />}
-          {leftOut?.has(dependsOnLabel(entry)) === true && (
-            <span
-              data-planning-left-out
-              className="text-amber-700 dark:text-amber-400"
-            >
-              {" "}
-              ({LEFT_OUT_BY_FILTER})
-            </span>
-          )}
-        </React.Fragment>
-      );
-    })}
-  </span>
-);
+}> = ({ question, index, href }) => {
+  const waiting = waitingBlockedOn(index, question);
+  if (waiting.length === 0) return null;
+  return (
+    <span className="min-w-0 truncate text-[13px] text-slate-600 dark:text-slate-400">
+      blocked on{" "}
+      {waiting.map((entry, at) => {
+        const target = entry.kind === "target" ? entry.target : null;
+        const badge =
+          target === null
+            ? null
+            : badgeFor(index, question.path, {
+                path: target,
+                fragment: entry.kind === "target" ? entry.fragment : null,
+              });
+        return (
+          <React.Fragment key={at}>
+            {at > 0 && ", "}
+            {target === null ? (
+              <code>{blockedOnLabel(entry)}</code>
+            ) : (
+              <AppLink
+                to={`${href(target)}${entry.kind === "target" && entry.fragment !== null ? `#${entry.fragment}` : ""}`}
+                className="text-blue-600 no-underline hover:underline dark:text-blue-400"
+              >
+                {blockedOnLabel(entry)}
+              </AppLink>
+            )}
+            {badge !== null && <PlanningBadgeChip badge={badge} />}
+          </React.Fragment>
+        );
+      })}
+    </span>
+  );
+};
 
 /** A list of rows: the first `groupRows`, then *Show all N*. */
 function Capped<T>({
@@ -297,11 +290,6 @@ export const PlanningGroups: React.FC<{
   /** The agent request of a kind that has one, generated when pressed. */
   requestOf: (ids: readonly PlanningRequestId[]) => string | null;
   onOpenHere?: () => void;
-  /**
-   * Under a filter, each target a kept *Blocked* document waits on that the
-   * filter leaves out (`PlanningFilterSummary.waitsOutside`).
-   */
-  waitsOutside?: readonly { path: string; target: string }[];
 }> = ({
   layout,
   index,
@@ -313,43 +301,19 @@ export const PlanningGroups: React.FC<{
   explanationOf,
   requestOf,
   onOpenHere,
-  waitsOutside,
 }) => {
-  const leftOutOf = new Map<string, Set<string>>();
-  for (const { path, target } of waitsOutside ?? []) {
-    const set = leftOutOf.get(path) ?? new Set<string>();
-    set.add(target);
-    leftOutOf.set(path, set);
-  }
   const kindsTotal = [...counts.kinds.values()].reduce((n, k) => n + k, 0);
-  const blockedRow = (entry: CardEntry) =>
-    entry.kind === "question" ? (
-      <QuestionRow
-        key={`q\n${itemKey(entry.question)}`}
-        entry={entry}
-        href={href}
-        gone={gone(itemKey(entry.question))}
-        onOpenHere={onOpenHere}
-      />
-    ) : (
-      <DocumentRow
-        key={`d\n${entry.path}`}
-        section="waiting"
-        path={entry.path}
-        index={index}
-        href={href}
-        gone={gone(`doc\n${entry.path}`)}
-        onOpenHere={onOpenHere}
-      >
-        <WaitingOn
-          from={entry.path}
-          entries={entry.waitingOn}
-          index={index}
-          href={href}
-          leftOut={leftOutOf.get(entry.path)}
-        />
-      </DocumentRow>
-    );
+  const blockedRow = (entry: QuestionEntry) => (
+    <QuestionRow
+      key={`q\n${itemKey(entry.question)}`}
+      entry={entry}
+      href={href}
+      gone={gone(itemKey(entry.question))}
+      onOpenHere={onOpenHere}
+    >
+      <BlockedOn question={entry.question} index={index} href={href} />
+    </QuestionRow>
+  );
   const kindRows = (kind: MaintenanceKind) => {
     const key = (k: string) => gone(`${kind.id}\n${k}`);
     const title = MAINTENANCE_TITLES[kind.id];

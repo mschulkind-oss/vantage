@@ -74,10 +74,14 @@ export {
   derivePlanningSections,
   noticeText,
   questionFor,
+  questionNeedsYou,
+  questionState,
   referenceSummary,
   referencedBy,
   roadmapsOf,
   routeQuestions,
+  waitingBlockedOn,
+  waitingDependsOn,
 } from "./sections.js";
 export type {
   OtherRoadmapQuestion,
@@ -103,6 +107,7 @@ export {
   agentSectionCount,
   answeredQuestions,
   agentSectionsWithEntries,
+  blockedOnLabel,
   codeSpan,
   dependsOnLabel,
   isPlanningAgentSectionId,

@@ -3,20 +3,25 @@ import { dirname, join, parse, relative, sep } from "node:path";
 import {
   PLANNING_SECTION_TITLES,
   QUESTION_SHAPE,
+  blockedOnLabel,
   derivePlanningSections,
   findDocument,
   hasRoadmapName,
   idsOf,
   planningIndexBuilder,
   questionFor,
+  questionState,
+  waitingBlockedOn,
   type PlanningConfig,
   type PlanningDocument,
+  type PlanningIndex,
   type PlanningSections,
   type SourceEntry,
 } from "../../../vantage-md/src/planning/index.js";
 import { parseFrontmatter } from "../../../vantage-md/src/frontmatter.js";
 import {
   VANTAGE_OQ_ID,
+  VANTAGE_OQ_STATUS,
   VANTAGE_SENTINEL,
 } from "../../../vantage-md/src/vantageDirectives.js";
 import {
@@ -69,11 +74,23 @@ export const PLANNING_RULES = [
   "planning/stage-vocabulary",
   "planning/depends-on-missing",
   "planning/stage-disagrees",
+  "planning/blocked-on-disagrees",
   "planning/unrouted",
   "planning/question-length",
 ] as const;
 
 type PlanningRule = (typeof PLANNING_RULES)[number];
+
+/**
+ * The rules that read a question's state, which its `blocked-on` referent
+ * decides: when any of them is on, the documents those referents name are read
+ * into the narrow index, as a roadmap is read for `unrouted` (§13).
+ */
+const REFERENT_RULES = [
+  "planning/stage-disagrees",
+  "planning/blocked-on-disagrees",
+  "planning/unrouted",
+] as const satisfies readonly PlanningRule[];
 
 export interface PlanningReport {
   findings: Finding[];
@@ -168,18 +185,26 @@ class PlanningPass {
       unreadable: [],
     });
     const added = new Set<string>();
+    /** Every document the index took, for the referents their questions name. */
+    const documents: PlanningDocument[] = [];
     const add = (entry: SourceEntry): PlanningDocument | null => {
       added.add(entry.path);
+      let doc: PlanningDocument | null;
       switch (entry.kind) {
         case "file":
           this.texts.set(join(this.base, entry.path), entry.content);
-          return builder.add({ path: entry.path, content: entry.content });
+          doc = builder.add({ path: entry.path, content: entry.content });
+          break;
         case "skipped":
         case "unreadable":
-          return builder.addScanned(entry);
+          doc = builder.addScanned(entry);
+          break;
         case "absent":
-          return null;
+          doc = null;
+          break;
       }
+      if (doc !== null) documents.push(doc);
+      return doc;
     };
 
     // Only candidates are planning documents (§3.1). A repository
@@ -222,6 +247,19 @@ class PlanningPass {
       }
     }
 
+    // A question's state is its marker reconciled with its `blocked-on`
+    // referent (§3.3), and a referent may name a document outside the run.
+    // So a target that is a candidate is read too, as a roadmap is: without
+    // it, a one-file run reads a live referent as an unresolved one and calls
+    // a blocked question unactioned.
+    if (REFERENT_RULES.some((rule) => this.settings.enabled(rule))) {
+      for (const rel of this.blockedOnTargets(documents)) {
+        if (!added.has(rel) && this.candidateFor(listing, rel)) {
+          add(readCandidate(this.base, rel, config.maxFileBytes));
+        }
+      }
+    }
+
     const index = builder.finish();
     const sections = derivePlanningSections(index);
     const routing = sections.roadmaps
@@ -241,6 +279,7 @@ class PlanningPass {
       this.stageVocabulary(doc, report);
       this.dependsOnMissing(doc, report);
       this.stageDisagrees(doc, sections, report);
+      this.blockedOnDisagrees(index, doc, report);
       this.questionLength(doc, rel, report);
       for (const ref of sections.unrouted ?? []) {
         if (ref.path !== rel) continue;
@@ -296,7 +335,7 @@ class PlanningPass {
    * from its header and one substring test, before the document is parsed.
    *
    * The parse is nearly all of this pass's cost, and most documents in a run
-   * cannot be reported by any of the five rules: without `stage` or
+   * cannot be reported by any of the six rules: without `stage` or
    * `depends-on` in the header, and without a question directive in the body,
    * none of them has anything to say. Leaving such a document out of the
    * narrow index changes nothing for the others, since each rule reads only
@@ -316,6 +355,7 @@ class PlanningPass {
       (has("depends-on") && enabled("planning/depends-on-missing")) ||
       (staged && enabled("planning/stage-vocabulary")) ||
       (staged && directives && enabled("planning/stage-disagrees")) ||
+      (directives && enabled("planning/blocked-on-disagrees")) ||
       (directives && enabled("planning/unrouted")) ||
       (directives && enabled("planning/question-length"))
     );
@@ -363,6 +403,32 @@ class PlanningPass {
       doc.stageLine ?? 1,
       `Stage \`${doc.stage}\` is not declared under [planning.stages], which declares ${list(declared.map((w) => `\`${w}\``))}. Matching is exact and case-sensitive${near === undefined ? "." : `: did you mean \`${near}\`?`}`,
     );
+  }
+
+  /**
+   * A question whose marker disagrees with its referent (§3.3, §6.2): a 🔒
+   * with nothing live to wait on, or a 💬 whose `blocked-on` still waits. The
+   * referent decides the question's state, so what the rule names is the
+   * marker: either the block it omits, or the block it claims.
+   */
+  private blockedOnDisagrees(
+    index: PlanningIndex,
+    doc: PlanningDocument,
+    report: Report,
+  ): void {
+    const rule = "planning/blocked-on-disagrees";
+    if (!this.settings.enabled(rule)) return;
+    for (const q of doc.questions) {
+      if (questionState(index, q) === q.state) continue;
+      const name = questionName(q.id, q.title);
+      report(
+        rule,
+        q.unitLine,
+        q.state === "blocked"
+          ? `Question ${name} is marked ${VANTAGE_OQ_STATUS.blocked} (blocked), but its \`blocked-on\` names nothing that still waits, so nothing blocks it. Either give it a \`blocked-on\` entry naming what it waits on, or move the marker to ${VANTAGE_OQ_STATUS.open} (open): an unactioned question with an owner, not a blocked one.`
+          : `Question ${name} is marked ${VANTAGE_OQ_STATUS.open} (open), but its \`blocked-on\` still waits on ${list(waitingBlockedOn(index, q).map(blockedOnLabel))}. Either move the marker to ${VANTAGE_OQ_STATUS.blocked} (blocked) or remove the entry: the referent decides the question's state.`,
+      );
+    }
   }
 
   /**
@@ -485,6 +551,36 @@ class PlanningPass {
     if (!rel.toLowerCase().endsWith(".md")) return false;
     const fromCwd = relativeTo(this.cwd, file);
     return fromCwd === null || matchesPatterns(this.config, fromCwd);
+  }
+
+  /**
+   * Whether a repo-relative path is a candidate, by the test this run's own
+   * files were judged with: the listing's, or, with no project root, the
+   * extension and patterns against the working directory.
+   */
+  private candidateFor(listing: Listing | null, rel: string): boolean {
+    return listing === null
+      ? this.candidateWithoutRoot(join(this.base, rel), rel)
+      : isCandidate(listing, this.config, rel);
+  }
+
+  /**
+   * The paths the added documents' questions name with `blocked-on`, each
+   * once, in document order: the referents a check has to read to decide
+   * whether a marker agrees with them.
+   */
+  private blockedOnTargets(documents: readonly PlanningDocument[]): string[] {
+    const targets = new Set<string>();
+    for (const doc of documents) {
+      for (const question of doc.questions) {
+        for (const entry of question.blockedOn) {
+          if (entry.kind === "target" && entry.target !== null) {
+            targets.add(entry.target);
+          }
+        }
+      }
+    }
+    return [...targets];
   }
 
   /**

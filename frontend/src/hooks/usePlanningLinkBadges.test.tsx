@@ -67,16 +67,18 @@ vi.mock("react-router-dom", async () => {
  * The corpus
  * ------------------------------------------------------------------ */
 
-const question = (id: string, marker: string) =>
+const question = (id: string, marker: string, blockedOn?: string) =>
   [
     `1. ${marker} **${id}: A question?**`,
     "",
-    `   ${questionDirective(marker, id, "Yes.")}`,
+    `   ${questionDirective(marker, id, "Yes.", blockedOn)}`,
     "",
     "   _Leaning:_ yes.",
     "",
   ].join("\n");
 
+// OQ-2 is a 🔒 whose `blocked-on` names an outside event, so it is blocked
+// whatever happens to OQ-1.
 const designDoc = (open: string) =>
   [
     "---",
@@ -87,7 +89,7 @@ const designDoc = (open: string) =>
     "# A",
     "",
     question("OQ-1", open),
-    question("OQ-2", "\u{1F512}"),
+    question("OQ-2", "\u{1F512}", "the 2.0 release"),
     "## Decision Ledger",
     "",
     "| OQ-9 | Ruled |",

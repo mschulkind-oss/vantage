@@ -262,8 +262,12 @@ describe("the closed vocabulary", () => {
     expect(DIRECTIVE_VOCABULARY.oq).toEqual({ id: null, leaning: null });
     // Withholding a block is the whole of what `fallback` says.
     expect(DIRECTIVE_VOCABULARY.fallback).toEqual({});
-    // `question` takes exactly `oq`'s keys: it replaces `oq`, in every state.
-    expect(DIRECTIVE_VOCABULARY.question).toEqual(DIRECTIVE_VOCABULARY.oq);
+    // `question` takes `oq`'s keys, and `blocked-on` beside them: a question
+    // may name what it waits on, and `oq` is the older name that never did.
+    expect(DIRECTIVE_VOCABULARY.question).toEqual({
+      ...DIRECTIVE_VOCABULARY.oq,
+      "blocked-on": null,
+    });
   });
 
   it("names the two question directives, and offers a take by state alone", () => {

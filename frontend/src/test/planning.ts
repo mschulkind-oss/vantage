@@ -50,16 +50,21 @@ export function readRepoFile(rel: string): string {
 /**
  * A directive for a question marked `marker`: `question`, the one name for a
  * question in every state, restating `leaning` on an open or unmarked one. A
- * 🔒 or ✅ one gets none, which nothing would offer to take.
+ * 🔒 or ✅ one gets none, which nothing would offer to take. `blockedOn`, when
+ * given, is written as the directive's `blocked-on=`.
  */
 export function questionDirective(
   marker: string,
   id: string,
   leaning: string | null = null,
+  blockedOn?: string,
 ): string {
-  return leaning === null || !questionOffersTake(vantageOqStatus(marker))
-    ? `<!-- vantage: question id=${id} -->`
-    : `<!-- vantage: question id=${id} leaning="${leaning}" -->`;
+  const keys = [`id=${id}`];
+  if (leaning !== null && questionOffersTake(vantageOqStatus(marker))) {
+    keys.push(`leaning="${leaning}"`);
+  }
+  if (blockedOn !== undefined) keys.push(`blocked-on="${blockedOn}"`);
+  return `<!-- vantage: question ${keys.join(" ")} -->`;
 }
 
 /** A shared planning fixture from `internal/repoconfig/testdata/`. */
@@ -236,11 +241,7 @@ export function sectionEntryKeys(sections: PlanningSections): string[] {
     )[];
     return entries.map((entry) => {
       if (typeof entry === "string") return `${id} ${entry}`;
-      if ("kind" in entry) {
-        return entry.kind === "document"
-          ? `${id} ${entry.path}`
-          : question(id, entry.question);
-      }
+      if ("kind" in entry) return question(id, entry.question);
       if ("line" in entry) return question(id, entry);
       return `${id} ${entry.path}`;
     });

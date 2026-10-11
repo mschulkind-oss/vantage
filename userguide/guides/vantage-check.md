@@ -471,6 +471,7 @@ scan, so the gate and the page of one release cannot disagree.
 | `planning/stage-vocabulary` | A `stage` outside the words `[planning.stages]` declares | error, once stages are declared |
 | `planning/depends-on-missing` | A `depends-on` entry whose target does not exist or lies outside the repository, or whose `#OQ-…` id appears nowhere in it | error |
 | `planning/stage-disagrees` | A document whose stage has the `ready` or `built` role while it still has open questions | warning |
+| `planning/blocked-on-disagrees` | A question marker that disagrees with its `blocked-on` referent: a 🔒 with nothing that still waits, or a 💬 whose referent does | error |
 | `planning/unrouted` | An open question no roadmap [links to](planning.md#the-roadmap), directly or through its document | **off** |
 | `planning/question-length` | A question whose text, not counting its leaning and its Answer, runs past 120 words | warning |
 
