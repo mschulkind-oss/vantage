@@ -36,6 +36,7 @@ import (
 
 	"github.com/mschulkind-oss/vantage/internal/config"
 	"github.com/mschulkind-oss/vantage/internal/fsname"
+	"github.com/mschulkind-oss/vantage/internal/perf"
 )
 
 // workspaceIgnoreName is the per-repo ignore file, resolved against the root.
@@ -404,8 +405,10 @@ func GetMatcherWithDefaults(root string, enabled bool, defaults []string) *Match
 	cacheMu.Lock()
 	defer cacheMu.Unlock()
 	if m, ok := matcherCache[key]; ok {
+		perf.Default.Count("ignore_matcher_cache_hit")
 		return m
 	}
+	perf.Default.Count("ignore_matcher_cache_miss")
 	m := NewMatcherWithDefaults(key.root, enabled, defaultUserFn(), defaults)
 	matcherCache[key] = m
 	return m

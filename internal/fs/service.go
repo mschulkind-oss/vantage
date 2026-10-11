@@ -565,8 +565,10 @@ func (s *FileSystemService) dirHasMarkdown(dir string) bool {
 		}
 	}
 	if has, ok := markdownDirCache.get(dir); ok {
+		perf.Default.Count("markdown_dir_cache_hit")
 		return has
 	}
+	perf.Default.Count("markdown_dir_cache_miss")
 	has := s.walkForMarkdown(dir)
 	markdownDirCache.set(dir, has)
 	return has

@@ -141,11 +141,15 @@ func printPerfReport(w io.Writer, d *perf.Diagnostics, color bool) {
 	if len(d.Services.ByOperation) > 0 {
 		fmt.Fprintln(w, c(ansiYellow+ansiBold, "Service Operation Latencies (ms):"))
 		tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-		fmt.Fprintln(tw, "  Operation\tCount\tp50\tp95\tmax")
+		fmt.Fprintln(tw, "  Operation\tCategory\tCount\tp50\tp95\tmax")
 		for _, op := range sortedByP95(d.Services.ByOperation) {
 			s := d.Services.ByOperation[op]
-			line := fmt.Sprintf("  %s\t%d\t%.1f\t%.1f\t%.1f",
-				op, s.Count, s.P50, s.P95, s.Max)
+			category := s.Category
+			if category == "" {
+				category = "?"
+			}
+			line := fmt.Sprintf("  %s\t%s\t%d\t%.1f\t%.1f\t%.1f",
+				op, category, s.Count, s.P50, s.P95, s.Max)
 			fmt.Fprintln(tw, c(latencyColor(s.P95), line))
 		}
 		_ = tw.Flush()
@@ -166,14 +170,49 @@ func printPerfReport(w io.Writer, d *perf.Diagnostics, color bool) {
 		fmt.Fprintln(w)
 	}
 
+	// Slow services (git/fs calls at or above the same threshold).
+	if len(d.SlowServices) > 0 {
+		fmt.Fprintln(w, c(ansiRed+ansiBold, fmt.Sprintf(
+			"Slow Services (>threshold): %d captured", len(d.SlowServices))))
+		limit := len(d.SlowServices)
+		if limit > 10 {
+			limit = 10
+		}
+		for _, s := range d.SlowServices[:limit] {
+			fmt.Fprintf(w, "  %8.0fms  %s\n", s.DurationMs, s.Operation)
+		}
+		fmt.Fprintln(w)
+	}
+
+	// Named counters (cache hits and misses).
+	if len(d.Counters) > 0 {
+		fmt.Fprintln(w, c(ansiYellow+ansiBold, "Counters:"))
+		for _, name := range sortedCounterKeys(d.Counters) {
+			fmt.Fprintf(w, "  %s: %d\n", name, d.Counters[name])
+		}
+		fmt.Fprintln(w)
+	}
+
+	// Watcher health (daemon mode only; absent in single-repo mode).
+	if d.Watchers != nil {
+		ws := d.Watchers
+		fmt.Fprintln(w, c(ansiYellow+ansiBold, "Watchers:"))
+		fmt.Fprintf(w, "  Repos: %d  |  Watched dirs: %d  |  Watch failed dirs: %d\n",
+			ws.Repos, ws.WatchedDirs, ws.WatchFailedDirs)
+		fmt.Fprintf(w, "  Events: %d  |  Kept: %d\n", ws.EventsTotal, ws.Kept)
+		fmt.Fprintf(w, "  Dropped: ext=%d, ignore=%d, outside=%d, same_fp=%d, stale=%d, attrib=%d\n",
+			ws.DroppedExt, ws.DroppedIgnore, ws.DroppedOutside, ws.DroppedSameFP, ws.DroppedStale, ws.DroppedAttrib)
+		fmt.Fprintln(w)
+	}
+
 	// Repo shape.
 	if len(d.RepoShape) > 0 {
 		fmt.Fprintln(w, c(ansiYellow+ansiBold, "Repository Shape:"))
 		for _, name := range sortedKeys(d.RepoShape) {
 			shape := d.RepoShape[name]
 			fmt.Fprintf(w, "  %s:\n", name)
-			fmt.Fprintf(w, "    Files: %d  |  Dirs: %d  |  Max depth: %d\n",
-				shape.TotalFiles, shape.TotalDirs, shape.MaxDepth)
+			fmt.Fprintf(w, "    Files: %d  |  Dirs: %d  |  Max depth: %d  |  Walk: %.0fms\n",
+				shape.TotalFiles, shape.TotalDirs, shape.MaxDepth, shape.WalkMs)
 			if len(shape.ExtensionDistribution) > 0 {
 				fmt.Fprintf(w, "    Extensions: %s\n", topExtensions(shape.ExtensionDistribution, 8))
 			}
@@ -242,6 +281,17 @@ func sortedByP95(m map[string]perf.OperationStats) []string {
 
 // sortedKeys returns the keys of a RepoShape map in ascending order.
 func sortedKeys(m map[string]perf.RepoShape) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+// sortedCounterKeys returns the keys of a counter map in ascending order, so the
+// counters section is stable across runs.
+func sortedCounterKeys(m map[string]int) []string {
 	keys := make([]string, 0, len(m))
 	for k := range m {
 		keys = append(keys, k)

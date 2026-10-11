@@ -47,6 +47,7 @@ type Store struct {
 	full         bool // whether the ring has wrapped
 	requestCount int
 	serviceCount int
+	counters     map[string]int // named tallies, e.g. cache hits and misses
 	startTime    time.Time
 	bufferMax    int
 }
@@ -60,6 +61,7 @@ var Default = NewStore()
 func NewStore() *Store {
 	return &Store{
 		records:   make([]timingRecord, 0, maxRecords),
+		counters:  map[string]int{},
 		startTime: time.Now(),
 		bufferMax: maxRecords,
 	}
@@ -144,9 +146,22 @@ func logDuration(category, operation string, durationMs float64) {
 	}
 }
 
-// Clear drops all timing records and zeroes the request and service counters.
-// The uptime clock is preserved: Diagnostics.Meta.UptimeS keeps counting from
-// process start across a Clear.
+// Count increments the named counter by one. Counters are free-form named
+// tallies (cache hits and misses, for instance) surfaced verbatim as
+// Diagnostics.Counters; use a stable snake_case name as the contract. It is
+// safe for concurrent use.
+func (s *Store) Count(name string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.counters == nil {
+		s.counters = map[string]int{}
+	}
+	s.counters[name]++
+}
+
+// Clear drops all timing records, zeroes the request and service counters, and
+// empties the named counters. The uptime clock is preserved: Diagnostics.Meta.UptimeS
+// keeps counting from process start across a Clear.
 func (s *Store) Clear() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -155,12 +170,13 @@ func (s *Store) Clear() {
 	s.full = false
 	s.requestCount = 0
 	s.serviceCount = 0
+	s.counters = map[string]int{}
 }
 
 // snapshot returns a copy of the live records in insertion order along with the
 // current counters and buffer fill. The caller works on the copy so aggregation
 // runs without holding the lock.
-func (s *Store) snapshot() (recs []timingRecord, requests, services, bufSize int) {
+func (s *Store) snapshot() (recs []timingRecord, requests, services, bufSize int, counters map[string]int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.full {
@@ -171,26 +187,46 @@ func (s *Store) snapshot() (recs []timingRecord, requests, services, bufSize int
 		recs = make([]timingRecord, len(s.records))
 		copy(recs, s.records)
 	}
-	return recs, s.requestCount, s.serviceCount, len(recs)
+	counters = make(map[string]int, len(s.counters))
+	for name, n := range s.counters {
+		counters[name] = n
+	}
+	return recs, s.requestCount, s.serviceCount, len(recs), counters
+}
+
+// operationBucket accumulates one operation's durations together with the
+// category of the first record seen for it, so a bucket can report its
+// category (git or fs) without changing the by-operation map key.
+type operationBucket struct {
+	category string
+	durs     []float64
 }
 
 // byOperation groups durations by operation and computes percentiles for each.
 // When onlyRequest is true, only request-category records are included and their
 // buckets carry p99; otherwise only non-request records are included and p99 is
 // omitted. Results are keyed by operation name; the map iterates unordered but
-// JSON marshaling sorts keys.
+// JSON marshaling sorts keys. Each bucket carries the category of the timing
+// records that fed it.
 func byOperation(recs []timingRecord, onlyRequest bool) map[string]OperationStats {
-	buckets := make(map[string][]float64)
+	buckets := make(map[string]*operationBucket)
 	for _, r := range recs {
 		isRequest := r.category == CategoryRequest
 		if isRequest != onlyRequest {
 			continue
 		}
-		buckets[r.operation] = append(buckets[r.operation], r.durationMs)
+		b := buckets[r.operation]
+		if b == nil {
+			b = &operationBucket{category: r.category}
+			buckets[r.operation] = b
+		}
+		b.durs = append(b.durs, r.durationMs)
 	}
 	out := make(map[string]OperationStats, len(buckets))
-	for op, durs := range buckets {
-		out[op] = computePercentiles(durs, onlyRequest)
+	for op, b := range buckets {
+		stats := computePercentiles(b.durs, onlyRequest)
+		stats.Category = b.category
+		out[op] = stats
 	}
 	return out
 }
@@ -224,17 +260,41 @@ func slowRequests(recs []timingRecord) []SlowRequest {
 	return slow
 }
 
+// slowServices returns the slowest non-request (git/fs) records at or above
+// slowThresholdMs, sorted descending by duration and capped at slowRequestLimit.
+// It mirrors slowRequests for the service categories.
+func slowServices(recs []timingRecord) []SlowOperation {
+	var slow []SlowOperation
+	for _, r := range recs {
+		if r.category == CategoryRequest || r.durationMs < slowThresholdMs {
+			continue
+		}
+		slow = append(slow, SlowOperation{
+			Operation:  r.operation,
+			DurationMs: round1(r.durationMs),
+		})
+	}
+	sort.SliceStable(slow, func(i, j int) bool {
+		return slow[i].DurationMs > slow[j].DurationMs
+	})
+	if len(slow) > slowRequestLimit {
+		slow = slow[:slowRequestLimit]
+	}
+	return slow
+}
+
 // Diagnostics builds the full perf report from the current ring contents. It
 // snapshots the buffer under the lock and computes everything on the copy, so
-// concurrent recording is never blocked by report generation. RepoShape is left
-// nil for the server to populate.
+// concurrent recording is never blocked by report generation. RepoShape and
+// Watchers are left nil for the server to populate.
 func (s *Store) Diagnostics() Diagnostics {
 	t0 := time.Now()
-	recs, requests, services, bufSize := s.snapshot()
+	recs, requests, services, bufSize, counters := s.snapshot()
 
 	byEndpoint := byOperation(recs, true)
 	byService := byOperation(recs, false)
 	slow := slowRequests(recs)
+	slowSvc := slowServices(recs)
 
 	buildMs := float64(time.Since(t0).Microseconds()) / 1000
 
@@ -245,7 +305,12 @@ func (s *Store) Diagnostics() Diagnostics {
 		slog.Int("endpoints", len(byEndpoint)),
 		slog.Int("operations", len(byService)),
 		slog.Int("slow", len(slow)),
+		slog.Int("slow_services", len(slowSvc)),
 		slog.Float64("build_ms", buildMs))
+
+	if len(counters) == 0 {
+		counters = nil
+	}
 
 	return Diagnostics{
 		Requests: RequestsSection{
@@ -257,6 +322,8 @@ func (s *Store) Diagnostics() Diagnostics {
 			ByOperation: byService,
 		},
 		SlowRequests: slow,
+		SlowServices: slowSvc,
+		Counters:     counters,
 		Meta: Meta{
 			CollectedAt: t0.UTC().Format(time.RFC3339Nano),
 			UptimeS:     round1(time.Since(s.startTime).Seconds()),

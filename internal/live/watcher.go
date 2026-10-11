@@ -27,6 +27,7 @@ import (
 	gitsvc "github.com/mschulkind-oss/vantage/internal/git"
 	"github.com/mschulkind-oss/vantage/internal/ignore"
 	"github.com/mschulkind-oss/vantage/internal/model"
+	"github.com/mschulkind-oss/vantage/internal/perf"
 	"github.com/mschulkind-oss/vantage/internal/repoconfig"
 	"github.com/mschulkind-oss/vantage/internal/review"
 )
@@ -182,6 +183,10 @@ type Watcher struct {
 	// discovered would have kept watching a directory that is gone.
 	closed bool
 	stats  watcherStats
+	// loggedStats is the same counters as they were at the previous heartbeat,
+	// so logHeartbeat can log the delta while stats keep counting for the
+	// watcher's lifetime (see [Watcher.Stats]).
+	loggedStats watcherStats
 	// changes counts flushed change batches over the watcher's lifetime. The
 	// server's activity warm reads it to tell whether anything has happened in a
 	// repository since its last recompute, so a quiet repository is not walked.
@@ -220,8 +225,8 @@ type Watcher struct {
 	ownFiles int
 }
 
-// watcherStats are reset every heartbeat so they describe the most recent
-// interval rather than the lifetime of the process.
+// watcherStats count the watcher's events over its lifetime; logHeartbeat logs
+// the delta since the previous heartbeat so that interval's traffic is visible.
 type watcherStats struct {
 	eventsTotal    int
 	kept           int
@@ -780,6 +785,30 @@ func (w *Watcher) Changes() uint64 {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	return w.changes
+}
+
+// Stats returns this watcher's lifetime counters as an anonymized snapshot,
+// safe to read while the event loop runs. Repos is 1: one watcher serves one
+// repository, and the server sums Stats across watchers for the perf report.
+// WatchedDirs counts the currently registered directories (the root included),
+// so it falls when directories are forgotten as well as rises when new ones are
+// watched. The counters are cumulative, unlike the per-heartbeat log.
+func (w *Watcher) Stats() perf.WatcherStats {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return perf.WatcherStats{
+		Repos:           1,
+		WatchedDirs:     len(w.dirs) + 1,
+		WatchFailedDirs: w.watchFailedDirs,
+		EventsTotal:     w.stats.eventsTotal,
+		Kept:            w.stats.kept,
+		DroppedExt:      w.stats.droppedExt,
+		DroppedIgnore:   w.stats.droppedIgnore,
+		DroppedOutside:  w.stats.droppedOutside,
+		DroppedSameFP:   w.stats.droppedSameFP,
+		DroppedStale:    w.stats.droppedStale,
+		DroppedAttrib:   w.stats.droppedAttrib,
+	}
 }
 
 // noteChange records one flushed change batch.
@@ -1374,23 +1403,25 @@ func isWatchLimitError(err error) bool {
 		errors.Is(err, syscall.EMFILE) || errors.Is(err, syscall.ENFILE)
 }
 
-// logHeartbeat emits and resets the interval stats so a stalled watcher is
-// distinguishable from a quiet one.
+// logHeartbeat emits the traffic since the previous heartbeat so a stalled
+// watcher is distinguishable from a quiet one. The cumulative watcherStats are
+// preserved for [Watcher.Stats]; only the logged baseline advances.
 func (w *Watcher) logHeartbeat() {
 	w.mu.Lock()
 	s := w.stats
+	prev := w.loggedStats
+	w.loggedStats = s
 	failedDirs := w.watchFailedDirs
-	w.stats = watcherStats{}
 	w.mu.Unlock()
 	w.logger.Info("watcher heartbeat",
-		"events", s.eventsTotal,
+		"events", s.eventsTotal-prev.eventsTotal,
 		"watch_failed_dirs", failedDirs,
-		"kept", s.kept,
-		"dropped_ext", s.droppedExt,
-		"dropped_ignore", s.droppedIgnore,
-		"dropped_outside", s.droppedOutside,
-		"dropped_same_content", s.droppedSameFP,
-		"dropped_unwatched_dir", s.droppedStale,
-		"dropped_attributes_only", s.droppedAttrib,
+		"kept", s.kept-prev.kept,
+		"dropped_ext", s.droppedExt-prev.droppedExt,
+		"dropped_ignore", s.droppedIgnore-prev.droppedIgnore,
+		"dropped_outside", s.droppedOutside-prev.droppedOutside,
+		"dropped_same_content", s.droppedSameFP-prev.droppedSameFP,
+		"dropped_unwatched_dir", s.droppedStale-prev.droppedStale,
+		"dropped_attributes_only", s.droppedAttrib-prev.droppedAttrib,
 	)
 }
