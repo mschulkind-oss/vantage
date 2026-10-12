@@ -137,6 +137,7 @@ import {
 } from "../lib/planningCardParts";
 import { focusIsIdle } from "../hooks/useShellPage";
 import { planningCardId } from "../lib/planningCardId";
+import { reducedMotion } from "../lib/reducedMotion";
 import { planningLimits } from "../planningScan/limits";
 import {
   commandErrorMessage,
@@ -285,6 +286,15 @@ interface PlanningQuestionCardProps {
    */
   onAnswered?: (key: string, height: number) => void;
   /**
+   * A question that joined the end of the cards when the reader answered
+   * another: this card grows from no height at all to its own, so what is
+   * below the shrink moves once rather than jumping
+   * (`docs/reference/planning-index.md` §6.4). Read as the card mounts.
+   */
+  growing?: boolean;
+  /** `growing` has been read, so the page can forget it. */
+  onGrown?: (key: string) => void;
+  /**
    * Its **Answer…** box opened (`true`), or closed (`true` holding text,
    * `false` empty): while it is open, and once it has answered, what its
    * saves file is the reader's own answer here, never late data
@@ -349,6 +359,41 @@ function keepCardTop(
   };
   if (typeof requestAnimationFrame !== "function") resume();
   else requestAnimationFrame(() => requestAnimationFrame(resume));
+}
+
+/** How long a card joining the end of the cards takes to grow to its height. */
+const CARD_GROW_MS = 320;
+
+/**
+ * Grow `article` from no height at all to its own: the mirror of the answered
+ * row's shrink (`shrinkToRow` in `PlanningNeedsYou.tsx`), for the question that
+ * joins the end of the cards when the reader answers one. Appearing at its
+ * height in a single frame is a jump of that whole height — everything below
+ * it moves at once — where growing carries them down in one movement, over the
+ * same time and curve the row above collapses in.
+ *
+ * Measured rather than animated blindly: the card's own height is what it
+ * grows to, whatever the fold, the preview or the comments make it. A reader
+ * who asked for less motion gets it at that height at once, which moves
+ * nothing that a shrink did not move anyway.
+ */
+function growCard(article: HTMLElement, done: () => void): void {
+  const from = article.style.height;
+  article.style.height = "auto";
+  const to = article.getBoundingClientRect().height;
+  article.style.height = from;
+  if (typeof article.animate !== "function" || reducedMotion()) {
+    done();
+    return;
+  }
+  const growing = article.animate([{ height: "0px" }, { height: `${to}px` }], {
+    duration: CARD_GROW_MS,
+    easing: "cubic-bezier(0.2, 0, 0, 1)",
+  });
+  // `onfinish`, not a `finish` listener: a test's stand-in for `animate`
+  // returns an object of its own, and this is the one property every stand-in
+  // and every browser shares.
+  growing.onfinish = done;
 }
 
 /** A card's height on screen, which its answered row shrinks from. */
@@ -653,6 +698,8 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
   onNewReply,
   onAnswered,
   onAnswering,
+  growing = false,
+  onGrown,
 }: PlanningQuestionCardProps) {
   // Show question's answer, for the question it was fetched for.
   const [shown, setShown] = useState<{
@@ -698,6 +745,20 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
   }, [onShowQuestion, question]);
 
   const articleRef = useRef<HTMLElement>(null);
+  // The card that joined the end of the cards just now: drawn from no height
+  // at all and grown to its own on the first paint, so what is below it moves
+  // once rather than appearing at its height in one frame. Read at mount, and
+  // the page told as that happens so it stops asking (`onGrown`).
+  const [grow] = useState(() => growing);
+  const [grown, setGrown] = useState(grow);
+  useLayoutEffect(() => {
+    const article = articleRef.current;
+    if (!grow || article === null) return;
+    growCard(article, () => setGrown(false));
+  }, [grow]);
+  useEffect(() => {
+    if (growing) onGrown?.(cardKey);
+  }, [cardKey, growing, onGrown]);
   /** Show question had the focus, which the card takes once it is shown. */
   const refocusRef = useRef(false);
   useLayoutEffect(() => {
@@ -1112,6 +1173,10 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
       tabIndex={preview ? -1 : undefined}
       data-planning-item={id}
       className="relative rounded-xl border border-slate-200 bg-white px-5 pt-3 pb-4 shadow-sm dark:border-slate-700 dark:bg-slate-800"
+      // Clipped while it grows: what the animation has not reached yet is not
+      // drawn over the content below it. The style goes entirely when it
+      // lands, so the card's own height is the height it settles at.
+      style={grown ? { height: 0, overflow: "hidden" } : undefined}
     >
       {newReply && <NewReplyBar />}
       <div className="mb-1 flex flex-wrap items-baseline gap-x-2 text-xs text-slate-500 dark:text-slate-400">

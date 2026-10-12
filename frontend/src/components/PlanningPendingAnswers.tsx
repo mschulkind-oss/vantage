@@ -62,7 +62,7 @@ export function PlanningPendingAnswers({
         disabled={!known || entries.length === 0}
         aria-haspopup="menu"
         aria-expanded={open}
-        title="See the documents and comments included in Copy answers"
+        data-tip="See the documents and comments included in Copy answers"
         onClick={() => {
           // Entering a portaled menu closes the compact toolbar's panel.
           // Anchor to its persistent ⋯ button in that case, so placement and
@@ -82,7 +82,7 @@ export function PlanningPendingAnswers({
           icon={<MessageSquare size={RESERVED_ICON_SIZE} aria-hidden="true" />}
           label="Review answers"
           reserve={["Review answers"]}
-          labelClassName="hdr-label"
+          labelClassName="hdr-label hdr-label-minor"
         />
       </button>
       <AnchoredMenu

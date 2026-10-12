@@ -551,7 +551,7 @@ const CardsToggle: React.FC<{
       data-planning-cards-toggle
       onClick={onToggle}
       aria-label={expanded ? "Collapse all" : "Expand all"}
-      title={cardsToggleTitle(expanded)}
+      data-tip={cardsToggleTitle(expanded)}
       className="hdr-view block shrink-0 cursor-pointer rounded-md p-1.5 text-slate-500 transition-colors hover:bg-slate-100 print:hidden dark:text-slate-400 dark:hover:bg-slate-700"
     >
       {expanded ? (
@@ -2471,10 +2471,38 @@ export const PlanningPage: React.FC = () => {
       return next;
     });
   }, []);
+  // The questions that joined the end of the cards when the reader answered
+  // one, by item key, each read by the card it names as that card mounts
+  // (`PlanningQuestionCard`), which then has it dropped. An arrival is shown
+  // the way a departure is: the card grows from no height at all, so what is
+  // below the shrink moves once and not in a jump
+  // (docs/reference/planning-index.md §6.4).
+  const [growing, setGrowing] = useState<ReadonlySet<string>>(new Set());
+  const grown = useCallback((key: string) => {
+    setGrowing((prev) => {
+      if (!prev.has(key)) return prev;
+      const next = new Set(prev);
+      next.delete(key);
+      return next;
+    });
+  }, []);
+  // Which question the next answer brings in: the layout's `more` at the count
+  // joined so far. A ref, because the answer's callback is not rebuilt on every
+  // layout (`shownByRef`'s bargain), and read when pressed, so it is the layout
+  // on screen that answers.
+  const joiningRef = useRef<QuestionEntry | undefined>(undefined);
+  useEffect(() => {
+    joiningRef.current = current?.needsYou.more[current.inPlace.joined];
+  }, [current]);
   const answeredHere = useCallback(
     (cardKey: string, height: number) => {
       const key = shownByRef.get(cardKey);
       if (key !== undefined) {
+        const joining = joiningRef.current;
+        if (joining !== undefined) {
+          const joined = itemKey(joining.question);
+          setGrowing((prev) => new Set(prev).add(joined));
+        }
         setShrinking((prev) => new Map(prev).set(key, height));
         focusRef.current = { key, on: "row", onlyIfLost: true };
         changeInPlace((s) => shrinkCard(s.inPlace, s.needsYou, key));
@@ -3081,6 +3109,8 @@ export const PlanningPage: React.FC = () => {
         onNewReply={seeCardReply}
         onAnswered={answeredHere}
         onAnswering={answering}
+        growing={growing.has(item.key)}
+        onGrown={grown}
       />
     );
   };
@@ -3645,7 +3675,7 @@ export const PlanningPage: React.FC = () => {
                 ? `${copied ? "Copied" : "Copy answers"} ${pendingCount}, not counting ${leftOutAnswers(pendingLeftOut)} the filter leaves out`
                 : undefined
             }
-            title={
+            data-tip={
               reviewsFailed
                 ? "Comments could not be loaded, so the answers waiting on the agent cannot be counted"
                 : !countKnown
