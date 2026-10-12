@@ -132,7 +132,7 @@ export const SettingsDropdown: React.FC<SettingsDropdownProps> = ({
             : "hover:bg-slate-100 text-slate-500 dark:hover:bg-slate-700 dark:text-slate-400",
         )}
         aria-label="Settings"
-        title="Settings"
+        data-tip="Settings"
       >
         <Settings size={16} />
       </button>

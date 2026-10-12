@@ -220,7 +220,7 @@ export const PlanningCopyPanel: React.FC<{
         aria-disabled={greyed || undefined}
         // Its name stays put: the live region below says it copied.
         aria-label={`${COPY_MAINTENANCE_LABEL} ${shown}`}
-        title={title}
+        data-tip={title}
         className={cn(
           "inline-flex items-center gap-1.5 rounded-l-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors dark:border-slate-600 dark:text-slate-200",
           greyed
@@ -238,7 +238,7 @@ export const PlanningCopyPanel: React.FC<{
           }
           label={copied ? "Copied" : COPY_MAINTENANCE_LABEL}
           reserve={[COPY_MAINTENANCE_LABEL, "Copied"]}
-          labelClassName="hdr-label"
+          labelClassName="hdr-label hdr-label-minor"
           trailing={{
             text: shown,
             testId: "copy-maintenance-count",

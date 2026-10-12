@@ -30,7 +30,7 @@ describe("CollapsedFolders", () => {
     renderFolders();
     const more = screen.getByRole("button", { name: "Folders: docs/design" });
     expect(more).toHaveTextContent("…");
-    expect(more).toHaveAttribute("title", "docs/design");
+    expect(more).toHaveAttribute("data-tip", "docs/design");
     expect(more).toHaveAttribute("aria-expanded", "false");
     expect(screen.queryByRole("menu")).toBeNull();
   });

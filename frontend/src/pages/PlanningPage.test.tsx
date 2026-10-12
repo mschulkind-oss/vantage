@@ -1366,7 +1366,16 @@ describe("your own actions (planning-index.md §6.4)", () => {
     });
     await settle();
     const row = screen.getByRole("group", { name: "OQ-T1: Question OQ-T1?" });
-    expect(played.map((p) => p.el)).toEqual([row, row]);
+    // The row's two — its height, then the tint — and, last, the question that
+    // joined the end of the cards growing from nothing to its own height, so
+    // what is below the shrink moves once rather than appearing at its height
+    // in a frame (docs/reference/planning-index.md §6.4).
+    const joined = cardFor("OQ-T3");
+    expect(played.map((p) => p.el)).toEqual([row, row, joined]);
+    expect(played[2]!.keyframes).toEqual([
+      { height: "0px" },
+      { height: "240px" },
+    ]);
     // From the card's height to the row's own, measured, its content kept at
     // the top.
     expect(played[0]!.keyframes).toEqual([
@@ -1377,7 +1386,8 @@ describe("your own actions (planning-index.md §6.4)", () => {
     // shorter: one near the end of the list would have pulled the pane's
     // scroll back, moving everything down before the shrink began.
     expect(played[0]!.height).toBe("240px");
-    expect(played[1]!.keyframes[0]!.boxShadow).toMatch(/rgb\(34 197 94/);
+    expect(played[1]!.keyframes[0]!.boxShadow).toBe("none");
+    expect(played[1]!.keyframes[1]!.boxShadow).toMatch(/rgb\(34 197 94/);
     expect(played[1]!.ms).toBeGreaterThan(played[0]!.ms);
   });
 
@@ -1398,7 +1408,8 @@ describe("your own actions (planning-index.md §6.4)", () => {
     expect(played[0]!.keyframes[0]).not.toHaveProperty("height");
     // Drawn tall for its first layout all the same, so it pulls no scroll.
     expect(played[0]!.height).toBe("240px");
-    expect(played[0]!.keyframes[0]!.boxShadow).toMatch(/rgb\(34 197 94/);
+    expect(played[0]!.keyframes[0]!.boxShadow).toBe("none");
+    expect(played[0]!.keyframes[1]!.boxShadow).toMatch(/rgb\(34 197 94/);
   });
 
   it("shrinks a card when its Answer… box closes holding text, never as it is typed in", async () => {
@@ -1679,7 +1690,7 @@ describe("a group the layout did not have (§6.4)", () => {
     expect(querySection("Blocked")).toBeNull();
     expect(querySection("Maintenance")).toBeNull();
     expect(updatesButton()).toHaveAttribute(
-      "title",
+      "data-tip",
       expect.stringContaining("new under Blocked"),
     );
     await refresh();
@@ -1809,7 +1820,7 @@ describe("what arrives late (planning-index.md §6.4)", () => {
     // page size.
     expect(updatesCount()).toHaveTextContent("2");
     expect(updatesButton()).toHaveAttribute(
-      "title",
+      "data-tip",
       expect.stringContaining("1 new reply"),
     );
     // Pressing the mark opens the reply in place: your action.
@@ -1897,14 +1908,14 @@ describe("what arrives late (planning-index.md §6.4)", () => {
     expect(cardIds()).toEqual(["OQ-T1", "OQ-T2"]);
     expect(within(cardFor("OQ-T1")).getByText("Done")).toBeTruthy();
     expect(updatesButton()).toHaveAttribute(
-      "title",
+      "data-tip",
       expect.stringContaining("1 done"),
     );
     // Maintenance, which the layout did not have, waits for the next one;
     // its item is counted in the updates slot meanwhile.
     expect(querySection("Maintenance")).toBeNull();
     expect(updatesButton()).toHaveAttribute(
-      "title",
+      "data-tip",
       expect.stringContaining("1 new under Maintenance"),
     );
     await refresh();
@@ -1957,7 +1968,7 @@ describe("what arrives late (planning-index.md §6.4)", () => {
     await settle();
     expect(heights()).toEqual(before);
     expect(updatesButton()).toHaveAttribute(
-      "title",
+      "data-tip",
       expect.stringContaining("1 new question"),
     );
     expect(screen.getByTestId("needs-you-count")).toHaveTextContent("3");
@@ -1985,7 +1996,7 @@ describe("what arrives late (planning-index.md §6.4)", () => {
     expect(cardIds()).toEqual(["OQ-A1", "OQ-B1"]);
     expect(updatesCount()).toHaveTextContent("1");
     expect(updatesButton()).toHaveAttribute(
-      "title",
+      "data-tip",
       expect.stringContaining("1 roadmap reordered"),
     );
     await refresh();
@@ -2501,7 +2512,7 @@ describe("page inputs, and one commit (planning-index.md §6.5)", () => {
     const copy = screen.getByRole("button", { name: COPY_ANSWERS });
     expect(copy).toBeDisabled();
     expect(copy).toHaveAttribute(
-      "title",
+      "data-tip",
       "Comments could not be loaded, so the answers waiting on the agent cannot be counted",
     );
     expect(screen.getByTestId("pending-answers")).toHaveTextContent("–");
@@ -8519,7 +8530,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
         "Copy answers 1, not counting 2 answers the filter leaves out",
       );
       expect(copyButton()).toHaveAttribute(
-        "title",
+        "data-tip",
         "Copy every answer waiting on the agent that the filter keeps, grouped by document, for one trip. It leaves out 2 answers: clear it to copy them too",
       );
       await act(async () => {

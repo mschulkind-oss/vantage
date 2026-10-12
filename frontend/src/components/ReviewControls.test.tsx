@@ -32,7 +32,7 @@ describe("ReviewControls", () => {
   it("offers the Review toggle with the title the page gave it", () => {
     const { onToggle } = renderControls();
     const toggle = screen.getByRole("button", { name: "Review" });
-    expect(toggle).toHaveAttribute("title", "Enter review mode");
+    expect(toggle).toHaveAttribute("data-tip", "Enter review mode");
     fireEvent.click(toggle);
     expect(onToggle).toHaveBeenCalledOnce();
   });

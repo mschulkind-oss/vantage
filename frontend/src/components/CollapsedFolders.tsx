@@ -48,7 +48,7 @@ export function CollapsedFolders({
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label={`Folders: ${path}`}
-        title={path}
+        data-tip={path}
       >
         …
       </button>

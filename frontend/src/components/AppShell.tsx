@@ -48,6 +48,7 @@ import {
 } from "lucide-react";
 import { AppLink } from "./AppLink";
 import { ConnectionBanner } from "./ConnectionBanner";
+import { TooltipLayer } from "./TooltipLayer";
 import { DegradedBanner } from "./DegradedBanner";
 import { UnsavedComments } from "./UnsavedComments";
 import { FilePicker } from "./FilePicker";
@@ -469,6 +470,10 @@ const ShellFrame: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
   return (
     <div className="flex flex-col h-screen bg-slate-50 dark:bg-slate-900 overflow-hidden text-slate-900 dark:text-slate-100">
+      {/* One tooltip layer for the whole app: the header's controls and every
+          other control that carries `data-tip` are found by it rather than
+          wrapped in one (`TooltipLayer`). */}
+      <TooltipLayer />
       <ConnectionBanner />
       <UnsavedComments />
       <div className="flex flex-1 overflow-hidden">
@@ -512,7 +517,7 @@ const ShellFrame: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                   target="_blank"
                   rel="noopener noreferrer"
                   className="p-1.5 rounded-md hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
-                  title="View on GitHub"
+                  data-tip="View on GitHub"
                 >
                   <svg
                     width={16}
@@ -529,7 +534,7 @@ const ShellFrame: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                   to={planningPath(isMultiRepo, currentRepo)}
                   className="p-1.5 rounded-md hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
                   aria-label="Planning"
-                  title="Planning (g p)"
+                  data-tip="Planning (g p)"
                   onPointerEnter={prefetchPlanning}
                   onFocus={prefetchPlanning}
                 >
@@ -555,7 +560,7 @@ const ShellFrame: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                     setSidebarCollapsed(true);
                   }}
                   aria-label="Collapse sidebar"
-                  title="Collapse sidebar (b)"
+                  data-tip="Collapse sidebar (b)"
                 >
                   <PanelLeftClose size={16} />
                 </button>
@@ -790,6 +795,7 @@ export const OpenSidebarButton: React.FC<{ shell: ShellControls }> = ({
     )}
     onClick={shell.openSidebar}
     aria-label="Open sidebar"
+    data-tip="Open sidebar"
   >
     <Menu size={20} />
   </button>
@@ -826,7 +832,7 @@ export const ViewToggles: React.FC<{
         )}
         aria-label={contents.on ? "Hide contents" : "Show contents"}
         aria-pressed={contents.on}
-        title={contents.on ? "Hide contents" : "Show contents"}
+        data-tip={contents.on ? "Hide contents" : "Show contents"}
       >
         <List size={18} />
       </button>
@@ -839,7 +845,7 @@ export const ViewToggles: React.FC<{
       )}
       aria-label={fullWidth.on ? "Use fixed width" : "Use full width"}
       aria-pressed={fullWidth.on}
-      title={fullWidth.on ? "Use fixed width" : "Use full width"}
+      data-tip={fullWidth.on ? "Use fixed width" : "Use full width"}
     >
       {fullWidth.on ? <Shrink size={18} /> : <Expand size={18} />}
     </button>

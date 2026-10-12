@@ -619,7 +619,7 @@ test.describe("viewer header under width pressure", () => {
     const more = header.getByRole("button", { name: /docs\/design/ });
     await expect(more, `no … at ${width}px`).toBeVisible();
     await expect(header.getByTestId("breadcrumb-name")).toHaveAttribute(
-      "title",
+      "data-tip",
       PATH,
     );
     await more.click();
@@ -671,7 +671,7 @@ test.describe("viewer header under width pressure", () => {
     );
     expect(await extension(page)).toMatchObject({ text: ".md", whole: true });
     await expect(page.getByTestId("breadcrumb-name")).toHaveAttribute(
-      "title",
+      "data-tip",
       PATH,
     );
   });
@@ -890,7 +890,7 @@ test.describe("viewer header under width pressure", () => {
     // In review mode: the background and the ring that showed it worst.
     await expect(
       header.getByRole("button", { name: "Review", exact: true }),
-    ).toHaveAttribute("title", "Exit review mode");
+    ).toHaveAttribute("data-tip", "Exit review mode");
 
     // Raw goes last: raw view has no Review toggle, and with the toggle gone
     // the toolbar's end-packed items move, though Raw keeps its size.
@@ -966,7 +966,7 @@ test.describe("viewer header under width pressure", () => {
     // count the label carried is in it too.
     await expect(
       header.getByRole("link", { name: "2 commits" }),
-    ).toHaveAttribute("title", "View full history: 2 commits");
+    ).toHaveAttribute("data-tip", "View full history: 2 commits");
     // Dismiss and its count are rows of the comments menu now, which is only in
     // the document while it is open.
     await header.getByRole("button", { name: "3 comments" }).click();

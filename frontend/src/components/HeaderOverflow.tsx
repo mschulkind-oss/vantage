@@ -127,7 +127,7 @@ export function HeaderOverflow({ children, extra }: HeaderOverflowProps) {
         type="button"
         className="hdr-more items-center rounded-lg px-2 py-1.5 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors cursor-pointer"
         aria-label="Toolbar actions"
-        title="Toolbar actions"
+        data-tip="Toolbar actions"
         aria-expanded={open}
         aria-controls={panelId}
         onClick={() => setOpen((v) => !v)}

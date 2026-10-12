@@ -935,7 +935,7 @@ export const ViewerPage: React.FC = () => {
                       "hdr-name flex min-w-0 font-semibold text-slate-900 dark:text-slate-100",
                       leafStem.length >= 3 && "hdr-stem-floor",
                     )}
-                    title={currentPath ?? undefined}
+                    data-tip={currentPath ?? undefined}
                   >
                     {leafExt ? (
                       <>
@@ -973,7 +973,7 @@ export const ViewerPage: React.FC = () => {
                     "flex items-center gap-1.5 text-xs text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/30 px-2 py-1.5 rounded-lg hover:bg-green-100 dark:hover:bg-green-900/50 transition-colors cursor-pointer",
                     lateUnless(firstPaint.status),
                   )}
-                  title={`${gitStatusWord(fileGitStatus)} — view uncommitted changes`}
+                  data-tip={`${gitStatusWord(fileGitStatus)} — view uncommitted changes`}
                 >
                   <GitBranch size={12} />
                   <span className="hdr-label font-medium">
@@ -993,7 +993,7 @@ export const ViewerPage: React.FC = () => {
                 )}
                 // The subject is the first thing the header gives up, so
                 // the tooltip is where it can still be read in full.
-                title={`${latestCommit.message}\n${formatDateTime(latestCommit.date)} — click to view diff`}
+                data-tip={`${latestCommit.message}\n${formatDateTime(latestCommit.date)} — click to view diff`}
               >
                 <div className="flex items-center gap-1.5 shrink-0 text-slate-500 dark:text-slate-400">
                   <Clock size={14} />
@@ -1032,7 +1032,7 @@ export const ViewerPage: React.FC = () => {
                   "sm:hidden flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg px-2 py-1.5 transition-colors",
                   lateUnless(firstPaint.status),
                 )}
-                title="View diff"
+                data-tip="View diff"
               >
                 <Clock size={14} />
                 <span className="hdr-time">
@@ -1053,7 +1053,7 @@ export const ViewerPage: React.FC = () => {
                         "flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg px-2 py-1.5 transition-colors no-underline",
                         lateUnless(firstPaint.history),
                       )}
-                      title={`View full history: ${history.length} ${plural(history.length, "commit")}`}
+                      data-tip={`View full history: ${history.length} ${plural(history.length, "commit")}`}
                     >
                       <History size={14} />
                       <span className="hdr-label hdr-label-minor">
@@ -1068,7 +1068,7 @@ export const ViewerPage: React.FC = () => {
                       "flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg px-2 py-1.5 transition-colors cursor-pointer",
                       lateUnless(firstPaint.root),
                     )}
-                    title={`Copy absolute path: ${repoRootPath}/${currentPath}`}
+                    data-tip={`Copy absolute path: ${repoRootPath}/${currentPath}`}
                   >
                     <ReservedLabel
                       icon={
@@ -1099,7 +1099,7 @@ export const ViewerPage: React.FC = () => {
                         ? "text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30"
                         : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50",
                     )}
-                    title={showRaw ? "View rendered" : "View raw markdown"}
+                    data-tip={showRaw ? "View rendered" : "View raw markdown"}
                   >
                     <ReservedLabel
                       icon={<Code size={RESERVED_ICON_SIZE} />}
@@ -1145,7 +1145,7 @@ export const ViewerPage: React.FC = () => {
                     "flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 px-2 sm:px-3 py-1.5 rounded-lg hover:bg-amber-100 dark:hover:bg-amber-900/50 transition-colors cursor-pointer",
                     lateUnless(firstPaint.status),
                   )}
-                  title="Untracked file — view file content as diff"
+                  data-tip="Untracked file — view file content as diff"
                 >
                   <FileQuestion size={14} />
                   <span className="hdr-label font-medium">Untracked file</span>
@@ -1157,7 +1157,7 @@ export const ViewerPage: React.FC = () => {
                     "hidden sm:flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 px-2 py-1.5",
                     lateUnless(firstPaint.mtime),
                   )}
-                  title={formatDateTime(fileMtime)}
+                  data-tip={formatDateTime(fileMtime)}
                 >
                   <Clock size={14} />
                   <span data-testid="header-time" className="hdr-time">
@@ -1180,7 +1180,7 @@ export const ViewerPage: React.FC = () => {
                       "flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg px-2 py-1.5 transition-colors cursor-pointer",
                       lateUnless(firstPaint.root),
                     )}
-                    title={`Copy absolute path: ${repoRootPath}/${currentPath}`}
+                    data-tip={`Copy absolute path: ${repoRootPath}/${currentPath}`}
                   >
                     <ReservedLabel
                       icon={
@@ -1210,7 +1210,7 @@ export const ViewerPage: React.FC = () => {
                       ? "text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30"
                       : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50",
                   )}
-                  title={showRaw ? "View rendered" : "View raw markdown"}
+                  data-tip={showRaw ? "View rendered" : "View raw markdown"}
                 >
                   <ReservedLabel
                     icon={<Code size={RESERVED_ICON_SIZE} />}

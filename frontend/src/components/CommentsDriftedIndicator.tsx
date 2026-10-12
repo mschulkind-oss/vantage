@@ -17,7 +17,7 @@ export function CommentsDriftedIndicator() {
       className="flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-500 px-2 py-1.5"
       role="status"
       aria-label="The document changed under comments awaiting a response"
-      title="The document changed under comments still awaiting a response — the text they were written about is no longer what's on screen. Re-read before copying them to an agent."
+      data-tip="The document changed under comments still awaiting a response — the text they were written about is no longer what's on screen. Re-read before copying them to an agent."
     >
       <FileWarning size={14} className="shrink-0" />
       {/* The word is shorthand for the tooltip: it yields with the row's other
