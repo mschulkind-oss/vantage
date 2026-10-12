@@ -17,6 +17,7 @@ import {
   STATUS_TICK_MS,
   type CommentBox,
 } from "../lib/commentAutosave";
+import { useOpenNewCommentIds } from "./useCommentBox";
 import {
   hasAgentReaction,
   isPendingForAgent,
@@ -124,6 +125,14 @@ export function useReviewHighlights(
     };
   }, [containerRef]);
 
+  // Comments an open new-comment box owns are not drawn in the layer: the
+  // reader is still writing them, and the card appearing under the box at
+  // every save is the autosave showing through (`comment-autosave.md` §3.2).
+  // The box still saves, so the comment counts and is copied everywhere else;
+  // closing the box redraws the layer with the comment in it. `writing` is a
+  // string, equal by value until the set changes, so typing does not rebuild.
+  const writing = useOpenNewCommentIds();
+
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -141,10 +150,17 @@ export function useReviewHighlights(
       open.filter((b) => b.heldResolved).map((b) => b.commentId),
     );
 
-    rebuildLayer(el, comments, actions, publishDrift, heldResolved);
+    const writingIds = writing === "" ? null : new Set(writing.split(" "));
+    rebuildLayer(
+      el,
+      writingIds ? comments.filter((c) => !writingIds.has(c.id)) : comments,
+      actions,
+      publishDrift,
+      heldResolved,
+    );
 
     for (const lifted of held) putBoxBack(el, lifted);
-  }, [containerRef, comments, currentContent, actions, publishDrift]);
+  }, [containerRef, comments, currentContent, actions, publishDrift, writing]);
 }
 
 /**

@@ -41,9 +41,11 @@ test.describe("comment autosave", () => {
     await prose(page).getByText("A paragraph to comment on.").click();
     await popover(page).fill("Saved while typing.");
     await expect(page.getByText("Saved just now")).toBeVisible();
-    // Filed while the box is still open, and the box is still there.
-    await expect(cards(page).filter({ hasText: "Saved while typing." }))
-      .toBeVisible();
+    // Saved, but not drawn under the box while it is still open: the document
+    // keeps the look it had before the comment existed.
+    await expect(
+      cards(page).filter({ hasText: "Saved while typing." }),
+    ).toHaveCount(0);
     await expect(popover(page)).toBeFocused();
 
     await popover(page).press("End");
@@ -51,8 +53,15 @@ test.describe("comment autosave", () => {
     // Typed since the save: the foot no longer says it is saved.
     await expect(page.getByText("Not saved yet")).toBeVisible();
     await expect(page.getByText("Saved just now")).toHaveCount(0);
+    await expect(
+      cards(page).filter({ hasText: "Saved while typing." }),
+    ).toHaveCount(0);
     await popover(page).press("Escape");
     await expect(popover(page)).toHaveCount(0);
+    // Closed, the comment the box filed is drawn in the document.
+    await expect(
+      cards(page).filter({ hasText: "Saved while typing. And more." }),
+    ).toBeVisible();
     await page.reload();
     await expect(
       cards(page).filter({ hasText: "Saved while typing. And more." }),
