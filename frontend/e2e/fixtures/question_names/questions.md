@@ -16,7 +16,7 @@ Read by `e2e/question_names.spec.ts`, and by nothing else.
 
 2. 🔒 **OQ-2: Is the blocked question waiting on the load test?**
 
-   <!-- vantage: question id=OQ-2 -->
+   <!-- vantage: question id=OQ-2 blocked-on="the load test" -->
 
    Waits on the load test, so there is no leaning to state yet.
 
