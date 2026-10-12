@@ -15,11 +15,19 @@
  *    hides it once it would be narrower than `SUBJECT_FLOOR_PX`.
  * 2. `date` — the absolute date beside the relative time. The relative time
  *    stays, and the full date is still in the commit button's tooltip.
- * 3. `labels` — every toolbar button's text label, so each is its icon alone.
- *    The label stays in the accessibility tree, so the button keeps its name.
- * 4. `dirs` — the breadcrumb's folders, which collapse into one "…" that
+ * 3. `labels-minor` — the shorthand labels: *N commits*, *Path*, *Raw*, the
+ *    comments menu's *comments*, and the drift indicator's *document changed*.
+ *    Each says in the tooltip what its icon already suggests, so these are the
+ *    cheapest words in the row to lose — and losing them is what pays for the
+ *    ones a reader has to have: *Modified*, *Review*, and the comment count.
+ *    Before this step existed, `labels` was all-or-nothing: a header a few
+ *    pixels short of the longest label showed none of them (2026-10-12).
+ * 4. `labels` — every remaining toolbar label, so each button is its icon
+ *    alone. The label stays in the accessibility tree, so the button keeps its
+ *    name.
+ * 5. `dirs` — the breadcrumb's folders, which collapse into one "…" that
  *    opens a menu of them. The repository and the file name stay.
- * 5. `time` — the relative time, leaving the commit button its clock icon.
+ * 6. `time` — the relative time, leaving the commit button its clock icon.
  *    The time stays in the accessibility tree, and the full date in the
  *    commit button's tooltip. It
  *    outlasts the date and the labels because it is the one thing in the
@@ -68,6 +76,7 @@
 export const YIELD_STEPS = [
   "subject",
   "date",
+  "labels-minor",
   "labels",
   "dirs",
   "time",

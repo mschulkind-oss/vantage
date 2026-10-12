@@ -66,7 +66,9 @@ describe("useHeaderFit", () => {
   it("fits the header the moment it is attached", () => {
     layout.width = 150;
     const { getByTestId } = render(<Header name={"x".repeat(20)} />);
-    expect(yieldOf(getByTestId("header"))).toBe("subject date labels dirs");
+    expect(yieldOf(getByTestId("header"))).toBe(
+      "subject date labels-minor labels dirs",
+    );
   });
 
   it("re-fits when what the header holds changes", async () => {
@@ -77,7 +79,9 @@ describe("useHeaderFit", () => {
     // the same size, so only the mutation observer can see it.
     rerender(<Header name={"x".repeat(150)} />);
     await act(async () => {});
-    expect(yieldOf(getByTestId("header"))).toBe("subject date labels dirs");
+    expect(yieldOf(getByTestId("header"))).toBe(
+      "subject date labels-minor labels dirs",
+    );
   });
 
   it("re-fits when the header is resized", () => {

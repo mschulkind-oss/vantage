@@ -20,7 +20,11 @@ export function CommentsDriftedIndicator() {
       title="The document changed under comments still awaiting a response — the text they were written about is no longer what's on screen. Re-read before copying them to an agent."
     >
       <FileWarning size={14} className="shrink-0" />
-      <span className="hdr-label">document changed</span>
+      {/* The word is shorthand for the tooltip: it yields with the row's other
+          shorthand labels (`hdr-label-minor`), so the amber icon and its
+          tooltip are what the header keeps before it gives up *Modified* or
+          *Review*. */}
+      <span className="hdr-label hdr-label-minor">document changed</span>
     </span>
   );
 }

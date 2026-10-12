@@ -115,8 +115,9 @@ code {
    the subject is its only flexible item); after the last discrete step, the
    file name, and nothing else. An item added to the toolbar is rigid for
    free (`> *`); giving its text `hdr-label` makes that text part of the
-   `labels` step, and putting it inside `HeaderOverflow` makes it part of the
-   `actions` step. */
+   `labels` step, with `hdr-label-minor` beside it putting it in the first,
+   cheaper half of that, and putting the item inside `HeaderOverflow` makes it
+   part of the `actions` step. */
 .viewer-header {
   white-space: nowrap;
 }
@@ -232,10 +233,15 @@ code {
   display: none;
 }
 
-/* 3. Icon-only buttons, and 5. the relative time: each leaves the layout but
-   not the accessibility tree, so every button keeps the name it had. A ghost's
-   label goes with the label, so a button keeping room for a longer one keeps
-   none beside its icon. */
+/* 3. The shorthand labels — *N commits*, *Path*, *Raw*, the comments menu's
+   *comments*, the drift indicator's *document changed* — and then 4. every
+   remaining one, and 6. the relative time: each leaves the layout but not the
+   accessibility tree, so every button keeps the name it had. What each says
+   is in its tooltip either way, which is why the cheap half goes first: a
+   header thirty pixels short of the longest label used to show none of them.
+   A ghost's label goes with the label, so a button keeping room for a longer
+   one keeps none beside its icon. */
+.viewer-header[data-yield~="labels-minor"] .hdr-label-minor,
 .viewer-header[data-yield~="labels"] .hdr-label,
 .viewer-header[data-yield~="time"] .hdr-time {
   position: absolute;
@@ -248,7 +254,7 @@ code {
   border: 0;
 }
 
-/* 4. The folders fold into the "…" that lists them. */
+/* 5. The folders fold into the "…" that lists them. */
 .viewer-header[data-yield~="dirs"] .hdr-dirs {
   display: none;
 }
@@ -307,7 +313,10 @@ code {
   border-color: var(--color-slate-700);
   background: var(--color-slate-800);
 }
-.viewer-header[data-yield~="actions"] .hdr-overflow[data-open] .hdr-label {
+.viewer-header[data-yield~="actions"] .hdr-overflow[data-open] .hdr-label,
+.viewer-header[data-yield~="actions"]
+  .hdr-overflow[data-open]
+  .hdr-label-minor {
   position: static;
   width: auto;
   height: auto;
