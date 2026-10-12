@@ -1267,12 +1267,22 @@ describe("ViewerPage", () => {
     const copyButtons = () =>
       screen.queryAllByTitle(/^Copy \d+ comments? to clipboard$/);
 
+    // Copy, Dismiss and Manage are rows of the comments menu now, not buttons
+    // of the header's row: in review mode with a modified file the row held ten
+    // controls and their labels cost about 520px, so at laptop widths every one
+    // of them was an icon (`components/ReviewControls.tsx`). Each of these
+    // opens the menu first. There is a trigger per rendered toolbar, and
+    // opening the first is enough to read what the menu holds.
+    const openMenu = () =>
+      fireEvent.click(screen.getAllByTestId("review-comments-menu")[0]);
+
     // An icon-only button keeps its name for a screen reader, but a sighted
     // reader has only the tooltip, and "Copy all comments" said nothing of
     // how many the label had counted.
     it("counts the comments in the review buttons' tooltips", () => {
       seedReview([]);
       renderPage();
+      openMenu();
       expect(
         screen.getAllByTitle("Copy 1 comment to clipboard").length,
       ).toBeGreaterThan(0);
@@ -1284,18 +1294,21 @@ describe("ViewerPage", () => {
     it("shows Copy when the agent has not responded yet", () => {
       seedReview([]);
       renderPage();
+      openMenu();
       expect(copyButtons().length).toBeGreaterThan(0);
     });
 
     it("hides Copy once the agent has addressed the comment", () => {
       seedReview([agentAddressed]);
       renderPage();
+      openMenu();
       expect(copyButtons()).toHaveLength(0);
     });
 
     it("shows Copy again after the reviewer replies to an agent response", () => {
       seedReview([agentAddressed, reviewerFollowup]);
       renderPage();
+      openMenu();
       expect(copyButtons().length).toBeGreaterThan(0);
     });
 
@@ -1313,6 +1326,7 @@ describe("ViewerPage", () => {
         ],
       });
       renderPage();
+      openMenu();
       expect(copyButtons().length).toBeGreaterThan(0);
     });
 
@@ -1324,17 +1338,33 @@ describe("ViewerPage", () => {
       // "> 0" passes while one of the two variants is still hidden.
       seedReview([]);
       renderPage();
+      openMenu();
       const rendered = {
         copy: copyButtons().length,
         panel: screen.getAllByTitle("Manage comments").length,
       };
       expect(rendered.copy).toBeGreaterThan(0);
+      fireEvent.keyDown(document, { key: "Escape" });
 
       fireEvent.click(screen.getAllByTitle("View raw markdown")[0]);
+      openMenu();
       expect(copyButtons()).toHaveLength(rendered.copy);
       expect(screen.getAllByTitle("Manage comments")).toHaveLength(
         rendered.panel,
       );
+    });
+
+    // The two-step confirm used to happen in the row, where a menu's
+    // close-on-choose would have broken it. In the menu the row stays open
+    // under the pointer, so the second click is the one that asked for it.
+    it("turns Dismiss into a confirm where it stands", () => {
+      seedReview([]);
+      renderPage();
+      openMenu();
+      fireEvent.click(screen.getAllByTitle("Dismiss 1 comment")[0]);
+      expect(
+        screen.getByRole("menuitem", { name: "Confirm?" }),
+      ).toBeInTheDocument();
     });
   });
 
@@ -1376,9 +1406,7 @@ describe("ViewerPage", () => {
       renderPage();
       for (const [name, after, labels] of [
         ["Path", null, ["Copied!", "Path"]],
-        ["Copy 1", null, ["Copied!", "Copy 1"]],
         ["Review", "End review?", ["End review?", "Review"]],
-        ["Dismiss 1", "Confirm?", ["Confirm?", "Dismiss 1"]],
         // Last: raw view has no Review toggle.
         ["Raw", "Rendered", ["Raw", "Rendered"]],
       ] as const) {

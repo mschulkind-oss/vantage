@@ -8,11 +8,12 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // The viewer header gives up room in a fixed order as it narrows, and the file
 // name is the last thing to give any: the commit subject shrinks and then
-// hides, then the absolute date, then the toolbar's text labels, then the
-// breadcrumb's folders, then the relative time, then the repository's name,
-// then the toolbar's actions fold into a "⋯", and only then does the name
-// truncate. Before this the name was the only box in the row allowed to shrink
-// at all, so at a 2000px window it was already "dur…" while every label stayed.
+// hides, then the absolute date, then the toolbar's shorthand labels, then the
+// rest of them, then the breadcrumb's folders, then the relative time, then the
+// repository's name, then the toolbar's actions fold into a "⋯", and only then
+// does the name truncate. Before this the name was the only box in the row
+// allowed to shrink at all, so at a 2000px window it was already "dur…" while
+// every label stayed.
 //
 // The fixture document is real (fixtures/test_repo/docs/design/…); what the
 // header shows about it is not. Its commit, its history and its review are
@@ -31,7 +32,17 @@ const NAME = "durable-agent-storage-classes.md";
 const PATH = [...DIRS, NAME].join("/");
 const SUBJECT =
   "docs(design): storage classes for durable agent state, and why none is a tier";
-const LABELS = ["2 commits", "Path", "Raw", "Review", "Dismiss 3 answered"];
+/**
+ * The toolbar's drawn labels, and which of them are shorthand.
+ *
+ * A shorthand label repeats in its tooltip what its icon already suggests —
+ * `N commits`, `Path`, `Raw`, the comments menu's word — so `lib/headerFit.ts`
+ * takes those first (`labels-minor`), and only then every remaining one
+ * (`labels`). *Review* is not one: it is the mode, and the only label this
+ * fixture has that a reader has to be able to read.
+ */
+const LABELS = ["2 commits", "Path", "Raw", "Review", "comments"];
+const MINOR_LABELS = new Set(["2 commits", "Path", "Raw", "comments"]);
 const MINUTE = 60_000;
 
 const forPath = (pathname: string) => (url: URL) =>
@@ -284,6 +295,7 @@ function snapshot(page: Page, labels: string[], dirs: string[]) {
 const STEPS = [
   "subject",
   "date",
+  "labels-minor",
   "labels",
   "dirs",
   "time",
@@ -342,12 +354,18 @@ type Step = (typeof STEPS)[number];
 
 /** Which of the steps this header has at all have been taken. */
 function yielded(s: Snapshot): Partial<Record<Step, boolean>> {
-  const labels = Object.values(s.labels);
+  const labels = Object.entries(s.labels);
   const dirs = Object.values(s.dirs);
   const out: Partial<Record<Step, boolean>> = {};
   if (s.subject.present) out.subject = !s.subject.shown;
   if (s.date !== null) out.date = !s.date;
-  if (labels.length) out.labels = labels.every((v) => !v);
+  if (labels.length) {
+    const drawn = labels.filter(([, v]) => v).length;
+    // The shorthand labels are the half that goes first, so this step is taken
+    // whenever any label has gone, and `labels` only once they all have.
+    out["labels-minor"] = drawn < labels.length;
+    out.labels = drawn === 0;
+  }
   if (dirs.length) out.dirs = dirs.every((v) => !v) && s.collapsed;
   if (s.time !== null) out.time = !s.time;
   out.repo = !s.repo;
@@ -375,10 +393,23 @@ function checkInvariants(s: Snapshot) {
   expect(s.headerHeight, "the header grew a second line").toBe(56);
   expect(s.overlaps, "header items overlap").toEqual([]);
   expect(s.escapes, "header items wrap or leave the header").toEqual([]);
-  // Each step is all-or-nothing: no half the labels, no one folder of two.
-  const labels = Object.values(s.labels);
+  // The shorthand labels go before the rest, and the rest together: the drawn
+  // set is every label, the ones that are not shorthand, or none — never half
+  // of either group. A header thirty pixels short of the longest label used to
+  // show no word at all.
+  const labels = Object.entries(s.labels);
   if (labels.length) {
-    expect(new Set(labels).size, `labels: ${JSON.stringify(s.labels)}`).toBe(1);
+    const drawn = new Set(labels.filter(([, v]) => v).map(([k]) => k));
+    const all = new Set(labels.map(([k]) => k));
+    const majors = new Set(
+      labels.map(([k]) => k).filter((k) => !MINOR_LABELS.has(k)),
+    );
+    const sameSet = (a: Set<string>, b: Set<string>) =>
+      a.size === b.size && [...a].every((name) => b.has(name));
+    expect(
+      sameSet(drawn, all) || sameSet(drawn, majors) || drawn.size === 0,
+      `labels: ${JSON.stringify(s.labels)}`,
+    ).toBe(true);
   }
   const dirs = Object.values(s.dirs);
   if (dirs.length) {
@@ -482,14 +513,14 @@ async function narrowInto(page: Page, step: Step, floor = 500) {
  * narrower than a phone's while the window stays a desktop one. `loaded` is
  * text the header shows once the reloaded page has everything it acts on.
  */
-async function widenSidebar(page: Page, loaded = "Dismiss 3 answered") {
+async function widenSidebar(page: Page, loaded = "3 comments") {
   await page.evaluate(() =>
     localStorage.setItem("vantage:sidebarWidth", "700"),
   );
   await page.reload();
-  await expect(page.getByTestId("viewer-header").getByText(loaded)).toHaveCount(
-    1,
-  );
+  await expect(
+    page.getByTestId("viewer-header").getByRole("button", { name: loaded }),
+  ).toBeVisible();
 }
 
 /** The name's extension: its text, and whether it is drawn whole. */
@@ -524,12 +555,14 @@ test.describe("viewer header under width pressure", () => {
     await expect(
       page.getByRole("heading", { name: "Durable agent storage classes" }),
     ).toBeVisible();
-    // Everything the yield steps act on has arrived: the commit, the history, and
-    // the review that puts "Dismiss 3 answered" in the toolbar.
+    // Everything the yield steps act on has arrived: the commit, the history,
+    // and the review that puts the comment count in the toolbar.
     const header = page.getByTestId("viewer-header");
     await expect(header.getByTestId("commit-subject")).toHaveText(SUBJECT);
     await expect(header.getByText("2 commits")).toHaveCount(1);
-    await expect(header.getByText("Dismiss 3 answered")).toHaveCount(1);
+    await expect(
+      header.getByRole("button", { name: "3 comments" }),
+    ).toBeVisible();
   });
 
   test("the file name is the last thing to give up room", async ({ page }) => {
@@ -668,7 +701,7 @@ test.describe("viewer header under width pressure", () => {
     await expect(header).toHaveAttribute("data-yield", /\bactions\b/);
     const more = header.getByRole("button", { name: "Toolbar actions" });
     await expect(more).toHaveAttribute("aria-expanded", "false");
-    for (const name of ["Path", "Raw", "Review", "Dismiss 3 answered"]) {
+    for (const name of ["Path", "Raw", "Review"]) {
       await expect(header.getByRole("button", { name })).toBeHidden();
     }
     await expect(header.getByRole("button", { name: /contents/ })).toBeHidden();
@@ -687,8 +720,6 @@ test.describe("viewer header under width pressure", () => {
       "Path",
       "Raw",
       "Review",
-      "Dismiss 3 answered",
-      "Manage comments",
     ]) {
       const label = panel.getByText(name, { exact: true });
       await expect(label).toBeVisible();
@@ -725,6 +756,22 @@ test.describe("viewer header under width pressure", () => {
     // A click opens it too, and one outside closes it.
     await more.click();
     await expect(panel.getByRole("button", { name: "Raw" })).toBeVisible();
+
+    // Dismiss, Copy and Manage are rows of the comments menu now, not of this
+    // panel: the review cluster is the mode and the count (ReviewControls).
+    // Opening that menu from in here hands it the "⋯" to hang from, since
+    // entering a portaled menu closes the panel — so it is looked for on the
+    // page, and the panel is expected to be shut.
+    await panel.getByRole("button", { name: "3 comments" }).click();
+    const menu = page.getByRole("menu", { name: "Comments" });
+    for (const name of ["Dismiss 3 answered", "Manage comments"]) {
+      await expect(menu.getByRole("menuitem", { name })).toBeVisible();
+    }
+    await expect(more).toHaveAttribute("aria-expanded", "false");
+    await page.keyboard.press("Escape");
+    await expect(menu).toBeHidden();
+
+    await more.click();
     await page
       .getByRole("heading", { name: "Durable agent storage classes" })
       .click();
@@ -766,18 +813,18 @@ test.describe("viewer header under width pressure", () => {
   }) => {
     await context.grantPermissions(["clipboard-read", "clipboard-write"]);
     const header = page.getByTestId("viewer-header");
-    // The narrowest width at which the labels still show, found rather than
-    // assumed because it depends on the fonts.
-    const iconsOnly = async (w: number) => {
+    // The narrowest width at which every label still shows, found rather than
+    // assumed because it depends on the fonts. The shorthand half goes first,
+    // so this is the width no label at all has gone.
+    const anyLabelGone = async (w: number) => {
       await setHeaderWidth(page, w);
-      return (await header.getAttribute("data-yield"))!
-        .split(" ")
-        .includes("labels");
+      const taken = (await header.getAttribute("data-yield"))!.split(" ");
+      return taken.includes("labels-minor") || taken.includes("labels");
     };
     let width = 1700;
-    expect(await iconsOnly(width), "no labels at 1700px").toBe(false);
-    while (!(await iconsOnly(width - 20))) width -= 20;
-    while (!(await iconsOnly(width - 1))) width -= 1;
+    expect(await anyLabelGone(width), "no labels at 1700px").toBe(false);
+    while (!(await anyLabelGone(width - 20))) width -= 20;
+    while (!(await anyLabelGone(width - 1))) width -= 1;
     await setHeaderWidth(page, width);
     await expect(header).toHaveAttribute("data-yield", "subject date");
 
@@ -822,21 +869,23 @@ test.describe("viewer header under width pressure", () => {
   // label are centered in it together, and the click that changes the label
   // still moves nothing. Every button that keeps such room is here, in both
   // of its states: whichever label is the shorter, it is the one with room.
+  //
+  // Dismiss and Copy are not: they are rows of the comments menu, which is one
+  // column of fixed width, so no click in it can move the header's fit.
   test("a label keeping room for a longer one is centered in it, with its icon", async ({
     page,
     context,
   }) => {
     await context.grantPermissions(["clipboard-read", "clipboard-write"]);
-    // Comments the agent has not answered, so Dismiss asks to be confirmed
-    // ("Dismiss 12" → "Confirm?") and Copy is there to click. Twelve, so each
-    // of Copy's two labels is a few pixels from the other's width, and
-    // Dismiss's longer label is its first.
+    // Comments the agent has not answered, so Review has its state label and
+    // the menu is carrying Dismiss and Copy.
     await routeReview(page, 12, false);
     await page.reload();
     const header = page.getByTestId("viewer-header");
     await expect(header.getByTestId("commit-subject")).toHaveText(SUBJECT);
     await expect(header.getByText("2 commits")).toHaveCount(1);
-    await expect(header.getByText("Copy 12", { exact: true })).toHaveCount(1);
+    await expect(header.getByRole("button", { name: "12 comments" }))
+      .toBeVisible();
     await expect(header).not.toHaveAttribute("data-yield", /\blabels\b/);
     // In review mode: the background and the ring that showed it worst.
     await expect(
@@ -848,8 +897,6 @@ test.describe("viewer header under width pressure", () => {
     for (const [name, after, staysPut] of [
       ["Review", "End review?", true],
       ["Path", "Copied!", true],
-      ["Dismiss 12", "Confirm?", true],
-      ["Copy 12", "Copied!", true],
       ["Raw", "Rendered", false],
     ] as const) {
       const button = (await header
@@ -892,13 +939,13 @@ test.describe("viewer header under width pressure", () => {
     const s = await snapshot(page, LABELS, DIRS);
     expect(Object.values(s.labels)).toEqual(LABELS.map(() => false));
     const header = page.getByTestId("viewer-header");
-    for (const name of ["Path", "Raw", "Review", "Dismiss 3 answered"]) {
+    for (const name of ["Path", "Raw", "Review"]) {
       await expect(header.getByRole("button", { name })).toBeVisible();
     }
     await expect(header.getByRole("link", { name: "2 commits" })).toBeVisible();
     // The room a label keeps for a longer one goes with the label: each is its
     // icon alone, with the padding either side and nothing beside it.
-    for (const name of ["Path", "Raw", "Review", "Dismiss 3 answered"]) {
+    for (const name of ["Path", "Raw", "Review"]) {
       const icon = await drawnIn(
         (await header
           .getByRole("button", { name, exact: true })
@@ -920,9 +967,31 @@ test.describe("viewer header under width pressure", () => {
     await expect(
       header.getByRole("link", { name: "2 commits" }),
     ).toHaveAttribute("title", "View full history: 2 commits");
+    // Dismiss and its count are rows of the comments menu now, which is only in
+    // the document while it is open.
+    await header.getByRole("button", { name: "3 comments" }).click();
     await expect(
-      header.getByRole("button", { name: "Dismiss 3 answered" }),
+      page.getByRole("menuitem", { name: "Dismiss 3 answered" }),
     ).toHaveAttribute("title", "Dismiss the 3 comments the agent has answered");
+  });
+
+  // The shorthand labels — *N commits*, *Path*, *Raw*, the comments menu's word
+  // — go before the ones that carry state, so a header a few pixels short of
+  // the longest label is not stripped of every word in the row at once. This
+  // fixture has one state label, *Review*; a modified file adds *Modified*.
+  test("the shorthand labels go before the ones that carry state", async ({
+    page,
+  }) => {
+    const shorthand = await narrowInto(page, "labels-minor");
+    const s = await snapshot(page, LABELS, DIRS);
+    expect(s.labels["Review"], JSON.stringify(s.labels)).toBe(true);
+    for (const name of LABELS.filter((name) => MINOR_LABELS.has(name))) {
+      expect(s.labels[name], `${name}: ${JSON.stringify(s.labels)}`).toBe(
+        false,
+      );
+    }
+    // And the step really is the narrower of the two: everything goes later.
+    expect(await narrowInto(page, "labels")).toBeLessThan(shorthand);
   });
 });
 

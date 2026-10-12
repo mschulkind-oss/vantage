@@ -21,6 +21,7 @@ import {
 import { useShellPage, type PageShortcuts } from "../hooks/useShellPage";
 import { CollapsedFolders } from "../components/CollapsedFolders";
 import { HeaderOverflow } from "../components/HeaderOverflow";
+import { ReviewControls } from "../components/ReviewControls";
 import { RESERVED_ICON_SIZE, ReservedLabel } from "../components/ReservedLabel";
 import { useWebSocket } from "../hooks/useWebSocket";
 import {
@@ -41,7 +42,6 @@ import {
 } from "lucide-react";
 // History icon retained for the file-history link in the breadcrumb area.
 import { RelativeTime } from "../components/RelativeTime";
-import { CommentsDriftedIndicator } from "../components/CommentsDriftedIndicator";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
 import { cn } from "../lib/utils";
 import { scrollToAnchor } from "../lib/anchorScroll";
@@ -54,7 +54,6 @@ import {
   useReviewStore,
 } from "../stores/useReviewStore";
 import { ReviewPanel } from "../components/ReviewPanel";
-import { MessageSquarePlus, ClipboardCopy } from "lucide-react";
 import { useLineAnchor } from "../hooks/useLineAnchor";
 import { useHeaderFit } from "../hooks/useHeaderFit";
 import { useFirstPaintHold } from "../hooks/useFirstPaintHold";
@@ -69,6 +68,27 @@ import { TableOfContents } from "../components/TableOfContents";
 /** `noun`, or its plural for any count but one: `plural(2, "comment")`. */
 function plural(count: number, noun: string): string {
   return count === 1 ? noun : `${noun}s`;
+}
+
+/**
+ * What the header's git-status pill says it is.
+ *
+ * The pill's label is the only place the word is written, and the `labels`
+ * yield step takes it (`lib/headerFit.ts`), leaving a green branch icon that
+ * says something happened to the file and not what. So its tooltip is built
+ * from this too — the same bargain `N commits` and the Copy-answers count make.
+ */
+function gitStatusWord(status: string): string {
+  switch (status) {
+    case "modified":
+      return "Modified";
+    case "added":
+      return "Added";
+    case "deleted":
+      return "Deleted";
+    default:
+      return status;
+  }
 }
 
 function formatDateTime(dateStr: string): string {
@@ -272,13 +292,6 @@ export const ViewerPage: React.FC = () => {
   const [reviewCopied, setReviewCopied] = useState(false);
   const [reviewExitConfirm, setReviewExitConfirm] = useState(false);
   const [reviewDismissConfirm, setReviewDismissConfirm] = useState(false);
-  // What Copy and Dismiss say until a click turns them to "Copied!" and
-  // "Confirm?"; each keeps the room of both (ReservedLabel).
-  const copyReviewLabel = `Copy ${pendingReviewCount}`;
-  const dismissReviewLabel =
-    answeredReviewCount > 0
-      ? `Dismiss ${answeredReviewCount} answered`
-      : `Dismiss ${activeReviewCount}`;
 
   // Raw view can't host the inline highlights review mode is made of; a static
   // export can't save a comment at all — `vantage build` emits no review
@@ -350,6 +363,14 @@ export const ViewerPage: React.FC = () => {
     dismissAllReview,
     dismissAnsweredReview,
   ]);
+
+  const handleReviewCopy = useCallback(async () => {
+    const ok = await copyAllReviewComments();
+    if (ok) {
+      setReviewCopied(true);
+      setTimeout(() => setReviewCopied(false), 2000);
+    }
+  }, [copyAllReviewComments]);
 
   // Load review data when file changes
   useEffect(() => {
@@ -952,17 +973,11 @@ export const ViewerPage: React.FC = () => {
                     "flex items-center gap-1.5 text-xs text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/30 px-2 py-1.5 rounded-lg hover:bg-green-100 dark:hover:bg-green-900/50 transition-colors cursor-pointer",
                     lateUnless(firstPaint.status),
                   )}
-                  title="View uncommitted changes"
+                  title={`${gitStatusWord(fileGitStatus)} — view uncommitted changes`}
                 >
                   <GitBranch size={12} />
                   <span className="hdr-label font-medium">
-                    {fileGitStatus === "modified"
-                      ? "Modified"
-                      : fileGitStatus === "added"
-                        ? "Added"
-                        : fileGitStatus === "deleted"
-                          ? "Deleted"
-                          : fileGitStatus}
+                    {gitStatusWord(fileGitStatus)}
                   </span>
                 </button>
               )}
@@ -1041,7 +1056,7 @@ export const ViewerPage: React.FC = () => {
                       title={`View full history: ${history.length} ${plural(history.length, "commit")}`}
                     >
                       <History size={14} />
-                      <span className="hdr-label">
+                      <span className="hdr-label hdr-label-minor">
                         {history.length} commits
                       </span>
                     </AppLink>
@@ -1068,7 +1083,7 @@ export const ViewerPage: React.FC = () => {
                       }
                       label={pathCopied ? "Copied!" : "Path"}
                       reserve={["Path", "Copied!"]}
-                      labelClassName="hdr-label"
+                      labelClassName="hdr-label hdr-label-minor"
                     />
                   </button>
                 )}
@@ -1090,7 +1105,7 @@ export const ViewerPage: React.FC = () => {
                       icon={<Code size={RESERVED_ICON_SIZE} />}
                       label={showRaw ? "Rendered" : "Raw"}
                       reserve={["Raw", "Rendered"]}
-                      labelClassName="hdr-label"
+                      labelClassName="hdr-label hdr-label-minor"
                     />
                   </button>
                 )}
@@ -1099,100 +1114,22 @@ export const ViewerPage: React.FC = () => {
                       reviewer with pending comments and no way to copy,
                       dismiss, or open the panel without switching back. */}
                 {currentPath && currentPath.toLowerCase().endsWith(".md") && (
-                  <>
-                    {reviewToggleVisible && (
-                      <button
-                        onClick={handleReviewToggle}
-                        className={cn(
-                          "flex items-center gap-1.5 text-xs rounded-lg px-2 py-1.5 transition-colors cursor-pointer",
-                          reviewExitConfirm
-                            ? "text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 ring-1 ring-red-300 dark:ring-red-700"
-                            : isReviewMode
-                              ? "text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/30 ring-1 ring-purple-300 dark:ring-purple-700"
-                              : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50",
-                        )}
-                        title={reviewToggleTitle}
-                      >
-                        <ReservedLabel
-                          icon={<MessageSquarePlus size={RESERVED_ICON_SIZE} />}
-                          label={reviewExitConfirm ? "End review?" : "Review"}
-                          reserve={["Review", "End review?"]}
-                          labelClassName="hdr-label"
-                        />
-                      </button>
-                    )}
-                    {isReviewMode && (
-                      <>
-                        {activeReviewCount > 0 && (
-                          <button
-                            onClick={handleReviewDismiss}
-                            className={`flex items-center gap-1.5 text-xs rounded-lg px-2 py-1.5 transition-colors cursor-pointer ${
-                              reviewDismissConfirm
-                                ? "text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 hover:bg-red-100 dark:hover:bg-red-900/50"
-                                : "text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-700/50 hover:bg-slate-200 dark:hover:bg-slate-600/50"
-                            }`}
-                            title={
-                              reviewDismissConfirm
-                                ? "Click again to dismiss all"
-                                : answeredReviewCount > 0
-                                  ? `Dismiss the ${answeredReviewCount} ${plural(answeredReviewCount, "comment")} the agent has answered`
-                                  : activeReviewCount === 1
-                                    ? "Dismiss 1 comment"
-                                    : `Dismiss all ${activeReviewCount} comments`
-                            }
-                          >
-                            <ReservedLabel
-                              icon={<Check size={RESERVED_ICON_SIZE} />}
-                              label={
-                                reviewDismissConfirm
-                                  ? "Confirm?"
-                                  : dismissReviewLabel
-                              }
-                              reserve={[dismissReviewLabel, "Confirm?"]}
-                              labelClassName="hdr-label"
-                            />
-                          </button>
-                        )}
-                        {commentsDrifted && <CommentsDriftedIndicator />}
-                        {pendingReviewCount > 0 && (
-                          <button
-                            onClick={async () => {
-                              const ok = await copyAllReviewComments();
-                              if (ok) {
-                                setReviewCopied(true);
-                                setTimeout(() => setReviewCopied(false), 2000);
-                              }
-                            }}
-                            className="flex items-center gap-1.5 text-xs text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/30 rounded-lg px-2 py-1.5 hover:bg-purple-100 dark:hover:bg-purple-900/50 transition-colors cursor-pointer"
-                            title={`Copy ${pendingReviewCount} ${plural(pendingReviewCount, "comment")} to clipboard`}
-                          >
-                            <ReservedLabel
-                              icon={
-                                reviewCopied ? (
-                                  <Check size={RESERVED_ICON_SIZE} />
-                                ) : (
-                                  <ClipboardCopy size={RESERVED_ICON_SIZE} />
-                                )
-                              }
-                              label={reviewCopied ? "Copied!" : copyReviewLabel}
-                              reserve={[copyReviewLabel, "Copied!"]}
-                              labelClassName="hdr-label"
-                            />
-                          </button>
-                        )}
-                        <button
-                          onClick={() => setReviewPanelOpen(true)}
-                          className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg px-2 py-1.5 transition-colors cursor-pointer"
-                          title="Manage comments"
-                        >
-                          <MessageSquare size={14} />
-                          <span className="hdr-panel-only">
-                            Manage comments
-                          </span>
-                        </button>
-                      </>
-                    )}
-                  </>
+                  <ReviewControls
+                    visible={reviewToggleVisible}
+                    isReviewMode={isReviewMode}
+                    activeCount={activeReviewCount}
+                    answeredCount={answeredReviewCount}
+                    pendingCount={pendingReviewCount}
+                    drifted={commentsDrifted}
+                    exitConfirm={reviewExitConfirm}
+                    dismissConfirm={reviewDismissConfirm}
+                    copied={reviewCopied}
+                    toggleTitle={reviewToggleTitle}
+                    onToggle={handleReviewToggle}
+                    onDismiss={handleReviewDismiss}
+                    onCopy={handleReviewCopy}
+                    onManage={() => setReviewPanelOpen(true)}
+                  />
                 )}
               </HeaderOverflow>
             </div>
@@ -1208,7 +1145,7 @@ export const ViewerPage: React.FC = () => {
                     "flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 px-2 sm:px-3 py-1.5 rounded-lg hover:bg-amber-100 dark:hover:bg-amber-900/50 transition-colors cursor-pointer",
                     lateUnless(firstPaint.status),
                   )}
-                  title="View file content as diff"
+                  title="Untracked file — view file content as diff"
                 >
                   <FileQuestion size={14} />
                   <span className="hdr-label font-medium">Untracked file</span>
@@ -1258,7 +1195,7 @@ export const ViewerPage: React.FC = () => {
                       }
                       label={pathCopied ? "Copied!" : "Path"}
                       reserve={["Path", "Copied!"]}
-                      labelClassName="hdr-label"
+                      labelClassName="hdr-label hdr-label-minor"
                     />
                   </button>
                 )}
@@ -1279,102 +1216,26 @@ export const ViewerPage: React.FC = () => {
                     icon={<Code size={RESERVED_ICON_SIZE} />}
                     label={showRaw ? "Rendered" : "Raw"}
                     reserve={["Raw", "Rendered"]}
-                    labelClassName="hdr-label"
+                    labelClassName="hdr-label hdr-label-minor"
                   />
                 </button>
                 {/* Same as the wide toolbar: review controls survive raw view. */}
-                <>
-                  {reviewToggleVisible && (
-                    <button
-                      onClick={handleReviewToggle}
-                      className={cn(
-                        "flex items-center gap-1.5 text-xs rounded-lg px-2 py-1.5 transition-colors cursor-pointer",
-                        reviewExitConfirm
-                          ? "text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 ring-1 ring-red-300 dark:ring-red-700"
-                          : isReviewMode
-                            ? "text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/30 ring-1 ring-purple-300 dark:ring-purple-700"
-                            : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50",
-                      )}
-                      title={reviewToggleTitle}
-                    >
-                      <ReservedLabel
-                        icon={<MessageSquarePlus size={RESERVED_ICON_SIZE} />}
-                        label={reviewExitConfirm ? "End review?" : "Review"}
-                        reserve={["Review", "End review?"]}
-                        labelClassName="hdr-label"
-                      />
-                    </button>
-                  )}
-                  {isReviewMode && (
-                    <>
-                      {activeReviewCount > 0 && (
-                        <button
-                          onClick={handleReviewDismiss}
-                          className={`flex items-center gap-1.5 text-xs rounded-lg px-2 py-1.5 transition-colors cursor-pointer ${
-                            reviewDismissConfirm
-                              ? "text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 hover:bg-red-100 dark:hover:bg-red-900/50"
-                              : "text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-700/50 hover:bg-slate-200 dark:hover:bg-slate-600/50"
-                          }`}
-                          title={
-                            reviewDismissConfirm
-                              ? "Click again to dismiss all"
-                              : answeredReviewCount > 0
-                                ? `Dismiss the ${answeredReviewCount} ${plural(answeredReviewCount, "comment")} the agent has answered`
-                                : activeReviewCount === 1
-                                  ? "Dismiss 1 comment"
-                                  : `Dismiss all ${activeReviewCount} comments`
-                          }
-                        >
-                          <ReservedLabel
-                            icon={<Check size={RESERVED_ICON_SIZE} />}
-                            label={
-                              reviewDismissConfirm
-                                ? "Confirm?"
-                                : dismissReviewLabel
-                            }
-                            reserve={[dismissReviewLabel, "Confirm?"]}
-                            labelClassName="hdr-label"
-                          />
-                        </button>
-                      )}
-                      {commentsDrifted && <CommentsDriftedIndicator />}
-                      {pendingReviewCount > 0 && (
-                        <button
-                          onClick={async () => {
-                            const ok = await copyAllReviewComments();
-                            if (ok) {
-                              setReviewCopied(true);
-                              setTimeout(() => setReviewCopied(false), 2000);
-                            }
-                          }}
-                          className="flex items-center gap-1.5 text-xs text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/30 rounded-lg px-2 py-1.5 hover:bg-purple-100 dark:hover:bg-purple-900/50 transition-colors cursor-pointer"
-                          title={`Copy ${pendingReviewCount} ${plural(pendingReviewCount, "comment")} to clipboard`}
-                        >
-                          <ReservedLabel
-                            icon={
-                              reviewCopied ? (
-                                <Check size={RESERVED_ICON_SIZE} />
-                              ) : (
-                                <ClipboardCopy size={RESERVED_ICON_SIZE} />
-                              )
-                            }
-                            label={reviewCopied ? "Copied!" : copyReviewLabel}
-                            reserve={[copyReviewLabel, "Copied!"]}
-                            labelClassName="hdr-label"
-                          />
-                        </button>
-                      )}
-                      <button
-                        onClick={() => setReviewPanelOpen(true)}
-                        className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg px-2 py-1.5 transition-colors cursor-pointer"
-                        title="Manage comments"
-                      >
-                        <MessageSquare size={14} />
-                        <span className="hdr-panel-only">Manage comments</span>
-                      </button>
-                    </>
-                  )}
-                </>
+                <ReviewControls
+                  visible={reviewToggleVisible}
+                  isReviewMode={isReviewMode}
+                  activeCount={activeReviewCount}
+                  answeredCount={answeredReviewCount}
+                  pendingCount={pendingReviewCount}
+                  drifted={commentsDrifted}
+                  exitConfirm={reviewExitConfirm}
+                  dismissConfirm={reviewDismissConfirm}
+                  copied={reviewCopied}
+                  toggleTitle={reviewToggleTitle}
+                  onToggle={handleReviewToggle}
+                  onDismiss={handleReviewDismiss}
+                  onCopy={handleReviewCopy}
+                  onManage={() => setReviewPanelOpen(true)}
+                />
               </HeaderOverflow>
             </div>
           ) : null}
