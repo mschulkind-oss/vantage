@@ -271,7 +271,7 @@ export const KeyboardShortcutsButton: React.FC<{ onClick: () => void }> = ({
       "hover:bg-slate-100 text-slate-500 dark:hover:bg-slate-700 dark:text-slate-400",
     )}
     aria-label="Keyboard shortcuts"
-    title="Keyboard shortcuts"
+    data-tip="Keyboard shortcuts"
   >
     <Keyboard size={16} />
   </button>

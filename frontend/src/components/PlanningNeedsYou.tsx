@@ -26,6 +26,7 @@ import { editCommentBox, type OnSaved } from "../lib/reviewBoxes";
 import { isStaticMode } from "../lib/staticMode";
 import { planningCardId } from "../lib/planningCardId";
 import { planningLimits } from "../planningScan/limits";
+import { reducedMotion } from "../lib/reducedMotion";
 import { holdScrollRoom } from "../lib/scrollRoom";
 import { isPendingForAgent, reviewTarget } from "../stores/useReviewStore";
 import type { ReviewComment } from "../types";
@@ -96,6 +97,11 @@ export const NewReplyBar: React.FC = () => (
 const ROW_SHRINK_MS = 320;
 /** How long the row it shrank to stays tinted green after. */
 const ROW_FLASH_MS = 1600;
+/**
+ * How much of that the tint takes to arrive, as a fraction of it: about an
+ * eighth of a second, so the green lands with the shrink rather than before it.
+ */
+const ROW_FLASH_IN = 0.08;
 /** The green the row starts from, painted over its own background. */
 const ROW_FLASH = "inset 0 0 0 100vmax rgb(34 197 94 / 0.22)";
 /**
@@ -122,13 +128,6 @@ function rowHeight(row: HTMLElement): number {
   return (
     measured ||
     parseFloat(getComputedStyle(document.documentElement).fontSize) * ROW_REM
-  );
-}
-
-function reducedMotion(): boolean {
-  return (
-    typeof window.matchMedia === "function" &&
-    window.matchMedia("(prefers-reduced-motion: reduce)").matches
   );
 }
 
@@ -164,10 +163,23 @@ function shrinkToRow(
       easing: "cubic-bezier(0.2, 0, 0, 1)",
     });
   }
-  row.animate([{ boxShadow: ROW_FLASH }, { boxShadow: "none" }], {
-    duration: ROW_FLASH_MS,
-    easing: "ease-in",
-  });
+  // The tint arrives with the shrink rather than at the swap: painted at full
+  // strength from the first frame, before the box had moved at all, the green
+  // was the loudest thing in the transition — a card's worth of it changing
+  // color in one frame. It reaches full at `ROW_FLASH_IN` and fades from
+  // there, so the reader sees the green land as the box starts to close.
+  row.animate(
+    [
+      { boxShadow: "none", offset: 0, easing: "ease-out" },
+      {
+        boxShadow: ROW_FLASH,
+        offset: ROW_FLASH_IN,
+        easing: "ease-in",
+      },
+      { boxShadow: "none", offset: 1 },
+    ],
+    { duration: ROW_FLASH_MS },
+  );
 }
 
 /**

@@ -136,7 +136,7 @@ export const ReviewControls: React.FC<ReviewControlsProps> = ({
                 ? "text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/30 ring-1 ring-purple-300 dark:ring-purple-700"
                 : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50",
           )}
-          title={toggleTitle}
+          data-tip={toggleTitle}
         >
           <ReservedLabel
             icon={<MessageSquarePlus size={RESERVED_ICON_SIZE} />}
@@ -160,7 +160,7 @@ export const ReviewControls: React.FC<ReviewControlsProps> = ({
             // written whole — and it is what a reader is told when the `labels`
             // step has taken the visible word.
             aria-label={count}
-            title={`Comments on this document: ${count}`}
+            data-tip={`Comments on this document: ${count}`}
             className={cn(
               "flex items-center gap-1.5 text-xs rounded-lg px-2 py-1.5 transition-colors cursor-pointer",
               open

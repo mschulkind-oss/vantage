@@ -1079,8 +1079,10 @@ and it commits inside the transition at once.
   into the "⋯" ([§6.4](#64-needs-you-as-a-to-do-list)); **Review answers**,
   **Copy answers** and **Copy answers + maintenance**
   ([§6.7](#67-answering-and-copy-answers)). It is fitted by the viewer's yield
-  steps (`frontend/src/lib/headerFit.ts`); at 1280 px with the sidebar open its
-  labels yield to icons.
+  steps (`frontend/src/lib/headerFit.ts`); at 1280 px with the sidebar open the
+  shorthand labels go first — the updates slot's words, *Review answers* and
+  *Copy answers + maintenance* — and the two copies' *Copy answers* is the one
+  that stays readable longest.
 - **The frame** is the header, then, while the contents column is drawn, the
   planning outline with the roadmap picker at its head ([§6.9](#69-the-planning-outline));
   then the notices (*Not filtered*

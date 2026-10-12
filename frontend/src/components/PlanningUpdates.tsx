@@ -30,7 +30,7 @@ export const PlanningUpdates: React.FC<{
       type="button"
       data-planning-updates
       onClick={onRefresh}
-      title={shown ? `Lay the page out again: ${title}` : undefined}
+      data-tip={shown ? `Lay the page out again: ${title}` : undefined}
       aria-label={
         shown
           ? `Refresh: ${count.toLocaleString("en-US")} ${count === 1 ? "update" : "updates"} (${title})`
@@ -52,7 +52,7 @@ export const PlanningUpdates: React.FC<{
         {shown ? count.toLocaleString("en-US") : ""}
       </span>
       {/* As wide as its longer words, so 1 becoming 2 moves nothing. */}
-      <span className="hdr-label inline-grid">
+      <span className="hdr-label hdr-label-minor inline-grid">
         <span className="[grid-area:1/1]">{words(count)}</span>
         <span aria-hidden="true" className="invisible [grid-area:1/1]">
           {words(2)}

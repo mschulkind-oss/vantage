@@ -51,7 +51,7 @@ export const StarButton: React.FC<StarButtonProps> = ({
       )}
       aria-label={label}
       aria-pressed={starred}
-      title={label}
+      data-tip={label}
     >
       <Star size={18} className={starred ? "fill-current" : undefined} />
     </button>

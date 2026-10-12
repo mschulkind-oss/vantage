@@ -120,6 +120,18 @@ afterAll(() => {
   axios.defaults.adapter = realAdapter;
 });
 
+/**
+ * The header controls whose tooltip says `match`, looked up by `data-tip`:
+ * the styled tooltip reads that attribute, not `title`
+ * (`components/TooltipLayer.tsx`).
+ */
+const tipped = (match: string | RegExp) =>
+  [...document.querySelectorAll<HTMLElement>("[data-tip]")].filter((el) =>
+    typeof match === "string"
+      ? el.dataset.tip === match
+      : match.test(el.dataset.tip ?? ""),
+  );
+
 describe("ViewerPage", () => {
   const mockRefreshTree = vi.fn();
   const mockViewDirectory = vi.fn();
@@ -255,7 +267,7 @@ describe("ViewerPage", () => {
 
       const leaf = screen.getByTestId("breadcrumb-name");
       expect(leaf).toHaveTextContent(name);
-      expect(leaf).toHaveAttribute("title", `docs/design/${name}`);
+      expect(leaf).toHaveAttribute("data-tip", `docs/design/${name}`);
       const [whole, stem, ext] = Array.from(leaf.children);
       // Two flex items read as two words ("…-design .md"), so assistive
       // technology gets the name whole, and the halves are drawn only.
@@ -309,8 +321,8 @@ describe("ViewerPage", () => {
     // the commit button's tooltip is where the whole of it stays readable.
     it("puts the whole commit subject in the commit button's tooltip", () => {
       openFile("docs/design/notes.md");
-      const commit = screen.getByTitle(/click to view diff$/);
-      expect(commit.getAttribute("title")).toMatch(/^test commit\n/);
+      const commit = tipped(/click to view diff$/)[0];
+      expect(commit.dataset.tip).toMatch(/^test commit\n/);
     });
 
     // Icon-only is a visual state: the label leaves the layout, not the
@@ -439,11 +451,9 @@ describe("ViewerPage", () => {
       const { rerender } = renderPage();
       expect(screen.queryByText("Untracked file")).toBeNull();
       expect(screen.queryByTestId("header-time")).toBeNull();
-      expect(screen.queryByTitle(/click to view diff$/)).toBeNull();
+      expect(tipped(/click to view diff$/)).toHaveLength(0);
       // The toolbar's own actions do not wait on git.
-      expect(screen.getAllByTitle("View raw markdown").length).toBeGreaterThan(
-        0,
-      );
+      expect(tipped("View raw markdown").length).toBeGreaterThan(0);
 
       gitAnswers({
         "docs/new.md": { lastCommit: null, gitStatus: "untracked" },
@@ -469,9 +479,7 @@ describe("ViewerPage", () => {
         "docs/b.md": { lastCommit: null, gitStatus: "untracked" },
       });
       renderPage();
-      expect(
-        screen.getByTitle(/click to view diff$/).getAttribute("title"),
-      ).toMatch(/^On a\n/);
+      expect(tipped(/click to view diff$/)[0].dataset.tip).toMatch(/^On a\n/);
       expect(screen.queryByText("Untracked file")).toBeNull();
     });
   });
@@ -546,7 +554,7 @@ describe("ViewerPage", () => {
       </BrowserRouter>
     );
     const shownName = () =>
-      screen.getByTestId("breadcrumb-name").getAttribute("title");
+      screen.getByTestId("breadcrumb-name").getAttribute("data-tip");
 
     beforeEach(() => {
       vi.useFakeTimers();
@@ -583,7 +591,7 @@ describe("ViewerPage", () => {
       act(() => vi.advanceTimersByTime(planningLimits.holdMs));
       expect(shownName()).toBe("b.md");
       // With nothing known about it yet, its header says nothing of git.
-      expect(screen.queryByTitle(/click to view diff$/)).toBeNull();
+      expect(tipped(/click to view diff$/)).toHaveLength(0);
       expect(screen.queryByText("Untracked file")).toBeNull();
     });
 
@@ -691,7 +699,7 @@ describe("ViewerPage", () => {
       expect(shownName()).toBe("a.md");
       expect(screen.queryByText("Untracked file")).toBeNull();
       expect(screen.queryByTestId("header-time")).toBeNull();
-      expect(screen.queryByTitle(/click to view diff$/)).toBeNull();
+      expect(tipped(/click to view diff$/)).toHaveLength(0);
     });
 
     // §12.2: what the first paint lacked is late data, which the header fit
@@ -700,9 +708,8 @@ describe("ViewerPage", () => {
       loaded("a.md");
       answered("a.md");
       const { rerender } = render(page());
-      const commitButton = () => screen.getByTitle(/click to view diff$/);
-      const historyLink = () =>
-        screen.getByTitle("View full history: 1 commit");
+      const commitButton = () => tipped(/click to view diff$/)[0];
+      const historyLink = () => tipped("View full history: 1 commit")[0];
       const withHistory = (...paths: string[]) =>
         gitStore.mockReturnValue({
           ...gitStore(),
@@ -1346,7 +1353,7 @@ describe("ViewerPage", () => {
       expect(rendered.copy).toBeGreaterThan(0);
       fireEvent.keyDown(document, { key: "Escape" });
 
-      fireEvent.click(screen.getAllByTitle("View raw markdown")[0]);
+      fireEvent.click(tipped("View raw markdown")[0]);
       openMenu();
       expect(copyButtons()).toHaveLength(rendered.copy);
       expect(screen.getAllByTitle("Manage comments")).toHaveLength(
@@ -1499,7 +1506,7 @@ describe("ViewerPage", () => {
       renderPage();
 
       expect(
-        screen.queryAllByTitle(
+        tipped(
           "Enter review mode — 3 open questions here can be answered in one click",
         ).length,
       ).toBeGreaterThan(0);
@@ -1511,7 +1518,7 @@ describe("ViewerPage", () => {
       renderPage();
 
       expect(
-        screen.queryAllByTitle(
+        tipped(
           "Enter review mode — 1 open question here can be answered in one click",
         ).length,
       ).toBeGreaterThan(0);
@@ -1533,9 +1540,7 @@ describe("ViewerPage", () => {
       withContent();
       renderPage();
 
-      expect(
-        screen.queryAllByTitle("Enter review mode").length,
-      ).toBeGreaterThan(0);
+      expect(tipped("Enter review mode").length).toBeGreaterThan(0);
     });
   });
 
@@ -1546,7 +1551,7 @@ describe("ViewerPage", () => {
   // control must not render — the precedent is the working-diff button, which
   // is already wrapped in `{!isStaticMode() && …}`. (R7.)
   describe("review toggle in a static export", () => {
-    const toggles = () => screen.queryAllByTitle(/^(Enter|Exit) review mode$/);
+    const toggles = () => tipped(/^(Enter|Exit) review mode$/);
 
     afterEach(() => {
       delete window.__VANTAGE_STATIC__;
