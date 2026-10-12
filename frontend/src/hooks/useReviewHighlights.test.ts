@@ -1,4 +1,4 @@
-import { renderHook, fireEvent, waitFor } from "@testing-library/react";
+import { renderHook, fireEvent, waitFor, act } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   useReviewHighlights,
@@ -775,6 +775,32 @@ describe("useReviewHighlights — boxes that save as you type", () => {
     unmount();
     await waitFor(() => expect(saved).toEqual(["edit c1 left mid-thought"]));
     expect(liveBoxes()).toEqual([]);
+  });
+});
+
+describe("useReviewHighlights — a comment an open new-comment box owns", () => {
+  it("hides the card and its highlight while the box is open, and draws them on close", async () => {
+    const comment = baseComment({ anchor: anchorAt(1) });
+    const { rerender } = renderInline([comment]);
+    expect(blockFor("c1")).not.toBeNull();
+    expect(container.querySelector(".review-highlight-block")).not.toBeNull();
+
+    const box = new CommentBox(
+      { kind: "comment", target, commentId: "c1", label: "New comment" },
+      { update: (text) => request(`update c1 ${text}`)() },
+      { text: comment.comment, created: true },
+    );
+    act(() => box.open());
+    await waitFor(() => expect(blockFor("c1")).toBeNull());
+    expect(container.querySelector(".review-highlight-block")).toBeNull();
+
+    // A save landing while the box is open must not draw it either.
+    rerender({ cs: [{ ...comment, comment: "half typed" }] });
+    expect(blockFor("c1")).toBeNull();
+
+    act(() => box.close());
+    await waitFor(() => expect(blockFor("c1")).not.toBeNull());
+    expect(container.querySelector(".review-highlight-block")).not.toBeNull();
   });
 });
 

@@ -332,6 +332,10 @@ another document, turning review mode off, or leaving the page.
   the text in the box — your next keystroke turns it back to *Not saved yet*.
 - **A saved comment is a comment.** It waits on the agent from its first save,
   and Copy answers copies it, in any tab, as you have typed it so far.
+- **The document waits for you to finish.** While a new comment's box is open,
+  the comment does not appear on the page — no card and no highlight on what
+  you selected — even though it is already saved. Close the box and it appears,
+  as any other comment does.
 - **Empty text is never saved.** Clear a new comment's box and close it, and
   the comment it saved is deleted. An edit or reply box you empty keeps what
   it last saved, and says *Empty text is not saved*.

@@ -70,7 +70,10 @@ type](../../userguide/features.md#comment-boxes-save-as-you-type).
   without the reader being told.
 - **A saved comment is a comment.** There is no draft state: what a box has saved is
   pending for the agent, counted as an answer and copied by Copy answers, half
-  written or not ([OQ-TD10](#why-its-this-way)).
+  written or not ([OQ-TD10](#why-its-this-way)). The document does not draw one an
+  open new-comment box still owns until the box closes
+  ([§3.2](#32-every-way-of-leaving-keeps-the-text)); every other reader of it, in this
+  tab or another, sees it at once.
 - **A box's own saves never disturb it.** The reader typing in a box never notices
   a save land: not in focus, caret, selection or scroll, in this tab or another.
 
@@ -140,6 +143,13 @@ take, or by closing a new-comment box empty ([§3.3](#33-empty-text)).
 - **A closed inline edit box shows what was typed** in the comment's place at once,
   though its save may still be on its way; the next rebuild of the layer draws what
   the server holds.
+- **An open new-comment box's comment is not drawn in the document.** Its saves file
+  the comment and every other reader sees it, but the page the reader is typing on
+  keeps the look it had before the comment existed — no card, and no highlighted
+  selection — until the box closes, when both appear. A card appearing under the
+  reader at every save is the autosave showing through; the planning card holds its
+  list the same way
+  ([`planning-index.md` §6.4](planning-index.md#64-needs-you-as-a-to-do-list)).
 - **The document page holds back a reload while a box is open on it.** When a push
   says the document is gone, the page waits for the rename's other half before
   saying so, and then also while review mode has a box open, since the page saying
@@ -282,7 +292,9 @@ rebuild the layer lifts every inline box open in it out, with where its focus,
 caret, selection and scroll were, and puts the same elements back into the rebuilt
 layer, restoring them (`liftBox`, `putBoxBack`). A box whose comment is gone from the
 rebuilt layer — deleted elsewhere, or no longer shown — is closed instead, which
-keeps its text.
+keeps its text. A **new-comment** box is a popover, not part of this layer, so the
+rebuilt layer instead leaves its comment out entirely while the box is open
+([§3.2](#32-every-way-of-leaving-keeps-the-text)).
 
 > [!WARNING]
 > **Do not rebuild an inline box from scratch on a review change.** Restoring only
@@ -296,7 +308,9 @@ keeps its text.
 - **A saved comment counts from its first save,** in any tab: it is pending for the
   agent, it answers a question it sits on
   ([`inline-markup.md`](inline-markup.md#a-comment-on-a-question-is-its-answer)),
-  and Copy answers copies it.
+  and Copy answers copies it. The document draws it once its box closes
+  ([§3.2](#32-every-way-of-leaving-keeps-the-text)); another tab's page sees it at
+  once.
 - **In the tab that holds the box, Copy answers copies the text as last typed,** not
   the text the last save carried (`withTypedText`, `typedComments`): a box whose
   comment or reply is not created yet adds it, and an empty box changes nothing.
@@ -356,3 +370,4 @@ it on 2026-10-09.
 | — | An emptied reply box keeps its reply, as an emptied edit box keeps its comment: closing it empty sends nothing, and the reply keeps its last saved text. Only a new-comment box closed empty deletes what it created ([§3.3](#33-empty-text)) | 2026-10-09 |
 | — | The shell's notice is for failed saves, not for unsaved text: an ordinary pause or a save in flight never shows it, since listing every close while its save is on its way would flash it at each one. Leaving the tab still asks whenever any text is unsaved ([§4.2](#42-what-the-reader-is-told)) | 2026-10-09 |
 | — | A save whose comment was deleted stops retrying, since no retry can succeed, and offers the text back: Copy text, or Post as a new comment. Retrying a 404 forever would hold the tab's leave guard with no way out ([§4.3](#43-a-comment-deleted-under-its-box)) | 2026-10-09 |
+| — | The document does not draw a comment an open new-comment box owns: the box's saves file it, but its card and highlight appear only when the box closes. A card appearing under the reader at every save is the autosave showing through, and the planning card's **Answer…** box already holds its list for the same reason ([§3.2](#32-every-way-of-leaving-keeps-the-text), [§7](#7-what-the-agent-and-the-pages-see)) | 2026-10-12 |

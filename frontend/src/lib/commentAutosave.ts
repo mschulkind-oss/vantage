@@ -509,6 +509,25 @@ export function hasOpenBox(which?: (box: CommentBox) => boolean): boolean {
   return false;
 }
 
+/**
+ * The ids of the comments open new-comment boxes own, sorted and joined by a
+ * space: the same string until the set changes, for a `useSyncExternalStore`
+ * snapshot. The document does not draw these comments — the reader is still
+ * writing them, and a card appearing under the box at every save is not a
+ * change they asked to see (`docs/reference/comment-autosave.md` §3.2). The
+ * boxes still save: the comment counts, is copied, and is drawn everywhere
+ * else, and the document draws it as soon as its box closes.
+ */
+export function openNewCommentIds(): string {
+  const ids: string[] = [];
+  for (const box of boxes) {
+    if (box.isOpen && box.subject.kind === "comment") {
+      ids.push(box.subject.commentId);
+    }
+  }
+  return ids.sort().join(" ");
+}
+
 /** Whether any text typed in any box is not saved yet. */
 export function hasUnsavedText(): boolean {
   for (const box of boxes) if (box.getState().unsaved) return true;
