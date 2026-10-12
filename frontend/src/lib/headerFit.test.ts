@@ -16,7 +16,7 @@ describe("yieldAttribute", () => {
     expect(yieldAttribute(0)).toBe("");
     expect(yieldAttribute(2)).toBe("subject date");
     expect(yieldAttribute(YIELD_STEPS.length)).toBe(
-      "subject date labels dirs time repo actions name",
+      "subject date labels-minor labels dirs time repo actions name",
     );
   });
 });
@@ -30,7 +30,9 @@ describe("fewestSteps", () => {
   it("ends at the name when nothing short of it fits, without trying it", () => {
     const fits = vi.fn(() => false);
     expect(fewestSteps(fits)).toBe(YIELD_STEPS.length);
-    expect(fits.mock.calls.map(([n]) => n)).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
+    expect(fits.mock.calls.map(([n]) => n)).toEqual([
+      0, 1, 2, 3, 4, 5, 6, 7, 8,
+    ]);
   });
 });
 
@@ -100,6 +102,7 @@ function fakeHeader(
 const SAVES = {
   subject: 150,
   date: 120,
+  "labels-minor": 120,
   labels: 300,
   dirs: 80,
   time: 90,
@@ -136,10 +139,10 @@ describe("fitHeader", () => {
   });
 
   it("lets the name go only when every other step is not enough", () => {
-    const { header } = fakeHeader(500, needing(1600));
+    const { header } = fakeHeader(500, needing(1800));
     expect(fitHeader(header)).toBe(YIELD_STEPS.length);
     expect(header.dataset.yield).toBe(
-      "subject date labels dirs time repo actions name",
+      "subject date labels-minor labels dirs time repo actions name",
     );
   });
 
@@ -147,10 +150,10 @@ describe("fitHeader", () => {
   // stood between the name and its room: at a 1050px window with the sidebar
   // open the name was elided with all of them at full width.
   it("folds the repository and the toolbar's actions away before the name", () => {
-    const { header } = fakeHeader(500, needing(1400));
-    expect(fitHeader(header)).toBe(7);
+    const { header } = fakeHeader(500, needing(1500));
+    expect(fitHeader(header)).toBe(8);
     expect(header.dataset.yield).toBe(
-      "subject date labels dirs time repo actions",
+      "subject date labels-minor labels dirs time repo actions",
     );
   });
 
@@ -161,7 +164,7 @@ describe("fitHeader", () => {
       lead: taken.includes("dirs") ? 950 : 1050,
       tools: 0,
     }));
-    expect(fitHeader(header)).toBe(4);
+    expect(fitHeader(header)).toBe(5);
   });
 
   it("hides the subject once it would be narrower than its floor", () => {
@@ -207,7 +210,7 @@ describe("fitHeader", () => {
 
   it("gives steps back when the header widens", () => {
     const { header, box } = fakeHeader(800, needing(1200));
-    expect(fitHeader(header)).toBe(3);
+    expect(fitHeader(header)).toBe(4);
     box.width = 1300;
     expect(fitHeader(header)).toBe(0);
     expect(header.dataset.yield).toBe("");
@@ -305,7 +308,7 @@ describe("fitHeader with a late item", () => {
     // A narrower window is the reader's doing: the header gives way as it
     // always does, and what was drawn stays drawn.
     box.width = 600;
-    expect(fitHeader(header)).toBe(3);
+    expect(fitHeader(header)).toBe(4);
     expect(placed()).toBe(true);
   });
 
