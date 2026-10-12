@@ -80,10 +80,13 @@ test.describe("the planning page in the app shell", () => {
     await expect(section(page, "Ready to graduate")).toBeVisible();
 
     // A document of Needs you's cards: its first card, in view, with the
-    // focus on its first control, and no history entry.
+    // focus on its first control, and the address scoped to that document —
+    // written in place, so no history entry (OQ-PF10).
     await outlineDocument(page, "plans/paged.md").focus();
     await page.keyboard.press("Enter");
-    await expect(page).toHaveURL(/\/\.vantage\/planning$/);
+    await expect(page).toHaveURL(
+      /\/\.vantage\/planning\?filter=path:\/plans\/paged\.md$/,
+    );
     const first = section(page, "Needs you")
       .locator('article[id^="pq-plans%2Fpaged.md--"]')
       .first();

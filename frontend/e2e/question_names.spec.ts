@@ -109,7 +109,7 @@ test.describe("question and fallback directives", () => {
       .getByTestId("viewer-header")
       .getByRole("button", { name: "Review", exact: true });
     await expect(review).toHaveAttribute(
-      "title",
+      "data-tip",
       "Enter review mode — 2 open questions here can be answered in one click",
     );
     await review.click();
@@ -276,9 +276,12 @@ test.describe("question and fallback directives", () => {
       page.getByRole("article", { name: new RegExp(`^${id}:`) });
     const rowOf = (id: string) =>
       page.getByRole("group", { name: new RegExp(`^${id}:`) });
-    // Answered, it is a row of Needs you with its card's chip
-    // (docs/reference/planning-index.md §6.4); Show opens its card.
-    await expect(rowOf("OQ-4").getByText(ANSWERED, { exact: true })).toBeVisible();
+    // Answered, it is a row of Needs you showing the answer this reader
+    // filed, not a chip (docs/reference/planning-index.md §6.4); Show opens
+    // its card.
+    await expect(
+      rowOf("OQ-4").getByText("The first way, after all."),
+    ).toBeVisible();
     await rowOf("OQ-4").getByRole("button", { name: /^Show/ }).click();
     await expect(card("OQ-4").getByText(ANSWERED)).toBeVisible();
     await expect(
@@ -297,8 +300,9 @@ test.describe("question and fallback directives", () => {
     await card("OQ-1")
       .getByRole("button", { name: "Take this leaning" })
       .click();
+    // The row shows the leaning it filed, not a chip (planning-index.md §6.4).
     await expect(
-      rowOf("OQ-1").getByText("Leaning taken", { exact: true }),
+      rowOf("OQ-1").getByText("Take the first way.", { exact: true }),
     ).toBeVisible();
     await expect(page.getByTestId("needs-you-end")).toHaveText(
       "Nothing needs you",
@@ -381,10 +385,11 @@ test.describe("a question written as paragraphs", () => {
     await page.goto("/.vantage/planning");
     const card = (id: string) =>
       page.getByRole("article", { name: new RegExp(`^${id}:`) });
-    // Answered, it is a row of Needs you, with its card's chip
-    // (docs/reference/planning-index.md §6.4); Show opens the card.
+    // Answered, it is a row of Needs you, showing the answer this reader
+    // filed (the row's chip is gone: docs/reference/planning-index.md §6.4);
+    // Show opens the card.
     const row = page.getByRole("group", { name: /^OQ-P1:/ });
-    await expect(row.getByText(ANSWERED, { exact: true })).toBeVisible();
+    await expect(row.getByText("The first way, as leaned.")).toBeVisible();
     await row.getByRole("button", { name: /^Show/ }).click();
     await expect(card("OQ-P1").getByText(ANSWERED)).toBeVisible();
     await expect(

@@ -143,6 +143,10 @@ test.describe("several roadmaps", () => {
     await cardsIn(page, "Needs you").toEqual([
       "OQ-A1: Which way does alpha go?",
       "OQ-A2: How soon does alpha ship?",
+      // No roadmap routes gamma, so it is a card of *Needs you* marked *Not
+      // on a roadmap* — and the line under Maintenance again below
+      // (docs/reference/planning-index.md §6.4).
+      "OQ-G1: Is anyone tracking gamma?",
     ]);
     // Beta's three are routed, by the other roadmap: counted, not Not on a roadmap.
     await expect(page.getByTestId("other-roadmaps")).toHaveText(
@@ -167,6 +171,7 @@ test.describe("several roadmaps", () => {
       "OQ-B2: Who builds beta?",
       "OQ-B3: Does beta need a flag?",
       "OQ-A2: How soon does alpha ship?",
+      "OQ-G1: Is anyone tracking gamma?",
     ]);
     await expect(page.getByTestId("other-roadmaps")).toHaveText(
       "1 more question needs you on another roadmap.",
@@ -185,6 +190,7 @@ test.describe("several roadmaps", () => {
       "OQ-B2: Who builds beta?",
       "OQ-B3: Does beta need a flag?",
       "OQ-A2: How soon does alpha ship?",
+      "OQ-G1: Is anyone tracking gamma?",
     ]);
     await expect.poll(() => roadmapParam(page)).toBe(NESTED);
   });
@@ -275,6 +281,7 @@ test.describe("several roadmaps", () => {
       await cardsIn(page, "Needs you").toEqual([
         "OQ-A1: Which way does alpha go?",
         "OQ-A2: How soon does alpha ship?",
+        "OQ-G1: Is anyone tracking gamma?",
       ]);
       // Two frames, so the observer has reported the last paint.
       const shifts = await page.evaluate(
@@ -348,6 +355,7 @@ test.describe("several roadmaps", () => {
       "OQ-B2: Who builds beta?",
       "OQ-B3: Does beta need a flag?",
       "OQ-A2: How soon does alpha ship?",
+      "OQ-G1: Is anyone tracking gamma?",
     ]);
     // The outline follows the pick: the new cards' documents.
     await expect(
@@ -520,6 +528,7 @@ test.describe("several roadmaps", () => {
       await cardsIn(page, "Needs you").toEqual([
         "OQ-A1: Which way does alpha go?",
         "OQ-A2: How soon does alpha ship?",
+        "OQ-G1: Is anyone tracking gamma?",
       ]);
       const shifts = await page.evaluate(
         () =>
@@ -640,6 +649,7 @@ test.describe("several roadmaps", () => {
       ).toBeVisible();
       await cardsIn(page, "Needs you").toEqual([
         "OQ-A2: How soon does alpha ship?",
+        "OQ-G1: Is anyone tracking gamma?",
       ]);
       // Both comments came with the sections, so both roadmaps' counts drop.
       await expect(picker(page).locator("option")).toHaveText([
