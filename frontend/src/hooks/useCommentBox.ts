@@ -4,6 +4,7 @@ import {
   flushAllBoxes,
   hasUnsavedText,
   boxesVersion,
+  openNewCommentIds,
   subscribeBoxes,
   type BoxState,
   type CommentBox,
@@ -12,6 +13,16 @@ import {
 /** A comment box's state (`lib/commentAutosave.ts`), re-rendering on every change. */
 export function useCommentBox(box: CommentBox): BoxState {
   return useSyncExternalStore(box.subscribe, box.getState);
+}
+
+/**
+ * The comment ids open new-comment boxes own, space-joined: the document's
+ * inline layer hides these while their boxes are open
+ * (`docs/reference/comment-autosave.md` §3.2). The string is the same value
+ * until the set changes, so a save does not re-render the layer.
+ */
+export function useOpenNewCommentIds(): string {
+  return useSyncExternalStore(subscribeBoxes, openNewCommentIds);
 }
 
 /**
