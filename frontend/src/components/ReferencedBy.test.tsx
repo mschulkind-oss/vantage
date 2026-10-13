@@ -76,7 +76,7 @@ const summaryOf = (tree: Record<string, string>, path = TARGET) =>
  */
 const PLANNING_HREF = "/.vantage/planning?filter=path:docs/design/target.md";
 /** The words of that link. */
-const PLANNING_PART = "its questions on the planning page";
+const PLANNING_PART = "its questions on the Decisions page";
 
 /** The line as the viewer asks for it, where there is a planning page. */
 const lineOf = (summary: ReferenceSummary) =>
@@ -138,7 +138,7 @@ describe("the line (§7)", () => {
       /^Referenced by 2 documents · on the roadmap under Building$/,
     );
     expect(lineRow()).toHaveTextContent(
-      /^Referenced by 2 documents · on the roadmap under Building · its questions on the planning page$/,
+      /^Referenced by 2 documents · on the roadmap under Building · its questions on the Decisions page$/,
     );
   });
 
@@ -175,7 +175,7 @@ describe("the line (§7)", () => {
     });
     renderLine(summary);
     expect(surface()).toHaveTextContent(
-      /^1 open question not on the roadmap · its questions on the planning page$/,
+      /^1 open question not on the roadmap · its questions on the Decisions page$/,
     );
     expect(screen.queryByRole("button")).toBeNull();
     expect(screen.queryByRole("list")).toBeNull();
@@ -272,7 +272,7 @@ describe("the line (§7)", () => {
     expect(lineRow()).toHaveTextContent(/^Referenced by 1 document$/);
     expect(
       screen.queryByRole("link", {
-        name: "its questions on the planning page",
+        name: "its questions on the Decisions page",
       }),
     ).toBeNull();
   });
@@ -514,7 +514,9 @@ describe("the link to the filtered planning page (§7.1)", () => {
     });
     expect(summaryLine(bare)).toBeNull();
     renderLine(bare);
-    expect(surface()).toHaveTextContent(/^its questions on the planning page$/);
+    expect(surface()).toHaveTextContent(
+      /^its questions on the Decisions page$/,
+    );
     expect(screen.queryByRole("button")).toBeNull();
     expect(screen.queryByRole("navigation")).toBeNull();
 

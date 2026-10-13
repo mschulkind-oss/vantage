@@ -2,8 +2,10 @@ import { ViewerPage } from "./pages/ViewerPage";
 import { HistoryPage } from "./pages/HistoryPage";
 import { RecentsPage } from "./pages/RecentsPage";
 import { PlanningPage } from "./pages/PlanningPage";
+import { WorkPage } from "./pages/WorkPage";
 import { AppShell } from "./components/AppShell";
 import { PLANNING_ROUTE } from "./lib/planningRoute";
+import { WORK_ROUTE } from "./lib/workRoute";
 import { Routes, Route } from "react-router-dom";
 
 function App() {
@@ -16,6 +18,7 @@ function App() {
       <Route element={<AppShell />}>
         {/* Under `.vantage`, which no document URL can use (Plan Q13). */}
         <Route path={`${PLANNING_ROUTE}/*`} element={<PlanningPage />} />
+        <Route path={`${WORK_ROUTE}/*`} element={<WorkPage />} />
         <Route path="/*" element={<ViewerPage />} />
       </Route>
     </Routes>

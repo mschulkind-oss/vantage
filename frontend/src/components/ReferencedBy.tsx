@@ -92,7 +92,7 @@ const counted = (n: number, one: string, many: string) =>
   `${n.toLocaleString("en-US")} ${n === 1 ? one : many}`;
 
 /** The words of the line's link to the filtered planning page (§7.1). */
-const PLANNING_PART = "its questions on the planning page";
+const PLANNING_PART = "its questions on the Decisions page";
 
 /** What the line says: up to four parts, joined by " · " in this order. */
 export interface SummaryLine {

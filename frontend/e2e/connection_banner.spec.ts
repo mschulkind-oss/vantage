@@ -95,7 +95,7 @@ test("going between a document and the planning page never shows the Disconnecte
     await page.keyboard.press("p");
     await expect(page).toHaveURL(/\/\.vantage\/planning$/);
     await expect(
-      page.getByRole("heading", { level: 1, name: "Planning" }),
+      page.getByRole("heading", { level: 1, name: "Decisions" }),
     ).toBeVisible();
     await connectedAfter(sockets, made);
     expect(await bannerShown(page)).toEqual([]);

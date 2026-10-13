@@ -32,6 +32,7 @@ import React, {
 } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
+  BriefcaseBusiness,
   ChevronRight,
   Clock,
   Database,
@@ -76,6 +77,7 @@ import {
 } from "../hooks/useShellPage";
 import { prefetchPlanningPage } from "../hooks/usePlanningPageInputs";
 import { planningPath } from "../lib/planningRoute";
+import { workPath } from "../lib/workRoute";
 import {
   projectlessSpace,
   usePlanningSpace,
@@ -539,8 +541,8 @@ const ShellFrame: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                 <AppLink
                   to={planningPath(isMultiRepo, currentRepo)}
                   className="p-1.5 rounded-md hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
-                  aria-label="Planning"
-                  data-tip="Planning (g p)"
+                  aria-label="Decisions"
+                  title="Decisions (g p)"
                   onPointerEnter={prefetchPlanning}
                   onFocus={prefetchPlanning}
                 >
@@ -582,6 +584,25 @@ const ShellFrame: React.FC<{ children: React.ReactNode }> = ({ children }) => {
               </div>
             </div>
             <div className="flex-1 overflow-y-auto py-2 px-2">
+              {/* Labeled routes remain easy to find without changing the
+                  planning URL or its g p shortcut. */}
+              <nav
+                aria-label="Work and Decisions pages"
+                className="mb-3 border-b border-slate-100 px-2 pb-3 dark:border-slate-700"
+              >
+                <AppLink
+                  to={workPath(isMultiRepo, currentRepo)}
+                  className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-700"
+                >
+                  <BriefcaseBusiness size={15} aria-hidden="true" /> Work
+                </AppLink>
+                <AppLink
+                  to={planningPath(isMultiRepo, currentRepo)}
+                  className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-700"
+                >
+                  <ListChecks size={15} aria-hidden="true" /> Decisions
+                </AppLink>
+              </nav>
               {/* File tree (sidebar only shows when a repo is selected) */}
               <>
                 {/* Show current repo name with back button in multi-repo mode */}
