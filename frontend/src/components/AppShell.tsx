@@ -311,6 +311,12 @@ const ShellFrame: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   }, [setSidebarWidth]);
   const [keyboardShortcutsEnabled, setKeyboardShortcutsEnabled] =
     usePersistentFlag("vantage:shortcuts-enabled", true);
+  // Whether the viewer header shows what git knows about the document on
+  // screen. On by default: the header has shown it since it had a header.
+  const [showGitMetadata, setShowGitMetadata] = usePersistentFlag(
+    "vantage:showGitMetadata",
+    true,
+  );
 
   // Close the mobile sidebar when the route changes. This adjusts state during
   // render (React's documented pattern) rather than from an effect.
@@ -550,6 +556,8 @@ const ShellFrame: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                   onShowHiddenChange={setShowHidden}
                   showGitignored={showGitignored}
                   onShowGitignoredChange={setShowGitignored}
+                  showGitMetadata={showGitMetadata}
+                  onShowGitMetadataChange={setShowGitMetadata}
                   keyboardShortcutsEnabled={keyboardShortcutsEnabled}
                   onKeyboardShortcutsEnabledChange={setKeyboardShortcutsEnabled}
                   onOpenStyleGuide={() => setStyleGuideOpen(true)}

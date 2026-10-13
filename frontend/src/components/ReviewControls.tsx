@@ -1,4 +1,3 @@
-import { useCallback, useRef, useState } from "react";
 import {
   Check,
   ClipboardCopy,
@@ -6,7 +5,6 @@ import {
   MessageSquarePlus,
 } from "lucide-react";
 
-import { AnchoredMenu } from "./AnchoredMenu";
 import { CommentsDriftedIndicator } from "./CommentsDriftedIndicator";
 import { RESERVED_ICON_SIZE, ReservedLabel } from "./ReservedLabel";
 import { cn } from "../lib/utils";
@@ -15,33 +13,33 @@ import { cn } from "../lib/utils";
 const plural = (count: number, noun: string) =>
   count === 1 ? noun : `${noun}s`;
 
-/** The room the comment count keeps, in digits. */
-const COUNT_DIGITS = 2;
-
 /**
  * What a reader with this document in front of them can do about its comments:
- * switch review mode on or off, and open the comments menu.
+ * switch review mode on or off, copy the comments the agent still owes an
+ * answer to, dismiss the ones it has answered, and open the comments panel.
  *
- * Until 2026-10-12 this was five buttons in the header's row — Review, Dismiss
- * N, the document-changed indicator, Copy N and Manage comments. In review mode
- * with a modified file, ten controls stood in the row and their labels alone
- * cost about 520px, so at a 1200px header every one of them was an icon
- * (`lib/headerFit.ts`, "The viewer header's yield steps"). Folding Dismiss,
- * Copy and Manage into one menu takes about 230px off that, which is what lets
- * the labels the reader still needs — *Modified*, *Review* and the comment
- * count — stay drawn at laptop widths.
+ * Every one of them is a button of the header's own row, drawn where it stands.
+ * Until 2026-10-12 the cluster was five buttons in that row and their labels
+ * alone cost about 520px, so the three deliberate actions — Dismiss, Copy and
+ * Manage — were folded into a menu behind the comment count. That hid the one
+ * action a reviewer reaches for most: *Copy* was two clicks in at *every*
+ * width, which is a poor place for the thing that saves their review before
+ * they leave. They are inline again, in the row, where the count they carry is
+ * part of their own label (`Copy 3`, `Dismiss 2 answered`) rather than a chip
+ * beside a trigger — so there is no separate count element, and the words yield
+ * to the `labels` step exactly as the rest of the toolbar's do
+ * (`lib/headerFit.ts`).
  *
- * A menu rather than five rows in the "⋯" panel: the panel's own actions are
- * the file's (history, Path, Raw) and these are the document's comments, and
- * five more rows there would be a wall. What the reader needs *at a glance*
- * stays in the row — the mode, how many comments there are, and the
- * document-changed indicator, which is a warning and keeps the element and
- * the announcement it had — and the three actions, which are deliberate
- * anyway, are one click in.
+ * The "⋯" the header folds into at its `actions` step holds the file's own
+ * actions (its history and Raw) and not these: folding the review cluster there
+ * is what made Copy unreachable at every width, and the reader who is
+ * reviewing is the one the header's tight widths are least likely to be for.
+ * The cluster is a fragment rather than a box, so its buttons are the row's own
+ * items and the header's fit measures them like any other
+ * (`components/HeaderOverflow.tsx` does the same with `display: contents`).
  *
- * The two-step confirms are why this is not a `role="menu"` of the closing
- * kind: Dismiss turns into *Confirm?* where it stands, as it did in the row, so
- * the second click is the one under the pointer that asked for it.
+ * Dismiss keeps its two-step confirm where it stands: it turns into *Confirm?*
+ * in place, so the second click is the one under the pointer that asked for it.
  */
 export interface ReviewControlsProps {
   /** The Review toggle is offered at all: not raw view, not a static export. */
@@ -69,10 +67,6 @@ export interface ReviewControlsProps {
   onManage: () => void;
 }
 
-/** A row of the comments menu. */
-const itemClass =
-  "flex w-full items-center gap-2 px-3 py-1.5 text-xs transition-colors cursor-pointer";
-
 export const ReviewControls: React.FC<ReviewControlsProps> = ({
   visible,
   isReviewMode,
@@ -89,13 +83,6 @@ export const ReviewControls: React.FC<ReviewControlsProps> = ({
   onCopy,
   onManage,
 }) => {
-  const [open, setOpen] = useState(false);
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  // Where the menu hangs when its own trigger is not on screen. See `onOpen`.
-  const menuAnchorRef = useRef<HTMLElement>(null);
-  const close = useCallback(() => setOpen(false), []);
-
-  const count = `${activeCount} ${plural(activeCount, "comment")}`;
   // An answered comment is still in the list; dismissing it is the sweep that
   // clears what the agent has finished with. With none answered, the click
   // discards comments nobody has replied to, which is why it asks first.
@@ -109,18 +96,6 @@ export const ReviewControls: React.FC<ReviewControlsProps> = ({
       : activeCount === 1
         ? "Dismiss 1 comment"
         : `Dismiss all ${activeCount} comments`;
-
-  const onOpen = () => {
-    // Entering a portaled menu closes the compact toolbar's "⋯" panel, which
-    // takes this trigger off screen within the same click. Anchor to the "⋯"
-    // it folds into instead, so placement and Escape's focus return never
-    // target a hidden button (`PlanningPendingAnswers` does the same).
-    const panel = triggerRef.current?.closest(".hdr-overflow[data-open]");
-    menuAnchorRef.current =
-      panel?.querySelector<HTMLElement>(".hdr-more") ??
-      (triggerRef.current as HTMLElement | null);
-    setOpen((value) => !value);
-  };
 
   return (
     <>
@@ -148,129 +123,91 @@ export const ReviewControls: React.FC<ReviewControlsProps> = ({
       )}
       {isReviewMode && (
         <>
+          {drifted && <CommentsDriftedIndicator />}
+          {pendingCount > 0 && (
+            <button
+              type="button"
+              onClick={onCopy}
+              data-tip={
+                copied
+                  ? "Copied!"
+                  : `Copy ${pendingCount} ${plural(pendingCount, "comment")} to clipboard`
+              }
+              className={cn(
+                "flex items-center gap-1.5 text-xs rounded-lg px-2 py-1.5 transition-colors cursor-pointer",
+                // The chip this action wears: the purple is the one signal
+                // that the copy is the agent-facing one, and a named
+                // background is also what lets the contrast guard measure the
+                // ink against a palette color rather than the chrome
+                // (`lib/textContrast.test.ts`).
+                "text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/30 hover:bg-purple-100 dark:hover:bg-purple-900/50",
+              )}
+            >
+              <ReservedLabel
+                icon={
+                  copied ? (
+                    <Check
+                      size={RESERVED_ICON_SIZE}
+                      className="text-green-500"
+                    />
+                  ) : (
+                    <ClipboardCopy size={RESERVED_ICON_SIZE} />
+                  )
+                }
+                label={copied ? "Copied!" : `Copy ${pendingCount}`}
+                reserve={[`Copy ${pendingCount}`, "Copied!"]}
+                labelClassName="hdr-label"
+              />
+            </button>
+          )}
+          {activeCount > 0 && (
+            <button
+              type="button"
+              onClick={onDismiss}
+              data-tip={dismissTitle}
+              className={cn(
+                "flex items-center gap-1.5 text-xs rounded-lg px-2 py-1.5 transition-colors cursor-pointer",
+                dismissConfirm
+                  ? "text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 hover:bg-red-100 dark:hover:bg-red-900/50"
+                  : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50",
+              )}
+            >
+              {/* The label can be any of three things — how much the sweep
+                  takes, and the confirm that asks for the click again — so the
+                  room of the widest is kept and the icon does not move under
+                  the pointer (`index.css`, "A button whose label changes on
+                  click"). */}
+              <ReservedLabel
+                icon={<Check size={RESERVED_ICON_SIZE} />}
+                label={dismissConfirm ? "Confirm?" : dismissLabel}
+                reserve={[
+                  "Confirm?",
+                  `Dismiss ${activeCount}`,
+                  `Dismiss ${answeredCount} answered`,
+                ]}
+                labelClassName="hdr-label"
+              />
+            </button>
+          )}
+          {/* Icon-only: the panel is a place to read the comments, not a
+              destination whose name a reader needs in the row. The label it
+              gives up is in its tooltip and in the name it keeps for assistive
+              technology. */}
           <button
-            ref={triggerRef}
             type="button"
-            data-testid="review-comments-menu"
-            onClick={onOpen}
-            aria-haspopup="menu"
-            aria-expanded={open}
-            // The count and its word are two elements, and a name read off the
-            // two of them is "3comments". This is the one place the phrase is
-            // written whole — and it is what a reader is told when the `labels`
-            // step has taken the visible word.
-            aria-label={count}
-            data-tip={`Comments on this document: ${count}`}
-            className={cn(
-              "flex items-center gap-1.5 text-xs rounded-lg px-2 py-1.5 transition-colors cursor-pointer",
-              open
-                ? "text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-700/50"
-                : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50",
-            )}
+            onClick={onManage}
+            aria-label="Manage comments"
+            data-tip="Manage comments"
+            className="flex items-center rounded-lg p-1.5 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors cursor-pointer"
           >
             <MessageSquare
               size={RESERVED_ICON_SIZE}
               className="shrink-0"
               aria-hidden="true"
             />
-            {/* The count is no label: the `labels` yield step leaves it drawn
-                when every word in the row has gone. */}
-            <span
-              data-testid="review-comment-count"
-              className="inline-block text-right tabular-nums"
-              style={{ minWidth: `${COUNT_DIGITS}ch` }}
-            >
-              {activeCount}
-            </span>
-            {/* The label classes are on the word itself, not on the grid
-                around it as `PlanningUpdates` has them: a yield step puts
-                `position: absolute` and a 1px box on the element it names, so
-                a clipped wrapper would leave the word inside it at its full
-                width — which the header's own e2e reads as a label the row
-                never gave up (`header_fit.spec.ts`). The ghost word carries
-                the same classes, so the room it keeps goes with the word. */}
-            <span className="inline-grid">
-              <span className="hdr-label hdr-label-minor [grid-area:1/1]">
-                {plural(activeCount, "comment")}
-              </span>
-              {/* As wide as the longer word, so one comment becoming two moves
-                  nothing in the header. */}
-              <span
-                aria-hidden="true"
-                className="hdr-label hdr-label-minor invisible [grid-area:1/1]"
-              >
-                comments
-              </span>
-            </span>
           </button>
-          {drifted && <CommentsDriftedIndicator />}
         </>
       )}
-      <AnchoredMenu
-        open={open}
-        onClose={close}
-        anchorRef={menuAnchorRef}
-        width={260}
-        aria-label="Comments"
-      >
-        {activeCount > 0 && (
-          <button
-            type="button"
-            role="menuitem"
-            onClick={onDismiss}
-            title={dismissTitle}
-            className={cn(
-              itemClass,
-              dismissConfirm
-                ? "text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 hover:bg-red-100 dark:hover:bg-red-900/50"
-                : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700",
-            )}
-          >
-            <Check size={RESERVED_ICON_SIZE} className="shrink-0" />
-            <span>{dismissConfirm ? "Confirm?" : dismissLabel}</span>
-          </button>
-        )}
-        {pendingCount > 0 && (
-          <button
-            type="button"
-            role="menuitem"
-            onClick={onCopy}
-            title={`Copy ${pendingCount} ${plural(pendingCount, "comment")} to clipboard`}
-            className={cn(
-              itemClass,
-              // The chip this action wore in the row, kept: the purple is the
-              // one signal that the copy is the agent-facing one, and a named
-              // background is also what lets the contrast guard measure the
-              // ink against a palette color rather than the chrome
-              // (`lib/textContrast.test.ts`).
-              "text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/30 hover:bg-purple-100 dark:hover:bg-purple-900/50",
-            )}
-          >
-            {copied ? (
-              <Check size={RESERVED_ICON_SIZE} className="shrink-0" />
-            ) : (
-              <ClipboardCopy size={RESERVED_ICON_SIZE} className="shrink-0" />
-            )}
-            <span>{copied ? "Copied!" : `Copy ${pendingCount}`}</span>
-          </button>
-        )}
-        <button
-          type="button"
-          role="menuitem"
-          onClick={() => {
-            close();
-            onManage();
-          }}
-          title="Manage comments"
-          className={cn(
-            itemClass,
-            "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700",
-          )}
-        >
-          <MessageSquare size={RESERVED_ICON_SIZE} className="shrink-0" />
-          <span>Manage comments</span>
-        </button>
-      </AnchoredMenu>
     </>
   );
 };

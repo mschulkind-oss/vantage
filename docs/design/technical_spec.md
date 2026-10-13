@@ -508,7 +508,7 @@ The system is described in the reference
 - **Document pages** request git status and history with the content, and hold
   a first paint up to 150 ms (`useFirstPaintHold`) for them, for a warm build,
   and on a first load for the recent-files list (an untracked file's date) and
-  `/info` (the Path button's root). A live reload, a directory and an error
+  `/info` (the copy-path control's root). A live reload, a directory and an error
   never wait. A badge that lands later is drawn only in blocks that have not
   been on screen, and Referenced by keeps its line's room from the first
   paint.

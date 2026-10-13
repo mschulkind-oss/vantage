@@ -224,6 +224,10 @@ export const ViewerPage: React.FC = () => {
   const [tocOpen, setTocOpen] = usePersistentFlag("vantage:tocOpen");
   // Whether the document uses the whole window instead of a measured column.
   const [fullWidth, setFullWidth] = usePersistentFlag("vantage:fullWidth");
+  // Whether the header says what git knows about the document on screen.
+  // On by default, so unset reads as shown and nothing changes for a reader
+  // who never opens the settings menu.
+  const [showGitMetadata] = usePersistentFlag("vantage:showGitMetadata", true);
   /**
    * How many Open Questions the open document offers a one-click answer for.
    *
@@ -283,7 +287,6 @@ export const ViewerPage: React.FC = () => {
   // I am happy", which is what this counts.
   const answeredReviewCount = reviewComments.filter(isAnsweredByAgent).length;
   const endReview = useReviewStore((s) => s.endReview);
-  const hasReviewData = useReviewStore((s) => s.hasReviewData);
   // The document changed under a comment still awaiting a response, so the
   // context those comments were written against is no longer what's on screen.
   // Published by useReviewHighlights from the anchor hashes it already resolves.
@@ -328,20 +331,24 @@ export const ViewerPage: React.FC = () => {
         : "Enter review mode";
 
   const handleReviewToggle = useCallback(() => {
-    if (isReviewMode && hasReviewData()) {
-      if (reviewExitConfirm) {
-        endReview();
-        setReviewExitConfirm(false);
-      } else {
-        setReviewExitConfirm(true);
-        setTimeout(() => setReviewExitConfirm(false), 3000);
-      }
-    } else {
+    if (!isReviewMode) {
       toggleReviewMode();
+      return;
     }
+    // Leaving loses the comments that are still unresolved, and only those:
+    // the ones the reader has already dismissed are spent, so there is nothing
+    // a confirm would be protecting. Copy is inline either way, so a reviewer
+    // can save what they mean to keep and then leave.
+    if (activeReviewCount === 0 || reviewExitConfirm) {
+      endReview();
+      setReviewExitConfirm(false);
+      return;
+    }
+    setReviewExitConfirm(true);
+    setTimeout(() => setReviewExitConfirm(false), 3000);
   }, [
     isReviewMode,
-    hasReviewData,
+    activeReviewCount,
     reviewExitConfirm,
     endReview,
     toggleReviewMode,
@@ -794,8 +801,42 @@ export const ViewerPage: React.FC = () => {
     ? { on: tocOpen, onToggle: handleToggleToc }
     : null;
   const fullWidthToggle = { on: fullWidth, onToggle: handleToggleFullWidth };
+  // The document's comments, as the toolbar offers them: one control while
+  // review mode is off, and the row's own buttons while it is on. They are not
+  // in the "⋯" until the header's `review` step — the step after the file's
+  // own actions and the one before the name truncates — because folding them
+  // there is what hid Copy at every width, and Copy is the action a reviewer
+  // reaches for before leaving (`components/ReviewControls.tsx`).
+  const reviewControls = (
+    <ReviewControls
+      visible={reviewToggleVisible}
+      isReviewMode={isReviewMode}
+      activeCount={activeReviewCount}
+      answeredCount={answeredReviewCount}
+      pendingCount={pendingReviewCount}
+      drifted={commentsDrifted}
+      exitConfirm={reviewExitConfirm}
+      dismissConfirm={reviewDismissConfirm}
+      copied={reviewCopied}
+      toggleTitle={reviewToggleTitle}
+      onToggle={handleReviewToggle}
+      onDismiss={handleReviewDismiss}
+      onCopy={handleReviewCopy}
+      onManage={() => setReviewPanelOpen(true)}
+    />
+  );
+  // What the "⋯" panel holds when it is open: the view toggles, and the review
+  // cluster once the `review` step has taken it out of the row. Rendered only
+  // while the panel is open, so the header never holds two of a control
+  // (`components/HeaderOverflow.tsx`), and the stylesheet draws the review copy
+  // only at the step that hid the row's.
   const headerViewExtras = (
-    <ViewTogglesPanel contents={contentsToggle} fullWidth={fullWidthToggle} />
+    <>
+      <ViewTogglesPanel contents={contentsToggle} fullWidth={fullWidthToggle} />
+      {currentPath && currentPath.toLowerCase().endsWith(".md") && (
+        <div className="hdr-review-panel">{reviewControls}</div>
+      )}
+    </>
   );
 
   // The page's own dialogs: the diff, and the review panel.
@@ -954,6 +995,44 @@ export const ViewerPage: React.FC = () => {
                       <span className="truncate">{leafStem}</span>
                     )}
                   </span>
+                  {/* The path lives with the name it belongs to. The
+                      absolute path needs the repository root, which arrives
+                      with `repoRootPath`; its room is kept from the document's
+                      first paint so that arrival moves nothing already drawn
+                      (planning-index.md §12.2, stable_paint.spec.ts), and
+                      until it can work the control is hidden rather than
+                      drawn dead. It confirms in place: the icon becomes a
+                      check and the tooltip says *Copied!*, so the click moves
+                      nothing in a row whose width is the reader's budget. */}
+                  {currentPath && (
+                    <button
+                      type="button"
+                      onClick={handleCopyPath}
+                      aria-label="Copy path"
+                      data-tip={
+                        repoRootPath
+                          ? pathCopied
+                            ? "Copied!"
+                            : `Copy absolute path: ${repoRootPath}/${currentPath}`
+                          : undefined
+                      }
+                      className={cn(
+                        "flex items-center rounded-lg p-1.5 transition-colors",
+                        repoRootPath
+                          ? "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 cursor-pointer"
+                          : "invisible",
+                      )}
+                    >
+                      {pathCopied ? (
+                        <Check
+                          size={RESERVED_ICON_SIZE}
+                          className="text-green-500"
+                        />
+                      ) : (
+                        <Copy size={RESERVED_ICON_SIZE} />
+                      )}
+                    </button>
+                  )}
                 </>
               )}
             </nav>
@@ -966,7 +1045,7 @@ export const ViewerPage: React.FC = () => {
 
           {latestCommit ? (
             <div className="hdr-tools flex items-center gap-2">
-              {fileGitStatus && (
+              {showGitMetadata && fileGitStatus && (
                 <button
                   onClick={handleCommitClick}
                   className={cn(
@@ -981,66 +1060,76 @@ export const ViewerPage: React.FC = () => {
                   </span>
                 </button>
               )}
-              <button
-                onClick={() =>
-                  latestCommit &&
-                  currentPath &&
-                  fetchDiff(currentPath, latestCommit.hexsha)
-                }
-                className={cn(
-                  "hdr-commit hidden sm:flex items-center gap-3 min-w-0 text-xs group cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg px-2 py-1.5 -mx-2 transition-colors",
-                  lateUnless(firstPaint.status),
-                )}
-                // The subject is the first thing the header gives up, so
-                // the tooltip is where it can still be read in full.
-                data-tip={`${latestCommit.message}\n${formatDateTime(latestCommit.date)} — click to view diff`}
-              >
-                <div className="flex items-center gap-1.5 shrink-0 text-slate-500 dark:text-slate-400">
-                  <Clock size={14} />
-                  <span data-testid="header-time" className="hdr-time">
-                    <RelativeTime date={latestCommit.date} />
-                  </span>
-                  <span
-                    data-testid="header-date"
-                    className="hdr-date items-center gap-1.5"
-                  >
-                    <span aria-hidden="true">·</span>
-                    <span>{formatDateTime(latestCommit.date)}</span>
-                  </span>
-                </div>
-                <div className="hdr-subject flex items-center gap-1.5 min-w-0 bg-slate-100 dark:bg-slate-700 group-hover:bg-slate-200 dark:group-hover:bg-slate-600 px-2.5 py-1.5 rounded-md transition-colors">
-                  <MessageSquare
-                    size={12}
-                    className="shrink-0 text-slate-500 dark:text-slate-400"
-                  />
-                  <span
-                    data-testid="commit-subject"
-                    className="hdr-subject-text font-medium text-slate-700 dark:text-slate-200 truncate max-w-[200px]"
-                  >
-                    {latestCommit.message}
-                  </span>
-                </div>
-              </button>
+              {/* Git's half of the header, and the one place the setting
+                  turns it off: the status pill, the commit's age and subject
+                  and its mobile clock, the untracked-file pill and the
+                  history link are all facts about the file's git, not about
+                  the document in front of the reader. */}
+              {showGitMetadata && (
+                <button
+                  onClick={() =>
+                    latestCommit &&
+                    currentPath &&
+                    fetchDiff(currentPath, latestCommit.hexsha)
+                  }
+                  className={cn(
+                    "hdr-commit hidden sm:flex items-center gap-3 min-w-0 text-xs group cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg px-2 py-1.5 -mx-2 transition-colors",
+                    lateUnless(firstPaint.status),
+                  )}
+                  // The subject is the first thing the header gives up, so
+                  // the tooltip is where it can still be read in full.
+                  data-tip={`${latestCommit.message}\n${formatDateTime(latestCommit.date)} — click to view diff`}
+                >
+                  <div className="flex items-center gap-1.5 shrink-0 text-slate-500 dark:text-slate-400">
+                    <Clock size={14} />
+                    <span data-testid="header-time" className="hdr-time">
+                      <RelativeTime date={latestCommit.date} />
+                    </span>
+                    <span
+                      data-testid="header-date"
+                      className="hdr-date items-center gap-1.5"
+                    >
+                      <span aria-hidden="true">·</span>
+                      <span>{formatDateTime(latestCommit.date)}</span>
+                    </span>
+                  </div>
+                  <div className="hdr-subject flex items-center gap-1.5 min-w-0 bg-slate-100 dark:bg-slate-700 group-hover:bg-slate-200 dark:group-hover:bg-slate-600 px-2.5 py-1.5 rounded-md transition-colors">
+                    <MessageSquare
+                      size={12}
+                      className="shrink-0 text-slate-500 dark:text-slate-400"
+                    />
+                    <span
+                      data-testid="commit-subject"
+                      className="hdr-subject-text font-medium text-slate-700 dark:text-slate-200 truncate max-w-[200px]"
+                    >
+                      {latestCommit.message}
+                    </span>
+                  </div>
+                </button>
+              )}
               {/* Mobile: just show clock icon as commit button */}
-              <button
-                onClick={() =>
-                  latestCommit &&
-                  currentPath &&
-                  fetchDiff(currentPath, latestCommit.hexsha)
-                }
-                className={cn(
-                  "sm:hidden flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg px-2 py-1.5 transition-colors",
-                  lateUnless(firstPaint.status),
-                )}
-                data-tip="View diff"
-              >
-                <Clock size={14} />
-                <span className="hdr-time">
-                  <RelativeTime date={latestCommit.date} addSuffix={false} />
-                </span>
-              </button>
+              {showGitMetadata && (
+                <button
+                  onClick={() =>
+                    latestCommit &&
+                    currentPath &&
+                    fetchDiff(currentPath, latestCommit.hexsha)
+                  }
+                  className={cn(
+                    "sm:hidden flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg px-2 py-1.5 transition-colors",
+                    lateUnless(firstPaint.status),
+                  )}
+                  data-tip="View diff"
+                >
+                  <Clock size={14} />
+                  <span className="hdr-time">
+                    <RelativeTime date={latestCommit.date} addSuffix={false} />
+                  </span>
+                </button>
+              )}
               <HeaderOverflow extra={headerViewExtras}>
-                {currentPath &&
+                {showGitMetadata &&
+                  currentPath &&
                   currentPath.toLowerCase().endsWith(".md") &&
                   history.length >= 1 && (
                     <AppLink
@@ -1061,32 +1150,6 @@ export const ViewerPage: React.FC = () => {
                       </span>
                     </AppLink>
                   )}
-                {currentPath && repoRootPath && (
-                  <button
-                    onClick={handleCopyPath}
-                    className={cn(
-                      "flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg px-2 py-1.5 transition-colors cursor-pointer",
-                      lateUnless(firstPaint.root),
-                    )}
-                    data-tip={`Copy absolute path: ${repoRootPath}/${currentPath}`}
-                  >
-                    <ReservedLabel
-                      icon={
-                        pathCopied ? (
-                          <Check
-                            size={RESERVED_ICON_SIZE}
-                            className="text-green-500"
-                          />
-                        ) : (
-                          <Copy size={RESERVED_ICON_SIZE} />
-                        )
-                      }
-                      label={pathCopied ? "Copied!" : "Path"}
-                      reserve={["Path", "Copied!"]}
-                      labelClassName="hdr-label hdr-label-minor"
-                    />
-                  </button>
-                )}
                 {currentPath && currentPath.toLowerCase().endsWith(".md") && (
                   <button
                     onClick={() => {
@@ -1109,36 +1172,26 @@ export const ViewerPage: React.FC = () => {
                     />
                   </button>
                 )}
-                {/* Raw view can't host inline highlights, but the review
-                      controls must stay reachable: hiding them stranded a
-                      reviewer with pending comments and no way to copy,
-                      dismiss, or open the panel without switching back. */}
-                {currentPath && currentPath.toLowerCase().endsWith(".md") && (
-                  <ReviewControls
-                    visible={reviewToggleVisible}
-                    isReviewMode={isReviewMode}
-                    activeCount={activeReviewCount}
-                    answeredCount={answeredReviewCount}
-                    pendingCount={pendingReviewCount}
-                    drifted={commentsDrifted}
-                    exitConfirm={reviewExitConfirm}
-                    dismissConfirm={reviewDismissConfirm}
-                    copied={reviewCopied}
-                    toggleTitle={reviewToggleTitle}
-                    onToggle={handleReviewToggle}
-                    onDismiss={handleReviewDismiss}
-                    onCopy={handleReviewCopy}
-                    onManage={() => setReviewPanelOpen(true)}
-                  />
-                )}
               </HeaderOverflow>
+              {/* Last in the row, at the far end the toolbar packs against:
+                  the item nearest the edge is the nearest the pointer, and
+                  the cluster only ever grows into room to its left
+                  (`stable_paint.spec.ts`). The header's own `review` step is
+                  what takes it out of that room for the "⋯"
+                  (`lib/headerFit.ts`). A folder has no comments to review, so
+                  the cluster is a document's alone. */}
+              {currentPath && currentPath.toLowerCase().endsWith(".md") && (
+                <div className="hdr-review flex items-center gap-2">
+                  {reviewControls}
+                </div>
+              )}
             </div>
           ) : currentPath && currentPath.toLowerCase().endsWith(".md") ? (
             <div className="hdr-tools flex items-center gap-2">
               {/* Only once git has said so: before it answers, a file
                       with a commit would read as untracked for as long as
                       the answer took (§12.1, L3). */}
-              {statusKnown && !isStaticMode() && (
+              {showGitMetadata && statusKnown && !isStaticMode() && (
                 <button
                   onClick={() => currentPath && fetchWorkingDiff(currentPath)}
                   className={cn(
@@ -1151,7 +1204,7 @@ export const ViewerPage: React.FC = () => {
                   <span className="hdr-label font-medium">Untracked file</span>
                 </button>
               )}
-              {fileMtime && (
+              {showGitMetadata && fileMtime && (
                 <div
                   className={cn(
                     "hidden sm:flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 px-2 py-1.5",
@@ -1173,32 +1226,6 @@ export const ViewerPage: React.FC = () => {
                 </div>
               )}
               <HeaderOverflow extra={headerViewExtras}>
-                {currentPath && repoRootPath && (
-                  <button
-                    onClick={handleCopyPath}
-                    className={cn(
-                      "flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg px-2 py-1.5 transition-colors cursor-pointer",
-                      lateUnless(firstPaint.root),
-                    )}
-                    data-tip={`Copy absolute path: ${repoRootPath}/${currentPath}`}
-                  >
-                    <ReservedLabel
-                      icon={
-                        pathCopied ? (
-                          <Check
-                            size={RESERVED_ICON_SIZE}
-                            className="text-green-500"
-                          />
-                        ) : (
-                          <Copy size={RESERVED_ICON_SIZE} />
-                        )
-                      }
-                      label={pathCopied ? "Copied!" : "Path"}
-                      reserve={["Path", "Copied!"]}
-                      labelClassName="hdr-label hdr-label-minor"
-                    />
-                  </button>
-                )}
                 <button
                   onClick={() => {
                     setShowRaw((v) => !v);
@@ -1219,24 +1246,12 @@ export const ViewerPage: React.FC = () => {
                     labelClassName="hdr-label hdr-label-minor"
                   />
                 </button>
-                {/* Same as the wide toolbar: review controls survive raw view. */}
-                <ReviewControls
-                  visible={reviewToggleVisible}
-                  isReviewMode={isReviewMode}
-                  activeCount={activeReviewCount}
-                  answeredCount={answeredReviewCount}
-                  pendingCount={pendingReviewCount}
-                  drifted={commentsDrifted}
-                  exitConfirm={reviewExitConfirm}
-                  dismissConfirm={reviewDismissConfirm}
-                  copied={reviewCopied}
-                  toggleTitle={reviewToggleTitle}
-                  onToggle={handleReviewToggle}
-                  onDismiss={handleReviewDismiss}
-                  onCopy={handleReviewCopy}
-                  onManage={() => setReviewPanelOpen(true)}
-                />
               </HeaderOverflow>
+              {/* Same as the wide toolbar: last in the row, and the one thing
+                  the header gives up after the file's own actions. */}
+              <div className="hdr-review flex items-center gap-2">
+                {reviewControls}
+              </div>
             </div>
           ) : null}
         </div>

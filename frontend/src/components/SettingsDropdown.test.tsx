@@ -38,6 +38,8 @@ function renderDropdown() {
       onShowHiddenChange={vi.fn()}
       showGitignored={true}
       onShowGitignoredChange={vi.fn()}
+      showGitMetadata={true}
+      onShowGitMetadataChange={vi.fn()}
       keyboardShortcutsEnabled={true}
       onKeyboardShortcutsEnabledChange={vi.fn()}
     />,
@@ -65,6 +67,8 @@ describe("SettingsDropdown", () => {
         onShowHiddenChange={vi.fn()}
         showGitignored={true}
         onShowGitignoredChange={vi.fn()}
+        showGitMetadata={true}
+        onShowGitMetadataChange={vi.fn()}
         keyboardShortcutsEnabled={true}
         onKeyboardShortcutsEnabledChange={vi.fn()}
       />,
@@ -81,6 +85,8 @@ describe("SettingsDropdown", () => {
         onShowHiddenChange={vi.fn()}
         showGitignored={true}
         onShowGitignoredChange={vi.fn()}
+        showGitMetadata={true}
+        onShowGitMetadataChange={vi.fn()}
         keyboardShortcutsEnabled={true}
         onKeyboardShortcutsEnabledChange={vi.fn()}
       />,
@@ -93,6 +99,7 @@ describe("SettingsDropdown", () => {
     expect(screen.getByText("Show hidden files")).toBeInTheDocument();
     expect(screen.getByText("Show gitignored files")).toBeInTheDocument();
     expect(screen.getByText("Enable shortcuts")).toBeInTheDocument();
+    expect(screen.getByText("Show git metadata")).toBeInTheDocument();
   });
 
   it("toggles show empty dirs", () => {
@@ -105,13 +112,14 @@ describe("SettingsDropdown", () => {
         onShowHiddenChange={vi.fn()}
         showGitignored={true}
         onShowGitignoredChange={vi.fn()}
+        showGitMetadata={true}
+        onShowGitMetadataChange={vi.fn()}
         keyboardShortcutsEnabled={true}
         onKeyboardShortcutsEnabledChange={vi.fn()}
       />,
     );
     fireEvent.click(screen.getByLabelText("Settings"));
-    const checkboxes = screen.getAllByRole("checkbox");
-    fireEvent.click(checkboxes[1]);
+    fireEvent.click(screen.getByRole("checkbox", { name: "Show all folders" }));
     expect(onChange).toHaveBeenCalledWith(true);
   });
 
@@ -124,6 +132,8 @@ describe("SettingsDropdown", () => {
         onShowHiddenChange={vi.fn()}
         showGitignored={true}
         onShowGitignoredChange={vi.fn()}
+        showGitMetadata={true}
+        onShowGitMetadataChange={vi.fn()}
         keyboardShortcutsEnabled={true}
         onKeyboardShortcutsEnabledChange={vi.fn()}
       />,
@@ -145,6 +155,8 @@ describe("SettingsDropdown", () => {
         onShowHiddenChange={vi.fn()}
         showGitignored={true}
         onShowGitignoredChange={vi.fn()}
+        showGitMetadata={true}
+        onShowGitMetadataChange={vi.fn()}
         keyboardShortcutsEnabled={true}
         onKeyboardShortcutsEnabledChange={vi.fn()}
       />,
@@ -164,6 +176,8 @@ describe("SettingsDropdown", () => {
         onShowHiddenChange={vi.fn()}
         showGitignored={true}
         onShowGitignoredChange={vi.fn()}
+        showGitMetadata={true}
+        onShowGitMetadataChange={vi.fn()}
         keyboardShortcutsEnabled={true}
         onKeyboardShortcutsEnabledChange={vi.fn()}
       />,
@@ -184,6 +198,8 @@ describe("SettingsDropdown", () => {
         onShowHiddenChange={vi.fn()}
         showGitignored={true}
         onShowGitignoredChange={vi.fn()}
+        showGitMetadata={true}
+        onShowGitMetadataChange={vi.fn()}
         keyboardShortcutsEnabled={false}
         onKeyboardShortcutsEnabledChange={onKeyboardShortcutsEnabledChange}
       />,
@@ -192,6 +208,31 @@ describe("SettingsDropdown", () => {
     const checkboxes = screen.getAllByRole("checkbox");
     fireEvent.click(checkboxes[0]);
     expect(onKeyboardShortcutsEnabledChange).toHaveBeenCalledWith(true);
+  });
+
+  it("toggles the git metadata setting the viewer header reads", () => {
+    const onShowGitMetadataChange = vi.fn();
+    render(
+      <SettingsDropdown
+        showEmptyDirs={true}
+        onShowEmptyDirsChange={vi.fn()}
+        showHidden={true}
+        onShowHiddenChange={vi.fn()}
+        showGitignored={true}
+        onShowGitignoredChange={vi.fn()}
+        showGitMetadata={false}
+        onShowGitMetadataChange={onShowGitMetadataChange}
+        keyboardShortcutsEnabled={true}
+        onKeyboardShortcutsEnabledChange={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByLabelText("Settings"));
+    const checkbox = screen.getByRole("checkbox", {
+      name: "Show git metadata",
+    });
+    expect(checkbox).not.toBeChecked();
+    fireEvent.click(checkbox);
+    expect(onShowGitMetadataChange).toHaveBeenCalledWith(true);
   });
 
   describe("color theme picker", () => {
