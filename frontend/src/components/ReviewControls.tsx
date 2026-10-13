@@ -183,7 +183,12 @@ export const ReviewControls: React.FC<ReviewControlsProps> = ({
                 reserve={[
                   "Confirm?",
                   `Dismiss ${activeCount}`,
-                  `Dismiss ${answeredCount} answered`,
+                  // Only while it can be drawn: with nothing answered the
+                  // label is `Dismiss N`, and reserving the sweep's longer
+                  // title left the button that much wider than what it shows.
+                  ...(answeredCount > 0
+                    ? [`Dismiss ${answeredCount} answered`]
+                    : []),
                 ]}
                 labelClassName="hdr-label"
               />

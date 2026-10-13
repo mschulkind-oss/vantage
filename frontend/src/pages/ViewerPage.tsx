@@ -174,8 +174,9 @@ export const ViewerPage: React.FC = () => {
   // `holdMs`, for what its first paint shows that is already on its way — its
   // header's git facts, asked for with its content, the index of a build that
   // is warm or not yet known to be cold, and on a first load the recent-files
-  // list the header takes an untracked file's date from and the Path button's
-  // root. The previous document, or the shell, stays up meanwhile.
+  // list the header takes an untracked file's date from, and the repository's
+  // `/info`, which the copy-path control's root comes from. The previous
+  // document, or the shell, stays up meanwhile.
   const firstPaintWaiting =
     loadedPath !== null &&
     (statusByPath[loadedPath] === undefined ||
@@ -224,10 +225,6 @@ export const ViewerPage: React.FC = () => {
   const [tocOpen, setTocOpen] = usePersistentFlag("vantage:tocOpen");
   // Whether the document uses the whole window instead of a measured column.
   const [fullWidth, setFullWidth] = usePersistentFlag("vantage:fullWidth");
-  // Whether the header says what git knows about the document on screen.
-  // On by default, so unset reads as shown and nothing changes for a reader
-  // who never opens the settings menu.
-  const [showGitMetadata] = usePersistentFlag("vantage:showGitMetadata", true);
   /**
    * How many Open Questions the open document offers a one-click answer for.
    *
@@ -261,7 +258,6 @@ export const ViewerPage: React.FC = () => {
     path: currentPath,
     status: statusKnown,
     history: currentPath !== null && historyByPath[currentPath] !== undefined,
-    root: repoRootPath !== null,
     mtime: fileMtime !== null,
   };
   const [paintedWith, setPaintedWith] = useState(inHand);
@@ -891,6 +887,13 @@ export const ViewerPage: React.FC = () => {
     currentPath,
     shortcuts: pageShortcuts,
   });
+  // Whether the header says what git knows about the document on screen. On by
+  // default, so unset reads as shown and nothing changes for a reader who never
+  // opens the settings menu. Read from the shell, which owns the preference and
+  // the menu's switch over it: a second `usePersistentFlag` here would follow
+  // another tab's writes and nothing else, so the switch would move nothing in
+  // the tab the reader is looking at until a reload (`lib/preferences.ts`).
+  const showGitMetadata = shell.showGitMetadata;
 
   return (
     <>
@@ -1032,6 +1035,21 @@ export const ViewerPage: React.FC = () => {
                         <Copy size={RESERVED_ICON_SIZE} />
                       )}
                     </button>
+                  )}
+                  {/* The confirmation is drawn, not said: the icon becomes a
+                      check and the tooltip becomes *Copied!*, and a tooltip
+                      is cleared by the very click that made it, so neither
+                      reaches a screen reader. This region says it instead —
+                      always in the tree, so the change is announced rather
+                      than a region arriving with its text already in it. */}
+                  {currentPath && (
+                    <span
+                      className="sr-only"
+                      aria-live="polite"
+                      aria-atomic="true"
+                    >
+                      {pathCopied && "Copied!"}
+                    </span>
                   )}
                 </>
               )}

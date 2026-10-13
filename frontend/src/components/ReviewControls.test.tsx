@@ -122,6 +122,28 @@ describe("ReviewControls", () => {
     expect(dismiss).toHaveAttribute("data-tip", "Dismiss 1 comment");
   });
 
+  it("reserves the room of only the sweep labels it can draw", () => {
+    // What holds the button's width open is the label the click can put
+    // there (`components/ReservedLabel.tsx`), and with nothing answered that
+    // is `Dismiss N` and never `Dismiss N answered`: reserving the sweep's
+    // longer title left the button a label wider than the one under the
+    // pointer.
+    const room = () =>
+      [
+        ...screen
+          .getByRole("button", { name: /^(Dismiss|Confirm)/ })
+          .querySelectorAll("[data-reserve]"),
+      ].map((ghost) => ghost.getAttribute("data-reserve"));
+
+    const { rerender } = render(<ReviewControls {...propsOf()} />);
+    // Two answered of three: `Dismiss 2 answered` is drawn, so the shorter
+    // count it can fall back to is the ghost.
+    expect(room()).toEqual(["Confirm?", "Dismiss 3"]);
+
+    rerender(<ReviewControls {...propsOf({ answeredCount: 0 })} />);
+    expect(room()).toEqual(["Confirm?"]);
+  });
+
   it("says the copy landed where it was clicked", () => {
     const { onCopy } = renderControls({ copied: true });
 
