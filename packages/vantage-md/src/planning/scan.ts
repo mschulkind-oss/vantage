@@ -24,6 +24,7 @@ import type {
   Strong,
 } from "mdast";
 import remarkParse from "remark-parse";
+import { parse as parseTOML } from "smol-toml";
 import { unified } from "unified";
 import { isMap, isScalar, isSeq, parseDocument } from "yaml";
 import {
@@ -213,7 +214,13 @@ export interface PlanningDocument {
   status: DocStatus | null;
   /** A trimmed, non-empty string, as written; else `null` plus a problem. */
   stage: string | null;
+  /** Line of the saved stage key, when present. */
   stageLine: number | null;
+  /**
+   * Optional normalized instant when the current stage began. Only emitted
+   * when both a valid current stage and valid top-level `stage-since` exist.
+   */
+  stageSince?: string;
   /** A one-line string, trimmed; else `null` plus a problem. */
   next: string | null;
   /** A single path is a one-entry list; a non-string entry is dropped. */
@@ -1134,9 +1141,127 @@ function describe(value: unknown): string {
   return "not text";
 }
 
+function validCalendarDate(year: number, month: number, day: number): boolean {
+  const date = new Date(0);
+  date.setUTCHours(0, 0, 0, 0);
+  date.setUTCFullYear(year, month - 1, day);
+  return (
+    year >= 1 &&
+    date.getUTCFullYear() === year &&
+    date.getUTCMonth() === month - 1 &&
+    date.getUTCDate() === day
+  );
+}
+
+/** Normalize strict date-only and RFC 3339 stage evidence to one UTC instant. */
+function stageSince(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (dateOnly !== null) {
+    const year = Number(dateOnly[1]);
+    const month = Number(dateOnly[2]);
+    const day = Number(dateOnly[3]);
+    if (!validCalendarDate(year, month, day)) return undefined;
+    return `${value}T00:00:00.000Z`;
+  }
+  const timestamp =
+    /^(\d{4})-(\d{2})-(\d{2})[Tt]([01]\d|2[0-3]):([0-5]\d):([0-5]\d)(?:\.\d+)?(?:[Zz]|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/.exec(
+      value,
+    );
+  if (timestamp === null) return undefined;
+  const year = Number(timestamp[1]);
+  const month = Number(timestamp[2]);
+  const day = Number(timestamp[3]);
+  if (!validCalendarDate(year, month, day)) return undefined;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? new Date(parsed).toISOString() : undefined;
+}
+
+/**
+ * smol-toml's Date has already rolled impossible dates forward and assigned
+ * UTC to local times. Locate the authored top-level token in already-valid
+ * TOML, skipping strings, comments and compound values in one pass. The parser
+ * decodes quoted keys; only the matching assignment needs a full verification
+ * parse. No root assignments can follow a table declaration.
+ */
+function tomlStageSince(source: string): string | undefined {
+  const end = source.indexOf("\n+++", 3);
+  // Match parseFrontmatter's slice and trim, including a closing CRLF's CR.
+  const raw = source.slice(4, end).trim();
+  let keyStart = 0;
+  let inValue = false;
+  let depth = 0;
+  let i = 0;
+  while (i < raw.length) {
+    const ch = raw[i];
+    if (ch === '"' || ch === "'") {
+      const multiline = raw.startsWith(ch.repeat(3), i);
+      i += multiline ? 3 : 1;
+      while (i < raw.length) {
+        if (ch === '"' && raw[i] === "\\") {
+          i += 2;
+        } else if (raw[i] === ch) {
+          let runEnd = i + 1;
+          while (raw[runEnd] === ch) runEnd++;
+          const closes = !multiline || runEnd - i >= 3;
+          i = runEnd;
+          if (closes) break;
+        } else {
+          i++;
+        }
+      }
+      continue;
+    }
+    if (ch === "#") {
+      const newline = raw.indexOf("\n", i);
+      i = newline === -1 ? raw.length : newline;
+      continue;
+    }
+    if (ch === "\n" && depth === 0) {
+      keyStart = i + 1;
+      inValue = false;
+    } else if (!inValue && ch === "[") {
+      return undefined;
+    } else if (!inValue && ch === "=") {
+      const key = raw.slice(keyStart, i).trim();
+      const matches =
+        key === "stage-since" ||
+        ((key.startsWith('"') || key.startsWith("'")) &&
+          parseTOML(`${key} = true`)["stage-since"] === true);
+      if (matches) {
+        const start = i + 1;
+        let tokenEnd = start;
+        while (
+          tokenEnd < raw.length &&
+          raw[tokenEnd] !== "\n" &&
+          raw[tokenEnd] !== "#"
+        ) {
+          tokenEnd++;
+        }
+        const token = raw.slice(start, tokenEnd).trim();
+        const since = stageSince(token.replace(" ", "T"));
+        if (since === undefined) return undefined;
+        const marker = "__vantage_stage_since_token__";
+        const replaced =
+          raw.slice(0, start) + JSON.stringify(marker) + raw.slice(tokenEnd);
+        return parseTOML(replaced)["stage-since"] === marker
+          ? since
+          : undefined;
+      }
+      inValue = true;
+    } else if (inValue) {
+      if (ch === "[" || ch === "{") depth++;
+      else if (ch === "]" || ch === "}") depth--;
+    }
+    i++;
+  }
+  return undefined;
+}
+
 interface Header {
   stage: string | null;
   stageLine: number | null;
+  stageSince?: string;
   next: string | null;
   dependsOn: DependsOn[];
   headerProblems: HeaderProblem[];
@@ -1148,7 +1273,7 @@ function readHeader(
   parsed: ParsedFrontmatter,
 ): Header {
   const fm = parsed.frontmatter;
-  const has = (key: HeaderKey) => Object.hasOwn(fm, key);
+  const has = (key: string) => Object.hasOwn(fm, key);
   const header: Header = {
     stage: null,
     stageLine: null,
@@ -1156,7 +1281,8 @@ function readHeader(
     dependsOn: [],
     headerProblems: [],
   };
-  if (!HEADER_KEYS.some(has)) return header;
+  if (!HEADER_KEYS.some((key) => has(key)) && !has("stage-since"))
+    return header;
 
   const lines = headerLines(source, parsed);
   const keyLine = (key: HeaderKey) => lines.key[key] ?? 1;
@@ -1176,6 +1302,15 @@ function readHeader(
         `\`stage\` must be one word written as text, and this one is ${describe(value)}, so this document has no stage.`,
       );
     }
+  }
+
+  if (header.stage !== null && has("stage-since")) {
+    const value = fm["stage-since"];
+    const since =
+      parsed.format === "toml" && value instanceof Date
+        ? tomlStageSince(source)
+        : stageSince(value);
+    if (since !== undefined) header.stageSince = since;
   }
 
   if (has("next")) {

@@ -2237,7 +2237,7 @@ describe("the cards' blocks, from the scanner client (planning-index.md §10.4)"
     await renderPage();
     expect(screen.queryAllByRole("region")).toHaveLength(0);
     // The frame: the header and the filter line, with no progress line.
-    expect(screen.getByRole("heading", { name: "Planning" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Decisions" })).toBeTruthy();
     expect(screen.getByRole("search")).toBeTruthy();
     expect(inPage().queryByRole("status")).toBeNull();
     // Not past spinnerMs yet, so no spinner either.
@@ -4551,7 +4551,7 @@ describe("in the app shell (§6.1)", () => {
         .mock.calls.some(([url]) => String(url).startsWith("/api/tree?")),
     ).toBe(true);
     expect(
-      within(header()).getByRole("heading", { level: 1, name: "Planning" }),
+      within(header()).getByRole("heading", { level: 1, name: "Decisions" }),
     ).toBeTruthy();
     expect(
       within(header()).getByRole("link", { name: "root" }),
@@ -5378,8 +5378,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
 
   const box = () =>
     screen.getByRole("textbox", { name: "Filter" }) as HTMLInputElement;
-  const form = () =>
-    screen.getByRole("search", { name: "Filter the planning page" });
+  const form = () => screen.getByRole("search", { name: "Filter Decisions" });
   const notice = () => screen.queryByTestId("filter-notice");
   const noticeLines = () =>
     Array.from(notice()?.querySelectorAll("p") ?? [], (p) => p.textContent);
@@ -7641,7 +7640,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       expect(
         within(
           screen.getByRole("dialog", { name: "Keyboard shortcuts" }),
-        ).getByText("Filter the planning page"),
+        ).getByText("Filter Decisions"),
       ).toBeInTheDocument();
     });
 

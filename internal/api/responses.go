@@ -53,6 +53,10 @@ func BuildFilesAll(svc *fs.FileSystemService) []string {
 	return svc.ListAllFiles()
 }
 
+func BuildPlanningSnapshots(svc *git.GitService) model.PlanningSnapshots {
+	return svc.PlanningSnapshots()
+}
+
 // BuildHistory returns up to [HistoryLimit] commits touching path, newest
 // first. Git errors degrade to an empty slice (the endpoint is HTTP 200 even on
 // failure), so this never returns a non-nil slice as nil — callers can marshal

@@ -80,6 +80,7 @@ func (h *Handlers) Routes() []Route {
 
 		// --- Repo-scoped: git ---
 		{http.MethodGet, "/git/history", h.GitHistory, ScopeRepo},
+		{http.MethodGet, "/git/planning-snapshots", h.GitPlanningSnapshots, ScopeRepo},
 		{http.MethodGet, "/git/status", h.GitStatus, ScopeRepo},
 		{http.MethodGet, "/git/diff", h.GitDiff, ScopeRepo},
 		{http.MethodGet, "/git/diff/working", h.GitWorkingDiff, ScopeRepo},

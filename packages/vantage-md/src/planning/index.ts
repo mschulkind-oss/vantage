@@ -129,6 +129,8 @@ export type {
   PlanningSectionKey,
 } from "./guide.js";
 export { cardBlockFor } from "./cardSource.js";
+export { deriveWorkBoard, filterWorkDocuments } from "./work.js";
+export type { WorkBoard, WorkRoleGroup, WorkStageGroup } from "./work.js";
 export {
   PLANNING_FILTER_KEYS,
   PLANNING_FILTER_LIMITS,

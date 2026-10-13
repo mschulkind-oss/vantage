@@ -307,7 +307,7 @@ describe("PlanningFilterLine in print", () => {
   it("takes no room with no filter, and says the filter it has", () => {
     renderLine("");
     const line = screen.getByRole("search", {
-      name: "Filter the planning page",
+      name: "Filter Decisions",
     }).parentElement!;
     expect(line).toHaveClass("print:hidden");
     expect(screen.queryByTestId("planning-filter-print")).toBeNull();
@@ -316,7 +316,7 @@ describe("PlanningFilterLine in print", () => {
   it("prints the Filter line in place of the box when filtered", () => {
     renderLine("path:plans/a.md", "path:plans/a.md");
     const line = screen.getByRole("search", {
-      name: "Filter the planning page",
+      name: "Filter Decisions",
     }).parentElement!;
     expect(line).not.toHaveClass("print:hidden");
     expect(screen.getByTestId("planning-filter-print")).toHaveTextContent(
