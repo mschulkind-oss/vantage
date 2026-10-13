@@ -24,10 +24,10 @@ The lens: review mode is a single-document, single-reviewer, agent-on-the-other-
 
 | Button | What it does today |
 |---|---|
-| `Review` (purple `MessageSquarePlus`) | Toggles review mode for the current file. Off → on writes a `vantage.reviewMode:<repo>:<path>` localStorage flag. On → off, if there's saved data, opens an "End Review" confirmation dialog; otherwise just turns off. |
+| `Review` (purple `MessageSquarePlus`) | Toggles review mode for the current file. Off → on writes a `vantage.reviewMode:<repo>:<path>` localStorage flag. On → off, if any comment is still unresolved, asks to be confirmed first — with none left there is nothing a confirm would protect — and otherwise just turns off. |
 | `‹ N/M ›` snapshot toolbar | Only appears once the first snapshot exists. Chevrons walk through `snapshots[0..N-1]` then "Live." `Latest` jumps back to live. |
 | `Copy N` (purple `ClipboardCopy`) | Only when ≥1 unresolved comment. Copies markdown blob with line anchors to clipboard. |
-| `MessageSquare` (no label) | Opens the side panel listing all comments. |
+| `Dismiss N answered`, `Manage comments` | The bulk sweep of what the agent has answered, and the icon-only way into the side panel. Both are in the header's row, not behind a menu: `Copy N` is what a reviewer reaches for before leaving. |
 
 ### In-document gestures
 

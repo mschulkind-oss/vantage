@@ -67,7 +67,7 @@ describe("useHeaderFit", () => {
     layout.width = 150;
     const { getByTestId } = render(<Header name={"x".repeat(20)} />);
     expect(yieldOf(getByTestId("header"))).toBe(
-      "subject date labels-minor labels dirs",
+      "subject date labels-minor labels time dirs",
     );
   });
 
@@ -80,7 +80,7 @@ describe("useHeaderFit", () => {
     rerender(<Header name={"x".repeat(150)} />);
     await act(async () => {});
     expect(yieldOf(getByTestId("header"))).toBe(
-      "subject date labels-minor labels dirs",
+      "subject date labels-minor labels time dirs",
     );
   });
 

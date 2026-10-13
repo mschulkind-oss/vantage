@@ -14,8 +14,8 @@ export const RESERVED_ICON_SIZE = 14;
  * A button's icon and label, kept as wide as the longest label the button can
  * show and centered in that room.
  *
- * Some labels change on a click: "Path" turns to "Copied!", "Review" to "End
- * review?". A button that grew with its label could change the viewer
+ * Some labels change on a click: "Review" turns to "End review?", "Copy 3" to
+ * "Copied!". A button that grew with its label could change the viewer
  * header's fit under the pointer (`lib/headerFit.ts`), and a two-step confirm
  * moved out from under the click meant to confirm it. So the button keeps the
  * room of every label in `reserve`: beside the icon and label it draws, it lays

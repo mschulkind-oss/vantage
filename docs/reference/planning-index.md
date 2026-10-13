@@ -3398,7 +3398,7 @@ by number.
 | Referenced by's link to the filtered planning page | documents | the same reserved line, since a document holding a question is a planning document by its directives; the link never shrinks, and the words before it give way ([§7.1](#71-referenced-by)) |
 | Tree badges | file tree | the room the name leaves ([§7.2](#72-the-file-trees-badge)) |
 | `next` link ids | frontmatter card | the same text becoming a link, at the same size |
-| Header git data (status, history, the file's date, *N commits*, and the Path button's root) | viewer header | requested together with the content, not after it renders. Within the hold, it is in the first paint. Later, an item takes only the room the header has left, or the slot its label reserved at first paint (`frontend/src/lib/headerFit.ts`); where that is not room enough, the item is not drawn until the header next has room for it. It never collapses a painted folder, folds a painted action or narrows the file name (S6) |
+| Header git data (status, history, the file's date, *N commits*, and the copy-path control's root) | viewer header | requested together with the content, not after it renders. Within the hold, it is in the first paint. Later, an item takes only the room the header has left, or the slot its label reserved at first paint (`frontend/src/lib/headerFit.ts`); where that is not room enough, the item is not drawn until the header next has room for it. It never collapses a painted folder, folds a painted action or narrows the file name (S6) |
 | An index update from a push | documents, the file tree | L2: applied live |
 | An index update from a push | planning page | L2: marked and counted, laid out at the next layout the reader makes |
 
@@ -3419,7 +3419,7 @@ on in `ViewerPage`'s `firstPaintWaiting`). It waits only for:
   missed a warm index by milliseconds;
 - the header's git status and history, once requested;
 - on a first load, the recent-files list, which the header takes an untracked file's
-  date from, and the repository's `/info`, which the Path button's root comes from.
+  date from, and the repository's `/info`, which the copy-path control's root comes from.
 
 It never waits for a cold build — the moment `started` says so the wait ends — and
 never on the planning page, which has its own gate. Two first paints hold the same

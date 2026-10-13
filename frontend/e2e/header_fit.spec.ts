@@ -9,11 +9,14 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // The viewer header gives up room in a fixed order as it narrows, and the file
 // name is the last thing to give any: the commit subject shrinks and then
 // hides, then the absolute date, then the toolbar's shorthand labels, then the
-// rest of them, then the breadcrumb's folders, then the relative time, then the
-// repository's name, then the toolbar's actions fold into a "⋯", and only then
-// does the name truncate. Before this the name was the only box in the row
-// allowed to shrink at all, so at a 2000px window it was already "dur…" while
-// every label stayed.
+// rest of them, then the relative time, then the breadcrumb's folders, then the
+// repository's name, then the file's own actions fold into a "⋯", then the
+// review controls go with them, and only then does the name truncate. Before
+// this the name was the only box in the row allowed to shrink at all, so at a
+// 2000px window it was already "dur…" while every label stayed. The review
+// controls fold last because *Copy* is what a reviewer reaches for before
+// leaving, so it is in the row at every width that can keep the name whole
+// (`components/ReviewControls.tsx`).
 //
 // The fixture document is real (fixtures/test_repo/docs/design/…); what the
 // header shows about it is not. Its commit, its history and its review are
@@ -36,13 +39,16 @@ const SUBJECT =
  * The toolbar's drawn labels, and which of them are shorthand.
  *
  * A shorthand label repeats in its tooltip what its icon already suggests —
- * `N commits`, `Path`, `Raw`, the comments menu's word — so `lib/headerFit.ts`
- * takes those first (`labels-minor`), and only then every remaining one
- * (`labels`). *Review* is not one: it is the mode, and the only label this
- * fixture has that a reader has to be able to read.
+ * `N commits`, `Raw` — so `lib/headerFit.ts` takes those first
+ * (`labels-minor`), and only then every remaining one (`labels`). *Review* and
+ * the review cluster's *Dismiss 3 answered* are not shorthand: the mode and
+ * how many comments the sweep takes are the state, and the count is the only
+ * place it is written. The review actions take the header's last step before
+ * the name, so where they are drawn they are here as the rest of the labels
+ * are.
  */
-const LABELS = ["2 commits", "Path", "Raw", "Review", "comments"];
-const MINOR_LABELS = new Set(["2 commits", "Path", "Raw", "comments"]);
+const LABELS = ["2 commits", "Raw", "Review", "Dismiss 3 answered"];
+const MINOR_LABELS = new Set(["2 commits", "Raw"]);
 const MINUTE = 60_000;
 
 const forPath = (pathname: string) => (url: URL) =>
@@ -135,6 +141,8 @@ interface Snapshot {
   repo: boolean;
   /** The "⋯" the toolbar's actions fold into: drawn, or no toolbar (null). */
   more: boolean | null;
+  /** The row's review controls: drawn, or not in the header (null). */
+  review: boolean | null;
   /** Pairs of drawn header items whose boxes overlap, by their text. */
   overlaps: string[];
   /** Drawn items taller than one line, or poking out of the header. */
@@ -283,6 +291,9 @@ function snapshot(page: Page, labels: string[], dirs: string[]) {
         more: header.querySelector(".hdr-more")
           ? shown(header.querySelector(".hdr-more"))
           : null,
+        review: header.querySelector(".hdr-review")
+          ? shown(header.querySelector(".hdr-review"))
+          : null,
         overlaps,
         escapes,
       };
@@ -297,10 +308,11 @@ const STEPS = [
   "date",
   "labels-minor",
   "labels",
-  "dirs",
   "time",
+  "dirs",
   "repo",
   "actions",
+  "review",
   "name",
 ] as const;
 
@@ -370,6 +382,7 @@ function yielded(s: Snapshot): Partial<Record<Step, boolean>> {
   if (s.time !== null) out.time = !s.time;
   out.repo = !s.repo;
   if (s.more !== null) out.actions = s.more;
+  if (s.review !== null) out.review = !s.review;
   out.name = s.name.truncated;
   return out;
 }
@@ -513,7 +526,7 @@ async function narrowInto(page: Page, step: Step, floor = 500) {
  * narrower than a phone's while the window stays a desktop one. `loaded` is
  * text the header shows once the reloaded page has everything it acts on.
  */
-async function widenSidebar(page: Page, loaded = "3 comments") {
+async function widenSidebar(page: Page, loaded = "Dismiss 3 answered") {
   await page.evaluate(() =>
     localStorage.setItem("vantage:sidebarWidth", "700"),
   );
@@ -561,7 +574,7 @@ test.describe("viewer header under width pressure", () => {
     await expect(header.getByTestId("commit-subject")).toHaveText(SUBJECT);
     await expect(header.getByText("2 commits")).toHaveCount(1);
     await expect(
-      header.getByRole("button", { name: "3 comments" }),
+      header.getByRole("button", { name: "Dismiss 3 answered" }),
     ).toBeVisible();
   });
 
@@ -679,7 +692,9 @@ test.describe("viewer header under width pressure", () => {
   // With the steps past the relative time it once lacked, the name was elided
   // with a dozen icons and the repository still at full width: at a 1050px
   // window with the sidebar open (a 762px header) it lost a fifth, and at an
-  // 850px one (562px) all of it but ".m".
+  // 850px one (562px) all of it but ".m". The review controls are what the
+  // header gives up next, at 562px, and only there: they took a step of their
+  // own for exactly this reason (`lib/headerFit.ts`).
   test("at a laptop width with the sidebar open, the name keeps all of its width", async ({
     page,
   }) => {
@@ -701,9 +716,12 @@ test.describe("viewer header under width pressure", () => {
     await expect(header).toHaveAttribute("data-yield", /\bactions\b/);
     const more = header.getByRole("button", { name: "Toolbar actions" });
     await expect(more).toHaveAttribute("aria-expanded", "false");
-    for (const name of ["Path", "Raw", "Review"]) {
-      await expect(header.getByRole("button", { name })).toBeHidden();
-    }
+    // Raw and the history link are what the "⋯" folds at this step; the
+    // review controls take a later one (`components/ReviewControls.tsx`).
+    await expect(header.getByRole("button", { name: "Raw" })).toBeHidden();
+    await expect(
+      header.getByRole("button", { name: "Dismiss 3 answered" }),
+    ).toBeVisible();
     await expect(header.getByRole("button", { name: /contents/ })).toBeHidden();
 
     await more.focus();
@@ -714,13 +732,7 @@ test.describe("viewer header under width pressure", () => {
     const panel = header.locator(".hdr-actions");
     const toc = panel.getByRole("button", { name: "Show contents" });
     await expect(toc).toBeFocused();
-    for (const name of [
-      "Use full width",
-      "2 commits",
-      "Path",
-      "Raw",
-      "Review",
-    ]) {
+    for (const name of ["Use full width", "2 commits", "Raw"]) {
       const label = panel.getByText(name, { exact: true });
       await expect(label).toBeVisible();
       const box = (await label.boundingBox())!;
@@ -736,8 +748,8 @@ test.describe("viewer header under width pressure", () => {
         }),
       );
     }
-    // One column: a label reserving room for a longer one ("Path" for
-    // "Copied!") starts where the rest do, rather than centered in its room.
+    // One column: a label reserving room for a longer one ("Raw" for
+    // "Rendered") starts where the rest do, rather than centered in its room.
     expect(new Set(starts).size, `label starts: ${starts}`).toBe(1);
     // Opening it moves nothing in the row.
     await expect(header).toHaveAttribute("data-yield", /\bactions\b/);
@@ -751,27 +763,23 @@ test.describe("viewer header under width pressure", () => {
     await page.keyboard.press("Escape");
     await expect(more).toHaveAttribute("aria-expanded", "false");
     await expect(more).toBeFocused();
-    await expect(panel.getByRole("button", { name: "Path" })).toBeHidden();
+    await expect(panel.getByRole("button", { name: "Raw" })).toBeHidden();
 
     // A click opens it too, and one outside closes it.
     await more.click();
     await expect(panel.getByRole("button", { name: "Raw" })).toBeVisible();
 
-    // Dismiss, Copy and Manage are rows of the comments menu now, not of this
-    // panel: the review cluster is the mode and the count (ReviewControls).
-    // Opening that menu from in here hands it the "⋯" to hang from, since
-    // entering a portaled menu closes the panel — so it is looked for on the
-    // page, and the panel is expected to be shut.
-    await panel.getByRole("button", { name: "3 comments" }).click();
-    const menu = page.getByRole("menu", { name: "Comments" });
-    for (const name of ["Dismiss 3 answered", "Manage comments"]) {
-      await expect(menu.getByRole("menuitem", { name })).toBeVisible();
-    }
-    await expect(more).toHaveAttribute("aria-expanded", "false");
-    await page.keyboard.press("Escape");
-    await expect(menu).toBeHidden();
+    // The review controls are the row's own buttons at this step: they take a
+    // later one ("review"), because folding them in here is what made Copy one
+    // click away at every width (`components/ReviewControls.tsx`).
+    await expect(panel.locator(".hdr-review-panel")).toBeHidden();
+    await expect(
+      header
+        .locator(".hdr-review")
+        .getByRole("button", { name: "Dismiss 3 answered" }),
+    ).toBeVisible();
 
-    await more.click();
+    // And a click outside the open panel closes it.
     await page
       .getByRole("heading", { name: "Durable agent storage classes" })
       .click();
@@ -802,11 +810,11 @@ test.describe("viewer header under width pressure", () => {
     expect(clippedFirst, "never clipped the … before the name").toBe(true);
   });
 
-  // A click that lengthens a label ("Review" → "End review?", "Path" →
-  // "Copied!") must not change the fit. At the narrowest width that still
-  // showed labels it once did: every label vanished, the right-anchored
-  // toolbar jumped, and the click meant to confirm "End review?" landed on the
-  // commit button instead and opened the diff.
+  // A click that lengthens a label ("Review" → "End review?") must not change
+  // the fit. At the narrowest width that still showed labels it once did: every
+  // label vanished, the right-anchored toolbar jumped, and the click meant to
+  // confirm "End review?" landed on the commit button instead and opened the
+  // diff.
   test("a label that lengthens on click moves nothing under the pointer", async ({
     page,
     context,
@@ -828,10 +836,7 @@ test.describe("viewer header under width pressure", () => {
     await setHeaderWidth(page, width);
     await expect(header).toHaveAttribute("data-yield", "subject date");
 
-    for (const [name, after] of [
-      ["Path", "Copied!"],
-      ["Review", "End review?"],
-    ]) {
+    for (const [name, after] of [["Review", "End review?"]] as const) {
       const button = (await header
         .getByRole("button", { name, exact: true })
         .elementHandle())!;
@@ -863,29 +868,60 @@ test.describe("viewer header under width pressure", () => {
     }
   });
 
+  // The absolute path is copied from the control beside the name it belongs
+  // to. It is an icon, because the row's width is the reader's budget: the
+  // whole path is in its tooltip, and the click confirms in place — the icon
+  // becomes a check and the tooltip says "Copied!" — so asking for the copy
+  // moves nothing.
+  test("the copy-path control sits by the name and confirms in place", async ({
+    page,
+    context,
+  }) => {
+    await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+    const header = page.getByTestId("viewer-header");
+    const copy = header.getByRole("button", { name: "Copy path" });
+    await expect(copy).toBeVisible();
+    const sibling = await header
+      .getByTestId("breadcrumb-name")
+      .evaluate((el) => el.nextElementSibling?.getAttribute("aria-label"));
+    expect(sibling).toBe("Copy path");
+    await expect(copy).toHaveAttribute("data-tip", /^Copy absolute path: /);
+
+    const was = (await copy.boundingBox())!;
+    await copy.click();
+    await expect(copy).toHaveAttribute("data-tip", "Copied!");
+    const now = (await copy.boundingBox())!;
+    expect(now.width).toBeCloseTo(was.width, 0);
+    expect(now.x).toBeCloseTo(was.x, 0);
+    // It reverts on its own, and the revert moves nothing either.
+    await expect(copy).toHaveAttribute("data-tip", /^Copy absolute path: /, {
+      timeout: 10_000,
+    });
+    expect((await copy.boundingBox())!.width).toBeCloseTo(was.width, 0);
+  });
+
   // A button keeping room for its longer label once drew the shorter one at
   // the left of that room, with all of the rest after it: on Review's purple
   // background and ring in review mode, plainly off center. The icon and the
   // label are centered in it together, and the click that changes the label
   // still moves nothing. Every button that keeps such room is here, in both
   // of its states: whichever label is the shorter, it is the one with room.
-  //
-  // Dismiss and Copy are not: they are rows of the comments menu, which is one
-  // column of fixed width, so no click in it can move the header's fit.
   test("a label keeping room for a longer one is centered in it, with its icon", async ({
     page,
     context,
   }) => {
     await context.grantPermissions(["clipboard-read", "clipboard-write"]);
-    // Comments the agent has not answered, so Review has its state label and
-    // the menu is carrying Dismiss and Copy.
+    // Comments the agent has not answered, so the row carries Copy's count and
+    // Dismiss's, and Review keeps its state label.
     await routeReview(page, 12, false);
     await page.reload();
     const header = page.getByTestId("viewer-header");
     await expect(header.getByTestId("commit-subject")).toHaveText(SUBJECT);
     await expect(header.getByText("2 commits")).toHaveCount(1);
-    await expect(header.getByRole("button", { name: "12 comments" }))
-      .toBeVisible();
+    await expect(header.getByRole("button", { name: "Copy 12" })).toBeVisible();
+    await expect(
+      header.getByRole("button", { name: "Dismiss 12" }),
+    ).toBeVisible();
     await expect(header).not.toHaveAttribute("data-yield", /\blabels\b/);
     // In review mode: the background and the ring that showed it worst.
     await expect(
@@ -893,10 +929,12 @@ test.describe("viewer header under width pressure", () => {
     ).toHaveAttribute("data-tip", "Exit review mode");
 
     // Raw goes last: raw view has no Review toggle, and with the toggle gone
-    // the toolbar's end-packed items move, though Raw keeps its size.
+    // from the end of the row the end-packed items before it move, though Raw
+    // keeps its size.
     for (const [name, after, staysPut] of [
       ["Review", "End review?", true],
-      ["Path", "Copied!", true],
+      ["Copy 12", "Copied!", true],
+      ["Dismiss 12", "Confirm?", true],
       ["Raw", "Rendered", false],
     ] as const) {
       const button = (await header
@@ -939,13 +977,22 @@ test.describe("viewer header under width pressure", () => {
     const s = await snapshot(page, LABELS, DIRS);
     expect(Object.values(s.labels)).toEqual(LABELS.map(() => false));
     const header = page.getByTestId("viewer-header");
-    for (const name of ["Path", "Raw", "Review"]) {
+    for (const name of ["Raw", "Review", "Dismiss 3 answered"]) {
       await expect(header.getByRole("button", { name })).toBeVisible();
     }
+    // The icon-only Manage keeps the name its label would have given it.
+    await expect(
+      header.getByRole("button", { name: "Manage comments" }),
+    ).toBeVisible();
     await expect(header.getByRole("link", { name: "2 commits" })).toBeVisible();
     // The room a label keeps for a longer one goes with the label: each is its
     // icon alone, with the padding either side and nothing beside it.
-    for (const name of ["Path", "Raw", "Review"]) {
+    for (const name of [
+      "Raw",
+      "Review",
+      "Dismiss 3 answered",
+      "Manage comments",
+    ]) {
       const icon = await drawnIn(
         (await header
           .getByRole("button", { name, exact: true })
@@ -967,24 +1014,28 @@ test.describe("viewer header under width pressure", () => {
     await expect(
       header.getByRole("link", { name: "2 commits" }),
     ).toHaveAttribute("data-tip", "View full history: 2 commits");
-    // Dismiss and its count are rows of the comments menu now, which is only in
-    // the document while it is open.
-    await header.getByRole("button", { name: "3 comments" }).click();
     await expect(
-      page.getByRole("menuitem", { name: "Dismiss 3 answered" }),
-    ).toHaveAttribute("title", "Dismiss the 3 comments the agent has answered");
+      header.getByRole("button", { name: "Dismiss 3 answered" }),
+    ).toHaveAttribute(
+      "data-tip",
+      "Dismiss the 3 comments the agent has answered",
+    );
   });
 
-  // The shorthand labels — *N commits*, *Path*, *Raw*, the comments menu's word
-  // — go before the ones that carry state, so a header a few pixels short of
-  // the longest label is not stripped of every word in the row at once. This
-  // fixture has one state label, *Review*; a modified file adds *Modified*.
+  // The shorthand labels — *N commits* and *Raw* — go before the ones that
+  // carry state, so a header a few pixels short of the longest label is not
+  // stripped of every word in the row at once. This fixture's state labels are
+  // *Review* and the review cluster's *Dismiss 3 answered*, whose count is
+  // written nowhere else; a modified file adds *Modified*.
   test("the shorthand labels go before the ones that carry state", async ({
     page,
   }) => {
     const shorthand = await narrowInto(page, "labels-minor");
     const s = await snapshot(page, LABELS, DIRS);
     expect(s.labels["Review"], JSON.stringify(s.labels)).toBe(true);
+    expect(s.labels["Dismiss 3 answered"], JSON.stringify(s.labels)).toBe(
+      true,
+    );
     for (const name of LABELS.filter((name) => MINOR_LABELS.has(name))) {
       expect(s.labels[name], `${name}: ${JSON.stringify(s.labels)}`).toBe(
         false,
@@ -996,10 +1047,10 @@ test.describe("viewer header under width pressure", () => {
 });
 
 // A folder's toolbar is its commit button alone, so the button is the last item
-// in the row. Its `-mx-2` hover bleed puts its border box 8px past the room it
-// takes, which the fit once read as overflow: with nothing after the button to
-// hide that — no Path, because /api/info failed — the header took every step in
-// a 2400px window and hid the subject, the date and the folders for nothing.
+// in the row before the review controls. Its `-mx-2` hover bleed puts its border
+// box 8px past the room it takes, which the fit once read as overflow: with
+// nothing after the button to hide that, the header took every step in a 2400px
+// window and hid the subject, the date and the folders for nothing.
 test.describe("a header whose toolbar ends at the commit button", () => {
   test("takes no step it has the room not to", async ({ page }) => {
     await page.route("**/api/info", (route) => route.fulfill({ status: 500 }));
@@ -1064,11 +1115,11 @@ test.describe("an untracked file's header", () => {
     // (docs/reference/planning-index.md §12.3, "the hold"); a list that
     // lands after that is late data (§12.1, L1), and the time it carries is
     // drawn only where it moves nothing already painted (§12.2). Between the
-    // painted Untracked file button and Path there is no such place, so a
-    // time that came through the server's round trip was never drawn for the
-    // visit, and this test, which is about the steps the header takes and not
-    // about late data (stable_paint.spec.ts is), read every step after it as
-    // out of order.
+    // painted Untracked file button and the row's review toggle there is no
+    // such place, so a time that came through the server's round trip was
+    // never drawn for the visit, and this test, which is about the steps the
+    // header takes and not about late data (stable_paint.spec.ts is), read
+    // every step after it as out of order.
     const recent = (await (
       await page.request.get("/api/git/recent?limit=30")
     ).json()) as { path: string }[];
@@ -1109,7 +1160,7 @@ test.describe("an untracked file's header", () => {
     for (let width = 1600; ; width -= 20) {
       expect(width, "the toolbar's actions never folded").toBeGreaterThan(200);
       await setHeaderWidth(page, width);
-      const s = await snapshot(page, ["Untracked file", "Path", "Raw"], []);
+      const s = await snapshot(page, ["Untracked file", "Raw"], []);
       checkInvariants(s);
       const taken = level(s);
       expect(taken, `at ${width}px`).toBeGreaterThanOrEqual(before);

@@ -193,9 +193,9 @@ test("the header says nothing of git before git has answered", async ({
 
 // §12.2: the header's git data when git answers after the hold. It may take
 // only the room the header has left: it once collapsed painted folders into
-// the "…", moving the file name 80px, or folded painted Path, Raw and Review
-// into the "⋯". A folder deep, so there are folders to collapse; the commit
-// and the history are routed, since the fixture commits only page1.md.
+// the "…", moving the file name 80px, or folded painted Raw and Review into
+// the "⋯". A folder deep, so there are folders to collapse; the commit and the
+// history are routed, since the fixture commits only page1.md.
 test.describe("git that answers after the hold moves nothing in the header", () => {
   const PATH = "docs/design/durable-agent-storage-classes.md";
 

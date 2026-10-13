@@ -116,8 +116,9 @@ code {
    file name, and nothing else. An item added to the toolbar is rigid for
    free (`> *`); giving its text `hdr-label` makes that text part of the
    `labels` step, with `hdr-label-minor` beside it putting it in the first,
-   cheaper half of that, and putting the item inside `HeaderOverflow` makes it
-   part of the `actions` step. */
+   cheaper half of that, putting the item inside `HeaderOverflow` makes it part
+   of the `actions` step, and the `hdr-review` wrapper is its own step, taken
+   after every other (`components/ReviewControls.tsx`). */
 .viewer-header {
   white-space: nowrap;
 }
@@ -169,8 +170,8 @@ code {
   display: none;
 }
 
-/* A button whose label changes on click ("Path" → "Copied!", "Review" → "End
-   review?") is always as wide as its longest label. Otherwise, at the
+/* A button whose label changes on click ("Review" → "End review?", "Copy 3" →
+   "Copied!") is always as wide as its longest label. Otherwise, at the
    narrowest width that still shows labels, the click itself took the `labels`
    step, the toolbar jumped, and the second click of a two-step confirm landed
    on whatever had moved under the pointer.
@@ -233,14 +234,13 @@ code {
   display: none;
 }
 
-/* 3. The shorthand labels — *N commits*, *Path*, *Raw*, the comments menu's
-   *comments*, the drift indicator's *document changed* — and then 4. every
-   remaining one, and 6. the relative time: each leaves the layout but not the
-   accessibility tree, so every button keeps the name it had. What each says
-   is in its tooltip either way, which is why the cheap half goes first: a
-   header thirty pixels short of the longest label used to show none of them.
-   A ghost's label goes with the label, so a button keeping room for a longer
-   one keeps none beside its icon. */
+/* 3. The shorthand labels — *N commits*, *Raw*, the drift indicator's
+   *document changed* — and then 4. every remaining one, and 5. the relative
+   time: each leaves the layout but not the accessibility tree, so every button
+   keeps the name it had. What each says is in its tooltip either way, which is
+   why the cheap half goes first: a header thirty pixels short of the longest
+   label used to show none of them. A ghost's label goes with the label, so a
+   button keeping room for a longer one keeps none beside its icon. */
 .viewer-header[data-yield~="labels-minor"] .hdr-label-minor,
 .viewer-header[data-yield~="labels"] .hdr-label,
 .viewer-header[data-yield~="time"] .hdr-time {
@@ -254,7 +254,7 @@ code {
   border: 0;
 }
 
-/* 5. The folders fold into the "…" that lists them. */
+/* 6. The folders fold into the "…" that lists them. */
 .viewer-header[data-yield~="dirs"] .hdr-dirs {
   display: none;
 }
@@ -272,10 +272,13 @@ code {
   display: flex;
 }
 
-/* 8. The toolbar's actions fold into the "⋯", and the TOC and full-width
-   toggles with them — when there is a "⋯" to fold into: a header with no
-   toolbar keeps them where they are. Opened, the actions are a panel hanging
-   under the "⋯" with every label drawn, whatever the steps before took. */
+/* 8. The file's own toolbar actions — its history and Raw — fold into the
+   "⋯", and the TOC and full-width toggles with them — when there is a "⋯" to
+   fold into: a header with no toolbar keeps them where they are. Opened, the
+   actions are a panel hanging under the "⋯" with every label drawn, whatever
+   the steps before took. The review controls are not in here: they are the
+   actions a reviewer reaches for most, and folding them here is what hid
+   *Copy* at every width (`components/ReviewControls.tsx`). */
 .hdr-more,
 .hdr-panel-only {
   display: none;
@@ -335,7 +338,29 @@ code {
   justify-items: stretch;
 }
 
-/* 9. Only now may the leading half shrink, and in it only the name can. It
+/* 9. The review controls fold into the same "⋯", and they take this step
+   later than everything else the header can give up: the name's own step is
+   the one after. They were folded in with the file's actions, which put *Copy*
+   — the action a reviewer reaches for most — two clicks in at every width
+   (`components/ReviewControls.tsx`). The step before the name is what keeps
+   that promise honest: the cluster goes only where the header would otherwise
+   have truncated the name.
+
+   The panel holds them again while it is open, and only once this step is
+   taken — the same bargain the view toggles make with the `actions` step — so
+   the row and the panel never draw the same actions at once. Its wrapper lays
+   out nothing (`display: contents`), so its buttons are the panel's own rows. */
+.viewer-header[data-yield~="review"] .hdr-review {
+  display: none;
+}
+.hdr-review-panel {
+  display: none;
+}
+.viewer-header[data-yield~="review"] .hdr-review-panel {
+  display: contents;
+}
+
+/* 10. Only now may the leading half shrink, and in it only the name can. It
    clips rather than draws over the toolbar if even that is not enough, with
    room left for a focus ring at its edge.
 

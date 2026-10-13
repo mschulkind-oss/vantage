@@ -11,6 +11,7 @@ import {
   Sun,
   Moon,
   FolderOpen,
+  GitBranch,
   Keyboard,
   Eye,
   FileX,
@@ -40,6 +41,8 @@ interface SettingsDropdownProps {
   onShowHiddenChange: (show: boolean) => void;
   showGitignored: boolean;
   onShowGitignoredChange: (show: boolean) => void;
+  showGitMetadata: boolean;
+  onShowGitMetadataChange: (show: boolean) => void;
   keyboardShortcutsEnabled: boolean;
   onKeyboardShortcutsEnabledChange: (enabled: boolean) => void;
   onOpenStyleGuide?: () => void;
@@ -52,6 +55,8 @@ export const SettingsDropdown: React.FC<SettingsDropdownProps> = ({
   onShowHiddenChange,
   showGitignored,
   onShowGitignoredChange,
+  showGitMetadata,
+  onShowGitMetadataChange,
   keyboardShortcutsEnabled,
   onKeyboardShortcutsEnabledChange,
   onOpenStyleGuide,
@@ -223,6 +228,30 @@ export const SettingsDropdown: React.FC<SettingsDropdownProps> = ({
               <div className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300 group-hover:text-slate-900 dark:group-hover:text-white">
                 <Keyboard size={13} />
                 Enable shortcuts
+              </div>
+            </label>
+          </div>
+
+          <div className="h-px bg-slate-100 dark:bg-slate-700 mx-2 my-1" />
+
+          {/* Viewer section */}
+          <div className="px-3 py-2">
+            <div className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">
+              Viewer
+            </div>
+            <label
+              className="flex items-center gap-2 cursor-pointer group"
+              title="The document's git status, commit and history in the header"
+            >
+              <input
+                type="checkbox"
+                checked={showGitMetadata}
+                onChange={(e) => onShowGitMetadataChange(e.target.checked)}
+                className="rounded border-slate-300 dark:border-slate-600 text-blue-500 focus:ring-blue-500 w-3.5 h-3.5"
+              />
+              <div className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300 group-hover:text-slate-900 dark:group-hover:text-white">
+                <GitBranch size={13} />
+                Show git metadata
               </div>
             </label>
           </div>

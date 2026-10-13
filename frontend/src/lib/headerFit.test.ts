@@ -16,7 +16,7 @@ describe("yieldAttribute", () => {
     expect(yieldAttribute(0)).toBe("");
     expect(yieldAttribute(2)).toBe("subject date");
     expect(yieldAttribute(YIELD_STEPS.length)).toBe(
-      "subject date labels-minor labels dirs time repo actions name",
+      "subject date labels-minor labels time dirs repo actions review name",
     );
   });
 });
@@ -31,7 +31,7 @@ describe("fewestSteps", () => {
     const fits = vi.fn(() => false);
     expect(fewestSteps(fits)).toBe(YIELD_STEPS.length);
     expect(fits.mock.calls.map(([n]) => n)).toEqual([
-      0, 1, 2, 3, 4, 5, 6, 7, 8,
+      0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
     ]);
   });
 });
@@ -104,10 +104,11 @@ const SAVES = {
   date: 120,
   "labels-minor": 120,
   labels: 300,
-  dirs: 80,
   time: 90,
+  dirs: 80,
   repo: 40,
   actions: 250,
+  review: 110,
   name: 0,
 };
 
@@ -142,7 +143,7 @@ describe("fitHeader", () => {
     const { header } = fakeHeader(500, needing(1800));
     expect(fitHeader(header)).toBe(YIELD_STEPS.length);
     expect(header.dataset.yield).toBe(
-      "subject date labels-minor labels dirs time repo actions name",
+      "subject date labels-minor labels time dirs repo actions review name",
     );
   });
 
@@ -153,18 +154,32 @@ describe("fitHeader", () => {
     const { header } = fakeHeader(500, needing(1500));
     expect(fitHeader(header)).toBe(8);
     expect(header.dataset.yield).toBe(
-      "subject date labels-minor labels dirs time repo actions",
+      "subject date labels-minor labels time dirs repo actions",
+    );
+  });
+
+  it("folds the review controls last, and only before the name", () => {
+    // 1660 needed in 500: every step up to the file's actions still does not
+    // fit, and the review cluster is what pays for the name to stay whole.
+    const { header } = fakeHeader(500, needing(1660));
+    expect(fitHeader(header)).toBe(9);
+    expect(header.dataset.yield).toBe(
+      "subject date labels-minor labels time dirs repo actions review",
     );
   });
 
   it("notices the leading half overflowing as much as the toolbar", () => {
     // The toolbar would fit, but the breadcrumb alone is past the edge until
-    // its folders collapse.
+    // its folders collapse — and the relative time goes first, so the header
+    // takes that step on the way.
     const { header } = fakeHeader(1000, (taken) => ({
       lead: taken.includes("dirs") ? 950 : 1050,
       tools: 0,
     }));
-    expect(fitHeader(header)).toBe(5);
+    expect(fitHeader(header)).toBe(6);
+    expect(header.dataset.yield).toBe(
+      "subject date labels-minor labels time dirs",
+    );
   });
 
   it("hides the subject once it would be narrower than its floor", () => {
@@ -189,9 +204,9 @@ describe("fitHeader", () => {
 
   // The commit button bleeds its hover background 8px past its text with
   // `-mx-2`, so its border box ends 8px past the end of the room it takes up.
-  // When it is the toolbar's last item — a folder, a file with no Markdown
-  // actions, a server whose /api/info failed so there is no Path — that 8px
-  // read as overflow at any width, and the header took every step at 2400px.
+  // When it is the toolbar's last item — a folder, or a header whose toolbar
+  // holds nothing else — that 8px read as overflow at any width, and the
+  // header took every step at 2400px.
   it("measures an item by the room it takes, negative margin and all", () => {
     const { header } = fakeHeader(1000, () => ({ lead: 400, tools: 1008 }), {
       lastToolMarginRight: -8,
