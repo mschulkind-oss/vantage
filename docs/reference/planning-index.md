@@ -115,6 +115,15 @@ on each planning document, a badge in the file tree, and `vantage-check index`
 for agents. A roadmap holds only the order and the reason for it; everything else
 it would have copied is shown beside its links.
 
+The **Work** screen is a second view of that same current index: it shows every
+indexed document grouped by its exact saved stage and configured role, while
+this planning page remains the question-focused Decisions view. Its authority,
+board census, transition provenance and limits are described in
+[the Work overview](work-overview.md). Work adds no authoritative planning
+store and does not alter planning routes, filters or CLI output. Its
+separate transition feed compares bounded local Git snapshots with the shared
+TypeScript planning scanner and retains source provenance and partial status.
+
 A **planning filter** narrows the planning page to the entries it keeps: one line
 of text, such as `generator path:docs/design is:open`, that the page's Filter box,
 its `filter=` URL parameter and `vantage-check index --filter` read with one
@@ -137,7 +146,9 @@ Vantage never writes into a document.
 | `[planning]` as the server reads it, and the roadmap test | `internal/repoconfig` (`PlanningSettings`, `Planning.IsRoadmap`) |
 | The scan worker, its helpers, the scanner client and the scan cache | `frontend/src/planningScan/` (`scannerCore`, `ScannerClient`, `ScanCache`, `ScanStore`, `planningLimits`) |
 | The index as the viewer holds it | `frontend/src/stores/usePlanningStore.ts` (`usePlanningStore`, `PlanningLoad`) |
-| The planning page | `frontend/src/pages/PlanningPage.tsx`, `frontend/src/lib/planningPages.ts`, `frontend/src/hooks/usePlanningPageInputs.ts` |
+| The planning page (visible label: Decisions) | `frontend/src/pages/PlanningPage.tsx`, `frontend/src/lib/planningPages.ts`, `frontend/src/hooks/usePlanningPageInputs.ts` |
+| The Work overview grouping and stage classification | `packages/vantage-md/src/planning/work.ts`, `frontend/src/pages/WorkPage.tsx` |
+| Bounded Git snapshots and the transition feed | `internal/git/snapshots.go`, `internal/api/git_handlers.go`, `frontend/src/lib/workTransitions.ts`, `frontend/src/lib/workHistory.ts` |
 | Link badges, Referenced by, the tree badge | `frontend/src/hooks/usePlanningLinkBadges.ts`, `frontend/src/components/ReferencedBy.tsx`, `frontend/src/components/PlanningTreeBadge.tsx` |
 | The planning filter: its grammar, matching, canonical text, the filtered sections, the link and the paste reader; its limits; the notice's words | `packages/vantage-md/src/planning/filter.ts` (`parsePlanningFilter`, `filterKeepsQuestion`, `filterKeepsDocument`, `applyPlanningFilter`, `planningLink`, `documentFilter`, `readPastedPlanningLink`), `filterLimits.ts`, and `PLANNING_NOTICES` in `sections.ts` |
 | The filter on the page: the filter line, the applied filter and its writes, the filter caches | `frontend/src/components/PlanningFilterLine.tsx`, `frontend/src/pages/PlanningPage.tsx`, `frontend/src/lib/planningPages.ts` (`filteredSectionsOf`, `withFilter`, `planningQuery`) |
@@ -2253,7 +2264,7 @@ page ([OQ-PF5](#why-its-this-way)).
   it. Its text comes from the URL synchronously, so it is complete at first paint.
   Its ✕, its hint-and-counts slot and its spinner each have a slot that is always
   present.
-- **Contents.** A `<form role="search">` named *Filter the planning page*, holding a
+- **Contents.** A `<form role="search">` named *Filter Decisions*, holding a
   visible label, *Filter*; a `type="text"` input, never `type="search"`, because
   Chrome clears that kind on Esc; a placeholder that is a real filter, in ink dark
   enough to read on a light panel; the ✕ slot, empty while there is no text; the
@@ -2640,7 +2651,7 @@ to four parts, joined by *·* in this order (`referenceSummary` in
 | Count | A planning document links here | *Referenced by N documents* |
 | Roadmap | A roadmap routes the document or one of its questions | With one roadmap that routes: *on the roadmap under Building*, naming the roadmap heading of the first link that routes it, or *on the roadmap* when that link sits above every heading. With several: *on plans/roadmap.md under Building*, naming the first roadmap in roadmap order that routes it, then *and N other roadmaps* when more do |
 | Not on a roadmap | The document has open questions no roadmap routes | *K open questions not on the roadmap*, in the warning tone; with several roadmaps, *…not on any roadmap*. The page's section of that name lists the same questions |
-| Planning page | Its stage has no `done` role and it holds at least one question, in any state (`hasLiveQuestions`), outside a static export | *its questions on the planning page*: a link to the planning page filtered to the document, `path:/<its path>` in canonical text ([§6.14](#614-what-is-not-understood-and-canonical-text)), [OQ-PF4](#why-its-this-way) |
+| Planning page | Its stage has no `done` role and it holds at least one question, in any state (`hasLiveQuestions`), outside a static export | *its questions on the Decisions page*: a link to the planning page filtered to the document, `path:/<its path>` in canonical text ([§6.14](#614-what-is-not-understood-and-canonical-text)), [OQ-PF4](#why-its-this-way) |
 
 - **The not-on-a-roadmap part says what the roadmap leaves out, not that the
   document is off it,** because both can be true at once: a roadmap may link the
@@ -4588,7 +4599,7 @@ questions, [OQ-E1](../../frontend/e2e/fixtures/test_repo/plans/design.md#OQ-E1) 
 11. On the unfiltered page, `/` and then pasting the checker's whole output for
     criterion 1 shows the page of criterion 2, in single-repository and daemon mode
     alike.
-12. A live document holding a question shows *its questions on the planning page*
+12. A live document holding a question shows *its questions on the Decisions page*
     in its Referenced by line with zero layout shift as the index lands, and
     following it shows that document's entries, with the box holding
     `path:/<its path>`. The end-to-end test runs it through `plans/paged.md`, since

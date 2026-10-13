@@ -402,11 +402,11 @@ index. ~150 LOC. It depends on #2's index, so it ships together with #2.
 ## 5. "This week"
 
 > [!NOTE]
-> The [Work overview exploration](work-overview.md#recent-transitions-are-not-recently-edited-files)
-> develops this unbuilt history idea for a companion document-stage screen.
-> It separates stage transitions from ordinary edits and calls out the evidence
-> needed when a proposal is deleted and replaced by a reference. The directive-only
-> history filter below cannot find stage-only frontmatter changes or every such move.
+> The [Work overview reference](../reference/work-overview.md#bounded-local-git-snapshots)
+> implements bounded stage-transition evidence but deliberately does not infer
+> successor identity. This proposal's deleted/replaced-reference question stays
+> open: directive-only history cannot find stage-only frontmatter changes or
+> every such move.
 
 **Hook.** No weekly file. `roadmap.md` gets a `## This week` heading containing
 a list of links: the intent, which is judged, written once. The planning page
