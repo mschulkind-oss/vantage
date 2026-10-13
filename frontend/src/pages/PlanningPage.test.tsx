@@ -4569,7 +4569,7 @@ describe("in the app shell (§6.1)", () => {
       within(header()).getByRole("button", { name: COPY_ANSWERS }),
     ).toBeTruthy();
     // A document's controls have no meaning here.
-    for (const name of ["Raw", "Path", "Review"]) {
+    for (const name of ["Raw", "Copy path", "Review"]) {
       expect(within(header()).queryByRole("button", { name })).toBeNull();
     }
   });

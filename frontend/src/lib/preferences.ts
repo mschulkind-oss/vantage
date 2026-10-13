@@ -79,8 +79,11 @@ export const PREFERENCE_KEYS = [
    * subject, the untracked-file pill and its modification time, and the link
    * to the file's history. A reading preference like full width — a reader who
    * does not want the header's git half wants it off on the next document
-   * too — so it is read with `usePersistentFlag` in the viewer and set from
-   * the settings menu. Absent or unset, the git metadata is shown.
+   * too — so the shell reads it with `usePersistentFlag`, sets it from the
+   * settings menu, and publishes it to the viewer through `useShellPage`.
+   * Reading it in the viewer would make the menu's click wait for a reload:
+   * a second subscriber hears another tab's writes and nothing else. Absent
+   * or unset, the git metadata is shown.
    */
   "vantage:showGitMetadata",
   /**

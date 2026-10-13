@@ -30,6 +30,15 @@ export interface ShellControls {
    * of it.
    */
   bannerSpace: number;
+  /**
+   * Whether the header says what git knows about the document on screen
+   * (`vantage:showGitMetadata`). The shell owns the preference because the
+   * settings menu in its chrome writes it, and a page reading its own
+   * `usePersistentFlag` would follow another tab's writes and nothing else —
+   * so that menu's click would move nothing until a reload in the tab the
+   * reader is looking at (`lib/preferences.ts`).
+   */
+  showGitMetadata: boolean;
 }
 
 /**

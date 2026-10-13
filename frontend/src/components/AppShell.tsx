@@ -466,8 +466,8 @@ const ShellFrame: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   });
 
   const controls = useMemo<ShellControls>(
-    () => ({ sidebarCollapsed, openSidebar, bannerSpace }),
-    [sidebarCollapsed, openSidebar, bannerSpace],
+    () => ({ sidebarCollapsed, openSidebar, bannerSpace, showGitMetadata }),
+    [sidebarCollapsed, openSidebar, bannerSpace, showGitMetadata],
   );
   const context = useMemo<ShellContextValue>(
     () => ({ controls, publish, register }),

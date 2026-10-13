@@ -77,9 +77,9 @@ interface GitState {
   repoName: string | null;
   repoRootPath: string | null;
   /**
-   * Whether `/info` has been asked for and has not answered yet: the header's
-   * Path button is on its way, which a document's first paint waits for
-   * briefly (`docs/reference/planning-index.md` §12.3).
+   * Whether `/info` has been asked for and has not answered yet: the
+   * copy-path control's root is on its way, which a document's first paint
+   * waits for briefly (`docs/reference/planning-index.md` §12.3).
    */
   isRepoInfoLoading: boolean;
 
