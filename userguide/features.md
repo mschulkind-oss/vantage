@@ -169,7 +169,7 @@ Every file shows the most recent commit message, author, and relative timestamp 
 
 Vantage asks git about a file together with its content, and a document's first paint waits for the answer, never more than 150 ms, so the header usually has it from the start. The header never guesses: it says *Untracked file* only once git has said so. Anything that arrives later takes only the room the header has left, and never narrows the file name.
 
-The absolute path is copied from the control beside the file name, which confirms in place with a green check. Settings (⚙) → **Show git metadata** turns the header's git half off — the status pill, the commit and its age, the untracked-file pill and the history link — for a reader who wants the header to be about the document alone.
+The absolute path is copied from the control beside the file name, which confirms in place with a green check; where the row is too narrow to keep the whole file name and the control together, the name wins and the control is not drawn. Settings (⚙) → **Show git metadata** turns the header's git half off — the status pill, the commit and its age, the untracked-file pill and the history link — for a reader who wants the header to be about the document alone.
 
 ### Commit History
 
