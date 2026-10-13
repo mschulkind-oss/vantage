@@ -1464,6 +1464,28 @@ describe("ViewerPage", () => {
       }
     });
 
+    it("says the copy landed to assistive technology, which cannot see the icon", async () => {
+      const writeText = vi.fn().mockResolvedValue(undefined);
+      const hadClipboard = "clipboard" in navigator;
+      Object.assign(navigator, { clipboard: { writeText } });
+      try {
+        renderPage();
+        // The confirmation drawn beside the control is the icon and the
+        // tooltip, and the tooltip is cleared by the click that made it; this
+        // is what a screen reader hears instead.
+        const live = copyPath().nextElementSibling as HTMLElement;
+        expect(live).toHaveClass("sr-only");
+        expect(live).toHaveAttribute("aria-live", "polite");
+        expect(live.textContent).toBe("");
+
+        fireEvent.click(copyPath());
+        await waitFor(() => expect(live.textContent).toBe("Copied!"));
+      } finally {
+        if (!hadClipboard)
+          delete (navigator as { clipboard?: unknown }).clipboard;
+      }
+    });
+
     it("is inert until the repository root is known", () => {
       // The absolute path is built from the root, which arrives with
       // `/api/info`: its room is kept, and the control is hidden rather than
@@ -1526,6 +1548,30 @@ describe("ViewerPage", () => {
         expect(screen.getByTestId("breadcrumb-name")).toBeInTheDocument();
       });
     }
+
+    // The menu is in the shell's chrome and the header is the page's, so the
+    // switch has to reach a page that is already mounted: a second
+    // `usePersistentFlag` in the viewer follows another tab's writes and
+    // nothing else, which left the click looking inert until a reload.
+    it("moves the header in this tab, without a remount", () => {
+      renderPage();
+      const header = screen.getByTestId("viewer-header");
+      expect(screen.getByTestId("commit-subject")).toBeInTheDocument();
+
+      fireEvent.click(screen.getByLabelText("Settings"));
+      const toggle = screen.getByRole("checkbox", {
+        name: "Show git metadata",
+      });
+      fireEvent.click(toggle);
+      expect(screen.queryByTestId("commit-subject")).toBeNull();
+      expect(screen.queryByTestId("header-time")).toBeNull();
+      // The same node, not a second header: the setting moved what was
+      // already drawn rather than the page being rebuilt around it.
+      expect(screen.getByTestId("viewer-header")).toBe(header);
+
+      fireEvent.click(toggle);
+      expect(screen.getByTestId("commit-subject")).toBeInTheDocument();
+    });
 
     it("hides an untracked file's pill and modification time with the rest", () => {
       withRecentFiles();

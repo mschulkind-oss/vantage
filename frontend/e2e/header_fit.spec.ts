@@ -195,6 +195,7 @@ function snapshot(page: Page, labels: string[], dirs: string[]) {
       const dateEl = header.querySelector('[data-testid="header-date"]');
       const timeEl = header.querySelector('[data-testid="header-time"]');
       const nav = header.querySelector("nav")!;
+      const reviewEl = header.querySelector(".hdr-review");
 
       // The row's items, in order: every item the two halves lay out, which
       // for the toolbar includes the actions, whose wrappers lay out no box
@@ -291,9 +292,14 @@ function snapshot(page: Page, labels: string[], dirs: string[]) {
         more: header.querySelector(".hdr-more")
           ? shown(header.querySelector(".hdr-more"))
           : null,
-        review: header.querySelector(".hdr-review")
-          ? shown(header.querySelector(".hdr-review"))
-          : null,
+        // The wrapper is drawn for any `.md`, review or not — a raw-view
+        // document with review off gets an empty one, whose `!shown` would
+        // read as the step already taken. What the step folds is the
+        // controls, so the cluster has to hold one to be a step at all; once
+        // it is taken the wrapper itself goes `display: none`, children and
+        // all, which is the `shown` this still reports.
+        review:
+          reviewEl && reviewEl.children.length > 0 ? shown(reviewEl) : null,
         overlaps,
         escapes,
       };
