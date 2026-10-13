@@ -1271,17 +1271,15 @@ describe("ViewerPage", () => {
       });
     };
 
-    const copyButtons = () =>
-      screen.queryAllByTitle(/^Copy \d+ comments? to clipboard$/);
+    const copyButtons = () => tipped(/^Copy \d+ comments? to clipboard$/);
 
-    // Copy, Dismiss and Manage are rows of the comments menu now, not buttons
-    // of the header's row: in review mode with a modified file the row held ten
-    // controls and their labels cost about 520px, so at laptop widths every one
-    // of them was an icon (`components/ReviewControls.tsx`). Each of these
-    // opens the menu first. There is a trigger per rendered toolbar, and
-    // opening the first is enough to read what the menu holds.
-    const openMenu = () =>
-      fireEvent.click(screen.getAllByTestId("review-comments-menu")[0]);
+    const manages = () => tipped("Manage comments");
+
+    // Copy, Dismiss and Manage are buttons of the header's own row: a menu put
+    // them one click behind the comment count at every width, which is a poor
+    // place for the action that saves a review (`components/ReviewControls.tsx`).
+    const inline = (name: string | RegExp) =>
+      screen.queryAllByRole("button", { name });
 
     // An icon-only button keeps its name for a screen reader, but a sighted
     // reader has only the tooltip, and "Copy all comments" said nothing of
@@ -1289,33 +1287,25 @@ describe("ViewerPage", () => {
     it("counts the comments in the review buttons' tooltips", () => {
       seedReview([]);
       renderPage();
-      openMenu();
-      expect(
-        screen.getAllByTitle("Copy 1 comment to clipboard").length,
-      ).toBeGreaterThan(0);
-      expect(screen.getAllByTitle("Dismiss 1 comment").length).toBeGreaterThan(
-        0,
-      );
+      expect(copyButtons().length).toBeGreaterThan(0);
+      expect(tipped("Dismiss 1 comment").length).toBeGreaterThan(0);
     });
 
     it("shows Copy when the agent has not responded yet", () => {
       seedReview([]);
       renderPage();
-      openMenu();
       expect(copyButtons().length).toBeGreaterThan(0);
     });
 
     it("hides Copy once the agent has addressed the comment", () => {
       seedReview([agentAddressed]);
       renderPage();
-      openMenu();
       expect(copyButtons()).toHaveLength(0);
     });
 
     it("shows Copy again after the reviewer replies to an agent response", () => {
       seedReview([agentAddressed, reviewerFollowup]);
       renderPage();
-      openMenu();
       expect(copyButtons().length).toBeGreaterThan(0);
     });
 
@@ -1333,45 +1323,46 @@ describe("ViewerPage", () => {
         ],
       });
       renderPage();
-      openMenu();
       expect(copyButtons().length).toBeGreaterThan(0);
     });
 
     it("keeps the review controls reachable in raw view", () => {
       // Raw view can't host inline highlights, but hiding the whole review
       // toolbar stranded a reviewer holding pending comments with no way to
-      // copy them or open the panel.  The page renders a wide and a narrow
-      // toolbar, so compare counts rather than presence — asserting only
-      // "> 0" passes while one of the two variants is still hidden.
+      // copy them or open the panel.
       seedReview([]);
       renderPage();
-      openMenu();
       const rendered = {
         copy: copyButtons().length,
-        panel: screen.getAllByTitle("Manage comments").length,
+        panel: manages().length,
       };
       expect(rendered.copy).toBeGreaterThan(0);
       fireEvent.keyDown(document, { key: "Escape" });
 
       fireEvent.click(tipped("View raw markdown")[0]);
-      openMenu();
       expect(copyButtons()).toHaveLength(rendered.copy);
-      expect(screen.getAllByTitle("Manage comments")).toHaveLength(
-        rendered.panel,
-      );
+      expect(manages()).toHaveLength(rendered.panel);
     });
 
-    // The two-step confirm used to happen in the row, where a menu's
-    // close-on-choose would have broken it. In the menu the row stays open
-    // under the pointer, so the second click is the one that asked for it.
+    // The two-step confirm happens in the row itself, so the second click is
+    // the one under the pointer that asked for it.
     it("turns Dismiss into a confirm where it stands", () => {
       seedReview([]);
       renderPage();
-      openMenu();
-      fireEvent.click(screen.getAllByTitle("Dismiss 1 comment")[0]);
+      fireEvent.click(tipped("Dismiss 1 comment")[0]);
       expect(
-        screen.getByRole("menuitem", { name: "Confirm?" }),
+        screen.getByRole("button", { name: "Confirm?" }),
       ).toBeInTheDocument();
+    });
+
+    it("leaves the actions out of the toolbar's ⋯ disclosure", () => {
+      seedReview([]);
+      renderPage();
+      // The ⋯ is for the file's own actions; folding Copy in there is what
+      // the inline row replaced.
+      const copy = inline(/^Copy \d+$/)[0];
+      expect(copy).toBeDefined();
+      expect(copy.closest(".hdr-overflow")).toBeNull();
     });
   });
 
@@ -1412,7 +1403,6 @@ describe("ViewerPage", () => {
     it("keeps the room of both of its labels, before the click and after it", () => {
       renderPage();
       for (const [name, after, labels] of [
-        ["Path", null, ["Copied!", "Path"]],
         ["Review", "End review?", ["End review?", "Review"]],
         // Last: raw view has no Review toggle.
         ["Raw", "Rendered", ["Raw", "Rendered"]],
@@ -1429,6 +1419,236 @@ describe("ViewerPage", () => {
         const [clicked] = buttons(after);
         expect(clicked.textContent, after).toBe(after);
         expect(room(clicked), after).toEqual(labels);
+      }
+    });
+  });
+
+  // The absolute path is copied from the control that sits next to the name
+  // it belongs to, and confirms where it stands: the icon becomes a check and
+  // the tooltip says so, so the click moves nothing in a row whose width is
+  // the reader's budget.
+  describe("the copy-path control", () => {
+    const copyPath = () => screen.getByRole("button", { name: "Copy path" });
+
+    beforeEach(() => {
+      gitStore.mockReturnValue({ ...gitStore(), repoRootPath: "/repo" });
+    });
+
+    it("sits immediately after the file name", () => {
+      renderPage();
+      const name = screen.getByTestId("breadcrumb-name");
+      expect(name.nextElementSibling).toBe(copyPath());
+    });
+
+    it("copies the document's absolute path, and says so where it was clicked", async () => {
+      const writeText = vi.fn().mockResolvedValue(undefined);
+      const hadClipboard = "clipboard" in navigator;
+      Object.assign(navigator, { clipboard: { writeText } });
+      try {
+        renderPage();
+        const button = copyPath();
+        expect(button).toHaveAttribute(
+          "data-tip",
+          "Copy absolute path: /repo/path/to/file.md",
+        );
+
+        fireEvent.click(button);
+        await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+        expect(writeText).toHaveBeenCalledWith("/repo/path/to/file.md");
+        await waitFor(() =>
+          expect(copyPath()).toHaveAttribute("data-tip", "Copied!"),
+        );
+      } finally {
+        if (!hadClipboard)
+          delete (navigator as { clipboard?: unknown }).clipboard;
+      }
+    });
+
+    it("is inert until the repository root is known", () => {
+      // The absolute path is built from the root, which arrives with
+      // `/api/info`: its room is kept, and the control is hidden rather than
+      // drawn offering a path it cannot build (`stable_paint.spec.ts`).
+      gitStore.mockReturnValue({ ...gitStore(), repoRootPath: null });
+      renderPage();
+      expect(copyPath()).toHaveClass("invisible");
+    });
+  });
+
+  // Whether the header says anything about git is the reader's to choose
+  // (`vantage:showGitMetadata`), and nothing else in the row goes with it: the
+  // breadcrumb, the star, the copy-path control, Raw and the review controls
+  // are about the document, not about what git knows of it.
+  describe("the git metadata setting", () => {
+    const seedReview = () =>
+      useReviewStore.setState({
+        isReviewMode: true,
+        filePath: "path/to/file.md",
+        comments: [
+          {
+            id: "11111111-2222-3333-4444-555555555555",
+            anchor: null,
+            fallback_text: "some text",
+            reactions: [],
+            comment: "please fix",
+            created_at: 0,
+          },
+        ],
+      });
+
+    // The recent-files popover reads `recentlyChangedPaths` off the repo
+    // store, and a bare `mockReturnValue` hands the selector the whole state;
+    // this applies it, as the first-paint tests do.
+    const withRecentFiles = () => {
+      const repo = useRepoStore as unknown as ReturnType<typeof vi.fn>;
+      const state = { ...repo(), recentlyChangedPaths: new Set<string>() };
+      repo.mockImplementation((select?: (s: typeof state) => unknown) =>
+        select ? select(state) : state,
+      );
+    };
+
+    afterEach(() => localStorage.removeItem("vantage:showGitMetadata"));
+
+    it("shows git's half of the header by default", () => {
+      renderPage();
+      expect(screen.getByTestId("commit-subject")).toBeInTheDocument();
+      expect(screen.getByTestId("header-time")).toBeInTheDocument();
+    });
+
+    for (const metadata of ["false", "true"] as const) {
+      it(`renders the git cluster when the preference is ${metadata}`, () => {
+        localStorage.setItem("vantage:showGitMetadata", metadata);
+        renderPage();
+        const shown = metadata === "true";
+        expect(Boolean(screen.queryByTestId("commit-subject"))).toBe(shown);
+        expect(Boolean(screen.queryByTestId("header-time"))).toBe(shown);
+        expect(screen.queryByText("Untracked file")).toBeNull();
+        // And what is not git's is still there.
+        expect(screen.getByTestId("breadcrumb-name")).toBeInTheDocument();
+      });
+    }
+
+    it("hides an untracked file's pill and modification time with the rest", () => {
+      withRecentFiles();
+      gitAnswers({
+        "path/to/file.md": { lastCommit: null, gitStatus: "untracked" },
+      });
+      gitStore.mockReturnValue({
+        ...gitStore(),
+        recentFiles: [
+          {
+            path: "path/to/file.md",
+            date: new Date().toISOString(),
+            author_name: "",
+            message: "",
+            hexsha: "",
+          },
+        ],
+      });
+      localStorage.setItem("vantage:showGitMetadata", "false");
+      renderPage();
+      expect(screen.queryByText("Untracked file")).toBeNull();
+      expect(screen.queryByTestId("header-time")).toBeNull();
+    });
+
+    it("shows git's half of the header, and the untracked pill with it", () => {
+      withRecentFiles();
+      gitAnswers({
+        "path/to/file.md": { lastCommit: null, gitStatus: "untracked" },
+      });
+      gitStore.mockReturnValue({
+        ...gitStore(),
+        recentFiles: [
+          {
+            path: "path/to/file.md",
+            date: new Date().toISOString(),
+            author_name: "",
+            message: "",
+            hexsha: "",
+          },
+        ],
+      });
+      renderPage();
+      expect(screen.getByText("Untracked file")).toBeInTheDocument();
+      expect(screen.getByTestId("header-time")).toBeInTheDocument();
+    });
+
+    it("leaves the document's own controls alone when git is off", () => {
+      gitStore.mockReturnValue({ ...gitStore(), repoRootPath: "/repo" });
+      localStorage.setItem("vantage:showGitMetadata", "false");
+      seedReview();
+      renderPage();
+      expect(screen.getByTestId("breadcrumb-name")).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "Copy path" }),
+      ).toBeInTheDocument();
+      expect(tipped("View raw markdown").length).toBeGreaterThan(0);
+      expect(
+        screen.getAllByRole("button", { name: "Manage comments" }).length,
+      ).toBeGreaterThan(0);
+    });
+  });
+
+  // Leaving review keeps the confirmation only while there is something to
+  // lose: comments still unresolved. Copy is inline either way, so a reviewer
+  // can save what they mean to keep and then leave.
+  describe("leaving review mode", () => {
+    const toggle = () => screen.getByRole("button", { name: "Review" });
+
+    /** What `endReview` does to the store, without the request behind it. */
+    const stubEndReview = () =>
+      vi
+        .spyOn(useReviewStore.getState(), "endReview")
+        .mockResolvedValue(undefined);
+
+    const seed = (comments: ReviewComment[]) =>
+      useReviewStore.setState({
+        isReviewMode: true,
+        filePath: "path/to/file.md",
+        comments,
+      });
+
+    const comment = (id: string): ReviewComment => ({
+      id,
+      anchor: null,
+      fallback_text: "some text",
+      reactions: [],
+      comment: "please fix",
+      created_at: 0,
+    });
+
+    it("leaves on one click when no comment is left unresolved", async () => {
+      seed([]);
+      const endReview = stubEndReview();
+      try {
+        renderPage();
+        fireEvent.click(toggle());
+        expect(endReview).toHaveBeenCalledTimes(1);
+        // Not an armed confirm: there is nothing whose loss it would warn of.
+        expect(tipped("Click again to end review & clear data")).toHaveLength(
+          0,
+        );
+      } finally {
+        endReview.mockRestore();
+      }
+    });
+
+    it("arms, relabels, and only then leaves while a comment is unresolved", () => {
+      seed([comment("11111111-2222-3333-4444-555555555555")]);
+      const endReview = stubEndReview();
+      try {
+        renderPage();
+        fireEvent.click(toggle());
+        expect(endReview).not.toHaveBeenCalled();
+        const armed = screen.getByRole("button", { name: "End review?" });
+        expect(armed).toHaveAttribute(
+          "data-tip",
+          "Click again to end review & clear data",
+        );
+
+        fireEvent.click(armed);
+        expect(endReview).toHaveBeenCalledTimes(1);
+      } finally {
+        endReview.mockRestore();
       }
     });
   });

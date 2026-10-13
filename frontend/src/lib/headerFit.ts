@@ -15,41 +15,49 @@
  *    hides it once it would be narrower than `SUBJECT_FLOOR_PX`.
  * 2. `date` — the absolute date beside the relative time. The relative time
  *    stays, and the full date is still in the commit button's tooltip.
- * 3. `labels-minor` — the shorthand labels: *N commits*, *Path*, *Raw*, the
- *    comments menu's *comments*, and the drift indicator's *document changed*.
- *    Each says in the tooltip what its icon already suggests, so these are the
- *    cheapest words in the row to lose — and losing them is what pays for the
- *    ones a reader has to have: *Modified*, *Review*, and the comment count.
- *    Before this step existed, `labels` was all-or-nothing: a header a few
- *    pixels short of the longest label showed none of them (2026-10-12).
+ * 3. `labels-minor` — the shorthand labels: *N commits*, *Raw*, the drift
+ *    indicator's *document changed*. Each says in the tooltip what its icon
+ *    already suggests, so these are the cheapest words in the row to lose —
+ *    and losing them is what pays for the ones a reader has to have:
+ *    *Modified*, *Review*, and the comment counts *Copy N* and *Dismiss N
+ *    answered* carry. Before this step existed, `labels` was all-or-nothing:
+ *    a header a few pixels short of the longest label showed none of them
+ *    (2026-10-12).
  * 4. `labels` — every remaining toolbar label, so each button is its icon
  *    alone. The label stays in the accessibility tree, so the button keeps its
  *    name.
- * 5. `dirs` — the breadcrumb's folders, which collapse into one "…" that
- *    opens a menu of them. The repository and the file name stay.
- * 6. `time` — the relative time, leaving the commit button its clock icon.
+ * 5. `time` — the relative time, leaving the commit button its clock icon.
  *    The time stays in the accessibility tree, and the full date in the
- *    commit button's tooltip. It
- *    outlasts the date and the labels because it is the one thing in the
- *    toolbar that says something about this file rather than offering an
- *    action on it — and it goes before the name all the same, since the name
- *    is the last thing to give up room. Without this step a narrow header
- *    (a phone, or a laptop with the sidebar open) spent a hundred pixels on
- *    "28 minutes ago" while the name had none.
+ *    commit button's tooltip. It goes before the folders because the header's
+ *    git half is now the reader's to turn off (`vantage:showGitMetadata`),
+ *    which leaves this its least load-bearing item: the folders are links
+ *    into the tree, and collapsing them takes one out of the row. Without
+ *    this step a narrow header (a phone, or a laptop with the sidebar open)
+ *    spent a hundred pixels on "28 minutes ago" while the name had none.
+ * 6. `dirs` — the breadcrumb's folders, which collapse into one "…" that
+ *    opens a menu of them. The repository and the file name stay.
  * 7. `repo` — the repository's name at the head of the breadcrumb, which
  *    joins the folders behind the "…" (a "…" appears for it even at the
  *    repository root). A daemon's repository can be named at any length, and
  *    while it kept its full width it could leave the file name 3px.
- * 8. `actions` — every toolbar action (history, Path, Raw, and the review
- *    controls), together with the TOC and full-width toggles, folds into one
- *    "⋯" that opens them as a panel, labels and all. What stays in the row is
- *    what says something about this file (its git status and its commit's
- *    clock), the star, and the ways to the sidebar and the "…". These went
- *    last among the rest because they are the header's working controls:
- *    after the other steps, roughly a dozen fixed-width icons still stood
- *    between the name and the room it needed, and at an ordinary laptop width
- *    with the sidebar open they squeezed it to nothing.
- * 9. `name` — the file name itself, which then truncates, keeping its
+ * 8. `actions` — the file's own toolbar actions (its history and Raw),
+ *    together with the TOC and full-width toggles, fold into one "⋯" that
+ *    opens them as a panel, labels and all. What stays in the row is what
+ *    says something about this file (its git status and its commit's clock),
+ *    the star, the review controls, and the ways to the sidebar and the "…".
+ *    These went last among the rest because they are the header's working
+ *    controls: after the other steps, roughly a dozen fixed-width icons still
+ *    stood between the name and the room it needed, and at an ordinary laptop
+ *    width with the sidebar open they squeezed it to nothing.
+ * 9. `review` — the review controls, which fold into the same "⋯", so a
+ *    reader reviewing reaches them one click in rather than not at all. They
+ *    come last before the name, and only the name's own step is after them:
+ *    at every width that can still keep the file name whole, the actions a
+ *    reviewer reaches for most — *Copy* above all — are in the row
+ *    (`components/ReviewControls.tsx`). Before this step the cluster was
+ *    folded in with the file's actions, so *Copy* was two clicks in at every
+ *    width (2026-10-13).
+ * 10. `name` — the file name itself, which then truncates, keeping its
  *    extension, with the full path in its tooltip. Its stem keeps a floor of
  *    a couple of characters and an ellipsis, and past that the breadcrumb
  *    clips from its start rather than its end, so the extension is the last
@@ -63,8 +71,9 @@
  *
  * **Late items** (a term this module coins) are the exception to fitting
  * afresh. An item the viewer marks `hdr-late` is one whose data arrived after
- * the document's first paint: its commit, its history, its date, the Path
- * button's root (`docs/reference/planning-index.md` §12.2). It may take
+ * the document's first paint: its commit, its history, its date, the
+ * untracked-file pill's status and the modification time that replaces a
+ * commit's (`docs/reference/planning-index.md` §12.2). It may take
  * only the room the header has left: it is drawn once a fit finds it room at
  * the steps the header already had, plus any further steps that act on late
  * items alone (the subject, say, when only the late commit button has one),
@@ -78,10 +87,11 @@ export const YIELD_STEPS = [
   "date",
   "labels-minor",
   "labels",
-  "dirs",
   "time",
+  "dirs",
   "repo",
   "actions",
+  "review",
   "name",
 ] as const;
 

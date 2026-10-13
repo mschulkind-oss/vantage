@@ -74,6 +74,16 @@ export const PREFERENCE_KEYS = [
   "vantage:showHidden",
   "vantage:showGitignored",
   /**
+   * Whether the viewer header shows what git knows about the document on
+   * screen: its status or branch, its commit's relative and absolute age and
+   * subject, the untracked-file pill and its modification time, and the link
+   * to the file's history. A reading preference like full width — a reader who
+   * does not want the header's git half wants it off on the next document
+   * too — so it is read with `usePersistentFlag` in the viewer and set from
+   * the settings menu. Absent or unset, the git metadata is shown.
+   */
+  "vantage:showGitMetadata",
+  /**
    * That the multi-block selection hint has been shown once — the one entry here
    * that records something the app did rather than something the reader chose.
    * Its `vantage.` prefix is from before the `vantage:` convention and is kept
