@@ -203,6 +203,7 @@ import {
   type PlanningLayout,
 } from "../lib/planningPages";
 import { planningPath } from "../lib/planningRoute";
+import { workPath } from "../lib/workRoute";
 import {
   PLANNING_SPACE_MESSAGES,
   readSpaceRequest,
@@ -1442,7 +1443,7 @@ export const PlanningPage: React.FC = () => {
   useWebSocket({ viewer: false });
 
   useEffect(() => {
-    document.title = "Vantage: Planning";
+    document.title = "Vantage: Decisions";
     return () => {
       document.title = "Vantage";
     };
@@ -3625,8 +3626,14 @@ export const PlanningPage: React.FC = () => {
             className="text-slate-500 dark:text-slate-400 shrink-0"
           />
           <h1 className="hdr-name flex min-w-0 text-sm font-semibold text-slate-900 dark:text-slate-100">
-            <span className="truncate">Planning</span>
+            <span className="truncate">Decisions</span>
           </h1>
+          <AppLink
+            to={workPath(isMultiRepo, repoName || null)}
+            className="hdr-action text-sm text-blue-700 hover:underline dark:text-blue-400"
+          >
+            Work
+          </AppLink>
         </nav>
       </div>
       <div

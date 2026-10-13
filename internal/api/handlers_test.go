@@ -156,6 +156,7 @@ func TestRoutesTableShapes(t *testing.T) {
 	// Degradations are listed across every project; the banner filters them.
 	require.Equal(t, ScopeGlobal, scopeOf("/degraded", http.MethodGet))
 	require.Equal(t, ScopeRepo, scopeOf("/git/history", http.MethodGet))
+	require.Equal(t, ScopeRepo, scopeOf("/git/planning-snapshots", http.MethodGet))
 	require.Equal(t, ScopeRepo, scopeOf("/tree", http.MethodGet))
 	require.Equal(t, ScopeRepo, scopeOf("/review", http.MethodGet))
 	require.Equal(t, ScopeRepo, scopeOf("/review", http.MethodDelete))

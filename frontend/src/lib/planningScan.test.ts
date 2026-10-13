@@ -7,7 +7,7 @@
  * alias. The agreement with the rendered contents column is proved separately,
  * over every document in `docs/`, by `planningAgreement.test.tsx`.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { renderMarkdown } from "vantage-md";
 import {
   VANTAGE_OQ_PREFERENCE,
@@ -17,6 +17,20 @@ import {
   type PlanningDocument,
   type ScanResult,
 } from "vantage-md/planning";
+
+const tomlParseCounts = vi.hoisted(() => ({ enabled: false, full: 0 }));
+vi.mock("smol-toml", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("smol-toml")>();
+  return {
+    ...actual,
+    parse: (...args: Parameters<typeof actual.parse>) => {
+      if (tomlParseCounts.enabled && args[0].length > 50_000) {
+        tomlParseCounts.full++;
+      }
+      return actual.parse(...args);
+    },
+  };
+});
 
 /** Scan `source` as `path` and insist it is a planning document. */
 function planning(
@@ -990,6 +1004,202 @@ describe("the header of record (§3.4, Plan Q20)", () => {
       stage: null,
       headerProblems: [expect.objectContaining({ key: "stage", line: 3 })],
     });
+  });
+
+  it("normalizes valid stage-since YAML and TOML dates to UTC instants", () => {
+    const yaml = planning("---\nstage: DESIGN\nstage-since: 2026-02-28\n---\n");
+    const toml = planning(
+      '+++\nstage = "DESIGN"\nstage-since = 2026-02-28\n+++\n',
+    );
+    const offset = planning(
+      '---\nstage: DESIGN\nstage-since: "2026-03-01T05:30:00+05:30"\n---\n',
+    );
+    expect(yaml.stageSince).toBe("2026-02-28T00:00:00.000Z");
+    expect(toml.stageSince).toBe(yaml.stageSince);
+    expect(offset.stageSince).toBe("2026-03-01T00:00:00.000Z");
+  });
+
+  it.each([
+    ["2026-03-01t00:00:00z", "2026-03-01T00:00:00Z"],
+    ["2026-03-01t05:30:00+05:30", "2026-03-01T05:30:00+05:30"],
+    ["2026-03-01T00:00:00z", "2026-03-01T00:00:00Z"],
+  ])(
+    "normalizes lowercase RFC 3339 stage-since %s in YAML and TOML strings",
+    (lowercase, uppercase) => {
+      const expected = planning(
+        `---\nstage: DESIGN\nstage-since: "${uppercase}"\n---\n`,
+      ).stageSince;
+      expect(expected).toBe("2026-03-01T00:00:00.000Z");
+      for (const value of [lowercase, uppercase]) {
+        expect(
+          planning(`---\nstage: DESIGN\nstage-since: "${value}"\n---\n`)
+            .stageSince,
+        ).toBe(expected);
+        expect(
+          planning(`+++\nstage = "DESIGN"\nstage-since = "${value}"\n+++\n`)
+            .stageSince,
+        ).toBe(expected);
+      }
+    },
+  );
+
+  it.each([
+    ["2026-02-28", "2026-02-28T00:00:00.000Z"],
+    ["2024-02-29", "2024-02-29T00:00:00.000Z"],
+    ["2026-03-01T05:30:00+05:30", "2026-03-01T00:00:00.000Z"],
+    ["2026-03-01 05:30:00+05:30", "2026-03-01T00:00:00.000Z"],
+    ["2026-03-01t00:00:00z", "2026-03-01T00:00:00.000Z"],
+  ])("normalizes valid unquoted TOML stage-since %s", (value, expected) => {
+    expect(
+      planning(
+        `+++\nstage = "DESIGN"\nstage-since = ${value} # evidence\n+++\n`,
+      ).stageSince,
+    ).toBe(expected);
+  });
+
+  it.each([
+    "2026-02-30",
+    "2026-02-29",
+    "2026-02-30T00:00:00Z",
+    "2026-02-30T05:30:00+05:30",
+    "2026-03-01T00:00:00",
+    "2026-03-01 00:00:00",
+    "05:30:00",
+  ])("ignores invalid or non-instant unquoted TOML stage-since %s", (value) => {
+    const doc = planning(
+      `+++\nstage = "DESIGN"\nstage-since = ${value}\n+++\n`,
+    );
+    expect(doc.stageSince).toBeUndefined();
+    expect(doc.headerProblems).toEqual([]);
+    expect(doc.stage).toBe("DESIGN");
+  });
+
+  it.each(["2024-02-29", "2026-03-01t00:00:00z"])(
+    "normalizes unquoted TOML stage-since %s with CRLF delimiters",
+    (value) => {
+      expect(
+        planning(`+++\r\nstage = "DESIGN"\r\nstage-since = ${value}\r\n+++\r\n`)
+          .stageSince,
+      ).toBe(
+        value === "2024-02-29"
+          ? "2024-02-29T00:00:00.000Z"
+          : "2026-03-01T00:00:00.000Z",
+      );
+    },
+  );
+
+  it("bounds full TOML parses independently of unrelated date assignments", () => {
+    const source = [
+      "+++",
+      'stage = "DESIGN"',
+      ...Array.from({ length: 3000 }, (_, i) => `d${i} = 2024-02-29`),
+      "stage-since = 2024-02-29",
+      "+++",
+      "",
+    ].join("\n");
+    tomlParseCounts.full = 0;
+    tomlParseCounts.enabled = true;
+    try {
+      expect(planning(source).stageSince).toBe("2024-02-29T00:00:00.000Z");
+      // The normal frontmatter parse plus at most one token verification.
+      expect(tomlParseCounts.full).toBe(2);
+    } finally {
+      tomlParseCounts.enabled = false;
+    }
+  });
+
+  it.each([
+    "stage-since",
+    '"stage-since"',
+    "'stage-since'",
+    '"stage\\u002dsince"',
+  ])("reads an unquoted TOML date with key %s", (key) => {
+    expect(
+      planning(`+++\nstage = "DESIGN"\n${key} = 2024-02-29\n+++\n`).stageSince,
+    ).toBe("2024-02-29T00:00:00.000Z");
+  });
+
+  it.each([
+    ["2024-02-29", "2024-02-29T00:00:00.000Z"],
+    ["2026-02-30", undefined],
+  ])(
+    "skips compound TOML values and quoted lookalikes before %s",
+    (value, expected) => {
+      const source = [
+        "+++",
+        'stage = "DESIGN"',
+        '"unrelated=key" = "stage-since = 2026-01-01"',
+        "literal = '''",
+        "stage-since = 2026-01-02",
+        "[not-a-table]",
+        "'''",
+        'basic = """escaped quote: \\"',
+        "stage-since = 2026-01-03",
+        '["not-a-table"]',
+        'four closing quotes: """"',
+        "values = [",
+        "  # stage-since = 2026-01-04",
+        '  { "stage-since" = 2026-01-05 },',
+        "  [2026-01-06],",
+        "]",
+        "nested.stage-since = 2026-01-07",
+        '"other"."stage-since" = 2026-01-08',
+        `"stage\\u002dsince" = ${value}`,
+        '["table=with.quotes"]',
+        "stage-since = 2026-01-09",
+        "+++",
+        "",
+      ].join("\n");
+      expect(planning(source).stageSince).toBe(expected);
+    },
+  );
+
+  it.each([
+    ["2024-02-29", "2024-02-29T00:00:00.000Z"],
+    ["2026-02-30", undefined],
+  ])(
+    "validates only the real top-level TOML stage-since %s",
+    (value, expected) => {
+      const source = [
+        "+++",
+        'stage = "DESIGN"',
+        'description = """',
+        "stage-since = 2026-01-01",
+        '"""',
+        "# stage-since = 2026-01-02",
+        `stage-since = ${value}`,
+        "[nested]",
+        "stage-since = 2026-01-03",
+        "+++",
+        "stage-since = 2026-01-04",
+        "",
+      ].join("\n");
+      expect(planning(source).stageSince).toBe(expected);
+    },
+  );
+
+  it.each([
+    ["impossible Gregorian date", "2026-02-30"],
+    ["timestamp without timezone", "2026-03-01T00:00:00"],
+    ["impossible timestamp date", "2026-02-30T00:00:00Z"],
+  ])("ignores a malformed stage-since (%s)", (_, value) => {
+    expect(
+      planning(`---\nstage: DESIGN\nstage-since: "${value}"\n---\n`).stageSince,
+    ).toBeUndefined();
+  });
+
+  it("does not project stage-since without a valid current stage", () => {
+    expect(
+      planning("---\nstatus: draft\nstage-since: 2026-02-28\n---\n").stageSince,
+    ).toBeUndefined();
+    expect(
+      planning("---\nstage: ''\nstage-since: 2026-02-28\n---\n").stageSince,
+    ).toBeUndefined();
+  });
+
+  it("leaves legacy planning sources without stage-since unchanged", () => {
+    const legacy = planning("---\nstage: DESIGN\n---\n");
+    expect(Object.hasOwn(legacy, "stageSince")).toBe(false);
   });
 
   it("reads next as one trimmed line, OQ ids and all", () => {

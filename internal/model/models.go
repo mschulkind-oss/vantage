@@ -36,6 +36,25 @@ type GitCommit struct {
 	Message     string    `json:"message"`
 }
 
+type PlanningSnapshot struct {
+	Path         string    `json:"path"`
+	CommitHexsha string    `json:"commit_hexsha"`
+	CommitDate   time.Time `json:"commit_date"`
+	Before       string    `json:"before"`
+	After        string    `json:"after"`
+	BeforeExists bool      `json:"before_exists"`
+	AfterExists  bool      `json:"after_exists"`
+}
+
+// PlanningSnapshots carries bounded historical source pairs and their limits.
+type PlanningSnapshots struct {
+	Status          string             `json:"status"`
+	CommitsExamined int                `json:"commits_examined"`
+	Truncated       bool               `json:"truncated"`
+	Reason          string             `json:"reason,omitempty"`
+	Snapshots       []PlanningSnapshot `json:"snapshots"`
+}
+
 // FileStatus is the git status of a single file: its most recent commit (or
 // null when clean/untracked) and a status enum string (or null when clean).
 type FileStatus struct {

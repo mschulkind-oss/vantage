@@ -43,10 +43,10 @@ const shortcutGroups: ShortcutGroup[] = [
       { keys: ["Shift", "P"], description: "Switch project" },
       { keys: ["g", "h"], description: "Go home (root)" },
       { keys: ["g", "r"], description: "Go to recent files page" },
-      { keys: ["g", "p"], description: "Go to the planning page" },
+      { keys: ["g", "p"], description: "Go to Decisions" },
       {
         keys: ["/"],
-        description: "Filter the planning page",
+        description: "Filter Decisions",
         filter: true,
       },
       { keys: ["b"], description: "Toggle sidebar" },

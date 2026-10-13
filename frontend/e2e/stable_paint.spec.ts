@@ -406,13 +406,13 @@ test.describe("Referenced by fills the line reserved for it", () => {
     [
       "tree-badges/questions-only.md",
       "Questions only",
-      /open questions not on the roadmap · its questions on the planning page$/,
+      /open questions not on the roadmap · its questions on the Decisions page$/,
       1440,
     ],
     [
       "tree-badges/questions-only.md",
       "Questions only",
-      /open questions not on the roadmap · its questions on the planning page$/,
+      /open questions not on the roadmap · its questions on the Decisions page$/,
       390,
     ],
     // The disclosure button and the link after it, on one line at a phone's
@@ -420,13 +420,13 @@ test.describe("Referenced by fills the line reserved for it", () => {
     [
       "plans/paged.md",
       "The paged plan",
-      "Referenced by 1 document · on the roadmap under Later · its questions on the planning page",
+      "Referenced by 1 document · on the roadmap under Later · its questions on the Decisions page",
       1440,
     ],
     [
       "plans/paged.md",
       "The paged plan",
-      "Referenced by 1 document · on the roadmap under Later · its questions on the planning page",
+      "Referenced by 1 document · on the roadmap under Later · its questions on the Decisions page",
       390,
     ],
   ] as const) {

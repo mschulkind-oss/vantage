@@ -7,10 +7,9 @@ import { planningIndexReady } from "./planningIndex";
 
 // The planning page in a real browser, against the real planning endpoint and
 // the real review store (docs/reference/planning-index.md §6). The fixture is
-// `fixtures/test_repo/plans/`, whose roadmap `.vantage.toml` names: it routes
-// design.md's two questions and paged.md's twelve, so Needs you holds more
-// than the ten cards it shows, and not unrouted.md's one, or oversized.md's,
-// which *Maintenance* lists as Not on a roadmap.
+// `fixtures/test_repo/`, whose roadmap routes 14 of 41 open questions across
+// the fixture's 23 indexed documents. Needs you shows ten questions at a time;
+// the other 31 remain counted, including unrouted questions and folded maintenance rows.
 test.describe("the planning page", () => {
   // Tests file comments on the same document and delete them afterwards.
   test.describe.configure({ mode: "serial" });
@@ -94,7 +93,9 @@ test.describe("the planning page", () => {
     page,
   }) => {
     await page.goto("/.vantage/planning");
-    await expect(page.getByRole("heading", { name: "Planning" })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Decisions" }),
+    ).toBeVisible();
     // Ten cards, and the end line counts the rest: the fourteen the roadmap
     // routes, then the questions no roadmap routes, which *Needs you* lists
     // marked *Not on a roadmap* and counts with them — the same questions
@@ -103,6 +104,7 @@ test.describe("the planning page", () => {
     await expect(section(page, "Needs you").getByRole("article")).toHaveCount(
       10,
     );
+    // The two unrouted open questions are also in Needs you, marked Not on a roadmap.
     await expect(page.getByTestId("needs-you-end")).toContainText(
       "31 more need you",
     );

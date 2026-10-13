@@ -140,6 +140,8 @@ test.describe("several roadmaps", () => {
       "roadmap.md (2 need you)",
       `${NESTED} (4 need you)`,
     ]);
+    // Open questions on no roadmap still sit in Needs you, visibly marked
+    // Not on a roadmap; the folded Maintenance row is a second navigation path.
     await cardsIn(page, "Needs you").toEqual([
       "OQ-A1: Which way does alpha go?",
       "OQ-A2: How soon does alpha ship?",
@@ -218,7 +220,9 @@ test.describe("several roadmaps", () => {
     const entries = await page.evaluate(() => history.length);
     await empty.getByRole("button", { name: `Choose ${NESTED}` }).click();
     await expect.poll(() => roadmapParam(page)).toBe(NESTED);
-    await cardsIn(page, "Needs you").toEqual(["OQ-B1: Which way does beta go?"]);
+    await cardsIn(page, "Needs you").toEqual([
+      "OQ-B1: Which way does beta go?",
+    ]);
     expect(new URL(page.url()).searchParams.get("filter")).toBe("OQ-B1");
     await expect(empty).toHaveCount(0);
     await expect(picker(page)).toHaveValue(NESTED);
@@ -383,7 +387,9 @@ test.describe("several roadmaps", () => {
     expect(pickerBox.x).toBeGreaterThan(headingBox.x + headingBox.width - 1);
     expect(
       Math.abs(
-        pickerBox.y + pickerBox.height / 2 - (headingBox.y + headingBox.height / 2),
+        pickerBox.y +
+          pickerBox.height / 2 -
+          (headingBox.y + headingBox.height / 2),
       ),
     ).toBeLessThan(12);
   });
@@ -563,10 +569,12 @@ test.describe("several roadmaps", () => {
     // which names no roadmap: the page shows the one it would anyway.
     await openWithIndex(page, "/designs/gamma.md");
     await expect(surface).toHaveText(
-      "1 open question not on any roadmap · its questions on the planning page",
+      "1 open question not on any roadmap · its questions on the Decisions page",
     );
     await expect(
-      surface.getByRole("link", { name: "its questions on the planning page" }),
+      surface.getByRole("link", {
+        name: "its questions on the Decisions page",
+      }),
     ).toHaveAttribute(
       "href",
       "/.vantage/planning?filter=path:/designs/gamma.md",

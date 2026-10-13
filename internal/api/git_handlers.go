@@ -46,6 +46,15 @@ func (h *Handlers) GitHistory(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, BuildHistory(svc.Git, path))
 }
 
+// GitPlanningSnapshots handles the Work page's one repository-level batch query.
+func (h *Handlers) GitPlanningSnapshots(w http.ResponseWriter, r *http.Request) {
+	svc, ok := h.repoOr400(w, r)
+	if !ok {
+		return
+	}
+	writeJSON(w, http.StatusOK, BuildPlanningSnapshots(svc.Git))
+}
+
 // GitStatus handles GET /git/status (and /r/{repo}/git/status). It returns the
 // file's last commit (or null) and working-tree status enum (or null). Git
 // errors degrade to nulls at HTTP 200.

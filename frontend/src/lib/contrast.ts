@@ -160,6 +160,7 @@ export const ACCENT_ON_CHROME: Record<ContrastMode, readonly TextPair[]> = {
     ["blue-400", "slate-100"],
     ["blue-500", "slate-100"],
     ["blue-600", "slate-100"],
+    ["blue-700", "slate-100"],
     ["green-400", "slate-100"],
     ["green-500", "slate-100"],
     ["green-600", "slate-100"],
