@@ -274,7 +274,10 @@ the one thing the command reads (the `target` in the project root's
 ### 3.3 `index`, `version` and `help`
 
 `index` prints the project's planning index and, with `--request`, the requests
-the planning page copies for an agent. It is documented in
+the planning page copies for an agent. The browser also has a separate **Work**
+overview, [documented separately](work-overview.md), grouped from the same
+index; it adds no CLI command or output and does
+not change the Decisions page's `/.vantage/planning` links. `index` is documented in
 [`planning-index.md` §13.2](planning-index.md#132-vantage-check-index); it
 shares the CLI's dispatch, configuration loader and exit codes, and takes no
 paths.

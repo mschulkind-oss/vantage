@@ -1,6 +1,6 @@
 # Roadmap
 
-**Updated:** 2026-10-09
+**Updated:** 2026-10-13
 
 The order is the one thing this file holds that no other document can. Each entry is a link and the reason it sits where it does. What the linked document owns, its status, its stage and its open questions, is not copied here: Vantage shows it in a badge beside the link, and on GitHub it is one click away in that document's frontmatter. Prose beneath an entry holds only what has no other home. What a link here routes, and how `vantage-check index` finds the questions this file misses: [Planning Documents](userguide/guides/planning.md#the-roadmap).
 
