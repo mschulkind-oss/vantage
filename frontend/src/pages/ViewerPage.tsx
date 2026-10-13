@@ -998,15 +998,22 @@ export const ViewerPage: React.FC = () => {
                       <span className="truncate">{leafStem}</span>
                     )}
                   </span>
-                  {/* The path lives with the name it belongs to. The
-                      absolute path needs the repository root, which arrives
-                      with `repoRootPath`; its room is kept from the document's
-                      first paint so that arrival moves nothing already drawn
-                      (planning-index.md §12.2, stable_paint.spec.ts), and
-                      until it can work the control is hidden rather than
-                      drawn dead. It confirms in place: the icon becomes a
-                      check and the tooltip says *Copied!*, so the click moves
-                      nothing in a row whose width is the reader's budget. */}
+                  {/* The path lives with the name it belongs to, and takes
+                      the room the name leaves rather than any of the name's
+                      own: the crumb row's room is one budget, and the name has
+                      the first claim on it (S6, and §7.2's rule for the file
+                      tree's badge), so at the `copy-path` yield step the
+                      control goes before the name gives any
+                      (lib/headerFit.ts; index.css step 10). The room its
+                      arrival needs is the row's height, kept from the
+                      document's first paint so nothing already drawn moves
+                      (planning-index.md §12.2, stable_paint.spec.ts). The
+                      absolute path itself also needs the repository root,
+                      which arrives with `repoRootPath`, and until it can work
+                      the control is hidden rather than drawn dead. It
+                      confirms in place: the icon becomes a check and the
+                      tooltip says *Copied!*, so the click moves nothing in a
+                      row whose width is the reader's budget. */}
                   {currentPath && (
                     <button
                       type="button"
@@ -1020,7 +1027,7 @@ export const ViewerPage: React.FC = () => {
                           : undefined
                       }
                       className={cn(
-                        "flex items-center rounded-lg p-1.5 transition-colors",
+                        "hdr-copy-path flex items-center rounded-lg p-1.5 transition-colors",
                         repoRootPath
                           ? "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 cursor-pointer"
                           : "invisible",

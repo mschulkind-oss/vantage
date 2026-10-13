@@ -16,7 +16,7 @@ describe("yieldAttribute", () => {
     expect(yieldAttribute(0)).toBe("");
     expect(yieldAttribute(2)).toBe("subject date");
     expect(yieldAttribute(YIELD_STEPS.length)).toBe(
-      "subject date labels-minor labels time dirs repo actions review name",
+      "subject date labels-minor labels time dirs repo actions review copy-path name",
     );
   });
 });
@@ -31,7 +31,7 @@ describe("fewestSteps", () => {
     const fits = vi.fn(() => false);
     expect(fewestSteps(fits)).toBe(YIELD_STEPS.length);
     expect(fits.mock.calls.map(([n]) => n)).toEqual([
-      0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
+      0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
     ]);
   });
 });
@@ -109,6 +109,9 @@ const SAVES = {
   repo: 40,
   actions: 250,
   review: 110,
+  // The copy-path control beside the name: a 26px button and the row's 4px
+  // gap, the room the name takes back when the header cannot hold both.
+  "copy-path": 30,
   name: 0,
 };
 
@@ -143,7 +146,7 @@ describe("fitHeader", () => {
     const { header } = fakeHeader(500, needing(1800));
     expect(fitHeader(header)).toBe(YIELD_STEPS.length);
     expect(header.dataset.yield).toBe(
-      "subject date labels-minor labels time dirs repo actions review name",
+      "subject date labels-minor labels time dirs repo actions review copy-path name",
     );
   });
 
@@ -158,13 +161,28 @@ describe("fitHeader", () => {
     );
   });
 
-  it("folds the review controls last, and only before the name", () => {
+  it("folds the review controls before the control beside the name, and the name", () => {
     // 1660 needed in 500: every step up to the file's actions still does not
     // fit, and the review cluster is what pays for the name to stay whole.
+    // The copy-path control's room goes after theirs (the next test), and the
+    // name itself only after that.
     const { header } = fakeHeader(500, needing(1660));
     expect(fitHeader(header)).toBe(9);
     expect(header.dataset.yield).toBe(
       "subject date labels-minor labels time dirs repo actions review",
+    );
+  });
+
+  // The copy-path control sits in the crumb row, in the room the file name
+  // leaves: the name has the first claim on the row's width (S6, and §7.2 of
+  // docs/reference/planning-index.md for the file tree's badge), so where the
+  // header cannot hold both, the control goes and the name is whole — and only
+  // a "need" past that truncates the name.
+  it("gives the copy-path control's room up before the name's", () => {
+    const { header } = fakeHeader(500, needing(1770));
+    expect(fitHeader(header)).toBe(10);
+    expect(header.dataset.yield).toBe(
+      "subject date labels-minor labels time dirs repo actions review copy-path",
     );
   });
 

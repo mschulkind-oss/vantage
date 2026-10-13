@@ -51,13 +51,24 @@
  *    width with the sidebar open they squeezed it to nothing.
  * 9. `review` — the review controls, which fold into the same "⋯", so a
  *    reader reviewing reaches them one click in rather than not at all. They
- *    come last before the name, and only the name's own step is after them:
- *    at every width that can still keep the file name whole, the actions a
- *    reviewer reaches for most — *Copy* above all — are in the row
+ *    come last among the toolbar's actions: only the copy-path control beside
+ *    the name, and the name itself, are given up after them, so *Copy* — what
+ *    a reviewer reaches for before leaving — is in the row at every width
+ *    that can keep the name whole with it there
  *    (`components/ReviewControls.tsx`). Before this step the cluster was
  *    folded in with the file's actions, so *Copy* was two clicks in at every
  *    width (2026-10-13).
- * 10. `name` — the file name itself, which then truncates, keeping its
+ * 10. `copy-path` — the copy-path control beside the name, which gives its
+ *    room up before the name gives any: it is drawn only in the room the name
+ *    leaves, so where the crumb row can no longer keep the name whole beside
+ *    it, it is not drawn at all. That is the rule the file tree's badge
+ *    follows (§7.2 of `docs/reference/planning-index.md`), because the file
+ *    name has the first claim on the row's width (S6) — here the name's own
+ *    space and the control's are one budget, and the name's comes first. It
+ *    means a name too long for its row truncates exactly where it did before
+ *    the control was beside it, and that a header too narrow for both loses
+ *    the control rather than the name (`pages/ViewerPage.tsx`).
+ * 11. `name` — the file name itself, which then truncates, keeping its
  *    extension, with the full path in its tooltip. Its stem keeps a floor of
  *    a couple of characters and an ellipsis, and past that the breadcrumb
  *    clips from its start rather than its end, so the extension is the last
@@ -92,6 +103,7 @@ export const YIELD_STEPS = [
   "repo",
   "actions",
   "review",
+  "copy-path",
   "name",
 ] as const;
 

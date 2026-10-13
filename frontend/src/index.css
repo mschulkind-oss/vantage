@@ -163,6 +163,16 @@ code {
 .hdr-date {
   display: inline-flex;
 }
+.hdr-crumbs {
+  /* The row is as tall as the icon controls that share it — the copy-path
+     control beside the name is `p-1.5` around a 14px icon, 1.625rem tall —
+     from the row's first paint. Laid out at its text's 20px line height until
+     that control arrives, the row grew 6px and the header lifted it 3px: a
+     layout shift on a warm load (`stable_paint.spec.ts`). The height is the
+     row's, not its content's, so any one control arriving in it moves
+     nothing. */
+  min-height: 1.625rem;
+}
 .hdr-dirs {
   display: flex;
 }
@@ -339,12 +349,13 @@ code {
 }
 
 /* 9. The review controls fold into the same "⋯", and they take this step
-   later than everything else the header can give up: the name's own step is
-   the one after. They were folded in with the file's actions, which put *Copy*
-   — the action a reviewer reaches for most — two clicks in at every width
-   (`components/ReviewControls.tsx`). The step before the name is what keeps
-   that promise honest: the cluster goes only where the header would otherwise
-   have truncated the name.
+   later than everything else the header can give up: the copy-path control's
+   room, and the name's, are the ones after it. They were folded in with the
+   file's actions, which put *Copy* — the action a reviewer reaches for most —
+   two clicks in at every width (`components/ReviewControls.tsx`). What the
+   step buys is the name's wholeness: the cluster goes only where the crumb row
+   could not otherwise keep the name whole beside the room left for the control
+   and the name itself (steps 10 and 11).
 
    The panel holds them again while it is open, and only once this step is
    taken — the same bargain the view toggles make with the `actions` step — so
@@ -360,7 +371,21 @@ code {
   display: contents;
 }
 
-/* 10. Only now may the leading half shrink, and in it only the name can. It
+/* 10. The copy-path control beside the name gives its room up before the name
+   gives any: it is drawn only in the room the name leaves, so where the crumb
+   row can no longer keep the name whole beside it, it is not drawn at all.
+   That is the rule the file tree's badge follows (§7.2 of
+   `docs/reference/planning-index.md`), because the file name has the first
+   claim on the row's width (S6): the control's room and the name's are one
+   budget, and the name's comes first. Without this the control held 30px of
+   the room the name's extension needed, and at a 200px header the row drew
+   the control and clipped the name away entirely
+   (`e2e/header_fit.spec.ts`). */
+.viewer-header[data-yield~="copy-path"] .hdr-copy-path {
+  display: none;
+}
+
+/* 11. Only now may the leading half shrink, and in it only the name can. It
    clips rather than draws over the toolbar if even that is not enough, with
    room left for a focus ring at its edge.
 

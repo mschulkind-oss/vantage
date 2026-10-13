@@ -44,8 +44,8 @@ const SUBJECT =
  * the review cluster's *Dismiss 3 answered* are not shorthand: the mode and
  * how many comments the sweep takes are the state, and the count is the only
  * place it is written. The review actions take the header's last step before
- * the name, so where they are drawn they are here as the rest of the labels
- * are.
+ * the copy-path control's, and so before the name's: where they are drawn they
+ * are here as the rest of the labels are.
  */
 const LABELS = ["2 commits", "Raw", "Review", "Dismiss 3 answered"];
 const MINOR_LABELS = new Set(["2 commits", "Raw"]);
@@ -143,6 +143,13 @@ interface Snapshot {
   more: boolean | null;
   /** The row's review controls: drawn, or not in the header (null). */
   review: boolean | null;
+  /**
+   * The copy-path control beside the name: in the row, or absent (null). Its
+   * step is `display: none`, which takes the control out of layout; a control
+   * whose repository root has not arrived is `invisible`, laid out but not
+   * painted, which is not this step taken.
+   */
+  copyPath: boolean | null;
   /** Pairs of drawn header items whose boxes overlap, by their text. */
   overlaps: string[];
   /** Drawn items taller than one line, or poking out of the header. */
@@ -196,6 +203,7 @@ function snapshot(page: Page, labels: string[], dirs: string[]) {
       const timeEl = header.querySelector('[data-testid="header-time"]');
       const nav = header.querySelector("nav")!;
       const reviewEl = header.querySelector(".hdr-review");
+      const copyPathEl = header.querySelector(".hdr-copy-path");
 
       // The row's items, in order: every item the two halves lay out, which
       // for the toolbar includes the actions, whose wrappers lay out no box
@@ -300,6 +308,7 @@ function snapshot(page: Page, labels: string[], dirs: string[]) {
         // all, which is the `shown` this still reports.
         review:
           reviewEl && reviewEl.children.length > 0 ? shown(reviewEl) : null,
+        copyPath: copyPathEl ? copyPathEl.getClientRects().length > 0 : null,
         overlaps,
         escapes,
       };
@@ -319,6 +328,7 @@ const STEPS = [
   "repo",
   "actions",
   "review",
+  "copy-path",
   "name",
 ] as const;
 
@@ -389,6 +399,7 @@ function yielded(s: Snapshot): Partial<Record<Step, boolean>> {
   out.repo = !s.repo;
   if (s.more !== null) out.actions = s.more;
   if (s.review !== null) out.review = !s.review;
+  if (s.copyPath !== null) out["copy-path"] = !s.copyPath;
   out.name = s.name.truncated;
   return out;
 }
@@ -906,6 +917,34 @@ test.describe("viewer header under width pressure", () => {
     expect((await copy.boundingBox())!.width).toBeCloseTo(was.width, 0);
   });
 
+  // The control is drawn in the room the name leaves and not one pixel of the
+  // name's own: it went at a 200px header with 26px of the room the name's
+  // extension needed, and the row drew the control and clipped the name away
+  // entirely. Where the two no longer fit together the control is not drawn,
+  // and the name is what the row keeps — the rule the file tree's badge
+  // follows (§7.2 of docs/reference/planning-index.md: the file name wins,
+  // S6). Found rather than assumed: where the row runs out is the fonts'.
+  test("the copy-path control gives the name its room, and goes before the name does", async ({
+    page,
+  }) => {
+    await widenSidebar(page);
+    const gone = async (width: number) => {
+      await setHeaderWidth(page, width);
+      return (await snapshot(page, LABELS, DIRS)).copyPath === false;
+    };
+    let width = 700;
+    while (width > 320 && !(await gone(width))) width -= 10;
+    expect(width, "the control was drawn at every width").toBeGreaterThan(320);
+    const s = await snapshot(page, LABELS, DIRS);
+    // It gave up 30px to keep the name whole, not the other way around: at the
+    // widest header it goes at, the crumb row holds all of the name — and a
+    // step wider, where both fit, it is drawn again.
+    expect(s.copyPath, JSON.stringify(s)).toBe(false);
+    expect(s.name.truncated, JSON.stringify(s)).toBe(false);
+    expect(s.name.rendered).toBeGreaterThanOrEqual(s.name.full - 1);
+    expect(await gone(width + 10), `at ${width + 10}px`).toBe(false);
+  });
+
   // A button keeping room for its longer label once drew the shorter one at
   // the left of that room, with all of the rest after it: on Review's purple
   // background and ring in review mode, plainly off center. The icon and the
@@ -1039,9 +1078,7 @@ test.describe("viewer header under width pressure", () => {
     const shorthand = await narrowInto(page, "labels-minor");
     const s = await snapshot(page, LABELS, DIRS);
     expect(s.labels["Review"], JSON.stringify(s.labels)).toBe(true);
-    expect(s.labels["Dismiss 3 answered"], JSON.stringify(s.labels)).toBe(
-      true,
-    );
+    expect(s.labels["Dismiss 3 answered"], JSON.stringify(s.labels)).toBe(true);
     for (const name of LABELS.filter((name) => MINOR_LABELS.has(name))) {
       expect(s.labels[name], `${name}: ${JSON.stringify(s.labels)}`).toBe(
         false,
