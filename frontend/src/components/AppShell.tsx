@@ -542,7 +542,7 @@ const ShellFrame: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                   to={planningPath(isMultiRepo, currentRepo)}
                   className="p-1.5 rounded-md hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
                   aria-label="Decisions"
-                  title="Decisions (g p)"
+                  data-tip="Decisions (g p)"
                   onPointerEnter={prefetchPlanning}
                   onFocus={prefetchPlanning}
                 >
