@@ -120,20 +120,28 @@ scoped view; other next steps stay plain saved text. Waiting dependencies link
 to indexed target documents. No owner, assigned worker or completion fraction
 is manufactured, and no title fetch is made for a card.
 
-Active tiles render together in responsive stage grids within one page scroll;
-stage counts and jump links keep the configured role order discoverable. No
-per-stage reveal limit or nested lane scroll hides an active tile. Terminal
-/reference stays collapsed by default with its full count and a visible access
-control. The labeled Overview filter searches title, path, stage and next step;
+Active stages start expanded in responsive grids within one page scroll; there
+is no automatic collapse, progressive reveal cap or nested lane scroll. A reader
+can voluntarily collapse or expand each active group using the labeled chevron
+button on its heading row, including missing and unmapped stages. Exact headings,
+matching/applied counts and stage-chip jump destinations remain reachable even
+when a group is collapsed or has no filter matches. **Expand all active stages**
+appears while any active group is collapsed; it does not open Terminal/reference.
+Terminal/reference keeps its existing collapsed default, full count and access
+control. These page-local choices are not persisted and do not change the
+initial large-board wall; the initial-default question remains open in
+[Large collections in Work](../brainstorm/overview-at-scale.md#OQ-OAS1). The labeled Overview filter searches title, path, stage and next step;
 it is local to the page and offers **Clear filter** when nothing matches. It
-restores the saved board rather than applying a pending index.
+clears the filter without changing voluntary stage collapse or applying a pending index.
 
 `WorkPage` holds one complete applied index snapshot. Later versions are
 pending until the reader presses **Refresh saved index updates**. Filtering,
 comments and WebSocket pushes do not replace the painted groups, tiles or
-counts. Refresh replaces the snapshot and resets view-local expansion; the
-history computation belongs to that applied snapshot, not to an unapplied newer
-index.
+counts. Refresh replaces the snapshot, expands all active stages and resets the
+event-list expansion; it does not reset the existing terminal or retained card
+detail disclosures. Repository switches restore the initial page-local layout.
+The history computation belongs to that applied snapshot, not to an unapplied
+newer index.
 
 ## Transition evidence
 
@@ -277,19 +285,26 @@ viewport has horizontal overflow. Screenshots are retained in
 API responses, not a live repository's history completeness or arbitrary board
 scale. The temporary fixture source was removed after the run.
 
-The existing source-Vite acceptance fixture covers forty active tiles across
-repository-defined stage labels, collapsed terminal items, and accessible card
-handoffs. That larger-board fixture was not rerun for this local coverage change;
-its exact viewport inputs are in [Current values](#current-values).
-Assistive-technology observation remains outstanding.
+The source-Vite acceptance fixture was rerun against `70fabf9b` plus the local
+voluntary-disclosure change. All forty initial active tiles remain within the
+desktop content viewport, with terminal items collapsed and card handoffs usable
+on desktop and phone. A permanent large-inventory fixture matches the supplied
+capture's group counts, preserves all document access after voluntary collapse,
+and checks stage jumps, last-document reachability, keyboard reveal/restore and
+phone overflow. Its unmapped CURRENT group is a test classification, not a claim
+about the supplied repository's configuration. Screenshots are retained in
+`.yolo/durable/overview-stage-review`; exact viewport inputs are in
+[Current values](#current-values). Assistive-technology observation remains
+outstanding.
 
-The clean-tree `just done` landing gate passed on 2026-10-15. It completed Go
-tests, 27 `vantage-check` test files (1,234 passed, 1 skipped), and 143 frontend
-test files (5,012 passed), along with the formatting, lint, type, and repository
-checks. The documentation check reported nine warnings in 57 files: eight
+The latest clean-tree `just done` landing gate passed on 2026-10-15, after the
+voluntary-disclosure implementation commit. It completed Go tests, 27
+`vantage-check` test files (1,234 passed, 1 skipped), and 143 frontend test
+files (5,016 passed), along with formatting, lint, type, and repository checks.
+The documentation check reported nine warnings in 57 files: eight
 `planning/unrouted` notices for other open questions and one existing
-`planning/question-length` notice. There were no gate failures; the final
-landing report records this full run.
+`planning/question-length` notice. There were no gate failures; the landing
+report records this run.
 
 
 ## Current values
@@ -306,9 +321,9 @@ tunable limits and operational paths from the mechanisms above.
 | Commit / source-pair caps | 50 local commits / 50 old-new file pairs | `planningCommitLimit`, `planningPairLimit` in `internal/git` |
 | Blob / returned source-text caps | 64 KiB per blob / 2 MiB total source text | `planningBlobLimit`, `planningTextLimit` in `internal/git` |
 | Changed-path output cap | 2 MiB per inspected commit | `planningPathLimit` in `internal/git` |
-| Overview active tiles | All filtered active documents render without a progressive reveal cap; terminal/reference remains collapsed with a count | `WorkPage` in `frontend/src/pages` |
+| Overview active tiles | All filtered active documents render initially without a progressive reveal cap; optional per-stage collapse and restore-all are page-local; terminal/reference starts collapsed with a count | `WorkPage` in `frontend/src/pages` |
 | Overview local filter fields | Display title, path, stage and next step; separate from Questions' filter grammar | `filterWorkDocuments` in `packages/vantage-md/src/planning/work.ts` |
-| Viewport acceptance | 40 active documents across four configured stages at 1440×900 with sidebar collapsed (bounds 198.5–882.5 inside content bounds 56–900); 2 terminal documents remain collapsed but counted/accessed; 375×812 has no horizontal overflow, opened detail bounds/actions fit, and native disclosure is keyboard-operable | `frontend/e2e/work_shell.spec.ts` |
+| Viewport acceptance | 40 active documents across four configured stages at 1440×900 with sidebar collapsed (bounds 160.5–844.5 inside content bounds 56–900); 2 terminal documents remain collapsed but counted/accessed; 375×812 has no horizontal overflow, opened detail bounds/actions fit, and native disclosure is keyboard-operable | `frontend/e2e/work_shell.spec.ts` |
 | Coverage presentation observation | Desktop 1440×900 and phone 375×812; compact and keyboard-expanded details, metadata and Git links retained, no horizontal overflow | Bounded source-Vite browser fixture; screenshots in `.yolo/durable/overview-warning-review` |
 | Initial events | 5; Show more reveals remaining bounded candidates | `INITIAL_EVENTS` in `WorkPage` |
 | Evidence window | Inclusive `[now - 168 hours, now]` | `buildWorkHistory` in `frontend/src/lib` |

@@ -321,6 +321,178 @@ test.describe("Work in the shared shell", () => {
     });
   });
 
+  test("keeps a 270-document inventory reachable through voluntary stage disclosures", async ({
+    page,
+  }, testInfo) => {
+    // Match the supplied large-board capture's census, including the exact
+    // CURRENT word left unmapped here rather than inventing its authority.
+    const groups = [
+      ["DESIGN", 78],
+      ["SKETCH", 22],
+      ["DECIDED", 20],
+      ["BUILT", 36],
+      ["CURRENT", 19],
+      ["Missing stage", 66],
+      ["Terminal/reference", 29],
+    ] as const;
+    const config = {
+      roadmaps: null,
+      include: ["**/*.md"],
+      exclude: [],
+      max_file_bytes: 1048576,
+      max_candidates: 5000,
+      stages: {
+        DESIGN: "open",
+        SKETCH: "open",
+        DECIDED: "ready",
+        BUILT: "built",
+        SUPERSEDED: "done",
+      },
+    };
+    const files = groups.flatMap(([label, count]) =>
+      Array.from({ length: count }, (_, index) => {
+        const word = label === "Terminal/reference" ? "SUPERSEDED" : label;
+        const path = `plans/${label === "Missing stage" ? "missing" : word.toLowerCase()}-${String(index + 1).padStart(3, "0")}.md`;
+        const title = `Review saved planning context ${path}`;
+        const content = `---\n${label === "Missing stage" ? "status: draft" : `stage: ${word}`}\ntitle: ${JSON.stringify(title)}\nnext: Inspect the document's saved claim\n---\n\n# ${title}\n`;
+        return {
+          kind: "file",
+          path,
+          content,
+          hash: createHash("sha256").update(content).digest("hex").slice(0, 32),
+        };
+      }),
+    );
+    const stream = [
+      JSON.stringify({
+        kind: "header",
+        config,
+        candidate_count: 270,
+        refused: false,
+      }),
+      ...files.map((file) => JSON.stringify(file)),
+      JSON.stringify({ kind: "end", candidates: 270 }),
+      "",
+    ].join("\n");
+    await page.route("**/api/planning/server-id", (route) =>
+      route.fulfill({ json: { server_id: "work-overview-large-disclosures" } }),
+    );
+    await page.route("**/api/planning/stream", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/x-ndjson",
+        body: stream,
+      }),
+    );
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/.vantage/work");
+    await expect(page.locator("[data-work-document]")).toHaveCount(241);
+    await expect(page.getByTestId("work-counts")).toContainText(
+      "270 in applied snapshot",
+    );
+    await page.getByRole("button", { name: "Collapse sidebar" }).click();
+    const summary = page.getByRole("navigation", {
+      name: "Stage count and jump summary",
+    });
+    for (const [label, count] of groups.slice(0, -1)) {
+      await expect(
+        summary.getByRole("link", {
+          name: `Jump to ${label}: ${count} matching of ${count} applied documents`,
+        }),
+      ).toBeVisible();
+      await page
+        .getByRole("button", { name: `Collapse ${label} stage` })
+        .click();
+      await expect(
+        page.getByRole("heading", { name: label, exact: true }),
+      ).toBeVisible();
+    }
+    await expect(page.locator("[data-work-document]")).toHaveCount(0);
+    await page.screenshot({
+      path: testInfo.outputPath("work-overview-270-collapsed-1440x900.png"),
+    });
+    for (const [label, lastPath] of [
+      ["DESIGN", "plans/design-078.md"],
+      ["Missing stage", "plans/missing-066.md"],
+      ["CURRENT", "plans/current-019.md"],
+    ]) {
+      await summary
+        .getByRole("link", { name: new RegExp(`^Jump to ${label}:`) })
+        .click();
+      const reveal = page.getByRole("button", {
+        name: `Expand ${label} stage`,
+      });
+      await expect(reveal).toBeVisible();
+      await reveal.focus();
+      await page.keyboard.press("Enter");
+      await expect(
+        page.getByRole("button", { name: `Collapse ${label} stage` }),
+      ).toHaveAttribute("aria-expanded", "true");
+      const last = page.locator(`[data-work-document="${lastPath}"]`);
+      await last.scrollIntoViewIfNeeded();
+      await expect(last).toBeVisible();
+      await expectDetailsActionsReachable(page, last);
+      await page
+        .getByRole("button", { name: `Collapse ${label} stage` })
+        .click();
+    }
+    await summary
+      .getByRole("button", { name: "Terminal/reference 29" })
+      .click();
+    const terminal = page.getByLabel("Terminal/reference stage group");
+    await expect(terminal.getByRole("button")).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+    const lastTerminal = page.locator(
+      '[data-work-document="plans/superseded-029.md"]',
+    );
+    await lastTerminal.scrollIntoViewIfNeeded();
+    await expect(lastTerminal).toBeVisible();
+    await terminal.getByRole("button").click();
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.locator("[data-content-scroll]").evaluate((el) => {
+      el.scrollTop = 0;
+    });
+    await page.screenshot({
+      path: testInfo.outputPath("work-overview-270-collapsed-375x812.png"),
+    });
+    await summary
+      .getByRole("link", { name: /^Jump to Missing stage:/ })
+      .click();
+    const missingReveal = page.getByRole("button", {
+      name: "Expand Missing stage stage",
+    });
+    await expect(missingReveal).toBeVisible();
+    await missingReveal.focus();
+    await page.keyboard.press("Space");
+    await expect(
+      page.getByRole("button", { name: "Collapse Missing stage stage" }),
+    ).toHaveAttribute("aria-expanded", "true");
+    await page.screenshot({
+      path: testInfo.outputPath("work-overview-270-expanded-375x812.png"),
+    });
+    const lastMissing = page.locator(
+      '[data-work-document="plans/missing-066.md"]',
+    );
+    await expectDetailsActionsReachable(page, lastMissing);
+    await page
+      .getByRole("button", { name: "Expand all active stages" })
+      .click();
+    await expect(page.locator("[data-work-document]")).toHaveCount(241);
+    await expect(
+      page.getByRole("button", { name: "Expand all active stages" }),
+    ).toHaveCount(0);
+    expect(
+      await page.evaluate(
+        () =>
+          document.documentElement.scrollWidth <= window.innerWidth &&
+          document.querySelector("[data-content-scroll]")!.scrollWidth <=
+            document.querySelector("[data-content-scroll]")!.clientWidth,
+      ),
+    ).toBe(true);
+  });
+
   test("stacks cards on a narrow viewport and keeps document links keyboard-operable", async ({
     page,
   }) => {
