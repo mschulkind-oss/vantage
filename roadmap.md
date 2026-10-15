@@ -64,3 +64,7 @@ The order is the one thing this file holds that no other document can. Each entr
    Dependabot ignores `typescript` 7.x in [`.github/dependabot.yml`](.github/dependabot.yml) with this reasoning inline, so the weekly PR does not reappear. Lift the ignore, this entry, and the `typescript-5` alias floor together.
 
    **Watch:** [typescript-eslint releases](https://github.com/typescript-eslint/typescript-eslint/releases).
+
+## Candidate work
+
+1. [Large-collection Overview default](docs/brainstorm/overview-at-scale.md#OQ-OAS1) — choose whether a large board starts summary-first or with every active group expanded before proposing a browsing change.

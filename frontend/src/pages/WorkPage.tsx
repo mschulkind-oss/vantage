@@ -520,10 +520,6 @@ export const WorkPage: React.FC = () => {
               />
             </label>
           </div>
-          <aside className="mb-2 rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-xs text-blue-900 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-100">
-            Saved Markdown claims only: Vantage does not verify implementation
-            or write source files.
-          </aside>
           {unavailableMessage !== null && (
             <section
               className="rounded-xl border border-slate-200 bg-white p-6 dark:border-slate-700 dark:bg-slate-800"
@@ -787,16 +783,35 @@ export const WorkPage: React.FC = () => {
                 ) : (
                   <>
                     {history.status !== "complete" && (
-                      <p
-                        className="mt-3 flex items-start gap-2 rounded-lg bg-amber-50 p-3 text-sm text-amber-700 dark:bg-amber-950/40 dark:text-amber-100"
-                        role="status"
-                      >
-                        <AlertCircle size={16} className="mt-0.5 shrink-0" />
-                        {history.reason ??
-                          "Local Git evidence is partial or unavailable."}{" "}
-                        Metadata evidence, if present, is still shown
-                        separately.
-                      </p>
+                      <div className="mt-3 text-xs text-slate-600 dark:text-slate-300">
+                        <p className="flex items-center gap-1.5" role="status">
+                          <AlertCircle size={14} className="shrink-0" />
+                          {history.status === "partial"
+                            ? "Recent Git evidence is limited"
+                            : "Recent Git evidence is unavailable"}
+                        </p>
+                        <details className="mt-1" key={historyKey}>
+                          <summary className="w-fit cursor-pointer hover:underline">
+                            Coverage details
+                          </summary>
+                          <div className="mt-1 space-y-1">
+                            <p>
+                              {history.reason ??
+                                (history.status === "partial"
+                                  ? "Local Git evidence is partial."
+                                  : "Local Git evidence is unavailable.")}
+                            </p>
+                            <p>
+                              This limits automatic transition evidence only;
+                              saved stage counts are unaffected.
+                            </p>
+                            <p>
+                              Metadata evidence, if present, is still shown
+                              separately.
+                            </p>
+                          </div>
+                        </details>
+                      </div>
                     )}
                     {historyEvents.length === 0 && (
                       <p className="mt-3 text-sm text-slate-600 dark:text-slate-400">
