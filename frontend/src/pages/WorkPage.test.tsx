@@ -242,6 +242,231 @@ describe("WorkPage", () => {
     ).toBeInTheDocument();
   });
 
+  it("voluntarily collapses exact stages while preserving counts, destinations and terminal access", async () => {
+    seedIndex(
+      {
+        "docs/open.md": frontmatter("DESIGN"),
+        "docs/ready.md": frontmatter("DECIDED"),
+        "docs/missing.md": "---\nstatus: draft\n---\n",
+        "docs/unknown.md": frontmatter("MYSTERY"),
+        "docs/terminal.md": frontmatter("CURRENT"),
+      },
+      1,
+      { stages: { DESIGN: "open", DECIDED: "ready", CURRENT: "done" } },
+    );
+    renderWork();
+    await screen.findByRole("heading", { name: "Work overview" });
+    expect(document.querySelectorAll("[data-work-document]")).toHaveLength(4);
+    expect(
+      screen.queryByRole("button", { name: "Expand all active stages" }),
+    ).not.toBeInTheDocument();
+    for (const label of ["DESIGN", "DECIDED", "Missing stage", "MYSTERY"]) {
+      const toggle = screen.getByRole("button", {
+        name: `Collapse ${label} stage`,
+      });
+      expect(toggle).toHaveAttribute("aria-expanded", "true");
+      fireEvent.click(toggle);
+      const reveal = screen.getByRole("button", {
+        name: `Expand ${label} stage`,
+      });
+      expect(reveal).toHaveAttribute("aria-expanded", "false");
+      expect(
+        screen.getByRole("heading", { name: label, exact: true }),
+      ).toBeInTheDocument();
+      const jump = screen.getByRole("link", {
+        name: `Jump to ${label}: 1 matching of 1 applied documents`,
+      });
+      expect(
+        document.getElementById(jump.getAttribute("href")!.slice(1)),
+      ).toContainElement(reveal);
+    }
+    expect(document.querySelectorAll("[data-work-document]")).toHaveLength(0);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Expand all active stages" }),
+    );
+    expect(document.querySelectorAll("[data-work-document]")).toHaveLength(4);
+    expect(
+      screen.getByRole("button", { name: /Terminal\/reference.*Show/ }),
+    ).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Collapse MYSTERY stage" }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Expand MYSTERY stage" }),
+    );
+    expect(
+      screen.getByRole("link", { name: "unknown.md — docs/unknown.md" }),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps group keys and controlled destinations distinct for stage words resembling synthetic groups", async () => {
+    seedIndex(
+      {
+        "docs/missing-word.md": frontmatter("missing"),
+        "docs/terminal-word.md": frontmatter("terminal"),
+        "docs/unknown.md": frontmatter("Missing stage"),
+        "docs/unmapped-prefix.md": frontmatter("open:DESIGN"),
+        "docs/missing.md": "---\nstatus: draft\n---\n",
+        "docs/archive.md": frontmatter("CURRENT"),
+      },
+      1,
+      { stages: { missing: "open", terminal: "built", CURRENT: "done" } },
+    );
+    renderWork();
+    await screen.findByRole("heading", { name: "Work overview" });
+    const controls = screen.getAllByRole("button", {
+      name: /^Collapse .* stage$/,
+    });
+    expect(controls).toHaveLength(5);
+    const ids = controls.map((control) =>
+      control.getAttribute("aria-controls"),
+    );
+    expect(new Set(ids).size).toBe(5);
+    for (const id of ids)
+      expect(document.getElementById(id!)).toBeInTheDocument();
+    const missing = screen.getByRole("region", {
+      name: "Needs classification: Missing stage",
+    });
+    fireEvent.click(
+      within(missing).getByRole("button", {
+        name: "Collapse Missing stage stage",
+      }),
+    );
+    expect(within(missing).queryByRole("link")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("region", { name: "Unknown stage: Missing stage" }),
+    ).toHaveTextContent("docs/unknown.md");
+    expect(
+      screen.getByRole("region", { name: "open: missing" }),
+    ).toHaveTextContent("docs/missing-word.md");
+    expect(
+      screen.getByRole("region", { name: "built: terminal" }),
+    ).toHaveTextContent("docs/terminal-word.md");
+    const summary = screen.getByRole("navigation", {
+      name: "Stage count and jump summary",
+    });
+    expect(
+      new Set(
+        within(summary)
+          .getAllByRole("link")
+          .map((link) => link.getAttribute("href")),
+      ).size,
+    ).toBe(5);
+  });
+
+  it("allows voluntary disclosure of every saved stage when no stages are configured", async () => {
+    seedIndex({ "docs/unmapped.md": frontmatter("CUSTOM") });
+    renderWork();
+    await screen.findByRole("heading", { name: "Work overview" });
+    const group = screen.getByRole("region", {
+      name: "Unmapped saved stage: CUSTOM",
+    });
+    fireEvent.click(
+      within(group).getByRole("button", { name: "Collapse CUSTOM stage" }),
+    );
+    expect(
+      within(group).getByRole("button", { name: "Expand CUSTOM stage" }),
+    ).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Expand all active stages" }),
+    );
+    expect(
+      within(group).getByRole("link", {
+        name: "unmapped.md — docs/unmapped.md",
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps voluntary collapse through filters and pending snapshots, then resets on actual Refresh", async () => {
+    seedIndex(
+      {
+        "docs/one.md": frontmatter("DESIGN"),
+        "docs/ready.md": frontmatter("DECIDED"),
+        "docs/archive.md": frontmatter("CURRENT"),
+      },
+      1,
+      { stages: { DESIGN: "open", DECIDED: "ready", CURRENT: "done" } },
+    );
+    renderWork();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Collapse DESIGN stage" }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: /Terminal\/reference.*Show/ }),
+    );
+    act(() => {
+      usePlanningStore.setState({
+        byRepo: {
+          "": {
+            status: "ready",
+            index: indexOf(
+              {
+                "docs/two.md": frontmatter("DESIGN"),
+                "docs/archive.md": frontmatter("CURRENT"),
+              },
+              { stages: { DESIGN: "open", CURRENT: "done" } },
+            ),
+            version: 2,
+            rescanning: false,
+            hashes: {},
+          },
+        },
+      });
+    });
+    fireEvent.change(screen.getByRole("searchbox"), {
+      target: { value: "one.md" },
+    });
+    expect(
+      screen.getByRole("region", { name: "open: DESIGN" }),
+    ).toHaveTextContent("1 of 1");
+    expect(
+      screen.getByRole("button", { name: "Expand DESIGN stage" }),
+    ).toHaveAttribute("aria-expanded", "false");
+    fireEvent.change(screen.getByRole("searchbox"), {
+      target: { value: "no-such-document" },
+    });
+    const zeroJump = screen.getByRole("link", {
+      name: "Jump to DESIGN: 0 matching of 1 applied documents",
+    });
+    expect(
+      document.getElementById(zeroJump.getAttribute("href")!.slice(1)),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("region", { name: "open: DESIGN" }),
+    ).toHaveTextContent("0 of 1");
+    fireEvent.click(screen.getByRole("button", { name: "Clear filter" }));
+    expect(
+      screen.getByRole("button", { name: "Expand DESIGN stage" }),
+    ).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Expand DESIGN stage" }),
+    );
+    expect(
+      screen.getByRole("link", { name: "one.md — docs/one.md" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: "two.md — docs/two.md" }),
+    ).not.toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Collapse DESIGN stage" }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Refresh saved index updates" }),
+    );
+    expect(
+      screen.getByRole("button", { name: "Collapse DESIGN stage" }),
+    ).toHaveAttribute("aria-expanded", "true");
+    expect(
+      screen.getByRole("link", { name: "two.md — docs/two.md" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Terminal\/reference.*Hide/ }),
+    ).toHaveAttribute("aria-expanded", "true");
+    expect(
+      screen.queryByRole("button", { name: "Expand all active stages" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("resets card, terminal, and event expansion when switching repositories", async () => {
     const indexFor = (prefix: string) =>
       indexOf(
@@ -316,6 +541,9 @@ describe("WorkPage", () => {
       screen.getByRole("link", { name: "a-terminal.md — docs/a-terminal.md" }),
     ).toBeInTheDocument();
 
+    fireEvent.click(
+      screen.getByRole("button", { name: "Collapse DESIGN stage" }),
+    );
     fireEvent.click(screen.getByRole("button", { name: "Switch to repo B" }));
 
     expect(
