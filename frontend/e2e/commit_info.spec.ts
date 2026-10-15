@@ -12,11 +12,20 @@ test.describe("Commit Info", () => {
     await page.goto("/page1.md");
     await expect(page.getByRole("heading", { name: "Page 1" })).toBeVisible();
 
-    // The commit bar names the fixture commit. Its title is
-    // "<subject>\n<date> — click to view diff", so match on the stable part.
-    const commitButton = page.locator('button[title*="click to view diff"]');
+    // The commit button carries the styled tooltip the app shows instead of a
+    // native title, and keeps the message/date/action sentence available.
+    const commitButton = page.locator(".hdr-commit");
     await expect(commitButton).toBeVisible({ timeout: 10_000 });
     await expect(commitButton).toContainText(COMMIT_MESSAGE);
+    await expect(commitButton).not.toHaveAttribute("title");
+    const tipText = await commitButton.getAttribute("data-tip");
+    expect(tipText).toContain(`${COMMIT_MESSAGE}\n`);
+    expect(tipText).toContain("click to view diff");
+    await commitButton.hover();
+    const tooltip = page.getByRole("tooltip");
+    await expect(tooltip).toBeVisible();
+    await expect(tooltip).toContainText(COMMIT_MESSAGE);
+    await expect(tooltip).toContainText("click to view diff");
 
     // Opening it renders the diff viewer, headed with the same message.
     await commitButton.click();

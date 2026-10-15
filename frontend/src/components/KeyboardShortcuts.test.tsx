@@ -56,7 +56,7 @@ describe("KeyboardShortcutsModal", () => {
     expect(screen.getByText("Scroll down")).toBeInTheDocument();
     expect(screen.getByText("Scroll to bottom")).toBeInTheDocument();
     expect(screen.getByText("Close a dialog")).toBeInTheDocument();
-    expect(screen.getByText("Go to Decisions")).toBeInTheDocument();
+    expect(screen.getByText("Go to Questions")).toBeInTheDocument();
   });
 
   // Shift+T is one chord, not Shift pressed and released before T; only a real
@@ -72,7 +72,7 @@ describe("KeyboardShortcutsModal", () => {
   it("lists g then p for the planning page", () => {
     render(<KeyboardShortcutsModal isOpen={true} onClose={vi.fn()} />);
     expect(
-      screen.getByText("Go to Decisions").parentElement!.textContent,
+      screen.getByText("Go to Questions").parentElement!.textContent,
     ).toContain("gthenp");
   });
 
@@ -87,11 +87,11 @@ describe("KeyboardShortcutsModal", () => {
       />,
     );
     expect(
-      screen.getByText("Filter Decisions").parentElement!.textContent,
-    ).toBe("Filter Decisions/");
+      screen.getByText("Focus the page filter").parentElement!.textContent,
+    ).toBe("Focus the page filter/");
     unmount();
     render(<KeyboardShortcutsModal isOpen={true} onClose={vi.fn()} />);
-    expect(screen.queryByText("Filter Decisions")).toBeNull();
+    expect(screen.queryByText("Focus the page filter")).toBeNull();
   });
 
   it("lists opening a menu row in a new tab, under every menu it works in", () => {

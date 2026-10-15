@@ -2,11 +2,16 @@
 title: "Work overview — saved document stages and transition evidence"
 status: accepted
 stage: CURRENT
-verified: 2026-10-13
-verified_commit: 1fe1e7e3170b9f3bb97083e43009629464dbaa41
+verified: 2026-10-14
+verified_commit: 3fd4099b7b28f72784e7dbfa4f564f69a448c37c
 covers:
   - packages/vantage-md/src/planning/
   - frontend/src/pages/WorkPage.tsx
+  - frontend/src/pages/PlanningPage.tsx
+  - frontend/src/components/PlanningViewsHeader.tsx
+  - frontend/src/planningScan/cache.ts
+  - frontend/e2e/work_shell.spec.ts
+  - packages/vantage-check/src/commands/index.ts
   - frontend/src/lib/workHistory.ts
   - frontend/src/lib/workTransitions.ts
   - frontend/src/lib/workRoute.ts
@@ -18,25 +23,24 @@ covers:
   - internal/api/responses.go
   - internal/api/routes.go
 tags: [planning, viewer, git]
-summary: "The read-only Work screen groups every indexed document by saved stage and shows separately labeled metadata and bounded Git evidence."
+summary: "The Overview screen groups saved planning documents into compact stage tiles and separates that source from bounded Git transition evidence."
 ---
 
 # Work overview — saved document stages and transition evidence
 
-**Status:** Verified 2026-10-13 against source commit `1fe1e7e3`.
-Independent source and documentation reviews passed, and the clean committed
-`just done` gate passed on 2026-10-13. UNMEASURED: Work-specific runtime scale and
-assistive-technology observation remain outstanding. See
-[Verification](#verification) for the observed checks and their limits.
+**Status:** Reconciled 2026-10-14 against the working tree based on source commit
+`3fd4099b`. The implementation changes are uncommitted and pending review.
+UNMEASURED: assistive-technology observation remains outstanding. See
+[Verification](#verification) for the checked source behavior and viewport.
 
-Work answers **where do the planning documents say work stands, and what is
-recorded as changing?** It is a read-only companion to Decisions, derived from
+**Overview** answers **where do the planning documents say work stands, and what
+is recorded as changing?** It is a read-only companion to **Questions**, derived from
 [the planning index](planning-index.md), not a task system or build verifier.
-Its board shows saved document claims; its separate history feed shows the
-source and limits of evidence for stage changes.
+Its compact tiles show saved document claims; its separate history feed shows
+the source and limits of evidence for stage changes.
 
 **Reads with:** [Planning Documents](../../userguide/guides/planning.md) (using
-Decisions and Work), [the planning index](planning-index.md) (candidate discovery,
+Questions and Overview), [the planning index](planning-index.md) (candidate discovery,
 effective question state, dependencies and machine interfaces), and
 [repository configuration](repo-config.md) (the stage vocabulary).
 
@@ -76,7 +80,7 @@ accounts for every indexed document exactly once across these groups:
 - **Active role groups:** `open`, `ready`, then `built`. A role is the
   repository's mapping of a saved word, not a universal lifecycle sequence.
   `open` means still being decided, `ready` means decided and not built,
-  `built` means built as a saved claim. These are the same roles as Decisions.
+  `built` means built as a saved claim. These are the same roles as Questions.
 - **Terminal/reference:** every `done`-role document, initially collapsed with
   its count. `done` means no longer a live proposal; it does not mean completed.
   The group retains each exact stage label and orders documents by path.
@@ -96,30 +100,38 @@ show index unavailability, not a substituted empty board.
 
 ## Cards, filtering and reader-applied updates
 
-A card's identity is its path, shown as a basename and repository-relative
-path. It retains the exact saved stage and next-step text. `questionState` and
-`waitingDependsOn` supply effective question counts and waiting dependencies;
-a ready/built claim with an effective open question shows a stage conflict.
-These counts describe saved questions, not pending review-answer-adjusted work.
+A tile's identity is its path. Its display title comes from a trimmed nonempty
+frontmatter `title`, else the first H1 flattened to plain text, else the
+filename. This shared scanner projection is presentation metadata, not question
+title or identity, and the checker omits it from `index --format json` to preserve
+that CLI document shape. The title-first link is paired with the repository-relative
+path, so same-basename documents remain distinct. A compact tile shows stage,
+question and conflict cues; its keyboard-accessible details disclosure is named
+with both the title and path, so repeated titles remain distinct. Open details
+flow within the tile, growing it in the page rather than floating over its
+neighbors; every fact and handoff action remains in the same scrollable content
+as its tile.
 
-Question links open Decisions scoped to that document, preserving its existing
+Question links open Questions scoped to that document, preserving the existing
 answer-and-copy flow. Known next-step question references link to the same
 scoped view; other next steps stay plain saved text. Waiting dependencies link
 to indexed target documents. No owner, assigned worker or completion fraction
 is manufactured, and no title fetch is made for a card.
 
-Cards stack vertically, including on narrow screens. Bounded initial card
-lists have **Show more** controls. The labeled page-local filter searches only
-path, stage and next-step text, case-insensitively. It does not use Decisions'
-query language or a URL parameter. A no-match result offers **Clear filter**;
-clearing restores the saved board rather than applying a pending index.
+Active tiles render together in responsive stage grids within one page scroll;
+stage counts and jump links keep the configured role order discoverable. No
+per-stage reveal limit or nested lane scroll hides an active tile. Terminal
+/reference stays collapsed by default with its full count and a visible access
+control. The labeled Overview filter searches title, path, stage and next step;
+it is local to the page and offers **Clear filter** when nothing matches. It
+restores the saved board rather than applying a pending index.
 
 `WorkPage` holds one complete applied index snapshot. Later versions are
 pending until the reader presses **Refresh saved index updates**. Filtering,
-comments and WebSocket pushes do not replace the painted groups, cards or
-counts. Refresh replaces the snapshot and resets expanded card and event
-limits. The history computation belongs to that applied snapshot, not to an
-unapplied newer index.
+comments and WebSocket pushes do not replace the painted groups, tiles or
+counts. Refresh replaces the snapshot and resets view-local expansion; the
+history computation belongs to that applied snapshot, not to an unapplied newer
+index.
 
 ## Transition evidence
 
@@ -195,16 +207,25 @@ none was found there.
 
 ## Reachability and accessible handoffs
 
-Work and Decisions share `AppShell`, ordinary labeled sidebar links and
-reciprocal links. Repository routes select that repository's index; a missing
-repository shows an unavailable message rather than another repository's
-board. A projectless multi-repository route offers a chooser.
+Overview and Questions share a fixed viewer-style header with sidebar access,
+reciprocal navigation and active state, and each page's right-side tools. The
+visible **Overview** / **Questions** selector supplies the page identity; the
+full page heading remains an accessible `h1` without repeating the selector's
+text. A repository breadcrumb is shown in multi-repository mode; in a
+single-repository install the redundant `root` crumb and separator are omitted
+to preserve room for header controls. At narrow widths, the repository name
+moves into the existing labeled collapsed-folders control, preserving access to
+the project identity and folder navigation. Repository routes select that
+repository's index; a missing repository shows an unavailable message rather
+than another repository's board. A projectless multi-repository route offers a
+chooser.
 
-The visible Decisions label does not rename planning URLs, APIs, CLI output,
-filter syntax, agent links or **`g p`**. Work introduces no global shortcut or
-new planning query language. Its filter is labeled; document and dependency
-navigation uses ordinary links; reveal controls are buttons, and
-Terminal/reference exposes `aria-expanded`.
+The visible **Questions** label does not rename planning URLs, APIs, filter
+syntax, agent links, CLI output or **`g p`**. Overview introduces no global
+shortcut or new query language. Its filter is labeled; document and dependency
+navigation uses ordinary links; details use the native keyboard-operable
+`summary` disclosure. The **Terminal/reference** reveal control exposes
+`aria-expanded`.
 
 **Open document to comment** and **Copy change request** are handoffs through
 existing navigation and clipboard conventions. A request is proposed document
@@ -223,70 +244,58 @@ change authoritative priority until the roadmap's Markdown changes.
 
 | Component | Package and greppable anchors |
 | :--- | :--- |
-| Shared metadata and exhaustive grouping | `packages/vantage-md/src/planning` — `scanPlanningDocument`, `PlanningDocument`, `deriveWorkBoard`, `filterWorkDocuments` |
-| Applied snapshot, board, cards and handoffs | `frontend/src/pages` — `WorkPage`; shared shell in `frontend/src/components` — `AppShell` |
+| Shared metadata, title projection and exhaustive grouping | `packages/vantage-md/src/planning` — `scanPlanningDocument`, `PlanningDocument`, `deriveWorkBoard`, `filterWorkDocuments` |
+| Applied snapshot, compact tiles, handoffs and shared navigation | `frontend/src/pages` — `WorkPage`; `frontend/src/components` — `PlanningViewsHeader`, `AppShell` |
 | Routing, batch client and evidence comparison | `frontend/src/lib` — `workPath`, `loadWorkHistory`, `buildWorkHistory`, `PlanningSnapshots`, `WorkTransition` |
 | Bounded read-only Git inspection | `internal/git` — `GitService.PlanningSnapshots`, `rawCommitParents`, `snapshotBlob` |
 | Repository-scoped API and wire model | `internal/api` — `GitPlanningSnapshots`, `BuildPlanningSnapshots`; `internal/model` — `PlanningSnapshot`, `PlanningSnapshots` |
 
 ## Verification
 
-This reference was independently reconciled against source commit `1fe1e7e3`:
-its authority, exhaustive grouping, reader-held board, metadata, Git bounds,
-provenance and handoffs match the committed implementation. The retired
-design's stale **Built: No** ledger was not evidence that these mechanisms were
-absent. No unanswered question directive remains in this reference.
+The changed presentation and scanner projection were checked in the working tree
+based on source commit `3fd4099b`; this review does not treat the uncommitted
+source as landed. Focused frontend tests cover scanner title precedence, cache
+schema, title filtering, both page headers and accessible links. The checker
+regression proves that the scanner's presentation-only `title` stays out of
+`vantage-check index --format json`.
 
-The final metadata review found no issues: 119 scanner tests and 1,140
-independent grammar/date probes passed. The independent browser assertion
-review approved the expectation repairs without weakened checks, skipped tests
-or extra source mutations. The final integration report records 4,954 frontend
-tests across 139 files and 246 E2E tests passed, with no failures, skips or
-unrun tests; it also records the focused API/Git, typecheck and Markdown checks.
-These integration results validated the subsequently committed source overlay,
-not the clean committed full gate. The browser suite used Vite's current source,
-not the embedded bundle. The source commit's normal pre-commit hook passed all
-12 applicable checks. The separate clean-tree `just done` gate passed on
-2026-10-13 after source and documentation landing: Go checks, workspace
-formatting/lint/types, published-package checks, 4,954 frontend tests in 139
-files, 1,234 checker tests in 27 files (one existing skip), script-policy tests
-and compiled-CLI self-checks. The documentation self-check reported nine
-pre-existing planning warnings in unrelated documents, not failures.
+The source-Vite Playwright fixture uses 40 active documents across four
+repository-defined stage labels of ten each (mapped to the `open`, `ready` and
+`built` roles), plus two `done`-role documents in the collapsed terminal group.
+Those test labels and role mappings exercise grouped overhead; they do not
+define a universal workflow. At 1440×900 with the sidebar collapsed, all 40
+active tile bounds fit in the content viewport: top `198.5`, bottom `882.5`,
+inside content bounds `56`–`900`. The 40-active bound check excludes the two
+terminal tiles, whose count and access control are measured separately.
 
-The apparent workspace stall was resolved by the saved final reports: the
-metadata reviewer, browser reviewer and integration worker had completed, and
-their artifacts record successful exits. Coordinator provider validation and
-stream errors prevented acceptance and landing from being recorded at that
-time; they were not evidence of a still-running worker or a failed feature
-gate. Source acceptance and landing have since completed; the full gate is a
-separate verification, not a reason to reopen that resolved stall.
+At 375×812 the page has no horizontal overflow. Playwright opens details and
+checks the first/last desktop columns and bottom row, and the phone list's first
+and last cards. In every case the expanded panel and both handoff actions stay
+within the horizontal content bounds; actions remain visible when brought into
+the normal page scroll. The keyboard opens the native disclosure. Screenshots
+from this run are retained with the implementation review artifact. These are
+deterministic acceptance checks, not a claim about arbitrary repository scale.
+Assistive-technology observation is still outstanding. The clean-tree `just done`
+gate has not been run because this change is awaiting review and has not been
+committed.
 
-Formal acceptance criteria were not populated on the existing work-control
-objective. `create_goal` refuses an already-existing objective, and the
-available update path does not edit its criteria; this note does not claim that
-field was populated or replace the objective. The concrete reviews and checks
-above are the operational evidence. The exploratory reordering proposal remains
-unimplemented and is not part of this change.
-
-The `verified_commit` identifies the actual source commit, not this reference's
-own documentation commit. Its covered source paths were reviewed at that
-commit. The compatibility check was not repeated in this documentation pass
-because neither notation nor tested behavior changed. Source entry-point
-backlinks were not added in this docs-only pass.
 
 ## Current values
 
-Verified against source commit `1fe1e7e3`. This table isolates tunable limits
-and operational paths from the mechanisms above.
+Reconciled against the working tree based on source commit `3fd4099b` on
+2026-10-14. This table isolates tunable limits and operational paths from the
+mechanisms above.
 
 | Value | Setting | Defined in |
 | :--- | :--- | :--- |
-| Work routes | `/.vantage/work`, `/.vantage/work/<encoded-repo>` | `workPath`, `workRepoFromPath` in `frontend/src/lib` |
-| Decisions route and shortcut, unchanged | `/.vantage/planning`, repository-scoped variant; `g p` | `planningPath` in `frontend/src/lib`, keyboard shortcut registration |
+| Overview route | `/.vantage/work`, `/.vantage/work/<encoded-repo>` | `workPath`, `workRepoFromPath` in `frontend/src/lib` |
+| Questions route and shortcut, unchanged | `/.vantage/planning`, repository-scoped variant; `g p` | `planningPath` in `frontend/src/lib`, keyboard shortcut registration |
 | Snapshot endpoint | `GET /api/git/planning-snapshots`; multi-repo `GET /api/r/<encoded-repo>/git/planning-snapshots` | `Routes`, `GitPlanningSnapshots` in `internal/api` |
 | Commit / source-pair caps | 50 local commits / 50 old-new file pairs | `planningCommitLimit`, `planningPairLimit` in `internal/git` |
 | Blob / returned source-text caps | 64 KiB per blob / 2 MiB total source text | `planningBlobLimit`, `planningTextLimit` in `internal/git` |
 | Changed-path output cap | 2 MiB per inspected commit | `planningPathLimit` in `internal/git` |
-| Initial cards / expansion increment | 10 per stage or classification list; terminal group uses one path-sorted list | `INITIAL_CARDS` in `WorkPage` |
+| Overview active tiles | All filtered active documents render without a progressive reveal cap; terminal/reference remains collapsed with a count | `WorkPage` in `frontend/src/pages` |
+| Overview local filter fields | Display title, path, stage and next step; separate from Questions' filter grammar | `filterWorkDocuments` in `packages/vantage-md/src/planning/work.ts` |
+| Viewport acceptance | 40 active documents across four configured stages at 1440×900 with sidebar collapsed (bounds 198.5–882.5 inside content bounds 56–900); 2 terminal documents remain collapsed but counted/accessed; 375×812 has no horizontal overflow, opened detail bounds/actions fit, and native disclosure is keyboard-operable | `frontend/e2e/work_shell.spec.ts` |
 | Initial events | 5; Show more reveals remaining bounded candidates | `INITIAL_EVENTS` in `WorkPage` |
 | Evidence window | Inclusive `[now - 168 hours, now]` | `buildWorkHistory` in `frontend/src/lib` |

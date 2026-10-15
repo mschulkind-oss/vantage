@@ -4,6 +4,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter, Route, Routes, useNavigate } from "react-router-dom";
@@ -49,6 +50,12 @@ function renderWork(path = "/.vantage/work") {
       </Routes>
     </MemoryRouter>,
   );
+}
+
+function detailsSummary(path: string): HTMLElement {
+  return document.querySelector(
+    `[data-work-document="${path}"] summary`,
+  ) as HTMLElement;
 }
 
 function MultiRepoWorkRoute() {
@@ -104,11 +111,14 @@ afterEach(() => {
 });
 
 describe("WorkPage", () => {
-  it("shows the saved board, authority disclosure and Decisions links", async () => {
+  it("shows the saved overview, source-claims disclosure and Questions links", async () => {
     seedIndex(
       {
         "docs/design/a.md":
-          frontmatter("DESIGN", "next: Review OQ-1\n") +
+          frontmatter(
+            "DESIGN",
+            'title: "A custom document"\nnext: Review OQ-1\n',
+          ) +
           '\n1. 💬 **OQ-1: Is this ready?**\n\n   <!-- vantage: question id=OQ-1 leaning="Check it." -->\n\n   _Leaning:_ Check it.\n',
         "roadmap.md": "---\nstage: DESIGN\n---\n# Roadmap\n",
       },
@@ -117,26 +127,41 @@ describe("WorkPage", () => {
     );
     renderWork();
     expect(
-      await screen.findByRole("heading", { name: "Saved stage overview" }),
+      await screen.findByRole("heading", { name: "Work overview" }),
     ).toBeInTheDocument();
     expect(
       screen.getByText(
         /Vantage does not verify implementation or write source files/,
       ),
     ).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Decisions" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "Questions" })).toHaveAttribute(
       "href",
       "/.vantage/planning",
     );
     expect(
-      screen.getByRole("link", { name: "1 question on Decisions" }),
+      screen.getByRole("link", { name: "1 question on Questions" }),
     ).toHaveAttribute(
       "href",
       "/.vantage/planning?filter=path:/docs/design/a.md",
     );
     expect(
-      screen.getAllByRole("button", { name: "Copy change request" }),
-    ).toHaveLength(2);
+      screen.getByRole("link", {
+        name: "A custom document — docs/design/a.md",
+      }),
+    ).toBeInTheDocument();
+    fireEvent.click(detailsSummary("docs/design/a.md"));
+    const customCard = document.querySelector(
+      '[data-work-document="docs/design/a.md"]',
+    ) as HTMLElement;
+    expect(
+      within(customCard).getByRole("link", { name: "Review OQ-1" }),
+    ).toHaveAttribute(
+      "href",
+      "/.vantage/planning?filter=path:/docs/design/a.md",
+    );
+    expect(
+      within(customCard).getByRole("button", { name: "Copy change request" }),
+    ).toBeInTheDocument();
     await waitFor(() => expect(loadWorkHistory).toHaveBeenCalledTimes(1));
   });
 
@@ -153,6 +178,9 @@ describe("WorkPage", () => {
       { stages: { DESIGN: "open", READY: "ready" } },
     );
     renderWork();
+    fireEvent.click(detailsSummary("docs/target.md"));
+    fireEvent.click(detailsSummary("docs/waiting.md"));
+    expect(screen.getByText("Conflict")).toBeInTheDocument();
     expect(
       screen.getByText(
         "Stage conflict: a ready/built stage has an open question.",
@@ -176,19 +204,17 @@ describe("WorkPage", () => {
       { stages: { DESIGN: "open" } },
     );
     renderWork();
-    await screen.findByRole("heading", { name: "Saved stage overview" });
     expect(
-      screen.getByRole("region", { name: "Needs classification" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("region", { name: "Missing stage" }),
+      screen.getByRole("region", {
+        name: "Needs classification: Missing stage",
+      }),
     ).toHaveTextContent("docs/missing.md");
     expect(
-      screen.getByRole("region", { name: "Unknown stages" }),
+      screen.getByRole("region", { name: "Unknown stage: MYSTERY" }),
     ).toHaveTextContent("docs/unknown.md");
   });
 
-  it("shows every card after Show more and keeps terminal items collapsed", async () => {
+  it("shows every active tile and keeps terminal items collapsed with a count", async () => {
     const tree = Object.fromEntries(
       Array.from({ length: 12 }, (_, index) => [
         `docs/${String(index).padStart(2, "0")}.md`,
@@ -198,15 +224,22 @@ describe("WorkPage", () => {
     tree["docs/terminal.md"] = frontmatter("SUPERSEDED");
     seedIndex(tree, 1, { stages: { DESIGN: "open", SUPERSEDED: "done" } });
     renderWork();
-    await screen.findByRole("heading", { name: "Saved stage overview" });
-    expect(document.querySelectorAll("[data-work-document]")).toHaveLength(10);
-    fireEvent.click(screen.getByRole("button", { name: /Show more/ }));
+    await screen.findByRole("heading", { name: "Work overview" });
     expect(document.querySelectorAll("[data-work-document]")).toHaveLength(12);
     expect(screen.queryByText("docs/terminal.md")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: /Terminal\/reference.*1 matching.*1 applied/,
+      }),
+    ).toHaveAttribute("aria-expanded", "false");
     fireEvent.click(
-      screen.getByRole("button", { name: /Terminal\/reference/ }),
+      screen.getByRole("button", {
+        name: /Terminal\/reference.*1 matching.*1 applied/,
+      }),
     );
-    expect(screen.getByText("docs/terminal.md")).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "terminal.md — docs/terminal.md" }),
+    ).toBeInTheDocument();
   });
 
   it("resets card, terminal, and event expansion when switching repositories", async () => {
@@ -262,54 +295,79 @@ describe("WorkPage", () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText("docs/a-00.md")).toBeInTheDocument();
+    expect(
+      await screen.findByRole("link", { name: "a-00.md — docs/a-00.md" }),
+    ).toBeInTheDocument();
+    fireEvent.click(detailsSummary("docs/a-00.md"));
     fireEvent.click(
-      screen.getByRole("button", { name: /Show more \(2 remaining\)/ }),
-    );
-    fireEvent.click(
-      screen.getByRole("button", { name: /Terminal\/reference/ }),
+      screen.getByRole("button", {
+        name: /Terminal\/reference.*1 matching · 1 applied · Show/,
+      }),
     );
     const showMoreEvents = await screen.findByRole("button", {
       name: /Show more \(1 remaining\)/,
     });
     fireEvent.click(showMoreEvents);
     expect(await screen.findByText("docs/event-5.md")).toBeInTheDocument();
-    expect(screen.getByText("docs/a-11.md")).toBeInTheDocument();
-    expect(screen.getByText("docs/a-terminal.md")).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "a-11.md — docs/a-11.md" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "a-terminal.md — docs/a-terminal.md" }),
+    ).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Switch to repo B" }));
 
-    expect(await screen.findByText("docs/b-00.md")).toBeInTheDocument();
-    expect(screen.queryByText("docs/b-11.md")).not.toBeInTheDocument();
+    expect(
+      await screen.findByRole("link", { name: "b-00.md — docs/b-00.md" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "b-11.md — docs/b-11.md" }),
+    ).toBeInTheDocument();
     expect(screen.queryByText("docs/b-terminal.md")).not.toBeInTheDocument();
     expect(screen.queryByText("docs/event-5.md")).not.toBeInTheDocument();
     expect(screen.getAllByRole("link", { name: /^docs\/event-/ })).toHaveLength(
       5,
     );
-    expect(document.querySelectorAll("[data-work-document]")).toHaveLength(10);
+    expect(document.querySelectorAll("[data-work-document]")).toHaveLength(12);
     expect(
-      screen.getByRole("button", { name: /Terminal\/reference/ }),
+      (
+        document.querySelector(
+          '[data-work-document="docs/b-00.md"] details',
+        ) as HTMLDetailsElement
+      ).open,
+    ).toBe(false);
+    expect(
+      screen.getByRole("button", {
+        name: /Terminal\/reference.*1 matching · 1 applied · Show/,
+      }),
     ).toHaveAttribute("aria-expanded", "false");
     expect(
       await screen.findByRole("button", { name: /Show more \(1 remaining\)/ }),
     ).toBeInTheDocument();
   });
 
-  it("filters local card facts and offers a clear action when there are no matches", async () => {
+  it("filters titles and local card facts and offers a clear action when there are no matches", async () => {
     seedIndex(
       {
-        "docs/alpha.md": frontmatter("DESIGN", "next: Inspect parser\n"),
-        "docs/beta.md": frontmatter("DESIGN", "next: Nothing else\n"),
+        "docs/alpha.md":
+          frontmatter("DESIGN", "next: Inspect parser\n") +
+          "\n# Parser mechanics\n",
+        "docs/beta.md":
+          frontmatter("DESIGN", "next: Nothing else\n") + "\n# Other title\n",
       },
       1,
       { stages: { DESIGN: "open" } },
     );
     renderWork();
-    await screen.findByRole("heading", { name: "Saved stage overview" });
+    await screen.findByRole("heading", { name: "Work overview" });
     fireEvent.change(screen.getByRole("searchbox"), {
-      target: { value: "parser" },
+      target: { value: "Parser mechanics" },
     });
     expect(document.querySelectorAll("[data-work-document]")).toHaveLength(1);
+    expect(screen.getByTestId("work-counts")).toHaveTextContent(
+      "1 matching · 2 in applied snapshot",
+    );
     fireEvent.change(screen.getByRole("searchbox"), {
       target: { value: "missing" },
     });
@@ -323,7 +381,7 @@ describe("WorkPage", () => {
       stages: { DESIGN: "open" },
     });
     renderWork();
-    await screen.findByRole("heading", { name: "Saved stage overview" });
+    await screen.findByRole("heading", { name: "Work overview" });
     act(() => {
       usePlanningStore.setState({
         byRepo: {
@@ -340,15 +398,23 @@ describe("WorkPage", () => {
         },
       });
     });
-    expect(screen.getByText("docs/one.md")).toBeInTheDocument();
-    expect(screen.queryByText("docs/two.md")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "one.md — docs/one.md" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: "two.md — docs/two.md" }),
+    ).not.toBeInTheDocument();
     fireEvent.click(
       screen.getByRole("button", { name: /Refresh saved index updates/ }),
     );
     await waitFor(() =>
-      expect(screen.getByText("docs/two.md")).toBeInTheDocument(),
+      expect(
+        screen.getByRole("link", { name: "two.md — docs/two.md" }),
+      ).toBeInTheDocument(),
     );
-    expect(screen.queryByText("docs/one.md")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: "one.md — docs/one.md" }),
+    ).not.toBeInTheDocument();
     expect(first.documents).toHaveLength(1);
   });
 
@@ -387,9 +453,11 @@ describe("WorkPage", () => {
       },
     });
     renderWork("/.vantage/work/team%20%231");
-    expect(await screen.findByText("docs/only.md")).toBeInTheDocument();
+    expect(
+      await screen.findByRole("link", { name: "only.md — docs/only.md" }),
+    ).toBeInTheDocument();
     await waitFor(() => expect(setCurrentRepo).toHaveBeenCalledWith("team #1"));
-    expect(screen.getByRole("link", { name: "Decisions" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "Questions" })).toHaveAttribute(
       "href",
       "/.vantage/planning/team%20%231",
     );
@@ -487,7 +555,7 @@ describe("WorkPage", () => {
       stages: { DESIGN: "open" },
     });
     renderWork();
-    await screen.findByRole("heading", { name: "Saved stage overview" });
+    fireEvent.click(detailsSummary("docs/proposal.md"));
     fireEvent.click(
       screen.getByRole("button", { name: "Copy change request" }),
     );

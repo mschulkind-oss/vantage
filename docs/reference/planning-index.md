@@ -117,7 +117,7 @@ it would have copied is shown beside its links.
 
 The **Work** screen is a second view of that same current index: it shows every
 indexed document grouped by its exact saved stage and configured role, while
-this planning page remains the question-focused Decisions view. Its authority,
+this planning page remains the question-focused Questions view. Its authority,
 board census, transition provenance and limits are described in
 [the Work overview](work-overview.md). Work adds no authoritative planning
 store and does not alter planning routes, filters or CLI output. Its
@@ -146,7 +146,7 @@ Vantage never writes into a document.
 | `[planning]` as the server reads it, and the roadmap test | `internal/repoconfig` (`PlanningSettings`, `Planning.IsRoadmap`) |
 | The scan worker, its helpers, the scanner client and the scan cache | `frontend/src/planningScan/` (`scannerCore`, `ScannerClient`, `ScanCache`, `ScanStore`, `planningLimits`) |
 | The index as the viewer holds it | `frontend/src/stores/usePlanningStore.ts` (`usePlanningStore`, `PlanningLoad`) |
-| The planning page (visible label: Decisions) | `frontend/src/pages/PlanningPage.tsx`, `frontend/src/lib/planningPages.ts`, `frontend/src/hooks/usePlanningPageInputs.ts` |
+| The planning page (visible label: Questions) | `frontend/src/pages/PlanningPage.tsx`, `frontend/src/lib/planningPages.ts`, `frontend/src/hooks/usePlanningPageInputs.ts` |
 | The Work overview grouping and stage classification | `packages/vantage-md/src/planning/work.ts`, `frontend/src/pages/WorkPage.tsx` |
 | Bounded Git snapshots and the transition feed | `internal/git/snapshots.go`, `internal/api/git_handlers.go`, `frontend/src/lib/workTransitions.ts`, `frontend/src/lib/workHistory.ts` |
 | Link badges, Referenced by, the tree badge | `frontend/src/hooks/usePlanningLinkBadges.ts`, `frontend/src/components/ReferencedBy.tsx`, `frontend/src/components/PlanningTreeBadge.tsx` |
@@ -1085,9 +1085,15 @@ and it commits inside the transition at once.
   view. It holds, left to right: the sidebar button and the view toggles — the
   contents column, full width, and **Expand all** / **Collapse all**
   ([§6.6](#66-question-cards)), which is drawn at every width, unlike the other
-  two, and folds into the "⋯" with them; the breadcrumb; the **updates slot**,
-  *N updates · Refresh*, whose room is kept from first paint and which never folds
-  into the "⋯" ([§6.4](#64-needs-you-as-a-to-do-list)); **Review answers**,
+  two, and folds into the "⋯" with them; the repository breadcrumb in
+  multi-repository mode (the redundant `root` crumb is omitted in a
+  single-repository install to preserve room for the header controls; at narrow
+  widths, the repository name remains available from the labeled
+  collapsed-folders control); the **Overview** / **Questions** view selector, whose active label is the visible
+  page identity and whose full page heading remains an accessible `h1` without
+  repeated visible text; the **updates slot**, *N updates · Refresh*, whose
+  room is kept from first paint and which never folds into the "⋯"
+  ([§6.4](#64-needs-you-as-a-to-do-list)); **Review answers**,
   **Copy answers** and **Copy answers + maintenance**
   ([§6.7](#67-answering-and-copy-answers)). It is fitted by the viewer's yield
   steps (`frontend/src/lib/headerFit.ts`); at 1280 px with the sidebar open the
@@ -2264,7 +2270,7 @@ page ([OQ-PF5](#why-its-this-way)).
   it. Its text comes from the URL synchronously, so it is complete at first paint.
   Its ✕, its hint-and-counts slot and its spinner each have a slot that is always
   present.
-- **Contents.** A `<form role="search">` named *Filter Decisions*, holding a
+- **Contents.** A `<form role="search">` named *Filter Questions*, holding a
   visible label, *Filter*; a `type="text"` input, never `type="search"`, because
   Chrome clears that kind on Esc; a placeholder that is a real filter, in ink dark
   enough to read on a light panel; the ✕ slot, empty while there is no text; the
@@ -2651,7 +2657,7 @@ to four parts, joined by *·* in this order (`referenceSummary` in
 | Count | A planning document links here | *Referenced by N documents* |
 | Roadmap | A roadmap routes the document or one of its questions | With one roadmap that routes: *on the roadmap under Building*, naming the roadmap heading of the first link that routes it, or *on the roadmap* when that link sits above every heading. With several: *on plans/roadmap.md under Building*, naming the first roadmap in roadmap order that routes it, then *and N other roadmaps* when more do |
 | Not on a roadmap | The document has open questions no roadmap routes | *K open questions not on the roadmap*, in the warning tone; with several roadmaps, *…not on any roadmap*. The page's section of that name lists the same questions |
-| Planning page | Its stage has no `done` role and it holds at least one question, in any state (`hasLiveQuestions`), outside a static export | *its questions on the Decisions page*: a link to the planning page filtered to the document, `path:/<its path>` in canonical text ([§6.14](#614-what-is-not-understood-and-canonical-text)), [OQ-PF4](#why-its-this-way) |
+| Planning page | Its stage has no `done` role and it holds at least one question, in any state (`hasLiveQuestions`), outside a static export | *its questions on the Questions page*: a link to the planning page filtered to the document, `path:/<its path>` in canonical text ([§6.14](#614-what-is-not-understood-and-canonical-text)), [OQ-PF4](#why-its-this-way) |
 
 - **The not-on-a-roadmap part says what the roadmap leaves out, not that the
   document is off it,** because both can be true at once: a roadmap may link the
@@ -4599,7 +4605,7 @@ questions, [OQ-E1](../../frontend/e2e/fixtures/test_repo/plans/design.md#OQ-E1) 
 11. On the unfiltered page, `/` and then pasting the checker's whole output for
     criterion 1 shows the page of criterion 2, in single-repository and daemon mode
     alike.
-12. A live document holding a question shows *its questions on the Decisions page*
+12. A live document holding a question shows *its questions on the Questions page*
     in its Referenced by line with zero layout shift as the index lands, and
     following it shows that document's entries, with the box holding
     `path:/<its path>`. The end-to-end test runs it through `plans/paged.md`, since

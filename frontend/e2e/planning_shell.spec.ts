@@ -40,7 +40,7 @@ test.describe("the planning page in the app shell", () => {
     const sidebar = page.getByTestId("sidebar");
     await expect(sidebar.getByText("plans", { exact: true })).toBeVisible();
     await expect(
-      page.getByRole("heading", { level: 1, name: "Decisions" }),
+      page.getByRole("heading", { level: 1, name: "Questions" }),
     ).toBeVisible();
     await page.keyboard.press("b");
     await expect(sidebar).not.toBeInViewport();
@@ -263,7 +263,7 @@ test.describe("the planning page in the app shell", () => {
     await page.keyboard.press("?");
     const help = page.getByRole("dialog", { name: "Keyboard shortcuts" });
     await expect(help).toBeVisible();
-    await expect(help.getByText("Go to Decisions")).toBeVisible();
+    await expect(help.getByText("Go to Questions")).toBeVisible();
     await expect(help.getByText("Scroll down")).toBeVisible();
     await expect(help.getByText("View latest diff")).toHaveCount(0);
     await expect(help.getByText("View file history")).toHaveCount(0);

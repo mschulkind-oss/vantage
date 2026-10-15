@@ -181,7 +181,7 @@ test("the header says nothing of git before git has answered", async ({
     prose(page).getByRole("heading", { name: "Page 2" }),
   ).toBeVisible();
   await expect(header(page).getByTestId("breadcrumb-name")).toHaveAttribute(
-    "title",
+    "data-tip",
     "page2.md",
   );
   await expect(header(page).getByText("Untracked file")).toHaveCount(0);
@@ -242,6 +242,7 @@ test.describe("git that answers after the hold moves nothing in the header", () 
       // it: a container's text grows with a late item, its box need not.
       const nameOf = (el: HTMLElement) =>
         el.getAttribute("aria-label") ||
+        el.getAttribute("data-tip") ||
         el.getAttribute("title") ||
         [...el.childNodes]
           .filter((n) => n.nodeType === Node.TEXT_NODE)
@@ -276,7 +277,7 @@ test.describe("git that answers after the hold moves nothing in the header", () 
         }),
       ).toBeVisible();
       await expect(header(page).getByTestId("breadcrumb-name")).toHaveAttribute(
-        "title",
+        "data-tip",
         PATH,
       );
       // Whatever else was on its way (the index, the recent files) is in.
@@ -289,7 +290,7 @@ test.describe("git that answers after the hold moves nothing in the header", () 
       // The commit button is in the page, whether or not it found room.
       await expect(header(page).getByTestId("header-time")).toHaveCount(1);
       await expect(
-        header(page).locator('a[title="View full history: 2 commits"]'),
+        header(page).locator('a[data-tip="View full history: 2 commits"]'),
       ).toHaveCount(1);
       await page.waitForTimeout(300);
 
@@ -406,13 +407,13 @@ test.describe("Referenced by fills the line reserved for it", () => {
     [
       "tree-badges/questions-only.md",
       "Questions only",
-      /open questions not on the roadmap · its questions on the Decisions page$/,
+      /open questions not on the roadmap · its questions on the Questions page$/,
       1440,
     ],
     [
       "tree-badges/questions-only.md",
       "Questions only",
-      /open questions not on the roadmap · its questions on the Decisions page$/,
+      /open questions not on the roadmap · its questions on the Questions page$/,
       390,
     ],
     // The disclosure button and the link after it, on one line at a phone's
@@ -420,13 +421,13 @@ test.describe("Referenced by fills the line reserved for it", () => {
     [
       "plans/paged.md",
       "The paged plan",
-      "Referenced by 1 document · on the roadmap under Later · its questions on the Decisions page",
+      "Referenced by 1 document · on the roadmap under Later · its questions on the Questions page",
       1440,
     ],
     [
       "plans/paged.md",
       "The paged plan",
-      "Referenced by 1 document · on the roadmap under Later · its questions on the Decisions page",
+      "Referenced by 1 document · on the roadmap under Later · its questions on the Questions page",
       390,
     ],
   ] as const) {

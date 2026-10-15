@@ -55,6 +55,13 @@ test.describe("the planning page", () => {
         .click();
       await expect(page.getByTestId("pending-answers")).toHaveText("1");
       await page.setViewportSize({ width, height: 900 });
+      const planningHeader = page.getByTestId("planning-header");
+      if (width < 640) {
+        await expect(planningHeader).toHaveAttribute(
+          "data-yield",
+          /\bactions\b/,
+        );
+      }
       const review = page.getByRole("button", {
         name: "Review answers",
         exact: true,
@@ -94,7 +101,7 @@ test.describe("the planning page", () => {
   }) => {
     await page.goto("/.vantage/planning");
     await expect(
-      page.getByRole("heading", { name: "Decisions" }),
+      page.getByRole("heading", { name: "Questions" }),
     ).toBeVisible();
     // Ten cards, and the end line counts the rest: the fourteen the roadmap
     // routes, then the questions no roadmap routes, which *Needs you* lists
@@ -325,8 +332,7 @@ test.describe("the planning page", () => {
    */
   async function watchShifts(page: Page): Promise<void> {
     await page.addInitScript(() => {
-      const shifts: { value: number; input: boolean; sources: string[] }[] =
-        [];
+      const shifts: { value: number; input: boolean; sources: string[] }[] = [];
       (window as unknown as { __shifts: typeof shifts }).__shifts = shifts;
       new PerformanceObserver((list) => {
         for (const entry of list.getEntries() as (PerformanceEntry & {
@@ -345,9 +351,9 @@ test.describe("the planning page", () => {
                 ? "sidebar:"
                 : "";
               const item =
-                el?.closest("[data-planning-item]")?.getAttribute(
-                  "data-planning-item",
-                ) ?? "";
+                el
+                  ?.closest("[data-planning-item]")
+                  ?.getAttribute("data-planning-item") ?? "";
               return node
                 ? `${where}${item}:${node.nodeName}.${String(node.className).slice(0, 60)}`
                 : "?";
@@ -412,7 +418,10 @@ test.describe("the planning page", () => {
     expect(shifts, JSON.stringify(shifts)).toEqual([]);
 
     // A larger page size: the setting and its effect, and no history entry.
-    await page.getByTestId("needs-you-end").getByRole("button", { name: "20" }).click();
+    await page
+      .getByTestId("needs-you-end")
+      .getByRole("button", { name: "20" })
+      .click();
     const last = card(page, "OQ-P12: Which way for part 12?");
     await expect(last).toBeVisible();
     await expect(needsYou.getByRole("article")).toHaveCount(20);
@@ -464,9 +473,7 @@ test.describe("the planning page", () => {
     await third.getByRole("button", { name: "Take this leaning" }).click();
     const answered = row(page, "OQ-P1: Which way for part 1?");
     await expect(answered.getByText("The plain way.")).toBeVisible();
-    await expect(
-      card(page, "OQ-P9: Which way for part 9?"),
-    ).toBeVisible();
+    await expect(card(page, "OQ-P9: Which way for part 9?")).toBeVisible();
     await expect(needsYou.getByRole("article")).toHaveCount(10);
     // Nothing above it moved.
     expect(await first.boundingBox()).toEqual(before.first);
@@ -615,12 +622,23 @@ test.describe("the planning page", () => {
     // holds Copy answers + maintenance too (planning-index.md §6.3).
     await page.setViewportSize({ width: 1440, height: 720 });
     await page.goto("/.vantage/planning");
+    await expect(
+      page.getByRole("button", { name: "Collapse sidebar" }),
+    ).toBeVisible();
+    const maintenanceCopy = page.getByRole("button", {
+      name: /^Copy answers \+ maintenance /,
+    });
+    await expect(maintenanceCopy).toBeVisible();
+    await expect(
+      maintenanceCopy.locator('.hdr-label:not([data-reserve])'),
+    ).toHaveText("Copy answers + maintenance");
     // An answer waiting on the agent, so Copy answers has one to copy.
     await card(page, LAST)
       .getByRole("button", { name: "Take this leaning" })
       .click();
     const count = page.getByTestId("pending-answers");
     await expect(count).toHaveText("1");
+
     await expect(page.getByTestId("planning-header")).not.toHaveAttribute(
       "data-yield",
       /\blabels\b/,
@@ -703,7 +721,9 @@ test.describe("the planning page", () => {
     // still opens the panel.
     await toggle.click();
     await expect(panel).toBeVisible();
-    await expect(panel.getByRole("checkbox", { name: /Ready to build/ })).not.toBeChecked();
+    await expect(
+      panel.getByRole("checkbox", { name: /Ready to build/ }),
+    ).not.toBeChecked();
     await expect(
       panel.getByRole("checkbox", { name: /Not on a roadmap/ }),
     ).toBeChecked();

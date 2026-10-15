@@ -569,11 +569,11 @@ test.describe("several roadmaps", () => {
     // which names no roadmap: the page shows the one it would anyway.
     await openWithIndex(page, "/designs/gamma.md");
     await expect(surface).toHaveText(
-      "1 open question not on any roadmap · its questions on the Decisions page",
+      "1 open question not on any roadmap · its questions on the Questions page",
     );
     await expect(
       surface.getByRole("link", {
-        name: "its questions on the Decisions page",
+        name: "its questions on the Questions page",
       }),
     ).toHaveAttribute(
       "href",

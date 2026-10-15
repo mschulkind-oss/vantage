@@ -293,7 +293,7 @@ export const PlanningFilterLine: React.FC<{
     <div className={cn("@container mb-4", printText === "" && "print:hidden")}>
       <form
         role="search"
-        aria-label="Filter Decisions"
+        aria-label="Filter Questions"
         data-testid="planning-filter"
         onSubmit={(e) => {
           // A form submits on Enter, which would reload the page.
