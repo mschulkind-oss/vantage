@@ -85,8 +85,11 @@ export function filterWorkDocuments(
   const needle = query.trim().toLocaleLowerCase();
   if (needle === "") return [...documents];
   return documents.filter((document) =>
-    [document.path, document.stage ?? "", document.next ?? ""].some((value) =>
-      value.toLocaleLowerCase().includes(needle),
-    ),
+    [
+      document.title,
+      document.path,
+      document.stage ?? "",
+      document.next ?? "",
+    ].some((value) => value.toLocaleLowerCase().includes(needle)),
   );
 }

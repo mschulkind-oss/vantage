@@ -92,7 +92,6 @@ import {
   AlertCircle,
   Check,
   ChevronDown,
-  ChevronRight,
   ChevronsDownUp,
   ChevronsUpDown,
   ClipboardCopy,
@@ -123,13 +122,9 @@ import {
   type QuestionRef,
 } from "vantage-md/planning";
 import { AppLink } from "../components/AppLink";
-import {
-  OpenSidebarButton,
-  ViewToggles,
-  ViewTogglesPanel,
-} from "../components/AppShell";
-import { CollapsedFolders } from "../components/CollapsedFolders";
+import { ViewToggles, ViewTogglesPanel } from "../components/AppShell";
 import { HeaderOverflow } from "../components/HeaderOverflow";
+import { PlanningViewsHeader } from "../components/PlanningViewsHeader";
 import {
   PlanningFilterLine,
   type FilterCounts,
@@ -203,7 +198,6 @@ import {
   type PlanningLayout,
 } from "../lib/planningPages";
 import { planningPath } from "../lib/planningRoute";
-import { workPath } from "../lib/workRoute";
 import {
   PLANNING_SPACE_MESSAGES,
   readSpaceRequest,
@@ -1443,7 +1437,7 @@ export const PlanningPage: React.FC = () => {
   useWebSocket({ viewer: false });
 
   useEffect(() => {
-    document.title = "Vantage: Decisions";
+    document.title = "Vantage: Planning questions";
     return () => {
       document.title = "Vantage";
     };
@@ -3549,22 +3543,10 @@ export const PlanningPage: React.FC = () => {
     return query === "" ? "" : `?${query}`;
   }, [search, location.search]);
 
-  // The header's breadcrumb: the repository, then the page.
-  const crumbRoot = isMultiRepo
-    ? repoName === ""
-      ? { label: "Projects", href: "/" }
-      : { label: repoName, href: `/${repoName}` }
-    : { label: "root", href: "/" };
-  // The contents column is the planning outline here, offered wherever the
-  // page shows a repository's planning; full width, on every page.
   const contentsToggle = showSidebar
     ? { on: contentsOpen, onToggle: toggleContents }
     : null;
   const fullWidthToggle = { on: fullWidth, onToggle: toggleFullWidth };
-
-  // Drawn in the app shell, as the viewer is, which shows its loading state
-  // until the repositories are known: which sidebar to draw is not known
-  // before.
   const shell = useShellPage({
     contentRef,
     showSidebar,
@@ -3573,171 +3555,127 @@ export const PlanningPage: React.FC = () => {
     onFocusFilter: filterLineShown ? focusFilter : undefined,
   });
 
-  // The header is the viewer's, fitted by the same yield steps
-  // (`lib/headerFit.ts`): the ways to the sidebar and the view toggles, the
-  // breadcrumb with the page's name last to give up room, and the page's
-  // actions, Review answers and Copy answers, which fold into the "⋯" with the toggles.
   const header = (
-    <div
-      ref={headerRef}
-      data-testid="planning-header"
-      className="viewer-header h-14 border-b border-slate-200 dark:border-slate-700 flex items-center px-3 md:px-6 justify-between shrink-0 bg-white dark:bg-slate-800 gap-2"
-    >
-      <div className="hdr-lead flex items-center gap-2">
-        {showSidebar && <OpenSidebarButton shell={shell} />}
-        <ViewToggles contents={contentsToggle} fullWidth={fullWidthToggle} />
-        <CardsToggle
-          expanded={cardsBrought}
-          pressed={cardsPressed}
-          onToggle={toggleCards}
-        />
-        {/* Not painted while the server is asked which project a space is
-            (§13.6), nor is the toolbar: the answer names the crumb's
-            project, and a crumb painted as Projects and then renamed would
-            move the page's name after it, and the toolbar's box, which
-            starts where the crumbs end. */}
-        <nav
-          aria-hidden={spacePending || undefined}
-          className={cn(
-            "hdr-crumbs flex items-center text-sm gap-1 min-w-0 overflow-hidden",
-            spacePending && "invisible",
-          )}
-        >
-          <AppLink
-            to={crumbRoot.href}
-            className="hdr-repo text-slate-500 dark:text-slate-400 hover:text-blue-600 font-medium transition-colors shrink-0 no-underline"
-          >
-            {crumbRoot.label}
-          </AppLink>
-          {/* The repository's "…", which only the `repo` step shows. */}
-          <span className="hdr-dirs-collapsed hdr-no-dirs items-center gap-1 shrink-0">
-            <ChevronRight
-              size={14}
-              className="hdr-sep text-slate-500 dark:text-slate-400 shrink-0"
-            />
-            <CollapsedFolders
-              root={crumbRoot}
-              dirs={[]}
-              hrefFor={() => crumbRoot.href}
-            />
-          </span>
-          <ChevronRight
-            size={14}
-            className="text-slate-500 dark:text-slate-400 shrink-0"
+    <PlanningViewsHeader
+      activeView="questions"
+      isMultiRepo={isMultiRepo}
+      repoName={repoName}
+      showSidebar={showSidebar}
+      shell={shell}
+      title="Planning questions"
+      headerRef={headerRef}
+      testId="planning-header"
+      pending={spacePending}
+      leadingControls={
+        <>
+          <ViewToggles contents={contentsToggle} fullWidth={fullWidthToggle} />
+          <CardsToggle
+            expanded={cardsBrought}
+            pressed={cardsPressed}
+            onToggle={toggleCards}
           />
-          <h1 className="hdr-name flex min-w-0 text-sm font-semibold text-slate-900 dark:text-slate-100">
-            <span className="truncate">Decisions</span>
-          </h1>
-          <AppLink
-            to={workPath(isMultiRepo, repoName || null)}
-            className="hdr-action text-sm text-blue-700 hover:underline dark:text-blue-400"
-          >
-            Work
-          </AppLink>
-        </nav>
-      </div>
-      <div
-        aria-hidden={spacePending || undefined}
-        className={cn(
-          "hdr-tools flex items-center gap-2",
-          spacePending && "invisible",
-        )}
-      >
-        {/* Never in the "⋯", where an update would be hidden (§6.3). */}
-        <PlanningUpdates
-          count={updateCount}
-          title={updatesTitle(updates)}
-          onRefresh={() => void refresh()}
-        />
-        <HeaderOverflow
-          extra={
-            <>
-              <ViewTogglesPanel
-                contents={contentsToggle}
-                fullWidth={fullWidthToggle}
-              />
-              <CardsTogglePanel
-                expanded={cardsBrought}
-                onToggle={toggleCards}
-              />
-            </>
-          }
-        >
-          <PlanningPendingAnswers
-            key={repo}
-            groups={pendingGroups}
-            known={countKnown}
-            leftOut={pendingLeftOut}
-            hrefOf={buildPath}
-            onOpenDocument={saveScroll}
+        </>
+      }
+      tools={
+        <>
+          <PlanningUpdates
+            count={updateCount}
+            title={updatesTitle(updates)}
+            onRefresh={() => void refresh()}
           />
-          <button
-            type="button"
-            onClick={copyAnswers}
-            disabled={!countKnown || pendingCount === 0 || quotesLoading}
-            // Under a filter, how many pending answers it leaves out: in the
-            // name and the tooltip, never in text that moves (§6.7).
-            aria-label={
-              countKnown && pendingLeftOut > 0
-                ? `${copied ? "Copied" : "Copy answers"} ${pendingCount}, not counting ${leftOutAnswers(pendingLeftOut)} the filter leaves out`
-                : undefined
+          <HeaderOverflow
+            extra={
+              <>
+                <ViewTogglesPanel
+                  contents={contentsToggle}
+                  fullWidth={fullWidthToggle}
+                />
+                <CardsTogglePanel
+                  expanded={cardsBrought}
+                  onToggle={toggleCards}
+                />
+              </>
             }
-            data-tip={
-              reviewsFailed
-                ? "Comments could not be loaded, so the answers waiting on the agent cannot be counted"
-                : !countKnown
-                  ? "The answers waiting on the agent are still being counted"
-                  : pendingLeftOut > 0
-                    ? pendingCount === 0
-                      ? `No answers the filter keeps are waiting on the agent. It leaves out ${leftOutAnswers(pendingLeftOut)}: clear it to copy them`
-                      : `Copy every answer waiting on the agent that the filter keeps, grouped by document, for one trip. It leaves out ${leftOutAnswers(pendingLeftOut)}: clear it to copy them too`
-                    : pendingCount === 0
-                      ? "No answers are waiting on the agent"
-                      : "Copy every answer waiting on the agent, grouped by document, for one trip"
-            }
-            className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700"
           >
-            {/* As wide as its longer label, so Copied moves nothing, and the
+            <PlanningPendingAnswers
+              key={repo}
+              groups={pendingGroups}
+              known={countKnown}
+              leftOut={pendingLeftOut}
+              hrefOf={buildPath}
+              onOpenDocument={saveScroll}
+            />
+            <button
+              type="button"
+              onClick={copyAnswers}
+              disabled={!countKnown || pendingCount === 0 || quotesLoading}
+              // Under a filter, how many pending answers it leaves out: in the
+              // name and the tooltip, never in text that moves (§6.7).
+              aria-label={
+                countKnown && pendingLeftOut > 0
+                  ? `${copied ? "Copied" : "Copy answers"} ${pendingCount}, not counting ${leftOutAnswers(pendingLeftOut)} the filter leaves out`
+                  : undefined
+              }
+              data-tip={
+                reviewsFailed
+                  ? "Comments could not be loaded, so the answers waiting on the agent cannot be counted"
+                  : !countKnown
+                    ? "The answers waiting on the agent are still being counted"
+                    : pendingLeftOut > 0
+                      ? pendingCount === 0
+                        ? `No answers the filter keeps are waiting on the agent. It leaves out ${leftOutAnswers(pendingLeftOut)}: clear it to copy them`
+                        : `Copy every answer waiting on the agent that the filter keeps, grouped by document, for one trip. It leaves out ${leftOutAnswers(pendingLeftOut)}: clear it to copy them too`
+                      : pendingCount === 0
+                        ? "No answers are waiting on the agent"
+                        : "Copy every answer waiting on the agent, grouped by document, for one trip"
+              }
+              className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700"
+            >
+              {/* As wide as its longer label, so Copied moves nothing, and the
                 count inside that room, so it centers with the icon and the
                 label: room for four digits, so the count arriving moves
                 nothing either. */}
-            <ReservedLabel
-              icon={
-                copied ? (
-                  <Check size={RESERVED_ICON_SIZE} aria-hidden="true" />
-                ) : reviewsFailed ? (
-                  <AlertCircle
-                    size={RESERVED_ICON_SIZE}
-                    aria-hidden="true"
-                    data-testid="reviews-failed"
-                    className="text-amber-600 dark:text-amber-400"
-                  />
-                ) : (
-                  <ClipboardCopy size={RESERVED_ICON_SIZE} aria-hidden="true" />
-                )
-              }
-              label={copied ? "Copied" : "Copy answers"}
-              reserve={["Copy answers", "Copied"]}
-              labelClassName="hdr-label"
-              trailing={{
-                text: countKnown ? String(pendingCount) : "–",
-                testId: "pending-answers",
-                className:
-                  "inline-block text-right tabular-nums text-slate-500 dark:text-slate-400",
-                style: { minWidth: `${planningLimits.pendingCountDigits}ch` },
-              }}
+              <ReservedLabel
+                icon={
+                  copied ? (
+                    <Check size={RESERVED_ICON_SIZE} aria-hidden="true" />
+                  ) : reviewsFailed ? (
+                    <AlertCircle
+                      size={RESERVED_ICON_SIZE}
+                      aria-hidden="true"
+                      data-testid="reviews-failed"
+                      className="text-amber-600 dark:text-amber-400"
+                    />
+                  ) : (
+                    <ClipboardCopy
+                      size={RESERVED_ICON_SIZE}
+                      aria-hidden="true"
+                    />
+                  )
+                }
+                label={copied ? "Copied" : "Copy answers"}
+                reserve={["Copy answers", "Copied"]}
+                labelClassName="hdr-label"
+                trailing={{
+                  text: countKnown ? String(pendingCount) : "–",
+                  testId: "pending-answers",
+                  className:
+                    "inline-block text-right tabular-nums text-slate-500 dark:text-slate-400",
+                  style: { minWidth: `${planningLimits.pendingCountDigits}ch` },
+                }}
+              />
+            </button>
+            <PlanningCopyPanel
+              answers={pendingCount}
+              known={countKnown}
+              ready={!quotesLoading}
+              counts={groupCounts.kinds}
+              onCopy={copyWithMaintenance}
             />
-          </button>
-          <PlanningCopyPanel
-            answers={pendingCount}
-            known={countKnown}
-            ready={!quotesLoading}
-            counts={groupCounts.kinds}
-            onCopy={copyWithMaintenance}
-          />
-        </HeaderOverflow>
-      </div>
-    </div>
+          </HeaderOverflow>
+        </>
+      }
+    />
   );
 
   return (

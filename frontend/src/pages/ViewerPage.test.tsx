@@ -343,7 +343,7 @@ describe("ViewerPage", () => {
   describe("the planning page's toolbar entry", () => {
     it("navigates to the planning page", () => {
       renderPage();
-      const entry = tipped("Decisions (g p)")[0];
+      const entry = tipped("Questions (g p)")[0];
       expect(entry).toHaveAttribute("href", "/.vantage/planning");
       fireEvent.click(entry);
       expect(mockNavigate).toHaveBeenCalledWith("/.vantage/planning");
@@ -358,7 +358,7 @@ describe("ViewerPage", () => {
       });
       mockUseParams.mockReturnValue({ "*": "alpha/path/to/file.md" });
       renderPage();
-      expect(tipped("Decisions (g p)")[0]).toHaveAttribute(
+      expect(tipped("Questions (g p)")[0]).toHaveAttribute(
         "href",
         "/.vantage/planning/alpha",
       );
@@ -368,7 +368,7 @@ describe("ViewerPage", () => {
     // hover or focus of the entry, so the click finds them in hand.
     it("asks for the planning page's first page on hover and on focus", () => {
       renderPage();
-      const entry = tipped("Decisions (g p)")[0];
+      const entry = tipped("Questions (g p)")[0];
       fireEvent.pointerEnter(entry);
       expect(prefetchPlanningPage).toHaveBeenCalledTimes(1);
       expect(prefetchPlanningPage).toHaveBeenLastCalledWith("");
@@ -388,7 +388,7 @@ describe("ViewerPage", () => {
       });
       mockUseParams.mockReturnValue({ "*": "alpha/path/to/file.md" });
       renderPage();
-      fireEvent.focus(tipped("Decisions (g p)")[0]);
+      fireEvent.focus(tipped("Questions (g p)")[0]);
       expect(prefetchPlanningPage).toHaveBeenCalledTimes(1);
       expect(prefetchPlanningPage).toHaveBeenCalledWith("alpha");
     });

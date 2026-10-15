@@ -275,6 +275,7 @@ code {
 /* 7. The repository's name joins the folders behind the "…", which shows
    now even at the root, and loses the separator that followed the name. */
 .viewer-header[data-yield~="repo"] .hdr-repo,
+.viewer-header[data-yield~="repo"] .hdr-repo-separator,
 .viewer-header[data-yield~="repo"] .hdr-dirs-collapsed > .hdr-sep {
   display: none;
 }

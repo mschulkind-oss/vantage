@@ -71,6 +71,44 @@ function item(
   ].join("\n");
 }
 
+describe("document title", () => {
+  it("prefers a trimmed nonempty string frontmatter title to the first H1", () => {
+    expect(
+      planning(
+        '---\nstage: DESIGN\ntitle: "  Custom title  "\n---\n\n# Heading\n',
+      ).title,
+    ).toBe("Custom title");
+  });
+
+  it("uses the first H1 as plain text, including inline formatting", () => {
+    expect(
+      planning(
+        "---\nstage: DESIGN\n---\n\n# **First** *heading* with `code`\n\n# Later\n",
+      ).title,
+    ).toBe("First heading with code");
+  });
+
+  it.each([
+    ["blank metadata", 'title: "   "'],
+    ["non-string metadata", "title: 42"],
+  ])("ignores %s and falls back to the first H1", (_label, metadata) => {
+    expect(
+      planning(`---\nstage: DESIGN\n${metadata}\n---\n\n# Fallback heading\n`)
+        .title,
+    ).toBe("Fallback heading");
+  });
+
+  it("falls back to the filename when no usable H1 exists", () => {
+    expect(
+      planning("---\nstage: DESIGN\n---\n\nBody only.\n", "nested/plan.md")
+        .title,
+    ).toBe("plan.md");
+    expect(
+      planning("---\nstage: DESIGN\n---\n\n#   \n", "nested/empty.md").title,
+    ).toBe("empty.md");
+  });
+});
+
 describe("which files are planning documents (§3.1)", () => {
   it("counts a document with a status", () => {
     expect(scan("---\nstatus: draft\n---\n\n# X\n").kind).toBe("planning");

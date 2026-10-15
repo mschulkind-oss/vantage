@@ -22,6 +22,7 @@ const block = (startLine: number, markdown: string): CardBlock => ({
 
 const doc = (path: string): PlanningDocument => ({
   path,
+  title: path.slice(path.lastIndexOf("/") + 1),
   status: "draft",
   stage: null,
   stageLine: null,
@@ -70,7 +71,7 @@ function brokenStore(): ScanStore & { calls: number } {
 describe("the scanner id", () => {
   it("joins the schema, the source hash and the user agent", () => {
     expect(scannerIdOf("abc", "Mozilla/5.0 (X11)")).toBe(
-      "2:abc:Mozilla/5.0 (X11)",
+      "3:abc:Mozilla/5.0 (X11)",
     );
   });
 

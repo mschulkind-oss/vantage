@@ -6,19 +6,19 @@ import { test, expect } from "@playwright/test";
  * browser's own `title` would have been.
  */
 test.describe("the styled tooltip", () => {
-  test("describes the sidebar Decisions link on hover and keyboard focus", async ({
+  test("describes the sidebar Questions link on hover and keyboard focus", async ({
     page,
   }) => {
     await page.goto("/.vantage/work");
     const decisions = page
       .getByTestId("sidebar")
-      .getByRole("link", { name: "Decisions", exact: true })
-      .and(page.locator('[aria-label="Decisions"]'));
+      .getByRole("link", { name: "Questions", exact: true })
+      .and(page.locator('[aria-label="Questions"]'));
     await expect(decisions).toBeVisible();
     await decisions.hover();
     const tip = page.getByRole("tooltip");
     await expect(tip).toBeVisible();
-    await expect(tip).toHaveText("Decisions (g p)");
+    await expect(tip).toHaveText("Questions (g p)");
     await expect(decisions).not.toHaveAttribute("title");
     await expect(decisions).toHaveAttribute(
       "aria-describedby",
@@ -29,11 +29,11 @@ test.describe("the styled tooltip", () => {
     await expect(tip).toBeHidden();
     await decisions.focus();
     await expect(tip).toBeVisible();
-    await expect(tip).toHaveText("Decisions (g p)");
+    await expect(tip).toHaveText("Questions (g p)");
     await page.keyboard.press("Enter");
     await expect(page).toHaveURL(/\/\.vantage\/planning$/);
     await expect(
-      page.getByRole("heading", { level: 1, name: "Decisions" }),
+      page.getByRole("heading", { level: 1, name: "Questions" }),
     ).toBeVisible();
   });
 
