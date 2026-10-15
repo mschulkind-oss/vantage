@@ -92,7 +92,7 @@ const counted = (n: number, one: string, many: string) =>
   `${n.toLocaleString("en-US")} ${n === 1 ? one : many}`;
 
 /** The words of the line's link to the filtered planning page (§7.1). */
-const PLANNING_PART = "its questions on the Decisions page";
+const PLANNING_PART = "its questions on the Questions page";
 
 /** What the line says: up to four parts, joined by " · " in this order. */
 export interface SummaryLine {
@@ -431,7 +431,7 @@ export function ReferencedBy({
                 click, never the rest of a line of its own. */}
             <AppLink
               to={planningHref}
-              className="text-blue-600 hover:underline dark:text-blue-400"
+              className="text-xs text-blue-600 hover:underline sm:text-[13px] dark:text-blue-400"
             >
               {line.planning}
             </AppLink>

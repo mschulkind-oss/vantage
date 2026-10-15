@@ -10,7 +10,7 @@ Vantage reads those files as a set instead. Each fact is written once, in the
 document it belongs to, and everywhere else a plain Markdown link is enough:
 Vantage shows the fact's current value in a **badge** beside the link, lists
 under each document what links to it, and gathers every question still waiting
-on someone onto the **Decisions** page. The **Work** page gives a read-only
+on someone onto the **Questions** page. The **Overview** page gives a read-only
 overview of every currently indexed planning document. Vantage never writes
 into a document.
 
@@ -325,8 +325,8 @@ planning documents link to it:
 | *Referenced by 3 documents* | Other documents link here, and the roadmap has nothing to add |
 | *Referenced by 3 documents · on plans/roadmap.md under Building and 1 other roadmap* | With several roadmaps that route: the first, nearest the root, that routes this document or one of its questions, named by as much of its path as tells it from the other roadmaps that route, and how many more route it |
 | *Referenced by 3 documents · 2 open questions not on any roadmap* | With several roadmaps that route: two of its open questions are routed by none of them |
-| *Referenced by 3 documents · on the roadmap under Building · its questions on the Decisions page* | The document holds a question, in any state, and its stage has no `done` role. The last part is a link to the planning page [filtered](#filtering-the-page) to this document |
-| *its questions on the Decisions page* | The same, for a document nothing links to and nothing it holds is off the roadmap: the line is only the link |
+| *Referenced by 3 documents · on the roadmap under Building · its questions on the Questions page* | The document holds a question, in any state, and its stage has no `done` role. The last part is a link to Questions [filtered](#filtering-the-page) to this document |
+| *its questions on the Questions page* | The same, for a document nothing links to and nothing it holds is off the roadmap: the line is only the link |
 
 The line reads the same in every browser: it never depends on the roadmap the
 planning page shows. The count is of documents, not links, and a roadmap is one
@@ -337,7 +337,7 @@ roadmap and no question off one, and for a document whose stage has the `done`
 role it gives the count alone. With one roadmap that routes, it is *the
 roadmap*, however many others are retired by a `done` stage or cannot be read.
 
-**Its questions on the Decisions page** opens the planning page with its
+**Its questions on the Questions page** opens Questions with its
 [Filter box](#filtering-the-page) holding this document's path from the root,
 as `path:/docs/design/search.md`, or `path:/notes.md` for a file at the root.
 That filter keeps everything the page lists for the document: its open questions,
@@ -377,9 +377,9 @@ the next time it is opened.
 
 The planning page gathers, for one repository, every question that is waiting
 on someone and every document whose stage calls for a next step. Press **`g p`**
-while viewing a document or a folder to open it, or click **Decisions** in the
-sidebar. The navigation label is Decisions; its stable URL
-and filter remain the planning contract described below. It is built from the index every time and stores nothing of its
+while viewing a document or a folder to open it, or click **Questions** in the
+sidebar or shared header. The stable URL and filter remain the planning contract
+described below. It is built from the index every time and stores nothing of its
 own: no snooze, no assignment, no read state, no remembered filter. It is a
 to-do list: what needs you first, as cards, and everything else folded into
 counts until you open it. What changes while it is open is marked and counted,
@@ -395,9 +395,13 @@ the header carries the sidebar button, the
 ([below](#a-questions-card)), the [updates](#late-changes-and-refresh) waiting
 for **Refresh**, [Review answers](#review-answers),
 [Copy answers](#copy-answers) and
-[Copy answers + maintenance](#copy-answers--maintenance). The header stays in
-view however far you scroll. The contents and full-width toggles are the
-document viewer's own: turned on for one, they are on for the other. The keys
+[Copy answers + maintenance](#copy-answers--maintenance). The visible
+**Overview** / **Questions** selector names the active page and links to the
+other; its full heading remains accessible without repeating the selected
+label. A repository breadcrumb appears in multi-repository mode, while the
+single-repository `root` crumb is omitted to leave room for the controls. The
+header stays in view however far you scroll. The contents and full-width toggles
+are the document viewer's own: turned on for one, they are on for the other. The keys
 that act on the page work here too (`t`, `r`, `Shift+P`, `?`, `j`, `k`), and
 those that act on a document, such as `d` for its diff, do nothing, so the
 shortcuts help (`?`) leaves them out. One key is the planning page's own: `/`
@@ -1235,7 +1239,7 @@ is encoded too, so a sentence's period after a pasted address cannot take it.
 A filtered page is usually reached by a link:
 
 - **From a document:** its [Referenced by](#referenced-by) line ends with *its
-  questions on the Decisions page*, which opens the page filtered to that
+  questions on the Questions page*, which opens Questions filtered to that
   document.
 - **From an agent:** `vantage-check index --filter` prints a `Planning page:`
   line
@@ -1283,19 +1287,38 @@ counts beside its box is not filtered, and its Copy agent request has no
 
 ## Work overview
 
-**Work** in the sidebar opens `/.vantage/work`, or
+**Overview** in the sidebar opens `/.vantage/work`, or
 `/.vantage/work/<encoded-repo>` in daemon mode. It shows the same index grouped
 by exact saved document stage, with missing and unmapped stages still visible and terminal/reference
 documents in a collapsed group. It is read-only: stages are document claims,
-not verified implementation progress. Use **Decisions** for questions and
-answers; the two pages link to each other.
+not verified implementation progress. Use **Questions** for questions and
+answers; both pages share a fixed header and link to each other.
 
-Work holds external index changes until **Refresh saved index updates**. Its
-local filter searches path, stage and next step only. **Open document to
-comment** and **Copy change request** hand proposed changes to an agent; they
-do not edit source. Recent stage transitions label document metadata or bounded
-Git evidence and disclose partial or unavailable history. For the authority
-boundary, date rules, provenance and limits, see
+Each tile links by its display title and keeps the repository-relative path for
+disambiguation. A trimmed frontmatter `title` takes precedence, then the first
+H1 as plain text, then the filename. Stage counts and jump links summarize the
+configured groups. All active tiles appear together in compact responsive grids;
+full saved facts and actions live in a keyboard-accessible disclosure named by
+title and path. Expanded details grow their tile in the page flow rather than
+floating over neighboring cards.
+
+At 1440×900, a deterministic fixture with 40 active documents across four
+repository-defined stages (ten per stage, mapped to the `open`, `ready` and
+`built` roles) fits every active tile within the visible content viewport, with
+the sidebar collapsed. The test adds two collapsed `done`-role documents whose
+count and access remain visible. The fixture demonstrates configured grouping,
+not a universal workflow. At 375×812, the page has no horizontal overflow; the
+first/last desktop columns, bottom row and phone list's first/last details keep
+both handoff actions within the horizontal content bounds. Actions can be
+reached by normal page scrolling, and the disclosure opens by keyboard.
+
+Overview holds external index changes until **Refresh saved index updates**.
+Its local filter searches title, path, stage and next step, separately from
+Questions' query language. **Open document to comment** and **Copy change
+request** hand proposed changes to an agent; they do not edit source. Recent
+stage transitions label document metadata or bounded Git evidence and disclose
+partial or unavailable history. For the authority boundary, date rules,
+provenance and limits, see
 [the Work overview reference](../../docs/reference/work-overview.md).
 
 ---

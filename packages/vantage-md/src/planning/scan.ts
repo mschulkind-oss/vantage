@@ -210,6 +210,8 @@ export interface HeaderProblem {
 /** A planning document: what one file contributes to the index. */
 export interface PlanningDocument {
   path: string;
+  /** Nonempty display title: frontmatter, first H1, or the filename. */
+  title: string;
   /** Only the four statuses; the key's presence still makes it planning. */
   status: DocStatus | null;
   /** A trimmed, non-empty string, as written; else `null` plus a problem. */
@@ -1399,6 +1401,22 @@ function problemReason(parsed: ParsedFrontmatter): string | undefined {
   }
 }
 
+function documentTitle(
+  path: string,
+  frontmatterTitle: unknown,
+  root: Root,
+): string {
+  if (typeof frontmatterTitle === "string" && frontmatterTitle.trim() !== "") {
+    return frontmatterTitle.trim();
+  }
+  const heading = root.children.find(
+    (node) => node.type === "heading" && node.depth === 1,
+  );
+  const headingTitle = heading === undefined ? "" : flatten(textOf(heading));
+  if (headingTitle !== "") return headingTitle;
+  return path.slice(path.lastIndexOf("/") + 1) || path;
+}
+
 /**
  * Read one candidate. `isRoadmap` is decided from the config by
  * `scanCandidate`, which is how the index scans a file and how anything
@@ -1521,6 +1539,7 @@ export function scanPlanningDocument(
     kind: "planning",
     document: {
       path,
+      title: documentTitle(path, fm["title"], root),
       status: isDocStatus(status) ? status : null,
       ...readHeader(path, source, parsed),
       questions,

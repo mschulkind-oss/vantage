@@ -30,7 +30,7 @@ const cards = (page: Page, name: string) =>
   section(page, name).getByRole("article");
 const box = (page: Page) => page.getByRole("textbox", { name: "Filter" });
 const filterLine = (page: Page) =>
-  page.getByRole("search", { name: "Filter Decisions" });
+  page.getByRole("search", { name: "Filter Questions" });
 const notice = (page: Page) => page.getByTestId("filter-notice");
 /**
  * The filter line's counts, *N match · M hidden*, which replaced the notice's

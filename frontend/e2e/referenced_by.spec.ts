@@ -24,7 +24,7 @@ const lineRow = (page: Page) => surface(page).locator(":scope > div").first();
 /** The line's link to the planning page filtered to the document. */
 const planningLink = (page: Page) =>
   surface(page).getByRole("link", {
-    name: "its questions on the Decisions page",
+    name: "its questions on the Questions page",
   });
 
 /** Hold every planning stream until the returned function is called. */
@@ -192,7 +192,7 @@ test("a document nothing links to still counts its unrouted questions", async ({
 }) => {
   await page.goto("/plans/unrouted.md");
   await expect(surface(page)).toHaveText(
-    "1 open question not on the roadmap · its questions on the Decisions page",
+    "1 open question not on the roadmap · its questions on the Questions page",
   );
   await expect(surface(page).getByRole("button")).toHaveCount(0);
 });
@@ -205,7 +205,7 @@ test("a live document's line links to the planning page filtered to it", async (
   const filtered = "/.vantage/planning?filter=path:/plans/paged.md";
   await page.goto("/plans/paged.md");
   await expect(lineRow(page)).toHaveText(
-    "Referenced by 1 document · on the roadmap under Later · its questions on the Decisions page",
+    "Referenced by 1 document · on the roadmap under Later · its questions on the Questions page",
   );
   // After the disclosure button, never inside it.
   await expect(toggle(page)).toHaveText(

@@ -80,17 +80,29 @@ describe("deriveWorkBoard", () => {
     expect(board.roles).toEqual([]);
   });
 
-  it("filters only paths, stages and next-step text", () => {
+  it("filters titles as well as path, stage and next-step text", () => {
     const docs = indexOf({
-      "docs/alpha.md": staged("DESIGN", "Review the parser"),
-      "docs/beta.md": staged("BUILT", "No related step"),
+      "docs/alpha.md":
+        staged("DESIGN", "Review the parser") + "\n# Cache invalidation\n",
+      "docs/beta.md": staged("BUILT", "No related step") + "\n# Other title\n",
+      "one/plan.md": staged("DESIGN") + "\n# First location\n",
+      "two/plan.md": staged("DESIGN") + "\n# Second location\n",
     }).documents;
+    expect(
+      filterWorkDocuments(docs, "CACHE INVALIDATION").map(({ path }) => path),
+    ).toEqual(["docs/alpha.md"]);
     expect(filterWorkDocuments(docs, "parser").map(({ path }) => path)).toEqual(
       ["docs/alpha.md"],
     );
     expect(filterWorkDocuments(docs, "built").map(({ path }) => path)).toEqual([
       "docs/beta.md",
     ]);
+    expect(
+      filterWorkDocuments(docs, "docs/beta.md").map(({ path }) => path),
+    ).toEqual(["docs/beta.md"]);
+    expect(
+      filterWorkDocuments(docs, "Second location").map(({ path }) => path),
+    ).toEqual(["two/plan.md"]);
     expect(filterWorkDocuments(docs, "question title")).toEqual([]);
   });
 });

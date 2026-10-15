@@ -634,13 +634,22 @@ function renderJson(
   filter?: AppliedFilter | null,
 ): string {
   const index = narrowed(project);
+  // The scanner title is viewer presentation metadata, not part of the CLI's stable JSON document shape.
+  const publicIndex = {
+    ...index,
+    documents: index.documents.map((doc) => {
+      const { title, ...withoutPresentationTitle } = doc;
+      void title;
+      return withoutPresentationTitle;
+    }),
+  };
   return `${JSON.stringify(
     {
       tool: "vantage-check",
       toolVersion: VERSION,
       version: INDEX_FORMAT_VERSION,
       root: project.root,
-      index,
+      index: publicIndex,
       sections,
       sectionGuide: sections === null ? null : planningSectionGuide(sections),
       roadmaps:

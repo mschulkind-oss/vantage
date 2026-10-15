@@ -294,12 +294,25 @@ describe("index, as JSON", () => {
     expect(payload.sections).toEqual(expected);
   });
 
-  it("prints the index itself, each document's links narrowed to other candidates", async () => {
+  it("keeps presentation titles out of stable JSON and narrows document links", async () => {
     const { payload } = await indexJson(fullTree());
     const built = buildPlanningIndex(fullSources());
+    expect(built.documents.some((document) => document.title !== "")).toBe(
+      true,
+    );
+    expect(
+      payload.index.documents.every(
+        (document: object) =>
+          !Object.prototype.hasOwnProperty.call(document, "title"),
+      ),
+    ).toBe(true);
     const withoutLinks = (index: PlanningIndex) => ({
       ...index,
-      documents: index.documents.map((d) => ({ ...d, links: [] })),
+      documents: index.documents.map((document) => {
+        const { title, ...withoutPresentationTitle } = document;
+        void title;
+        return { ...withoutPresentationTitle, links: [] };
+      }),
     });
 
     expect(withoutLinks(payload.index)).toEqual(withoutLinks(built));

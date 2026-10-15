@@ -541,8 +541,8 @@ const ShellFrame: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                 <AppLink
                   to={planningPath(isMultiRepo, currentRepo)}
                   className="p-1.5 rounded-md hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
-                  aria-label="Decisions"
-                  data-tip="Decisions (g p)"
+                  aria-label="Questions"
+                  data-tip="Questions (g p)"
                   onPointerEnter={prefetchPlanning}
                   onFocus={prefetchPlanning}
                 >
@@ -587,20 +587,20 @@ const ShellFrame: React.FC<{ children: React.ReactNode }> = ({ children }) => {
               {/* Labeled routes remain easy to find without changing the
                   planning URL or its g p shortcut. */}
               <nav
-                aria-label="Work and Decisions pages"
+                aria-label="Overview and Questions pages"
                 className="mb-3 border-b border-slate-100 px-2 pb-3 dark:border-slate-700"
               >
                 <AppLink
                   to={workPath(isMultiRepo, currentRepo)}
                   className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-700"
                 >
-                  <BriefcaseBusiness size={15} aria-hidden="true" /> Work
+                  <BriefcaseBusiness size={15} aria-hidden="true" /> Overview
                 </AppLink>
                 <AppLink
                   to={planningPath(isMultiRepo, currentRepo)}
                   className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-700"
                 >
-                  <ListChecks size={15} aria-hidden="true" /> Decisions
+                  <ListChecks size={15} aria-hidden="true" /> Questions
                 </AppLink>
               </nav>
               {/* File tree (sidebar only shows when a repo is selected) */}

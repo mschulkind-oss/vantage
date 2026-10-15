@@ -447,7 +447,7 @@ describe("Referenced by (§7)", () => {
     seedReady(indexOf(TREE));
     renderViewer(FORGOTTEN, "docs/forgotten.md");
     expect(surface()).toHaveTextContent(
-      /^1 open question not on the roadmap · its questions on the Decisions page$/,
+      /^1 open question not on the roadmap · its questions on the Questions page$/,
     );
     expect(screen.queryByRole("button", { name: /roadmap/ })).toBeNull();
   });
@@ -482,7 +482,7 @@ describe("Referenced by (§7)", () => {
   });
 
   describe("its link to the filtered planning page (§7.1)", () => {
-    const LINK = "its questions on the Decisions page";
+    const LINK = "its questions on the Questions page";
     const planningLink = () => screen.queryByRole("link", { name: LINK });
     /** The line itself, without the list behind it, which is in the DOM, hidden. */
     const lineRow = () => surface()?.firstElementChild ?? null;
@@ -504,7 +504,7 @@ describe("Referenced by (§7)", () => {
       );
       expect(toggle()).not.toContainElement(link);
       expect(lineRow()).toHaveTextContent(
-        /^Referenced by 2 documents · on the roadmap under Rule these first · its questions on the Decisions page$/,
+        /^Referenced by 2 documents · on the roadmap under Rule these first · its questions on the Questions page$/,
       );
       fireEvent.click(link);
       expect(navigate).toHaveBeenCalledWith(
@@ -611,7 +611,7 @@ describe("Referenced by (§7)", () => {
       seedReady(indexOf({ "docs/alone.md": alone }));
       renderViewer(alone, "docs/alone.md");
       expect(surface()).toHaveTextContent(
-        /^its questions on the Decisions page$/,
+        /^its questions on the Questions page$/,
       );
       expect(surface()?.querySelector("button")).toBeNull();
       expect(planningLink()).toHaveAttribute(
@@ -656,7 +656,7 @@ describe("Referenced by (§7)", () => {
       seedReady(indexOf({ "docs/alone.md": alone }));
       expect(reserved()).toBeNull();
       expect(surface()).toHaveTextContent(
-        /^its questions on the Decisions page$/,
+        /^its questions on the Questions page$/,
       );
       expect(planningLink()?.parentElement).toHaveClass(
         "shrink-0",
@@ -764,7 +764,7 @@ describe("Referenced by (§7)", () => {
       expect(words).toHaveClass("sm:truncate");
       expect(words).not.toHaveClass("truncate");
       const part = screen.getByRole("link", {
-        name: "its questions on the Decisions page",
+        name: "its questions on the Questions page",
       }).parentElement;
       expect(part).toHaveClass("basis-full", "pl-[18px]", "sm:basis-auto");
     });
