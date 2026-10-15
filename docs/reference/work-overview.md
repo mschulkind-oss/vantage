@@ -28,10 +28,10 @@ summary: "The Overview screen groups saved planning documents into compact stage
 
 # Work overview — saved document stages and transition evidence
 
-**Status:** Reconciled 2026-10-14 against the working tree based on source commit
-`3fd4099b`. The implementation changes are uncommitted and pending review.
-UNMEASURED: assistive-technology observation remains outstanding. See
-[Verification](#verification) for the checked source behavior and viewport.
+**Status:** Overview coverage presentation checked 2026-10-15 against source
+commit `302cb893` plus the local presentation change. Frontmatter records the
+base-system verification. UNMEASURED: assistive-technology observation remains
+outstanding. See [Verification](#verification) for the checked behavior and viewports.
 
 **Overview** answers **where do the planning documents say work stands, and what
 is recorded as changing?** It is a read-only companion to **Questions**, derived from
@@ -69,7 +69,9 @@ groups, and counts do not appear underneath a pointer or focused control.
 Documents remain the authority. Owners and agents maintain them through their
 chosen authoring tools. Work does not verify implementation and never writes
 documents or source files; this is a permanent boundary, not an
-initial-release limitation. Its always-visible disclosure names that boundary.
+initial-release limitation. The board has no unconditional disclosure banner;
+this boundary remains part of the system's authority, not a warning about
+ordinary saved-stage browsing.
 
 ## Board census and stage roles
 
@@ -182,7 +184,13 @@ boundary, is not an empty tree. Unreadable or oversized source is not an empty
 file either. The response carries `complete`, `partial` or `unavailable`, with
 `commits_examined`, `truncated`, a reason when relevant, and source snapshots.
 Bounds, shallow history and unreadable inputs remain disclosed even if usable
-events were found.
+events were found. Partial history shows the compact status **Recent Git evidence
+is limited**; unavailable history instead says **Recent Git evidence is
+unavailable**. Both offer a native **Coverage details** disclosure, collapsed by
+default, containing the full reason. Its explanation scopes the limit to automatic
+transition evidence: saved stage counts are unaffected, and document metadata
+evidence remains separately labeled when present. Complete coverage has no
+warning disclosure.
 
 The comparator retains the newest proven transition per eligible path in the
 examined batch. Unchanged stages produce no event. The old side must prove a
@@ -252,39 +260,43 @@ change authoritative priority until the roadmap's Markdown changes.
 
 ## Verification
 
-The changed presentation and scanner projection were checked in the working tree
-based on source commit `3fd4099b`; this review does not treat the uncommitted
-source as landed. Focused frontend tests cover scanner title precedence, cache
-schema, title filtering, both page headers and accessible links. The checker
-regression proves that the scanner's presentation-only `title` stays out of
-`vantage-check index --format json`.
+The coverage presentation was checked against source commit `302cb893` plus the
+local UI change. Focused `WorkPage` tests cover removal of the unconditional
+banner, collapsed coverage details with full shallow-boundary and source-pair
+reasons, unavailable Git distinct from partial coverage, and preserved saved
+counts, metadata evidence and file-history links. The same suite retains its
+classification, filtering, repository routing and reader-applied refresh checks.
+Frontend lint and the solution-style TypeScript build passed.
 
-The source-Vite Playwright fixture uses 40 active documents across four
-repository-defined stage labels of ten each (mapped to the `open`, `ready` and
-`built` roles), plus two `done`-role documents in the collapsed terminal group.
-Those test labels and role mappings exercise grouped overhead; they do not
-define a universal workflow. At 1440×900 with the sidebar collapsed, all 40
-active tile bounds fit in the content viewport: top `198.5`, bottom `882.5`,
-inside content bounds `56`–`900`. The 40-active bound check excludes the two
-terminal tiles, whose count and access control are measured separately.
+A bounded source-Vite browser fixture exercised the actual history UI with one
+saved planning document, a document-metadata event and a deleted-path Git event.
+Desktop and phone captures show compact and expanded coverage details; keyboard
+Enter opens the native disclosure, the full reason becomes visible, and neither
+viewport has horizontal overflow. Screenshots are retained in
+`.yolo/durable/overview-warning-review`. This checks presentation with controlled
+API responses, not a live repository's history completeness or arbitrary board
+scale. The temporary fixture source was removed after the run.
 
-At 375×812 the page has no horizontal overflow. Playwright opens details and
-checks the first/last desktop columns and bottom row, and the phone list's first
-and last cards. In every case the expanded panel and both handoff actions stay
-within the horizontal content bounds; actions remain visible when brought into
-the normal page scroll. The keyboard opens the native disclosure. Screenshots
-from this run are retained with the implementation review artifact. These are
-deterministic acceptance checks, not a claim about arbitrary repository scale.
-Assistive-technology observation is still outstanding. The clean-tree `just done`
-gate has not been run because this change is awaiting review and has not been
-committed.
+The existing source-Vite acceptance fixture covers forty active tiles across
+repository-defined stage labels, collapsed terminal items, and accessible card
+handoffs. That larger-board fixture was not rerun for this local coverage change;
+its exact viewport inputs are in [Current values](#current-values).
+Assistive-technology observation remains outstanding.
+
+The clean-tree `just done` landing gate passed on 2026-10-15. It completed Go
+tests, 27 `vantage-check` test files (1,234 passed, 1 skipped), and 143 frontend
+test files (5,012 passed), along with the formatting, lint, type, and repository
+checks. The documentation check reported nine warnings in 57 files: eight
+`planning/unrouted` notices for other open questions and one existing
+`planning/question-length` notice. There were no gate failures; the final
+landing report records this full run.
 
 
 ## Current values
 
-Reconciled against the working tree based on source commit `3fd4099b` on
-2026-10-14. This table isolates tunable limits and operational paths from the
-mechanisms above.
+Base limits were reconciled at `3fd4099b` on 2026-10-14; the backend caps were
+rechecked at `302cb893` on 2026-10-15 and are unchanged. This table isolates
+tunable limits and operational paths from the mechanisms above.
 
 | Value | Setting | Defined in |
 | :--- | :--- | :--- |
@@ -297,5 +309,6 @@ mechanisms above.
 | Overview active tiles | All filtered active documents render without a progressive reveal cap; terminal/reference remains collapsed with a count | `WorkPage` in `frontend/src/pages` |
 | Overview local filter fields | Display title, path, stage and next step; separate from Questions' filter grammar | `filterWorkDocuments` in `packages/vantage-md/src/planning/work.ts` |
 | Viewport acceptance | 40 active documents across four configured stages at 1440×900 with sidebar collapsed (bounds 198.5–882.5 inside content bounds 56–900); 2 terminal documents remain collapsed but counted/accessed; 375×812 has no horizontal overflow, opened detail bounds/actions fit, and native disclosure is keyboard-operable | `frontend/e2e/work_shell.spec.ts` |
+| Coverage presentation observation | Desktop 1440×900 and phone 375×812; compact and keyboard-expanded details, metadata and Git links retained, no horizontal overflow | Bounded source-Vite browser fixture; screenshots in `.yolo/durable/overview-warning-review` |
 | Initial events | 5; Show more reveals remaining bounded candidates | `INITIAL_EVENTS` in `WorkPage` |
 | Evidence window | Inclusive `[now - 168 hours, now]` | `buildWorkHistory` in `frontend/src/lib` |

@@ -111,7 +111,7 @@ afterEach(() => {
 });
 
 describe("WorkPage", () => {
-  it("shows the saved overview, source-claims disclosure and Questions links", async () => {
+  it("shows the saved overview without an unconditional source-claims disclaimer", async () => {
     seedIndex(
       {
         "docs/design/a.md":
@@ -130,10 +130,10 @@ describe("WorkPage", () => {
       await screen.findByRole("heading", { name: "Work overview" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(
+      screen.queryByText(
         /Vantage does not verify implementation or write source files/,
       ),
-    ).toBeInTheDocument();
+    ).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Questions" })).toHaveAttribute(
       "href",
       "/.vantage/planning",
@@ -511,43 +511,123 @@ describe("WorkPage", () => {
     expect(loadWorkHistory).not.toHaveBeenCalled();
   });
 
-  it("shows partial Git provenance and a history link for deleted-path evidence", async () => {
+  it.each([
+    "A shallow boundary was reached.",
+    "The source-pair limit was reached. Older transitions were not inspected.",
+  ])(
+    "keeps partial Git coverage compact and preserves its full reason: %s",
+    async (reason) => {
+      loadWorkHistory.mockResolvedValueOnce({
+        status: "partial",
+        commitsExamined: 3,
+        truncated: true,
+        reason,
+        events: [
+          {
+            key: "git:deadbeef:docs/gone.md",
+            path: "docs/gone.md",
+            from: "DESIGN",
+            to: "Deleted",
+            source: "git",
+            evidenceAt: "2026-03-01T00:00:00.000Z",
+            commit: "deadbeef",
+            conflict: false,
+          },
+        ],
+      });
+      seedIndex({ "docs/current.md": frontmatter("DESIGN") }, 1, {
+        stages: { DESIGN: "open" },
+      });
+      renderWork();
+      await screen.findByText("Recent Git evidence is limited");
+      expect(screen.getByRole("status")).toHaveTextContent(
+        "Recent Git evidence is limited",
+      );
+      expect(screen.getByRole("status")).not.toHaveTextContent(reason);
+      const summary = screen.getByText("Coverage details");
+      const details = summary.closest("details")!;
+      expect(details).not.toHaveAttribute("open");
+      expect(within(details).getByText(reason)).toBeInTheDocument();
+      expect(details).toHaveTextContent(
+        "This limits automatic transition evidence only; saved stage counts are unaffected.",
+      );
+      fireEvent.click(summary);
+      expect(details).toHaveAttribute("open");
+      expect(screen.getByTestId("work-counts")).toHaveTextContent(
+        "1 matching · 1 in applied snapshot",
+      );
+      expect(
+        screen.getByRole("link", { name: "docs/gone.md" }),
+      ).toHaveAttribute("href", "/history/docs/gone.md");
+      expect(
+        screen.getByRole("link", { name: "View file history" }),
+      ).toHaveAttribute("href", "/history/docs/gone.md");
+      expect(screen.getByText("DESIGN → Deleted")).toBeInTheDocument();
+      expect(
+        screen.getByText(/Git commit evidence · deadbeef/),
+      ).toBeInTheDocument();
+    },
+  );
+
+  it("distinguishes unavailable Git from limited coverage while preserving metadata evidence", async () => {
     loadWorkHistory.mockResolvedValueOnce({
-      status: "partial",
-      commitsExamined: 3,
-      truncated: true,
-      reason: "A shallow boundary was reached.",
+      status: "unavailable",
+      commitsExamined: 0,
+      truncated: false,
+      reason: "This repository has no local Git history.",
       events: [
         {
-          key: "git:deadbeef:docs/gone.md",
-          path: "docs/gone.md",
-          from: "DESIGN",
-          to: "Deleted",
-          source: "git",
+          key: "metadata:docs/current.md",
+          path: "docs/current.md",
+          to: "DESIGN",
+          source: "document-metadata",
           evidenceAt: "2026-03-01T00:00:00.000Z",
-          commit: "deadbeef",
           conflict: false,
         },
       ],
     });
+    seedIndex({ "docs/current.md": frontmatter("DESIGN") }, 1, {
+      stages: { DESIGN: "open" },
+    });
+    renderWork();
+    await screen.findByText("Recent Git evidence is unavailable");
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Recent Git evidence is unavailable",
+    );
+    expect(
+      screen.queryByText("Recent Git evidence is limited"),
+    ).not.toBeInTheDocument();
+    const details = screen.getByText("Coverage details").closest("details")!;
+    expect(details).not.toHaveAttribute("open");
+    expect(details).toHaveTextContent(
+      "This repository has no local Git history.",
+    );
+    expect(details).toHaveTextContent(
+      "Metadata evidence, if present, is still shown separately.",
+    );
+    expect(
+      screen.getByText("Document metadata evidence: stage entered DESIGN"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getAllByRole("link", { name: "docs/current.md" })[0],
+    ).toHaveAttribute("href", "/docs/current.md");
+    expect(screen.getByTestId("work-counts")).toHaveTextContent(
+      "1 matching · 1 in applied snapshot",
+    );
+    expect(
+      screen.queryByRole("link", { name: "View file history" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps complete empty coverage free of a warning disclosure", async () => {
     seedIndex({});
     renderWork();
-    await waitFor(() =>
-      expect(screen.getByRole("status").textContent).toContain(
-        "A shallow boundary was reached.",
+    expect(
+      await screen.findByText(
+        "No recent stage transitions were found in the inspected window.",
       ),
-    );
-    expect(screen.getByRole("link", { name: "docs/gone.md" })).toHaveAttribute(
-      "href",
-      "/history/docs/gone.md",
-    );
-    expect(
-      screen.getByRole("link", { name: "View file history" }),
-    ).toHaveAttribute("href", "/history/docs/gone.md");
-    expect(screen.getByText("DESIGN → Deleted")).toBeInTheDocument();
-    expect(
-      screen.getByText(/Git commit evidence · deadbeef/),
     ).toBeInTheDocument();
+    expect(screen.queryByText("Coverage details")).not.toBeInTheDocument();
   });
 
   it("copies a proposal without changing the indexed source facts", async () => {
