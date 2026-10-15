@@ -148,7 +148,7 @@ jobs:
           fetch-depth: 0
 
       - name: Install mise (go, node, bun)
-        uses: jdx/mise-action@v4
+        uses: jdx/mise-action@v5
 
       - name: Read the version from the tag
         id: ver
