@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
-import { AlertCircle, RefreshCw } from "lucide-react";
+import {
+  AlertCircle,
+  ChevronDown,
+  ChevronRight,
+  RefreshCw,
+} from "lucide-react";
 import {
   deriveWorkBoard,
   documentFilter,
@@ -37,6 +42,7 @@ interface WorkPageUi {
   repoKey: string | null;
   filter: string;
   terminalOpen: boolean;
+  collapsedStages: ReadonlySet<string>;
   showMoreEvents: boolean;
 }
 
@@ -45,6 +51,7 @@ function initialWorkPageUi(repoKey: string | null): WorkPageUi {
     repoKey,
     filter: "",
     terminalOpen: false,
+    collapsedStages: new Set(),
     showMoreEvents: false,
   };
 }
@@ -150,7 +157,7 @@ export const WorkPage: React.FC = () => {
     for (const roleGroup of board.roles) {
       for (const stageGroup of roleGroup.stages) {
         groups.push({
-          key: `${roleGroup.role}:${stageGroup.stage}`,
+          key: JSON.stringify(["role", roleGroup.role, stageGroup.stage]),
           label: stageGroup.stage,
           role: roleGroup.role,
           documents: stageGroup.documents,
@@ -159,7 +166,7 @@ export const WorkPage: React.FC = () => {
     }
     if (board.missingStage.length > 0) {
       groups.push({
-        key: "missing",
+        key: JSON.stringify(["missing"]),
         label: "Missing stage",
         role: "Needs classification",
         documents: board.missingStage,
@@ -167,7 +174,7 @@ export const WorkPage: React.FC = () => {
     }
     for (const stageGroup of board.unmapped) {
       groups.push({
-        key: `unmapped:${stageGroup.stage}`,
+        key: JSON.stringify(["unmapped", stageGroup.stage]),
         label: stageGroup.stage,
         role: board.stagesDeclared ? "Unknown stage" : "Unmapped saved stage",
         documents: stageGroup.documents,
@@ -175,16 +182,16 @@ export const WorkPage: React.FC = () => {
     }
     if (board.terminal.length > 0) {
       groups.push({
-        key: "terminal",
+        key: JSON.stringify(["terminal"]),
         label: "Terminal/reference",
         role: "done",
         documents: board.terminal,
         terminal: true,
       });
     }
-    return groups.map((group, position) => ({
+    return groups.map((group) => ({
       ...group,
-      id: `work-stage-${position}`,
+      id: `work-stage-${encodeURIComponent(group.key)}`,
     }));
   }, [board]);
   const matchedPaths = useMemo(
@@ -240,6 +247,7 @@ export const WorkPage: React.FC = () => {
     updateUi((current) => ({
       ...current,
       showMoreEvents: false,
+      collapsedStages: new Set(),
     }));
   };
 
@@ -606,7 +614,7 @@ export const WorkPage: React.FC = () => {
                     >
                       {text}
                     </button>
-                  ) : count > 0 ? (
+                  ) : (
                     <a
                       key={group.key}
                       href={`#${group.id}`}
@@ -615,15 +623,22 @@ export const WorkPage: React.FC = () => {
                     >
                       {text}
                     </a>
-                  ) : (
-                    <span
-                      key={group.key}
-                      className="rounded border border-slate-200 px-1.5 py-1 text-slate-500 dark:border-slate-700 dark:text-slate-400"
-                    >
-                      {text}
-                    </span>
                   );
                 })}
+                {ui.collapsedStages.size > 0 && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      updateUi((current) => ({
+                        ...current,
+                        collapsedStages: new Set(),
+                      }))
+                    }
+                    className="rounded border border-slate-300 bg-white px-1.5 py-1 text-slate-700 hover:border-blue-400 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
+                  >
+                    Expand all active stages
+                  </button>
+                )}
               </nav>
               {pendingUpdates && (
                 <p
@@ -712,7 +727,7 @@ export const WorkPage: React.FC = () => {
                       </section>
                     );
                   }
-                  if (filtered.length === 0) return null;
+                  const collapsed = ui.collapsedStages.has(group.key);
                   return (
                     <section
                       key={group.key}
@@ -720,10 +735,36 @@ export const WorkPage: React.FC = () => {
                       aria-label={`${group.role}: ${group.label}`}
                       className="scroll-mt-2"
                     >
-                      <div className="mb-1 flex items-baseline justify-between gap-2">
-                        <h2 className="min-w-0 truncate text-sm font-semibold">
-                          {group.label}
-                        </h2>
+                      <div className="mb-1 flex items-center justify-between gap-2">
+                        <div className="flex min-w-0 items-center gap-1">
+                          <button
+                            type="button"
+                            aria-label={`${collapsed ? "Expand" : "Collapse"} ${group.label} stage`}
+                            aria-expanded={!collapsed}
+                            aria-controls={`${group.id}-tiles`}
+                            onClick={() =>
+                              updateUi((current) => {
+                                const collapsedStages = new Set(
+                                  current.collapsedStages,
+                                );
+                                if (collapsedStages.has(group.key))
+                                  collapsedStages.delete(group.key);
+                                else collapsedStages.add(group.key);
+                                return { ...current, collapsedStages };
+                              })
+                            }
+                            className="shrink-0 rounded p-0.5 text-slate-600 hover:bg-slate-200 focus-visible:outline-2 focus-visible:outline-blue-500 dark:text-slate-300 dark:hover:bg-slate-700"
+                          >
+                            {collapsed ? (
+                              <ChevronRight size={16} aria-hidden="true" />
+                            ) : (
+                              <ChevronDown size={16} aria-hidden="true" />
+                            )}
+                          </button>
+                          <h2 className="min-w-0 break-words text-sm font-semibold">
+                            {group.label}
+                          </h2>
+                        </div>
                         <span className="shrink-0 text-[10px] text-slate-500 dark:text-slate-300">
                           {group.role} · {filtered.length}
                           {ui.filter.trim()
@@ -731,10 +772,19 @@ export const WorkPage: React.FC = () => {
                             : ""}
                         </span>
                       </div>
-                      <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
-                        {filtered.map((document) =>
-                          renderCard(document, index),
-                        )}
+                      <div
+                        id={`${group.id}-tiles`}
+                        hidden={collapsed}
+                        className={
+                          collapsed
+                            ? undefined
+                            : "grid grid-cols-1 gap-1.5 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5"
+                        }
+                      >
+                        {!collapsed &&
+                          filtered.map((document) =>
+                            renderCard(document, index),
+                          )}
                       </div>
                     </section>
                   );
