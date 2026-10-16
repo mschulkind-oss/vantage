@@ -14,7 +14,31 @@
     <title>Vantage</title>
   </head>
   <body>
-    <div id="root"></div>
+    <!-- React replaces this content on its first render. Keep it independent
+         of external CSS and JS so a failed bundle load never leaves a blank tab. -->
+    <div id="root">
+      <div
+        style="
+          padding: 2rem;
+          font:
+            1rem/1.5 system-ui,
+            sans-serif;
+        "
+      >
+        <p>Loading Vantage…</p>
+        <p>
+          If loading doesn't finish, reload this page to get the latest app.
+        </p>
+        <button type="button" onclick="window.location.reload()">
+          Reload this page
+        </button>
+        <noscript
+          ><p>
+            Enable JavaScript in your browser, then reload this page.
+          </p></noscript
+        >
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
