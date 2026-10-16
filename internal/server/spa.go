@@ -26,9 +26,10 @@ func securityHeaders(next http.Handler) http.Handler {
 
 // spaHandler serves the embedded single-page application for every non-/api
 // route. An existing static asset (favicon, hashed JS/CSS, images) is served
-// directly with the correct content type; anything else falls back to the
-// bundle's index.html (served as-is) so the React router can handle client-side
-// routes.
+// directly with the correct content type; missing asset requests get a 404.
+// Other paths fall back to the bundle's index.html so the React router can
+// handle client-side routes. HTML is never cached: its asset filenames belong
+// to this binary, and a later binary may embed a different bundle.
 func (s *Server) spaHandler() http.HandlerFunc {
 	dist := web.Dist()
 	index := indexHTML(dist)
@@ -57,10 +58,23 @@ func (s *Server) spaHandler() http.HandlerFunc {
 			}
 		}
 
-		// SPA fallback: serve index.html for client-side routes.
+		// A stale page can request an asset from a previous bundle. Returning
+		// index.html here hides the missing file behind a module/CSS MIME error.
+		// Keep navigations working for a project or folder named "assets".
+		if strings.HasPrefix(rel, "assets/") && !isPageLoad(r) {
+			w.Header().Set("Cache-Control", "no-store")
+			http.NotFound(w, r)
+			return
+		}
+
+		// SPA fallback: serve index.html for client-side routes. Prevent a
+		// restored tab from booting cached HTML with obsolete asset filenames.
+		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write(index)
+		if r.Method != http.MethodHead {
+			_, _ = w.Write(index)
+		}
 	}
 }
 
@@ -101,6 +115,11 @@ func serveStaticAsset(w http.ResponseWriter, r *http.Request, dist fs.FS, rel st
 		return false
 	}
 
+	// /index.html can be requested directly rather than via the SPA fallback.
+	// Apply the same policy there (and to any other embedded HTML).
+	if strings.HasSuffix(rel, ".html") {
+		w.Header().Set("Cache-Control", "no-store")
+	}
 	http.ServeContent(w, r, info.Name(), info.ModTime(), seeker)
 	return true
 }
