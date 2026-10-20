@@ -897,9 +897,11 @@ const NothingMatches: React.FC<{
   );
 };
 
-/** `1 answer`, `3 answers`: pending answers a filter leaves out of Copy answers. */
-const leftOutAnswers = (n: number): string =>
-  `${n.toLocaleString("en-US")} ${n === 1 ? "answer" : "answers"}`;
+/** `1 question`, `3 questions`: outstanding answered questions hidden by a filter. */
+const leftOutQuestionCount = (n: number): string =>
+  `${n.toLocaleString("en-US")} ${n === 1 ? "question" : "questions"}`;
+const leftOutQuestionDescription = (n: number): string =>
+  `${leftOutQuestionCount(n)} ${n === 1 ? "with an outstanding answer" : "with outstanding answers"}`;
 
 /** `(4 need you)`, or `(1 needs you)`: a roadmap's count in the picker. */
 const needYouCount = (n: number): string =>
@@ -2004,12 +2006,13 @@ export const PlanningPage: React.FC = () => {
   // two cards could both see appears once. A card's own report decides for
   // it; placement decides for a question with none, never both.
   // Under a filter, the comments are placed over every listed question and
-  // then narrowed to those it keeps; how many it leaves out is said in the
-  // button's tooltip and name, never in text that moves (§6.7).
-  const { groups: pendingGroups, leftOut: pendingLeftOut } = useMemo(
-    () => pendingAnswers(listedQuestions, reviews.byPath, scoped, frameKeeps),
-    [scoped, listedQuestions, reviews.byPath, frameKeeps],
-  );
+  // then narrowed to those it keeps. The hidden count is distinct questions,
+  // visible beside Copy answers, with the clear-filter control to reveal them.
+  const { groups: pendingGroups, leftOutQuestions: pendingLeftOutQuestions } =
+    useMemo(
+      () => pendingAnswers(listedQuestions, reviews.byPath, scoped, frameKeeps),
+      [scoped, listedQuestions, reviews.byPath, frameKeeps],
+    );
 
   // The documents whose reviews the page's need-you numbers read (§6.7, §12):
   // those held when the page opened, then every one held when a set of
@@ -2763,6 +2766,15 @@ export const PlanningPage: React.FC = () => {
   // The planning outline (§6.9): drawn from the frame's index, so it paints
   // with the sections and changes when they do.
   const frameIndex = shown?.inputs.index ?? index;
+  const frameAnswered = useMemo(() => {
+    if (frameIndex === null || frameUnfiltered === null)
+      return new Set<string>();
+    return pendingAnswers(
+      listedQuestionsOf(frameIndex, frameUnfiltered),
+      reviews.byPath,
+      scoped,
+    ).answered;
+  }, [frameIndex, frameUnfiltered, reviews.byPath, scoped]);
 
   // What still needs the human, on the frame's index: the counts the index
   // gives, less every question a pending comment answers (§6.7). The
@@ -2782,17 +2794,16 @@ export const PlanningPage: React.FC = () => {
     ) {
       return null;
     }
-    const listed = listedQuestionsOf(frameIndex, frameUnfiltered);
-    const held = needYou(
-      frameIndex,
-      frameSections,
-      pendingAnswers(listed, reviews.byPath, scoped, frameKeeps).answered,
-      frameKeeps,
-    );
+    const held = needYou(frameIndex, frameSections, frameAnswered, frameKeeps);
     const counted = needYou(
       frameIndex,
       frameSections,
-      pendingAnswers(listed, countedReviews, scoped, frameKeeps).answered,
+      pendingAnswers(
+        listedQuestionsOf(frameIndex, frameUnfiltered),
+        countedReviews,
+        scoped,
+        frameKeeps,
+      ).answered,
       frameKeeps,
     );
     return { ...held, nothing: counted.nothing };
@@ -2801,7 +2812,7 @@ export const PlanningPage: React.FC = () => {
     frameSections,
     frameUnfiltered,
     frameKeeps,
-    reviews.byPath,
+    frameAnswered,
     countedReviews,
     scoped,
   ]);
@@ -2878,13 +2889,18 @@ export const PlanningPage: React.FC = () => {
     const firstRow =
       needsYouView.top.find((i) => i.as === "row") ??
       needsYouView.list.find((i) => i.as === "row");
+    // Counts match the roadmap picker immediately; card placement remains the
+    // current layout snapshot until Refresh.
+    const needingNow = layoutNeedsYou(
+      shownLayout.needsYou,
+      frameAnswered,
+      shownLayout.pageSize,
+    );
     return planningOutline({
       cards: needsYouView.list
         .filter((i) => i.as === "card")
         .map((i) => i.entry.question),
-      needing: [...current.needsYou.cards, ...current.needsYou.more].map(
-        (e) => e.question,
-      ),
+      needing: [...needingNow.cards, ...needingNow.more].map((e) => e.question),
       answered: {
         total: needsYouView.rows,
         first: firstRow?.entry.question ?? null,
@@ -2902,6 +2918,7 @@ export const PlanningPage: React.FC = () => {
     frameReady,
     current,
     needsYouView,
+    frameAnswered,
     shownLayout,
     groupCounts,
     maintenanceTotal,
@@ -3601,7 +3618,7 @@ export const PlanningPage: React.FC = () => {
               key={repo}
               groups={pendingGroups}
               known={countKnown}
-              leftOut={pendingLeftOut}
+              leftOutQuestions={pendingLeftOutQuestions}
               hrefOf={buildPath}
               onOpenDocument={saveScroll}
             />
@@ -3609,11 +3626,11 @@ export const PlanningPage: React.FC = () => {
               type="button"
               onClick={copyAnswers}
               disabled={!countKnown || pendingCount === 0 || quotesLoading}
-              // Under a filter, how many pending answers it leaves out: in the
-              // name and the tooltip, never in text that moves (§6.7).
+              // Under a filter, the visible count and accessible name identify
+              // outstanding answered questions it leaves out.
               aria-label={
-                countKnown && pendingLeftOut > 0
-                  ? `${copied ? "Copied" : "Copy answers"} ${pendingCount}, not counting ${leftOutAnswers(pendingLeftOut)} the filter leaves out`
+                countKnown && pendingLeftOutQuestions > 0
+                  ? `${copied ? "Copied" : "Copy answers"} ${pendingCount}, not counting ${leftOutQuestionDescription(pendingLeftOutQuestions)} hidden by the filter`
                   : undefined
               }
               data-tip={
@@ -3621,10 +3638,10 @@ export const PlanningPage: React.FC = () => {
                   ? "Comments could not be loaded, so the answers waiting on the agent cannot be counted"
                   : !countKnown
                     ? "The answers waiting on the agent are still being counted"
-                    : pendingLeftOut > 0
+                    : pendingLeftOutQuestions > 0
                       ? pendingCount === 0
-                        ? `No answers the filter keeps are waiting on the agent. It leaves out ${leftOutAnswers(pendingLeftOut)}: clear it to copy them`
-                        : `Copy every answer waiting on the agent that the filter keeps, grouped by document, for one trip. It leaves out ${leftOutAnswers(pendingLeftOut)}: clear it to copy them too`
+                        ? `No answers the filter keeps are waiting on the agent. It leaves out ${leftOutQuestionDescription(pendingLeftOutQuestions)}: clear the filter to copy it`
+                        : `Copy every answer waiting on the agent that the filter keeps, grouped by document, for one trip. It leaves out ${leftOutQuestionDescription(pendingLeftOutQuestions)}: clear the filter to copy them too`
                       : pendingCount === 0
                         ? "No answers are waiting on the agent"
                         : "Copy every answer waiting on the agent, grouped by document, for one trip"
@@ -3665,6 +3682,15 @@ export const PlanningPage: React.FC = () => {
                 }}
               />
             </button>
+            {countKnown && pendingLeftOutQuestions > 0 && (
+              <span
+                data-testid="pending-hidden-questions"
+                title="Clear the filter to copy answers on these questions too"
+                className="self-center whitespace-nowrap px-1 text-xs tabular-nums text-slate-600 dark:text-slate-300"
+              >
+                {leftOutQuestionDescription(pendingLeftOutQuestions)} hidden
+              </span>
+            )}
             <PlanningCopyPanel
               answers={pendingCount}
               known={countKnown}

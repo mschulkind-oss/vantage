@@ -12,13 +12,13 @@ const ANSWERS_PER_PAGE = 20;
 export function PlanningPendingAnswers({
   groups,
   known,
-  leftOut,
+  leftOutQuestions,
   hrefOf,
   onOpenDocument,
 }: {
   groups: readonly PendingGroup[];
   known: boolean;
-  leftOut: number;
+  leftOutQuestions: number;
   hrefOf: (path: string) => string;
   onOpenDocument: () => void;
 }) {
@@ -100,11 +100,13 @@ export function PlanningPendingAnswers({
             Open a source to review its comment; nothing is sent or marked
             answered.
           </p>
-          {leftOut > 0 && (
+          {leftOutQuestions > 0 && (
             <p>
-              The filter leaves out {leftOut}{" "}
-              {leftOut === 1 ? "answer" : "answers"}. Clear it to review those
-              too.
+              The filter leaves out {leftOutQuestions}{" "}
+              {leftOutQuestions === 1
+                ? "question with an outstanding answer"
+                : "questions with outstanding answers"}
+              . Clear it to review those too.
             </p>
           )}
           <p>

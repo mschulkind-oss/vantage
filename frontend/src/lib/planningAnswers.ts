@@ -65,10 +65,10 @@ export interface PendingAnswers {
   /** The keys (`questionKey`) of the listed questions a pending comment answers. */
   answered: ReadonlySet<string>;
   /**
-   * The pending comments on listed questions that `keeps` leaves out: what
-   * Copy answers' tooltip says the filter leaves out. `0` with no filter.
+   * Listed questions with pending comments for the agent that `keeps` leaves
+   * out. Multiple comments on one question count once. `0` with no filter.
    */
-  leftOut: number;
+  leftOutQuestions: number;
 }
 
 /** Whether a question is kept: by a planning filter, or by none, every one. */
@@ -110,7 +110,7 @@ export function pendingAnswers(
   for (const question of questions) {
     kept.set(questionKey(question), keeps?.(question) ?? true);
   }
-  let leftOut = 0;
+  const leftOutQuestions = new Set<string>();
   for (const path of [...byDocument.keys()].sort()) {
     const listed = byDocument.get(path) ?? [];
     const comments = byPath[path];
@@ -147,7 +147,7 @@ export function pendingAnswers(
       }
       if (key === undefined) continue;
       if (kept.get(key) === false) {
-        leftOut++;
+        leftOutQuestions.add(key);
         continue;
       }
       pending.push(comment);
@@ -155,7 +155,7 @@ export function pendingAnswers(
     }
     if (pending.length > 0) groups.push({ path, comments: pending });
   }
-  return { groups, answered, leftOut };
+  return { groups, answered, leftOutQuestions: leftOutQuestions.size };
 }
 
 /** What the page says needs the human, less what they have answered. */

@@ -216,7 +216,7 @@ describe("under a planning filter (planning-index.md §6.7)", () => {
       "a.md": [on(a1.unitLine)],
       "c.md": [on(c1.unitLine), on(c1.line)],
     };
-    const { groups, answered, leftOut } = pendingAnswers(
+    const { groups, answered, leftOutQuestions } = pendingAnswers(
       listed,
       byPath,
       {},
@@ -224,9 +224,9 @@ describe("under a planning filter (planning-index.md §6.7)", () => {
     );
     expect(groups).toEqual([{ path: "a.md", comments: byPath["a.md"] }]);
     expect([...answered]).toEqual([questionKey(a1)]);
-    expect(leftOut).toBe(2);
+    expect(leftOutQuestions).toBe(1);
     // With no filter, nothing is left out.
-    expect(pendingAnswers(listed, byPath, {}).leftOut).toBe(0);
+    expect(pendingAnswers(listed, byPath, {}).leftOutQuestions).toBe(0);
   });
 
   // The fixture of forms' docs/design/a.md: OQ-A4, ✅, nested in OQ-A3, open.
@@ -242,7 +242,11 @@ describe("under a planning filter (planning-index.md §6.7)", () => {
     const comment = on(a4.unitLine);
     const byPath = { "docs/design/a.md": [comment] };
     const filtered = pendingAnswers(all, byPath, {}, keepsOf("is:open"));
-    expect(filtered).toEqual({ groups: [], answered: new Set(), leftOut: 1 });
+    expect(filtered).toEqual({
+      groups: [],
+      answered: new Set(),
+      leftOutQuestions: 1,
+    });
     // Over the kept questions alone, it would have been credited to A3.
     const kept = all.filter(keepsOf("is:open"));
     expect([...pendingAnswers(kept, byPath, {}).answered]).toEqual([
