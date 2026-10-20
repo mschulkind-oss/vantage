@@ -4642,6 +4642,12 @@ describe("the planning outline, On this page (planning-index.md §6.9)", () => {
     outline().querySelector<HTMLAnchorElement>(
       `[data-testid=outline-document][data-path="${path}"]`,
     )!;
+  const roadmapOptions = () =>
+    Array.from(
+      (screen.getByRole("combobox", { name: "Roadmap" }) as HTMLSelectElement)
+        .options,
+      (option) => option.textContent,
+    );
 
   /** A question's card id (`planningCardId`), from the index seeded. */
   const cardId = (path: string, id: string) => {
@@ -4699,6 +4705,53 @@ describe("the planning outline, On this page (planning-index.md §6.9)", () => {
     ]);
     // Maintenance's items are not listed.
     expect(outline()).not.toHaveTextContent("ready.md");
+  });
+
+  it("keeps outline document counts aligned with live roadmap counts as one document is answered", async () => {
+    pageSize(10);
+    const tree = {
+      ...todoTree(4),
+      "docs/plans/roadmap.md": [
+        "# Plans",
+        "",
+        "1. [The same list](../../plans/todo.md)",
+        "",
+      ].join("\n"),
+    };
+    seed(tree);
+    await renderPage();
+    expect(outlineDocument("plans/todo.md")).toHaveAccessibleName(
+      "plans/todo.md, 4 need you",
+    );
+    expect(roadmapOptions()).toEqual([
+      "roadmap.md (4 need you)",
+      "docs/plans/roadmap.md (4 need you)",
+    ]);
+
+    answer(tree, "OQ-T1", "OQ-T2");
+    await reviewPushed("plans/todo.md");
+    expect(roadmapOptions()).toEqual([
+      "roadmap.md (2 need you)",
+      "docs/plans/roadmap.md (2 need you)",
+    ]);
+    expect(outlineDocument("plans/todo.md")).toHaveAccessibleName(
+      "plans/todo.md, 2 need you",
+    );
+
+    await refresh();
+    expect(outlineDocument("plans/todo.md")).toHaveAccessibleName(
+      "plans/todo.md, 2 need you",
+    );
+    answer(tree, "OQ-T3", "OQ-T4");
+    await reviewPushed("plans/todo.md");
+    expect(roadmapOptions()).toEqual([
+      "roadmap.md (0 need you)",
+      "docs/plans/roadmap.md (0 need you)",
+    ]);
+
+    await refresh();
+    expect(outline().querySelector('[data-path="plans/todo.md"]')).toBeNull();
+    expect(outlineLines()).toContain("Answered 4");
   });
 
   it("scopes the page to a document's filter and goes to its first card, with no history entry", async () => {
@@ -8512,38 +8565,47 @@ describe("the planning filter (planning-index.md §6.11)", () => {
         .index.documents.flatMap((d) => d.questions)
         .find((x) => x.id === id)!;
 
-    it("copies the answers on the questions it keeps, and says how many it leaves out", async () => {
+    it("copies all answers on kept questions in one document, counts distinct hidden questions, and offers a clear-filter path", async () => {
       reviews["plans/design.md"] = [
         pendingOn("kept-0001", questionOf(TREE, "OQ-D1").line),
+        pendingOn("kept-0002", questionOf(TREE, "OQ-D3").line),
       ];
       reviews["plans/unrouted.md"] = [
         pendingOn("left-0001", questionOf(TREE, "OQ-U1").line),
         pendingOn("left-0002", questionOf(TREE, "OQ-U1").line),
       ];
       await renderPage("/.vantage/planning?filter=path:plans/design.md");
-      expect(pendingCount()).toBe("1");
+      expect(pendingCount()).toBe("2");
       fireEvent.click(screen.getByRole("button", { name: "Review answers" }));
       const pendingMenu = screen.getByRole("menu", {
         name: "Answers waiting on the agent",
       });
       expect(within(pendingMenu).getByText("Answer kept-0001")).toBeTruthy();
+      expect(within(pendingMenu).getByText("Answer kept-0002")).toBeTruthy();
       expect(within(pendingMenu).queryByText("Answer left-0001")).toBeNull();
       expect(
-        within(pendingMenu).getByText(/The filter leaves out 2 answers/),
+        within(pendingMenu).getByText(/The filter leaves out 1 question/),
       ).toBeTruthy();
       fireEvent.keyDown(document, { key: "Escape" });
       expect(copyButton()).toHaveAccessibleName(
-        "Copy answers 1, not counting 2 answers the filter leaves out",
+        "Copy answers 2, not counting 1 question with an outstanding answer hidden by the filter",
+      );
+      expect(screen.getByTestId("pending-hidden-questions")).toHaveTextContent(
+        "1 question with an outstanding answer hidden",
       );
       expect(copyButton()).toHaveAttribute(
         "data-tip",
-        "Copy every answer waiting on the agent that the filter keeps, grouped by document, for one trip. It leaves out 2 answers: clear it to copy them too",
+        "Copy every answer waiting on the agent that the filter keeps, grouped by document, for one trip. It leaves out 1 question with an outstanding answer: clear the filter to copy them too",
       );
       await act(async () => {
         fireEvent.click(copyButton());
       });
       const payload = writeText.mock.calls[0][0] as string;
       expect(payload).toContain("**Comment:** Answer kept-0001");
+      expect(payload).toContain("**Comment:** Answer kept-0002");
+      expect(
+        payload.match(/^## Review Comments for `plans\/design\.md`$/gm),
+      ).toHaveLength(1);
       expect(payload).not.toContain("plans/unrouted.md");
       // Cleared, it copies them all, and its name is its text again.
       await act(async () => {
@@ -8552,7 +8614,8 @@ describe("the planning filter (planning-index.md §6.11)", () => {
         );
       });
       await settle();
-      expect(pendingCount()).toBe("3");
+      expect(pendingCount()).toBe("4");
+      expect(screen.queryByTestId("pending-hidden-questions")).toBeNull();
       expect(copyButton()).not.toHaveAttribute("aria-label");
     });
 
@@ -8586,7 +8649,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       expect(pendingCount()).toBe("0");
       expect(copyButton()).toBeDisabled();
       expect(copyButton()).toHaveAccessibleName(
-        "Copy answers 0, not counting 1 answer the filter leaves out",
+        "Copy answers 0, not counting 1 question with an outstanding answer hidden by the filter",
       );
       expect(
         within(cardFor("OQ-N1")).queryByText("Answered — waiting on the agent"),

@@ -38,7 +38,7 @@ const onOpenDocument = vi.fn();
 const props = {
   groups,
   known: true,
-  leftOut: 0,
+  leftOutQuestions: 0,
   hrefOf: (path: string) => `/alpha/${path}`,
   onOpenDocument,
 };
@@ -97,9 +97,9 @@ describe("PlanningPendingAnswers", () => {
     ).toBeDisabled();
   });
 
-  it("reports excluded answers and falls back to a document link with no line", () => {
+  it("reports excluded outstanding questions and falls back to a document link with no line", () => {
     view({
-      leftOut: 2,
+      leftOutQuestions: 2,
       groups: [
         {
           path: "old.md",
@@ -109,7 +109,9 @@ describe("PlanningPendingAnswers", () => {
     });
     open();
     expect(
-      within(menu()).getByText(/The filter leaves out 2 answers/),
+      within(menu()).getByText(
+        /The filter leaves out 2 questions with outstanding answers/,
+      ),
     ).toBeTruthy();
     expect(
       within(menu()).getByRole("menuitem", { name: "Open old.md" }),
