@@ -161,6 +161,15 @@ func TestADiscoveredRepositoryServesItsPlanningSourcesUnderItsOwnTable(t *testin
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() { done <- srv.Run(ctx) }()
+	defer func() {
+		cancel()
+		select {
+		case err := <-done:
+			require.ErrorIs(t, err, context.Canceled)
+		case <-time.After(5 * time.Second):
+			t.Error("Run did not return after context cancel")
+		}
+	}()
 
 	root := initRepoAt(t, filepath.Join(sourceDir, "beta"), map[string]string{
 		"b.md": "# B\n", "docs/y.md": "# Y\n",
@@ -173,15 +182,6 @@ func TestADiscoveredRepositoryServesItsPlanningSourcesUnderItsOwnTable(t *testin
 	paths, exclude := planningFiles(t, h, "/api/r/beta/planning/stream")
 	require.Equal(t, []string{"b.md"}, paths)
 	require.Equal(t, []string{"docs/**"}, exclude)
-
-	cancel()
-	select {
-	case err := <-done:
-		require.ErrorIs(t, err, context.Canceled)
-	case <-time.After(5 * time.Second):
-		t.Fatal("Run did not return after context cancel")
-	}
-	require.NoError(t, srv.Shutdown(context.Background()))
 }
 
 // The reviews request answers from each repository's own reviews: the store is

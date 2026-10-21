@@ -1,6 +1,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { defineConfig, devices } from "@playwright/test";
 
 /**
@@ -23,14 +24,33 @@ import { defineConfig, devices } from "@playwright/test";
  * this file. Created at module load with no such check, a run with 16 workers
  * (the default on a 32-core machine) left 17 directories in the temp directory
  * and removed none. The servers the runner started are stopped before it
- * exits, so nothing is using the directory by then.
+ * exits, so nothing is using the directory by then. The backend binary is
+ * built here under the runner's original Go environment before the server gets
+ * this isolated app home; `go run` would put its module cache under that home.
  */
 const runHome =
   process.env.TEST_WORKER_INDEX === undefined
     ? mkdtempSync(join(tmpdir(), "vantage-e2e-home-"))
     : "";
+const backendBinary = runHome ? join(runHome, "vantage") : "";
 if (runHome) {
   process.on("exit", () => rmSync(runHome, { recursive: true, force: true }));
+  const built = spawnSync(
+    "go",
+    ["build", "-o", backendBinary, "./cmd/vantage"],
+    {
+      cwd: resolve(import.meta.dirname, ".."),
+      encoding: "utf8",
+    },
+  );
+  if (built.error || built.status !== 0) {
+    const error = built.error?.message ?? "none";
+    const status = built.status ?? "null";
+    const signal = built.signal ?? "none";
+    throw new Error(
+      `go build for E2E backend failed (error: ${error}; status: ${status}; signal: ${signal})\nstderr: ${built.stderr || "(empty)"}`,
+    );
+  }
 }
 
 export default defineConfig({
@@ -51,18 +71,17 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command:
-      "cd .. && TARGET_REPO=frontend/e2e/fixtures/test_repo go run ./cmd/vantage serve --port 8101 --no-open & VITE_API_TARGET=http://localhost:8101 VITE_WS_TARGET=ws://localhost:8101 npm run dev -- --port 5201",
-    // Readiness must mean BOTH servers: the dev server that serves this URL
-    // and the Go backend behind its /api proxy. Vite boots in a second; a
-    // cold `go run` takes tens, and a vite-only readiness URL let the suite
-    // start against a refused backend — reliably, in CI, where the module
-    // cache starts empty.
+    command: `cd .. && TARGET_REPO=frontend/e2e/fixtures/test_repo "${backendBinary}" serve --port 8101 --no-open & VITE_API_TARGET=http://localhost:8101 VITE_WS_TARGET=ws://localhost:8101 npm run dev -- --port 5201`,
+    // Readiness must mean BOTH servers: Vite and the Go backend behind its
+    // /api proxy. The backend binary is built before Playwright applies the
+    // isolated app HOME below, so the shared Go module cache stays warm; the
+    // health check still waits for the backend to be ready before tests start.
     url: "http://localhost:5201/api/health",
     reuseExistingServer: !process.env.CI,
     timeout: 120 * 1000,
-    // Applies to the shell that runs both halves of the command above, so the
-    // Go backend inherits it. See `runHome`.
+    // The server process gets only an isolated app home. Its binary is built
+    // above before this environment is applied, so Go keeps the runner's
+    // standard GOCACHE, GOMODCACHE, and GOENV choices.
     env: {
       HOME: runHome,
       USERPROFILE: runHome,
