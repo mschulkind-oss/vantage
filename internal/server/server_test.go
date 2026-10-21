@@ -130,6 +130,10 @@ func discoveryServer(t *testing.T) (*Server, string) {
 	srv, err := NewServer(cfg)
 	require.NoError(t, err)
 	srv.refreshInterval = 20 * time.Millisecond
+	t.Cleanup(func() {
+		_ = srv.Shutdown(context.Background())
+		srv.wg.Wait()
+	})
 	return srv, cfg.SourceDirs[0]
 }
 
@@ -629,6 +633,15 @@ func TestSourceDirRepoIsServedWithoutRestart(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() { done <- srv.Run(ctx) }()
+	defer func() {
+		cancel()
+		select {
+		case err := <-done:
+			require.ErrorIs(t, err, context.Canceled)
+		case <-time.After(5 * time.Second):
+			t.Error("Run did not return after context cancel")
+		}
+	}()
 
 	initRepoAt(t, filepath.Join(sourceDir, "beta"), map[string]string{"b.md": "# B\n"})
 
@@ -641,15 +654,6 @@ func TestSourceDirRepoIsServedWithoutRestart(t *testing.T) {
 	rec := doGET(t, h, "/api/r/beta/tree?path=.")
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Contains(t, rec.Body.String(), "b.md")
-
-	cancel()
-	select {
-	case err := <-done:
-		require.ErrorIs(t, err, context.Canceled)
-	case <-time.After(5 * time.Second):
-		t.Fatal("Run did not return after context cancel")
-	}
-	require.NoError(t, srv.Shutdown(context.Background()))
 }
 
 // Discovery that only the server knows about leaves every open browser showing
