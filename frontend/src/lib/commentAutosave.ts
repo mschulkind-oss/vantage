@@ -96,7 +96,7 @@ export interface BoxState {
   status: BoxStatus;
   /** When the last save landed, as `Date.now()`. */
   savedAt: number | null;
-  /** How many saves have landed, so a view can pulse once per landing. */
+  /** How many saves have landed successfully. */
   saves: number;
   /** Empty, with something already saved that the emptiness does not touch. */
   empty: boolean;

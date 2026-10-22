@@ -605,9 +605,13 @@ describe("useReviewHighlights — boxes that save as you type", () => {
     expect(saved).toEqual([]);
     await vi.advanceTimersByTimeAsync(SAVE_PAUSE_MS);
     expect(saved).toEqual(["edit c1 reworded"]);
-    expect(
-      blockFor("c1")!.querySelector(".comment-box-status")?.textContent,
-    ).toBe("Saved just now");
+    const status = blockFor("c1")!.querySelector(".comment-box-status")!;
+    expect(status.textContent).toBe("Saved just now");
+    expect(status.className).toBe("comment-box-status");
+    type(area, "reworded again");
+    await vi.advanceTimersByTimeAsync(SAVE_PAUSE_MS);
+    expect(status.textContent).toBe("Saved just now");
+    expect(status.className).toBe("comment-box-status");
   });
 
   it("saves on Esc and closes, keeping the text", async () => {

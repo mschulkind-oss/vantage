@@ -1444,21 +1444,6 @@ th.review-block-hovered {
 .dark .comment-box-status--retrying {
   color: rgb(252 211 77); /* amber-300 */
 }
-/* One short pulse for each save that lands; none for a reader who asked
-   for less motion. */
-@media (prefers-reduced-motion: no-preference) {
-  .comment-box-status--pulse {
-    animation: comment-box-pulse 0.7s ease-out;
-  }
-}
-@keyframes comment-box-pulse {
-  0% {
-    background: rgb(34 197 94 / 0.25);
-  }
-  100% {
-    background: transparent;
-  }
-}
 .comment-box-close {
   font-size: 11px;
   font-weight: 500;
