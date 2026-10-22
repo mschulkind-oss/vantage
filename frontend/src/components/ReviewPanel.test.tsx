@@ -349,16 +349,32 @@ describe("ReviewPanel — boxes that save as you type", () => {
     expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Cancel" })).toBeNull();
     fireEvent.change(box, { target: { value: "reworded in the panel" } });
-    expect(
-      await screen.findByText("Saved just now", {}, { timeout: 3000 }),
-    ).toBeTruthy();
+    const status = await screen.findByText(
+      "Saved just now",
+      {},
+      { timeout: 3000 },
+    );
+    expect(status.className).toBe("comment-box-status");
     expect(server.comments[0].comment).toBe("reworded in the panel");
+    fireEvent.change(box, { target: { value: "reworded again in the panel" } });
+    await waitFor(
+      () => {
+        expect(status.textContent).toBe("Saved just now");
+        expect(server.comments[0].comment).toBe("reworded again in the panel");
+      },
+      { timeout: 3000 },
+    );
+    // Saving again updates the words without remounting the status region.
+    expect(screen.getByText("Saved just now")).toBe(status);
+    expect(status.className).toBe("comment-box-status");
     // Still open, still the same box.
-    expect(screen.getByDisplayValue("reworded in the panel")).toBe(box);
+    expect(screen.getByDisplayValue("reworded again in the panel")).toBe(box);
 
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
-    expect(screen.queryByDisplayValue("reworded in the panel")).toBeNull();
-    expect(screen.getByText("reworded in the panel")).toBeTruthy();
+    expect(
+      screen.queryByDisplayValue("reworded again in the panel"),
+    ).toBeNull();
+    expect(screen.getByText("reworded again in the panel")).toBeTruthy();
   });
 
   it("keeps a reply on Esc, sending it as one reply", async () => {

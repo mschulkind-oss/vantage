@@ -66,9 +66,8 @@ function useStatusText(state: BoxState): string {
 }
 
 /**
- * The box's foot: the hint, the status, and Close. The status pulses once for
- * each save that lands, by remounting with the count as its key, unless the
- * box is already ahead of it.
+ * The box's foot: the hint, the status, and Close. Successful saves update
+ * the words without flashing a color or remounting the status region.
  */
 export const CommentBoxFoot: React.FC<{
   box: CommentBox;
@@ -76,25 +75,18 @@ export const CommentBoxFoot: React.FC<{
 }> = ({ box, onClose }) => {
   const state = useCommentBox(box);
   const text = useStatusText(state);
-  const pulse =
-    state.saves > 0 &&
-    state.status === "saved" &&
-    !state.empty &&
-    !state.unsaved;
   const gone = state.status === "gone";
   return (
     <>
       <div className="comment-box-foot">
         <span className="comment-box-hint">{closeHint()}</span>
         <span
-          key={state.saves}
           role="status"
           className={
             "comment-box-status" +
             (state.status === "retrying" || gone
               ? " comment-box-status--retrying"
-              : "") +
-            (pulse ? " comment-box-status--pulse" : "")
+              : "")
           }
         >
           {text}

@@ -189,8 +189,10 @@ systems); the box's status; and **Close**. The status reads:
 
 *Saved* is said only of the text in the box, so the first keystroke after a save
 turns it to *Not saved yet*: a reader who sees *Saved* while still typing has been
-told something false. Each save that lands pulses the status once, unless more was
-typed while it was on its way; under `prefers-reduced-motion` it does not. The status is a `role="status"` region, so a screen reader hears it change.
+told something false. Successful saves update the words in the same muted text
+color, with no background flash or animation: confirmation is readable when
+looked at directly without drawing attention on every save. The status is a
+`role="status"` region, so a screen reader hears it change.
 The inline boxes are hand-built DOM with the same classes as the React ones, so the
 four kinds of box look and read alike.
 
@@ -348,7 +350,6 @@ the only place the numbers are stated.
 | A save after the first unsaved keystroke, if typing never pauses | 5 s | `SAVE_MAX_WAIT_MS`, same file |
 | A failed save's first retry, and the retries' ceiling | 1 s, doubling, up to 30 s | `RETRY_FIRST_MS`, `RETRY_MAX_MS`, same file |
 | How often *Saved N min ago* is read again | 15 s | `STATUS_TICK_MS`, same file |
-| The pulse when a save lands | 0.7 s | `.comment-box-status--pulse` in `frontend/src/index.css` |
 | Create a comment | `POST /review/comments`, `{id, comment, anchor, fallback_text, created_at}` | `ReviewCommentCreate` in `internal/api/review_command_handlers.go` |
 | Edit a comment's text | `PATCH /review/comments/{id}`, `{comment}` | `ReviewCommentPatch`, same file |
 | Reply, and reopen with a reply | `POST /review/comments/{id}/replies`, `…/reopen-reply`, `{id, text}` | `ReviewCommentReply`, `ReviewCommentReopenReply`, same file |

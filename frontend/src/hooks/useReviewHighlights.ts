@@ -1122,7 +1122,6 @@ function buildFoot(box: CommentBox): {
   });
   wrap.append(el);
 
-  let saves = box.getState().saves;
   const paint = () => {
     const state = box.getState();
     const gone = state.status === "gone";
@@ -1134,16 +1133,6 @@ function buildFoot(box: CommentBox): {
     if (gone && !goneRow.isConnected) wrap.append(goneRow);
     if (!gone && goneRow.isConnected) goneRow.remove();
     post.style.display = state.canPost ? "" : "none";
-    if (state.saves !== saves) {
-      saves = state.saves;
-      // Once for each save that lands, unless the box is already ahead of
-      // it: off, a reflow, and on again restarts it.
-      status.classList.remove("comment-box-status--pulse");
-      if (!state.unsaved) {
-        void status.offsetWidth;
-        status.classList.add("comment-box-status--pulse");
-      }
-    }
   };
   paint();
   const unsubscribe = box.subscribe(paint);
