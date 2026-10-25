@@ -78,6 +78,7 @@ import {
 import { prefetchPlanningPage } from "../hooks/usePlanningPageInputs";
 import { planningPath } from "../lib/planningRoute";
 import { workPath } from "../lib/workRoute";
+import { isScanAnalysisRoutePath } from "../lib/scanAnalysisRoute";
 import {
   projectlessSpace,
   usePlanningSpace,
@@ -176,6 +177,8 @@ const ShellFrame: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { recentFiles, isRecentLoading, fetchRecentFiles } = useGitStore();
   const recentlyChangedPaths = useRepoStore((s) => s.recentlyChangedPaths);
   const navigate = useNavigate();
+  const { pathname } = useLocation();
+  const scanAnalysisRoute = isScanAnalysisRoutePath(pathname);
 
   // What the page on screen publishes (`useShellPage`), and, until the first
   // one has, the viewer's rule for the sidebar: none over daemon mode's
@@ -342,11 +345,10 @@ const ShellFrame: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Load initial tree structure (after repos are loaded, only for single-repo
   // mode; in daemon mode choosing the repository loads its tree).
   useEffect(() => {
-    if (!reposLoaded) return; // Wait for repos to be loaded first
-    if (!isMultiRepo) {
+    if (!scanAnalysisRoute && reposLoaded && !isMultiRepo) {
       refreshTree();
     }
-  }, [refreshTree, isMultiRepo, reposLoaded]);
+  }, [refreshTree, isMultiRepo, reposLoaded, scanAnalysisRoute]);
 
   // Re-fetch tree and recents when filter settings change
   const filterSettingsInitialized = useRef(false);
@@ -355,16 +357,29 @@ const ShellFrame: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       filterSettingsInitialized.current = true;
       return;
     }
+    if (scanAnalysisRoute) return;
     refreshExpandedTree();
     fetchRecentFiles(true);
-  }, [showHidden, showGitignored, refreshExpandedTree, fetchRecentFiles]);
+  }, [
+    showHidden,
+    showGitignored,
+    refreshExpandedTree,
+    fetchRecentFiles,
+    scanAnalysisRoute,
+  ]);
 
   // The recent files, when a repository is set (or on mount for single-repo).
   useEffect(() => {
-    if (!reposLoaded) return;
+    if (!reposLoaded || scanAnalysisRoute) return;
     if (isMultiRepo && !currentRepo) return;
     fetchRecentFiles();
-  }, [fetchRecentFiles, reposLoaded, isMultiRepo, currentRepo]);
+  }, [
+    fetchRecentFiles,
+    reposLoaded,
+    isMultiRepo,
+    currentRepo,
+    scanAnalysisRoute,
+  ]);
 
   // Keyboard shortcuts
   //
@@ -632,11 +647,20 @@ const ShellFrame: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                   </div>
                 )}
                 <StarredSection />
-                <FileTree nodes={fileTree} />
+                {!scanAnalysisRoute && <FileTree nodes={fileTree} />}
               </>
             </div>
             {/* Recent Files Section - always visible, with spinner when loading */}
-            {(!isMultiRepo || currentRepo) && (
+            {scanAnalysisRoute && (
+              <div
+                role="note"
+                aria-label="Recent files"
+                className="border-t border-slate-200 px-4 py-3 text-xs text-slate-500 dark:border-slate-700 dark:text-slate-400"
+              >
+                Sidebar data is not refreshed during scan analysis.
+              </div>
+            )}
+            {!scanAnalysisRoute && (!isMultiRepo || currentRepo) && (
               <div className="border-t border-slate-200 dark:border-slate-700 px-2 py-2 shrink-0">
                 <button
                   onClick={() => setRecentsScope("project")}

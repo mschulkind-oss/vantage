@@ -2,6 +2,7 @@ import { act, render, screen, fireEvent } from "@testing-library/react";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import axios from "axios";
 import { DegradedBanner } from "./DegradedBanner";
+import { MemoryRouter } from "react-router-dom";
 import { useDegradedStore } from "../stores/useDegradedStore";
 import { useRepoStore } from "../stores/useRepoStore";
 import type { Degradation } from "../types";
@@ -9,6 +10,14 @@ import type { Degradation } from "../types";
 vi.mock("axios");
 const mockedAxios = vi.mocked(axios, true);
 const realLoad = useDegradedStore.getState().load;
+
+function renderBanner(onSpaceChange?: (px: number) => void) {
+  return render(
+    <MemoryRouter>
+      <DegradedBanner onSpaceChange={onSpaceChange} />
+    </MemoryRouter>,
+  );
+}
 
 const watchLimit: Degradation = {
   repo: "big",
@@ -35,11 +44,46 @@ describe("DegradedBanner", () => {
     });
   });
 
+  it("links only walk-timeout warnings to their explicitly scoped analysis route", () => {
+    useRepoStore.setState({ currentRepo: "big project" });
+    useDegradedStore.setState({
+      items: [watchLimit, { ...walkTimeout, repo: "big project" }],
+      load: async () => {},
+    });
+    render(
+      <MemoryRouter>
+        <DegradedBanner />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText(walkTimeout.message)).toBeInTheDocument();
+    const analysis = screen.getByRole("link", {
+      name: "Analyze recent-file scan",
+    });
+    expect(analysis).toHaveAttribute(
+      "href",
+      "/.vantage/scan-analysis/big%20project",
+    );
+    expect(screen.getAllByRole("link")).toHaveLength(1);
+  });
+
+  it("uses the single-repository analysis route for a walk timeout", () => {
+    useRepoStore.setState({ isMultiRepo: false, currentRepo: null });
+    useDegradedStore.setState({ items: [walkTimeout], load: async () => {} });
+    render(
+      <MemoryRouter>
+        <DegradedBanner />
+      </MemoryRouter>,
+    );
+    expect(
+      screen.getByRole("link", { name: "Analyze recent-file scan" }),
+    ).toHaveAttribute("href", "/.vantage/scan-analysis");
+  });
+
   // A polite live region inserted already filled is not reliably announced,
   // so the region is there, empty, from the first render, and the items are
   // rendered into it.
   it("keeps an empty live region mounted when nothing is degraded", () => {
-    render(<DegradedBanner />);
+    renderBanner();
     const region = screen.getByRole("status", {
       name: "Project too big to serve fully",
     });
@@ -55,13 +99,13 @@ describe("DegradedBanner", () => {
   });
 
   it("fetches the list when it mounts", () => {
-    render(<DegradedBanner />);
+    renderBanner();
     expect(mockedAxios.get).toHaveBeenCalledWith("/api/degraded");
   });
 
   it("says what is degraded in the open project", () => {
     useDegradedStore.setState({ items: [watchLimit], load: async () => {} });
-    render(<DegradedBanner />);
+    renderBanner();
     expect(screen.getByRole("status")).toHaveTextContent(
       "Live reload is off below node_modules and 39 more folders.",
     );
@@ -73,20 +117,20 @@ describe("DegradedBanner", () => {
       items: [watchLimit, { ...walkTimeout, repo: "other" }],
       load: async () => {},
     });
-    render(<DegradedBanner />);
+    renderBanner();
     expect(screen.getByRole("status")).not.toHaveTextContent(
       "Recent files may be missing",
     );
 
     useRepoStore.setState({ currentRepo: null });
-    const { container } = render(<DegradedBanner />);
+    const { container } = renderBanner();
     expect(container.querySelector('[role="status"]')).toBeEmptyDOMElement();
   });
 
   it("shows every degradation in single-repo mode", () => {
     useRepoStore.setState({ isMultiRepo: false, currentRepo: null });
     useDegradedStore.setState({ items: [walkTimeout], load: async () => {} });
-    render(<DegradedBanner />);
+    renderBanner();
     expect(screen.getByRole("status")).toHaveTextContent(
       "Recent files may be missing untracked documents.",
     );
@@ -94,7 +138,7 @@ describe("DegradedBanner", () => {
 
   it("can be dismissed", () => {
     useDegradedStore.setState({ items: [watchLimit], load: async () => {} });
-    render(<DegradedBanner />);
+    renderBanner();
     fireEvent.click(
       screen.getByRole("button", { name: "Dismiss the live reload warning" }),
     );
@@ -111,7 +155,7 @@ describe("DegradedBanner", () => {
       items: [watchLimit, walkTimeout],
       load: async () => {},
     });
-    render(<DegradedBanner />);
+    renderBanner();
     const live = screen.getByRole("button", {
       name: "Dismiss the live reload warning",
     });
@@ -132,10 +176,12 @@ describe("DegradedBanner", () => {
       load: async () => {},
     });
     render(
-      <>
-        <a href="#last-link">the document's last link</a>
-        <DegradedBanner />
-      </>,
+      <MemoryRouter>
+        <>
+          <a href="#last-link">the document's last link</a>
+          <DegradedBanner />
+        </>
+      </MemoryRouter>,
     );
     const link = screen.getByText("the document's last link");
     link.focus();
@@ -159,7 +205,7 @@ describe("DegradedBanner", () => {
   it("floats over the page, and says how much room it covers", () => {
     const spaces: number[] = [];
     const onSpaceChange = (px: number) => spaces.push(px);
-    render(<DegradedBanner onSpaceChange={onSpaceChange} />);
+    renderBanner(onSpaceChange);
     expect(screen.getByTestId("degraded-banner").className).toContain(
       "absolute",
     );
