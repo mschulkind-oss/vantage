@@ -61,6 +61,26 @@ const (
 	timeoutStaged  = 5 * time.Second
 )
 
+const walkEvidenceFailureLimit = 64
+
+type walkIdentity struct {
+	dir        string
+	gitignored bool
+}
+
+type walkEvidenceEntry struct {
+	report   WalkReport
+	sequence uint64
+}
+
+type walkEvidenceState struct {
+	mu                 sync.RWMutex
+	sequence           uint64
+	lastCompleted      *walkEvidenceEntry
+	failures           map[walkIdentity]walkEvidenceEntry
+	unretainedFailures int
+}
+
 // Options configures a GitService. The zero value is usable: it disables ignore
 // files, applies no extra excludes, and uses a 30s walk timeout.
 type Options struct {
@@ -103,6 +123,24 @@ type WalkReport struct {
 	// TimedOut is true when WalkTimeout cut the walk off, and false when it
 	// finished.
 	TimedOut bool
+	// Command is a path-free description of the ls-files invocation.
+	Command string
+	// Elapsed is the wall time of the original ls-files invocation.
+	Elapsed time.Duration
+	// Timeout is the configured deadline for the original invocation.
+	Timeout time.Duration
+	// Error is an allowlisted command-failure label; stderr is never retained.
+	Error string
+	// ShowHidden is the reader's hidden-file visibility setting.
+	ShowHidden bool
+	// UseIgnoreFiles says whether Vantage ignore files constrained the probe.
+	UseIgnoreFiles bool
+	// WalkMaxDepth is the configured post-enumeration depth cap, when present.
+	WalkMaxDepth *int
+	// ExcludeDirCount is the number of configured directory-name exclusions.
+	ExcludeDirCount int
+	// UnknownFailures counts failed walks whose evidence exceeded the retention cap.
+	UnknownFailures int
 }
 
 func (o Options) walkTimeout() time.Duration {
@@ -118,10 +156,12 @@ func (o Options) walkTimeout() time.Duration {
 // a larger repo). When repoPath is not inside any git repo, workingDir is empty
 // and the service falls back to child-repo delegation.
 type GitService struct {
-	repoPath    string // absolute, cleaned
-	workingDir  string // absolute git work tree, or "" when not a repo
-	excludeDirs map[string]struct{}
-	opts        Options
+	repoPath     string // absolute, cleaned
+	workingDir   string // absolute git work tree, or "" when not a repo
+	excludeDirs  map[string]struct{}
+	opts         Options
+	walkEvidence *walkEvidenceState
+	walkPrefix   string
 }
 
 // canonicalRepoPath is repoPath as a GitService holds it, and keys its cached
@@ -156,9 +196,10 @@ func NewService(repoPath string, opts Options) *GitService {
 	}
 
 	s := &GitService{
-		repoPath:    abs,
-		excludeDirs: excl,
-		opts:        opts,
+		repoPath:     abs,
+		excludeDirs:  excl,
+		opts:         opts,
+		walkEvidence: &walkEvidenceState{failures: map[walkIdentity]walkEvidenceEntry{}},
 	}
 	s.workingDir = s.resolveWorkingDir()
 	return s
@@ -1032,7 +1073,7 @@ func (s *GitService) computeRecents(limit int, extLower []string, showHidden, sh
 		return nil
 	})
 	g.Go(func() error {
-		untrackedOut = s.recentsUntracked(extGlobs, excludeFrom, showGitignored, report)
+		untrackedOut = s.recentsUntracked(extGlobs, excludeFrom, showHidden, showGitignored, report)
 		return nil
 	})
 	g.Go(func() error {
@@ -1144,7 +1185,7 @@ func (s *GitService) recentsLog() string {
 // recentsUntracked runs git ls-files --others to discover untracked files
 // matching the extension globs. It uses the configurable walk timeout because
 // this probe walks the whole working tree.
-func (s *GitService) recentsUntracked(extGlobs, excludeFrom []string, showGitignored, report bool) string {
+func (s *GitService) recentsUntracked(extGlobs, excludeFrom []string, showHidden, showGitignored, report bool) string {
 	args := []string{"ls-files", "--others"}
 	if !showGitignored {
 		args = append(args, "--exclude-standard")
@@ -1152,19 +1193,131 @@ func (s *GitService) recentsUntracked(extGlobs, excludeFrom []string, showGitign
 	args = append(args, excludeFrom...)
 	args = append(args, "--")
 	args = append(args, extGlobs...)
-	out, err := s.run(s.workingDir, s.opts.walkTimeout(), args...)
-	if s.opts.OnWalk != nil && report {
-		switch {
-		case err == nil:
-			s.opts.OnWalk(WalkReport{Gitignored: showGitignored})
-		case errors.Is(err, context.DeadlineExceeded):
-			s.opts.OnWalk(WalkReport{Gitignored: showGitignored, TimedOut: true})
+	timeout := s.opts.walkTimeout()
+	started := time.Now()
+	out, err := s.run(s.workingDir, timeout, args...)
+	if report {
+		walk := WalkReport{Gitignored: showGitignored, Command: describeWalkCommand(append(append([]string{}, readOnlyArgs...), args...)), Elapsed: time.Since(started), Timeout: timeout, ShowHidden: showHidden, UseIgnoreFiles: s.opts.UseIgnoreFiles, WalkMaxDepth: copyDepth(s.opts.WalkMaxDepth), ExcludeDirCount: len(s.excludeDirs)}
+		if err == nil {
+			s.reportWalk(walk)
+		} else {
+			if errors.Is(err, context.DeadlineExceeded) {
+				walk.TimedOut = true
+				walk.Error = "timeout"
+			} else {
+				walk.Error = "git_command_failed"
+			}
+			s.recordWalk(walk)
+			if walk.TimedOut && s.opts.OnWalk != nil {
+				s.notifyWalk(walk)
+			}
 		}
 	}
 	if err != nil {
 		return ""
 	}
 	return string(out)
+}
+
+func copyDepth(depth *int) *int {
+	if depth == nil {
+		return nil
+	}
+	v := *depth
+	return &v
+}
+
+func describeWalkCommand(args []string) string {
+	parts := []string{"git"}
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if arg == "--exclude-from" {
+			parts = append(parts, "--exclude-from", "<configured ignore file>")
+			i++
+			continue
+		}
+		if strings.HasPrefix(arg, "--exclude-from=") {
+			parts = append(parts, "--exclude-from=<configured ignore file>")
+			continue
+		}
+		if strings.HasPrefix(arg, "--exclude=") && filepath.IsAbs(strings.TrimPrefix(arg, "--exclude=")) {
+			parts = append(parts, "--exclude=<configured exclusion>")
+			continue
+		}
+		if filepath.IsAbs(arg) {
+			parts = append(parts, "<configured path>")
+			continue
+		}
+		if strings.ContainsAny(arg, " \t\"'") {
+			parts = append(parts, strconv.Quote(arg))
+		} else {
+			parts = append(parts, arg)
+		}
+	}
+	return strings.Join(parts, " ")
+}
+
+func (s *GitService) reportWalk(report WalkReport) {
+	s.recordWalk(report)
+	s.notifyWalk(report)
+}
+
+func (s *GitService) notifyWalk(report WalkReport) {
+	if s.opts.OnWalk != nil {
+		// The server keys timeouts by these legacy identity fields; keeping the
+		// evidence-only fields out of the callback lets a matching success clear it.
+		s.opts.OnWalk(WalkReport{Dir: report.Dir, Gitignored: report.Gitignored, TimedOut: report.TimedOut})
+	}
+}
+
+func (s *GitService) recordWalk(report WalkReport) {
+	if s.walkPrefix != "" {
+		report.Dir = path.Join(s.walkPrefix, report.Dir)
+	}
+	copy := report
+	copy.WalkMaxDepth = copyDepth(report.WalkMaxDepth)
+	identity := walkIdentity{dir: copy.Dir, gitignored: copy.Gitignored}
+	s.walkEvidence.mu.Lock()
+	defer s.walkEvidence.mu.Unlock()
+	s.walkEvidence.sequence++
+	entry := walkEvidenceEntry{report: copy, sequence: s.walkEvidence.sequence}
+	if copy.TimedOut || copy.Error != "" {
+		if _, exists := s.walkEvidence.failures[identity]; exists || len(s.walkEvidence.failures) < walkEvidenceFailureLimit {
+			s.walkEvidence.failures[identity] = entry
+		} else {
+			s.walkEvidence.unretainedFailures++
+		}
+		return
+	}
+	delete(s.walkEvidence.failures, identity)
+	s.walkEvidence.lastCompleted = &entry
+}
+
+// LastWalkReport returns the latest known outstanding failure ahead of the
+// latest completion. It performs no filesystem or Git work.
+func (s *GitService) LastWalkReport() (WalkReport, bool) {
+	if s.walkEvidence == nil {
+		return WalkReport{}, false
+	}
+	s.walkEvidence.mu.RLock()
+	defer s.walkEvidence.mu.RUnlock()
+	var latest *walkEvidenceEntry
+	for _, entry := range s.walkEvidence.failures {
+		if latest == nil || entry.sequence > latest.sequence {
+			candidate := entry
+			latest = &candidate
+		}
+	}
+	if latest == nil {
+		latest = s.walkEvidence.lastCompleted
+	}
+	if latest == nil {
+		return WalkReport{}, false
+	}
+	copy := latest.report
+	copy.WalkMaxDepth = copyDepth(latest.report.WalkMaxDepth)
+	copy.UnknownFailures = s.walkEvidence.unretainedFailures
+	return copy, true
 }
 
 // recentsStatusITA runs the intent-to-add status probe (-uno: no untracked
@@ -1322,15 +1475,16 @@ func (s *GitService) recentsNoRepo(limit int, extLower []string, showHidden, sho
 		for _, childPath := range childRepos {
 			name := filepath.Base(childPath)
 			childOpts := s.opts
-			if onWalk := s.opts.OnWalk; onWalk != nil {
-				// A child's walk is reported as the child's, so that another
-				// child finishing cannot take back its timeout.
-				childOpts.OnWalk = func(r WalkReport) {
-					r.Dir = path.Join(name, r.Dir)
+			onWalk := s.opts.OnWalk
+			childOpts.OnWalk = func(r WalkReport) {
+				r.Dir = path.Join(name, r.Dir)
+				if onWalk != nil {
 					onWalk(r)
 				}
 			}
 			child := NewService(childPath, childOpts)
+			child.walkEvidence = s.walkEvidence
+			child.walkPrefix = path.Join(s.walkPrefix, name)
 			prefix := name + "/"
 			// Worked out afresh rather than cached under the child's own path:
 			// this list is cached whole, under this directory's, which is all
