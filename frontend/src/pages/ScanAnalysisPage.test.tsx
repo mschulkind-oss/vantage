@@ -424,7 +424,7 @@ describe("ScanAnalysisPage", () => {
         "scan-analysis-ignore-suggestion",
       );
       expect(suggestion).toHaveTextContent(
-        "A safe literal .vantageignore rule cannot be generated for this name because its reported path may be lossy or unsafe to quote; inspect or rename the directory, or configure a verified exclusion manually.",
+        "A safe literal .vantageignore rule cannot be generated because this path contains unsupported matcher syntax (including +(){}|^$) or a lossy/unsafe name; inspect or rename the directory, or configure a verified exclusion manually.",
       );
       expect(suggestion).not.toHaveTextContent(
         "Suggested repository-root .vantageignore rule",
@@ -472,6 +472,49 @@ describe("ScanAnalysisPage", () => {
     expect(
       screen.getByTestId("scan-analysis-affected-paths"),
     ).toHaveTextContent("generated/cache?/readme.md");
+  });
+
+  it("withholds a copyable rule when a recommendation contains matcher operators", async () => {
+    const unsafeResponse: ScanAnalysisResponse = {
+      ...partialResponse,
+      evidence: {
+        ...evidenceResponse.evidence!,
+        settings: {
+          ...evidenceResponse.evidence!.settings!,
+          use_ignore_files: true,
+        },
+      },
+      diagnostic: {
+        ...partialResponse.diagnostic!,
+        recommendations: [
+          {
+            path: "generated/group+one",
+            reason: "Contains observed untracked Markdown documents.",
+            examples: ["generated/group+one/readme.md"],
+          },
+        ],
+      },
+    };
+    mockedAxios.post.mockResolvedValueOnce({ data: unsafeResponse });
+    renderAt("/.vantage/scan-analysis");
+    await screen.findByText("git ls-files -co --exclude-standard");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Run bounded diagnostic" }),
+    );
+    const suggestion = await screen.findByTestId(
+      "scan-analysis-ignore-suggestion",
+    );
+    expect(suggestion).toHaveTextContent(
+      /unsupported matcher syntax.*\+\(\)\{\}\|\^\$/,
+    );
+    expect(suggestion).toHaveTextContent(/inspect or rename the directory/);
+    expect(suggestion).not.toHaveTextContent(
+      "Suggested repository-root .vantageignore rule",
+    );
+    expect(screen.queryByText("/generated/group+one/")).not.toBeInTheDocument();
+    expect(
+      screen.getByTestId("scan-analysis-affected-paths"),
+    ).toHaveTextContent("generated/group+one/readme.md");
   });
 
   it("does not render analysis requests or controls in a static export", async () => {

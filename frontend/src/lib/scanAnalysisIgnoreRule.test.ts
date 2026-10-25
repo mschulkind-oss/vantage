@@ -9,6 +9,20 @@ describe("scanAnalysisIgnoreRule", () => {
   });
 
   it.each([
+    "generated/group+one",
+    "generated/group(one",
+    "generated/group)one",
+    "generated/group{one",
+    "generated/group}one",
+    "generated/group|one",
+    "generated/group^one",
+    "generated/group$one",
+    "generated/#$~",
+  ])("withholds matcher operators from a literal rule: %s", (path) => {
+    expect(scanAnalysisIgnoreRule(path)).toBeNull();
+  });
+
+  it.each([
     "literal?",
     "bracket[1]",
     "bracket]",
