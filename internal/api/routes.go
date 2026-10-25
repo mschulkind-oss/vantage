@@ -85,6 +85,8 @@ func (h *Handlers) Routes() []Route {
 		{http.MethodGet, "/git/diff", h.GitDiff, ScopeRepo},
 		{http.MethodGet, "/git/diff/working", h.GitWorkingDiff, ScopeRepo},
 		{http.MethodGet, "/git/recent", h.GitRecent, ScopeRepo},
+		{http.MethodGet, "/git/scan-analysis", h.GitScanAnalysisEvidence, ScopeRepo},
+		{http.MethodPost, "/git/scan-analysis", h.GitScanAnalysis, ScopeRepo},
 
 		// --- Repo-scoped: review ---
 		{http.MethodGet, "/review", h.ReviewGet, ScopeRepo},
