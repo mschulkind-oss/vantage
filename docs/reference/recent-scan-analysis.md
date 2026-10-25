@@ -2,10 +2,13 @@
 status: accepted
 stage: CURRENT
 verified: 2026-10-25
-verified_commit: 2907593
+verified_commit: 1a4e736
 covers:
   - internal/git/service.go
   - internal/git/scan_analysis.go
+  - internal/ignore/ignore.go
+  - internal/ignore/diagnostic.go
+  - internal/ignore/diagnostic_test.go
   - internal/api/scan_analysis_handlers.go
   - internal/api/routes.go
   - internal/server/scan_analysis_test.go
@@ -20,7 +23,7 @@ covers:
 
 # Recent-file scan analysis
 
-**Status:** Verified 2026-10-25 against `2907593`. MEASURED: backend filesystem/process fixtures and browser navigation/results checks exercised the feature; production scan savings are not measured.
+**Status:** Verified 2026-10-25 against `1a4e736`. MEASURED: backend filesystem/process fixtures and browser navigation/results checks exercised the feature; production scan savings are not measured.
 
 A `walk_timeout` warning offers **Analyze recent-file scan** for its project.
 The page separates previously captured scan evidence from an optional bounded
@@ -87,7 +90,12 @@ The walk uses `os.Root` confinement, skips symlinks, linked worktrees, `.git`,
 root `.vantage` state and configured exclusions, applies enabled Vantage ignore
 files and depth limits, and stops at nested repositories when `stop_at_repos`
 is enabled. Completion means this filtered scope completed, not a raw census.
-It does not change ordinary visibility or write ignore files.
+It does not change ordinary visibility or write ignore files. Enabled user and
+workspace ignore files are loaded into an immutable, bounded one-run matcher,
+using the existing parser and layering semantics. Matching never reloads those
+files during the probe. Unreadable, non-regular, oversized or cancelled inputs
+return partial/unknown without walking or comparing under guessed visibility.
+Ordinary viewer/watch/recent-file matchers keep their existing reload behavior.
 
 | Bound | Value | Code |
 | :--- | :--- | :--- |
@@ -101,6 +109,7 @@ It does not change ordinary visibility or write ignore files.
 | Raw comparison records | 10,000 | `scanCompareEntryLimit` |
 | Comparison NUL-delimited record | 64 KiB including terminator | `scanComparePathByteLimit` |
 | Aggregate comparison stdout | 16 MiB | `scanCompareOutputLimit` |
+| Ignore-file input, combined | 1 MiB; 4,096 lines; 4 KiB per line | `diagnosticIgnoreByteLimit`, `diagnosticIgnoreLineLimit`, `diagnosticIgnoreLineBytes` |
 | Active diagnostics | One per server process; others receive HTTP 429 | `scanAnalysisSlots` |
 
 Filesystem calls blocked inside the kernel cannot be forcibly interrupted, so
@@ -141,9 +150,12 @@ says to enable/check it or manually configure `exclude_dirs`; directory-basename
 exclusions can be broader than the measured relative subtree.
 
 The existing matcher cannot safely quote every legal directory name. Suggestions
-with unsupported question marks, brackets, backslashes, control characters or
-trailing spaces are withheld rather than changing the parser. The measurements
-and examples remain, with manual inspection/rename guidance. The page never
+with unsupported question marks, brackets, backslashes, regex operators,
+control characters, trailing spaces in any segment, invalid UTF-8 or replacement
+characters are withheld rather than changing the parser. Replacement-character
+names are conservatively manual-only even when legitimate, because lossy JSON
+names cannot be distinguished safely. The measurements and examples remain,
+with manual inspection/rename guidance. The page never
 writes a rule or changes settings itself.
 
 ## Failure handling and verification
@@ -156,8 +168,9 @@ wait for the existing diagnostic instead of starting more work.
 Permanent tests live in `internal/git/scan_analysis_test.go`,
 `internal/api/scan_analysis_handlers_test.go`,
 `internal/server/scan_analysis_test.go`, the page/route/shell/banner frontend
-tests, and `frontend/e2e/scan_analysis.spec.ts`. The browser fixture checks encoded
-project names, zero automatic tree/recent/planning-source requests, explicit
+tests, and `frontend/e2e/scan_analysis.spec.ts`. The browser fixture checks a real
+bounded POST through the served project API, encoded project names, zero automatic
+tree/recent/planning-source requests, explicit
 POST, partial/unknown results, narrow-screen wrapping and timeout-warning
 navigation. The intentionally anonymized performance report retains its existing
 aggregate schema; project paths stay in the project-scoped analysis response.
