@@ -161,6 +161,17 @@ describe("ScanAnalysisPage", () => {
     expect(mockedAxios.post).not.toHaveBeenCalled();
     expect(useRepoStore.getState().currentRepo).toBe("my repo#2");
     expect(refreshTreeForTest).not.toHaveBeenCalled();
+    const snapshotLimits = screen.getByTestId("scan-analysis-snapshot-limits");
+    expect(snapshotLimits).toHaveTextContent(
+      "The diagnostic ignore-file snapshot is bounded to 1 MiB of combined file bytes, 4,096 lines combined, and 4 KiB per line. The overall 5-second deadline is cooperative, not a hard real-time guarantee; a blocked filesystem call can take longer to return.",
+    );
+    const runButton = screen.getByRole("button", {
+      name: "Run bounded diagnostic",
+    });
+    expect(
+      snapshotLimits.compareDocumentPosition(runButton) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
     fireEvent.click(
       screen.getByRole("button", { name: "Run bounded diagnostic" }),
     );
@@ -318,6 +329,112 @@ describe("ScanAnalysisPage", () => {
       screen.getByText(/Affected untracked, non-gitignored Markdown paths/),
     ).toBeInTheDocument();
   });
+
+  it("discloses that every suggested rule can affect unlisted tracked and Gitignored documents", async () => {
+    const exactDisclosure =
+      "Examples are not exhaustive. This rule can also hide tracked or Gitignored documents in this directory that are not listed above.";
+    const recommendations = [
+      {
+        path: "generated/cache",
+        reason: "Measured generated files.",
+        examples: ["generated/cache/report.md"],
+      },
+      {
+        path: "vendor/docs",
+        reason: "Measured vendored files.",
+        examples: ["vendor/docs/guide.md"],
+      },
+    ];
+    mockedAxios.get.mockResolvedValueOnce({
+      data: {
+        ...evidenceResponse,
+        evidence: {
+          ...evidenceResponse.evidence!,
+          settings: {
+            ...evidenceResponse.evidence!.settings!,
+            use_ignore_files: true,
+          },
+        },
+      },
+    });
+    mockedAxios.post.mockResolvedValueOnce({
+      data: {
+        ...partialResponse,
+        evidence: {
+          ...evidenceResponse.evidence!,
+          settings: {
+            ...evidenceResponse.evidence!.settings!,
+            use_ignore_files: true,
+          },
+        },
+        diagnostic: {
+          ...partialResponse.diagnostic!,
+          recommendations,
+        },
+      },
+    });
+    renderAt("/.vantage/scan-analysis");
+    await screen.findByText("git ls-files -co --exclude-standard");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Run bounded diagnostic" }),
+    );
+
+    const disclosures = await screen.findAllByTestId(
+      "scan-analysis-ignore-impact",
+    );
+    expect(disclosures).toHaveLength(recommendations.length);
+    for (const disclosure of disclosures) {
+      expect(disclosure).toHaveTextContent(exactDisclosure);
+    }
+  });
+
+  it.each([
+    ["generated/dir /child", "/generated/dir /child/"],
+    ["generated/invalid\uFFFDname", "/generated/invalid\uFFFDname/"],
+  ])(
+    "withholds a copyable rule for an unsafe or lossy path %s",
+    async (path, reconstructedRule) => {
+      const unsafeResponse: ScanAnalysisResponse = {
+        ...partialResponse,
+        evidence: {
+          ...evidenceResponse.evidence!,
+          settings: {
+            ...evidenceResponse.evidence!.settings!,
+            use_ignore_files: true,
+          },
+        },
+        diagnostic: {
+          ...partialResponse.diagnostic!,
+          recommendations: [
+            {
+              path,
+              reason: "Contains observed Markdown documents.",
+              examples: [`${path}/readme.md`],
+            },
+          ],
+        },
+      };
+      mockedAxios.post.mockResolvedValueOnce({ data: unsafeResponse });
+      renderAt("/.vantage/scan-analysis");
+      await screen.findByText("git ls-files -co --exclude-standard");
+      fireEvent.click(
+        screen.getByRole("button", { name: "Run bounded diagnostic" }),
+      );
+      const suggestion = await screen.findByTestId(
+        "scan-analysis-ignore-suggestion",
+      );
+      expect(suggestion).toHaveTextContent(
+        "A safe literal .vantageignore rule cannot be generated for this name because its reported path may be lossy or unsafe to quote; inspect or rename the directory, or configure a verified exclusion manually.",
+      );
+      expect(suggestion).not.toHaveTextContent(
+        "Suggested repository-root .vantageignore rule",
+      );
+      expect(screen.queryByText(reconstructedRule)).not.toBeInTheDocument();
+      expect(
+        screen.getByTestId("scan-analysis-affected-paths"),
+      ).toHaveTextContent(`${path}/readme.md`);
+    },
+  );
 
   it("withholds a copyable rule for a path the matcher cannot quote literally", async () => {
     const unsafeResponse: ScanAnalysisResponse = {

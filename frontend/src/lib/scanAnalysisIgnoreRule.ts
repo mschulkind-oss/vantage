@@ -4,12 +4,16 @@ export function scanAnalysisIgnoreRule(path: string): string | null {
   if (
     path === "" ||
     segments.some(
-      (segment) => segment === "" || segment === "." || segment === "..",
+      (segment) =>
+        segment === "" ||
+        segment === "." ||
+        segment === ".." ||
+        / +$/.test(segment),
     ) ||
     /[?\\\p{Cc}]/u.test(path) ||
     path.includes("[") ||
     path.includes("]") ||
-    / +$/.test(path)
+    path.includes("\uFFFD")
   ) {
     return null;
   }
