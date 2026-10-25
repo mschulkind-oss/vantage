@@ -1,4 +1,14 @@
+---
+status: accepted
+stage: DECIDED
+next: "Integrate backend then frontend commits, run focused integration tests and the final independent review"
+depends-on: [recent-scan-analysis.md]
+---
+
 # Recent scan analysis implementation plan
+
+**Status:** 2026-10-25. Written against `49abd17a`; component lanes dispatched from `91bd3d8`.
+**Design:** [`recent-scan-analysis.md`](recent-scan-analysis.md). The design wins on behavior, the tree wins on fact, and this plan is advice except its explicit fences and shared wire contract.
 
 ## Accepted behavior
 
@@ -20,6 +30,17 @@ Repo-scoped API registered through ScopeRepo: GET `/git/scan-analysis` reads evi
 Response (both methods): `evidence` nullable object with `command` string, `elapsedMs` number, `timeoutMs` number, `gitignored` boolean, `timedOut` boolean; `diagnostic` nullable object with `method` string, `partial` boolean, `reason` string, `elapsedMs` number, `entries` number, `directories` array of `{path, elapsedMs, entries, examples: string[]}`, `comparison` object `{status: string, elapsedMs: number, entries: number, reason: string}`, `recommendations` array of `{path, reason, examples: string[]}`. All arrays serialized as arrays, no absolute paths. Additional evidence settings may be added compatibly. Missing past evidence is unknown, not fabricated.
 
 Frontend page route: `/.vantage/scan-analysis` single repo; `/.vantage/scan-analysis/:repo` multi-repo, encoded project segment. Determine explicit project from route, never use mutable current-project state to choose the request. API base `/api` single repo or `/api/r/${encodeURIComponent(repo)}` multi repo. GET on opening, POST only on explicit request; AbortController cancellation and stale response suppression. The page explains measurement limits and user-visible cost. Link only for walk_timeout warnings.
+
+## Integration map and traps
+
+| Component | Existing surface / reuse | Integration trap |
+| :--- | :--- | :--- |
+| Backend | `GitService`, repo-scoped API route registry and resolved `RepoServices` | Delegated child scans must preserve parent evidence; do not add timing fields to the server's comparable walk identity |
+| Frontend | `DegradedBanner`, `App` routes, `useShellPage` | URL project chooses requests; synchronize shell context before paint, never show a stale project's warning/sidebar |
+| Server integration | `singleRepoServer`, `daemonServer`, `initRepo` test fixtures | Legacy repo API must remain disabled in daemon mode; percent-encoded project names resolve correctly |
+| Browser | Existing Playwright serve/Vite pair and banner spec | Use test ports, preserve normal Go caches, no production restart |
+
+Cheap implementation choices: containers, naming of internal helpers, stable tie-breaking and presentation structure. Stop and report for contract changes, overlapping/dirty owner files, missing required symbols, out-of-scope gate failures, or a diagnostic that cannot enforce its resource/path fences.
 
 ## Validation and delivery
 
