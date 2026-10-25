@@ -538,10 +538,14 @@ function IgnoreRuleSuggestion({
         data-testid="scan-analysis-ignore-suggestion"
         className="mt-1 text-xs text-[color:var(--vantage-tone-warning-ink)]"
       >
-        A safe literal <code>.vantageignore</code> rule cannot be generated for
-        this name because its reported path may be lossy or unsafe to quote;
-        inspect or rename the directory, or configure a verified exclusion
-        manually.
+        A safe literal <code>.vantageignore</code> rule cannot be generated
+        because this path contains unsupported matcher syntax (including{" "}
+        <code>
+          +(){"{"}
+          {"}"}|^$
+        </code>
+        ) or a lossy/unsafe name; inspect or rename the directory, or configure
+        a verified exclusion manually.
       </p>
     );
   }
