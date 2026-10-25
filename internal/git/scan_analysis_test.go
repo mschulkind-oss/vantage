@@ -181,6 +181,64 @@ func TestScanAnalysisCapsDirectoryQueue(t *testing.T) {
 	require.LessOrEqual(t, len(got.Directories), scanAnalysisDirResults)
 }
 
+func TestScanAnalysisMalformedComparisonIsPartial(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fake Git shell requires a POSIX process environment")
+	}
+	for _, tc := range []struct {
+		name   string
+		script string
+	}{
+		{
+			name:   "unterminated path",
+			script: "printf 'prefix.md\\000unterminated.md'\n",
+		},
+		{
+			name:   "oversized path",
+			script: "printf 'prefix.md\\000'; printf '%070000d.md\\000' 0\n",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := initRepo(t)
+			writeFile(t, repo, "prefix.md", "# prefix\n")
+			bin := filepath.Join(t.TempDir(), "bin")
+			require.NoError(t, os.MkdirAll(bin, 0o755))
+			require.NoError(t, os.WriteFile(filepath.Join(bin, "git"), []byte("#!/bin/sh\n"+tc.script), 0o755))
+			t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+			got := NewService(repo, Options{}).ScanAnalysis(context.Background())
+			require.Equal(t, "partial", got.Comparison.Status)
+			require.Contains(t, got.Comparison.Reason, "comparison output")
+			require.Equal(t, 1, got.Comparison.Entries, "the valid prefix remains measurable")
+			root, ok := findScanDirectory(got.Directories, ".")
+			require.True(t, ok)
+			require.Equal(t, []string{"prefix.md"}, root.Examples, "the valid prefix sample remains visible")
+		})
+	}
+}
+
+func TestScanAnalysisComparisonCapsTotalOutput(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fake Git shell requires a POSIX process environment")
+	}
+	repo := initRepo(t)
+	writeFile(t, repo, "prefix.md", "# prefix\n")
+	bin := filepath.Join(t.TempDir(), "bin")
+	require.NoError(t, os.MkdirAll(bin, 0o755))
+	paddingRecords := scanCompareOutputLimit/2049 + 10
+	fakeGit := fmt.Sprintf("#!/bin/sh\nprintf 'prefix.md\\000'\ni=0\nwhile [ \"$i\" -lt %d ]; do\n  printf '%%2048s\\000' x\n  i=$((i + 1))\ndone\n", paddingRecords)
+	require.NoError(t, os.WriteFile(filepath.Join(bin, "git"), []byte(fakeGit), 0o755))
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	got := NewService(repo, Options{}).ScanAnalysis(context.Background())
+	require.Equal(t, "partial", got.Comparison.Status)
+	require.Contains(t, got.Comparison.Reason, "output limit")
+	require.Equal(t, 1, got.Comparison.Entries, "the valid prefix remains measurable")
+	root, ok := findScanDirectory(got.Directories, ".")
+	require.True(t, ok)
+	require.Equal(t, []string{"prefix.md"}, root.Examples, "the valid prefix sample remains visible")
+}
+
 func TestScanAnalysisComparisonCancelsWhenHelperKeepsStdoutOpen(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("fake Git shell requires a POSIX process environment")

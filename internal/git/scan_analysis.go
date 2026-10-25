@@ -28,6 +28,8 @@ const (
 	scanAnalysisDirResults   = 20
 	scanAnalysisExamples     = 3
 	scanCompareEntryLimit    = 10000
+	scanComparePathByteLimit = 64 * 1024
+	scanCompareOutputLimit   = 16 * 1024 * 1024
 )
 
 // ScanAnalysisResult is a bounded filesystem-enumeration approximation. Its
@@ -405,7 +407,8 @@ func (s *GitService) compareGitignored(parent context.Context, directories []Sca
 			<-closed
 		}
 	}()
-	reader := bufio.NewReader(stdout)
+	limitedOutput := &io.LimitedReader{R: stdout, N: scanCompareOutputLimit + 1}
+	reader := bufio.NewReader(limitedOutput)
 	count := 0
 	readCount := 0
 	samples := map[string][]string{}
@@ -413,47 +416,57 @@ func (s *GitService) compareGitignored(parent context.Context, directories []Sca
 	for _, d := range directories {
 		dirs[d.Path] = struct{}{}
 	}
-	for count <= scanCompareEntryLimit {
-		item, readErr := reader.ReadBytes(0)
+	stopPartial := func(reason string) (ScanAnalysisComparison, map[string][]string) {
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+		out.Status = "partial"
+		out.Reason = reason
+		out.ElapsedMs = time.Since(started).Milliseconds()
+		out.Entries = count
+		return out, samples
+	}
+	token := make([]byte, 0, scanComparePathByteLimit)
+	capturedBytes := int64(0)
+	for {
+		fragment, readErr := reader.ReadSlice(0)
+		capturedBytes += int64(len(fragment))
+		if capturedBytes > scanCompareOutputLimit {
+			return stopPartial("The excluding-gitignored comparison reached its 16 MiB output limit; exclude large generated Markdown directories and retry.")
+		}
+		if len(token)+len(fragment) > scanComparePathByteLimit {
+			return stopPartial("The excluding-gitignored comparison output contained a path over 64 KiB; exclude directories containing unusually long Markdown paths and retry.")
+		}
+		token = append(token, fragment...)
+		if errors.Is(readErr, bufio.ErrBufferFull) {
+			continue
+		}
 		if errors.Is(readErr, io.EOF) {
+			if len(token) != 0 {
+				return stopPartial("Git returned malformed comparison output with an unterminated path; check Git output and repository access, then retry.")
+			}
 			break
 		}
 		if readErr != nil {
-			_ = cmd.Process.Kill()
-			_ = cmd.Wait()
-			out.Status = "partial"
 			if errors.Is(ctx.Err(), context.Canceled) {
-				out.Reason = "The excluding-gitignored comparison was cancelled; reopen scan analysis to run it again."
-			} else if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-				out.Reason = "The excluding-gitignored comparison reached its time budget; exclude large generated directories and retry."
-			} else {
-				out.Status = "partial"
-				out.Reason = "The excluding-gitignored comparison was interrupted; check repository access and retry."
+				return stopPartial("The excluding-gitignored comparison was cancelled; reopen scan analysis to run it again.")
 			}
-			out.ElapsedMs = time.Since(started).Milliseconds()
-			out.Entries = count
-			return out, samples
+			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+				return stopPartial("The excluding-gitignored comparison reached its time budget; exclude large generated directories and retry.")
+			}
+			return stopPartial("The excluding-gitignored comparison was interrupted; check repository access and retry.")
 		}
 		readCount++
 		if readCount > scanCompareEntryLimit {
-			_ = cmd.Process.Kill()
-			_ = cmd.Wait()
-			out.Status = "partial"
-			out.Reason = "The excluding-gitignored comparison reached its entry limit; exclude generated Markdown directories and retry."
-			out.ElapsedMs = time.Since(started).Milliseconds()
-			out.Entries = count
-			return out, samples
+			return stopPartial("The excluding-gitignored comparison reached its entry limit; exclude generated Markdown directories and retry.")
 		}
 		if ctx.Err() != nil {
-			_ = cmd.Process.Kill()
-			_ = cmd.Wait()
-			out.Status = "partial"
-			out.Reason = "The excluding-gitignored comparison was cancelled; reopen scan analysis to run it again."
-			out.ElapsedMs = time.Since(started).Milliseconds()
-			out.Entries = count
-			return out, samples
+			if errors.Is(ctx.Err(), context.Canceled) {
+				return stopPartial("The excluding-gitignored comparison was cancelled; reopen scan analysis to run it again.")
+			}
+			return stopPartial("The excluding-gitignored comparison reached its time budget; exclude large generated directories and retry.")
 		}
-		gitPath := strings.TrimSuffix(string(item), "\x00")
+		gitPath := string(token[:len(token)-1])
+		token = token[:0]
 		rel := filepath.ToSlash(filepath.Clean(filepath.FromSlash(gitPath)))
 		if !safeRepoRelative(rel) || ignore.IsAlwaysIgnored(rel) || !strings.EqualFold(filepath.Ext(rel), ".md") {
 			continue
