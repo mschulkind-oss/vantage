@@ -217,3 +217,53 @@ test("opening single-project analysis does not start tree or recent-file scans",
     page.getByRole("button", { name: "Run bounded diagnostic", exact: true }),
   ).toBeEnabled();
 });
+
+test("real bounded diagnostic completes through the served project API", async ({
+  page,
+}) => {
+  const automatic: string[] = [];
+  page.on("request", (request) => {
+    const pathname = new URL(request.url()).pathname;
+    if (
+      pathname.endsWith("/tree") ||
+      pathname.endsWith("/git/recent") ||
+      pathname.endsWith("/planning/sources")
+    )
+      automatic.push(pathname);
+  });
+  await page.goto("/.vantage/scan-analysis");
+  await expect(
+    page.getByRole("heading", { name: "Recent-file scan analysis" }),
+  ).toBeVisible();
+  const result = page.waitForResponse(
+    (response) =>
+      new URL(response.url()).pathname === "/api/git/scan-analysis" &&
+      response.request().method() === "POST",
+  );
+  await page
+    .getByRole("button", { name: "Run bounded diagnostic", exact: true })
+    .click();
+  const response = await result;
+  expect(response.status()).toBe(200);
+  const body = await response.json();
+  expect(body.diagnostic.method).toBe(
+    "filesystem_directory_entries_and_readdir_time",
+  );
+  expect(body.diagnostic.partial).toBe(false);
+  expect(body.diagnostic.comparison.status).toBe("completed");
+  expect(
+    body.diagnostic.directories.some(
+      (directory: { path: string }) => directory.path === ".",
+    ),
+  ).toBe(true);
+  await expect(
+    page.getByText("Diagnostic results", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(/Complete within diagnostic bound/),
+  ).toBeVisible();
+  await expect(
+    page.getByText(/^Completed: .*Markdown pathspec matches$/),
+  ).toBeVisible();
+  expect(automatic).toEqual([]);
+});
