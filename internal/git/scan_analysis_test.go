@@ -94,6 +94,8 @@ func TestAnchoredIgnorePatternEscapesOnlyVerifiedStars(t *testing.T) {
 		"docs/vendor\\old/part.md",
 		"docs/vendor-old/part.md ",
 		"docs/vendor-old/part\n.md",
+		string([]byte{'d', 'o', 'c', 's', '/', 0xff, '/', 'p', '.', 'm', 'd'}),
+		"docs/\uFFFD/part.md",
 	} {
 		_, ok := anchoredIgnorePattern(unsafe)
 		require.Falsef(t, ok, "no copyable rule for %q", unsafe)
@@ -105,6 +107,66 @@ func TestAnchoredIgnorePatternEscapesOnlyVerifiedStars(t *testing.T) {
 	require.True(t, matcher.IsIgnored("docs/vendor-old/part*.md", true))
 	require.False(t, matcher.IsIgnored("docs/vendor-old/partX.md", true))
 	require.False(t, matcher.IsIgnored("docs/vendor-old/parta.md", true))
+}
+
+func TestScanAnalysisUncertainIgnoreSnapshotSkipsWalkAndGitProbe(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fake Git shell requires a POSIX process environment")
+	}
+	repo := initRepo(t)
+	require.NoError(t, os.Mkdir(filepath.Join(repo, ".vantageignore"), 0o700))
+
+	svc := NewService(repo, Options{UseIgnoreFiles: true})
+	bin := filepath.Join(t.TempDir(), "bin")
+	require.NoError(t, os.MkdirAll(bin, 0o755))
+	marker := filepath.Join(t.TempDir(), "git-ran")
+	require.NoError(t, os.WriteFile(filepath.Join(bin, "git"), []byte("#!/bin/sh\ntouch "+marker+"\n"), 0o755))
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	got := svc.ScanAnalysis(context.Background())
+	require.True(t, got.Partial)
+	require.Equal(t, "partial", got.Comparison.Status)
+	require.Empty(t, got.Directories, "visibility is unknown, so no filesystem sample is safe")
+	require.Empty(t, got.Recommendations)
+	require.Contains(t, got.Reason, "workspace .vantageignore")
+	require.Contains(t, got.Reason, "configured user ignore file")
+	require.Contains(t, got.Reason, "shrink")
+	require.Contains(t, got.Reason, "retry")
+	require.Contains(t, got.Reason, "blocked filesystem system calls")
+	require.NotContains(t, got.Reason, repo)
+	_, err := os.Stat(marker)
+	require.True(t, os.IsNotExist(err), "unknown ignore visibility must skip the Git probe")
+}
+
+func TestScanAnalysisLossyUTF8DirectoryNamesRequireManualGuidance(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX filenames may contain invalid UTF-8 bytes")
+	}
+	repo := initRepo(t)
+	lossyNames := []string{string([]byte{0xff}), "\uFFFD"}
+	for _, name := range lossyNames {
+		invalidDir := filepath.Join(repo, name)
+		require.NoError(t, os.Mkdir(invalidDir, 0o755))
+		for i := 0; i < 50; i++ {
+			path := filepath.Join(invalidDir, fmt.Sprintf("doc-%02d.md", i))
+			require.NoError(t, os.WriteFile(path, []byte("# document\n"), 0o644))
+		}
+	}
+
+	got := NewService(repo, Options{}).ScanAnalysis(context.Background())
+	for _, name := range lossyNames {
+		var recommendation *ScanAnalysisRecommend
+		for i := range got.Recommendations {
+			if got.Recommendations[i].Path == name {
+				recommendation = &got.Recommendations[i]
+				break
+			}
+		}
+		require.NotNilf(t, recommendation, "lossy name %q should still be reported as manual-only", name)
+		require.Contains(t, recommendation.Reason, "No copyable .vantageignore pattern")
+		require.Contains(t, recommendation.Reason, "Manually inspect")
+		require.NotContains(t, recommendation.Reason, "Add `")
+	}
 }
 
 func TestScanAnalysisHonorsSymlinkRepositoryIgnoreExcludeAndDepthBoundaries(t *testing.T) {

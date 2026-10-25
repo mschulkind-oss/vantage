@@ -355,22 +355,29 @@ type compiledLines struct {
 func compileLines(raw []string) *compiledLines {
 	c := &compiledLines{raw: append([]string(nil), raw...)}
 	for _, line := range raw {
-		stripped := strings.TrimSpace(strings.TrimRight(line, "\r"))
-		if stripped == "" || strings.HasPrefix(stripped, "#") {
-			continue
+		if pattern, ok := compilePattern(line); ok {
+			c.patterns = append(c.patterns, pattern)
 		}
-		negate := strings.HasPrefix(stripped, "!")
-		pattern := stripped
-		if negate {
-			pattern = stripped[1:]
-		}
-		c.patterns = append(c.patterns, compiledPattern{
-			text:    stripped,
-			negate:  negate,
-			matcher: gitignore.CompileIgnoreLines(pattern),
-		})
 	}
 	return c
+}
+
+// compilePattern applies the shared ignore-line normalization and syntax rules.
+func compilePattern(line string) (compiledPattern, bool) {
+	stripped := strings.TrimSpace(strings.TrimRight(line, "\r"))
+	if stripped == "" || strings.HasPrefix(stripped, "#") {
+		return compiledPattern{}, false
+	}
+	negate := strings.HasPrefix(stripped, "!")
+	pattern := stripped
+	if negate {
+		pattern = stripped[1:]
+	}
+	return compiledPattern{
+		text:    stripped,
+		negate:  negate,
+		matcher: gitignore.CompileIgnoreLines(pattern),
+	}, true
 }
 
 // matcherKey identifies a cached [Matcher] in [GetMatcher].

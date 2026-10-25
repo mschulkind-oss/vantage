@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/mschulkind-oss/vantage/internal/gitenv"
 	"github.com/mschulkind-oss/vantage/internal/ignore"
@@ -87,7 +88,6 @@ func (s *GitService) ScanAnalysis(ctx context.Context) ScanAnalysisResult {
 	}
 	walkCtx, cancel := context.WithTimeout(ctx, scanAnalysisBudget)
 	defer cancel()
-	matcher := s.matcher()
 	measured := make([]measuredDirectory, 0, 128)
 	visitedDirs := 0
 	partialReason := ""
@@ -103,6 +103,29 @@ func (s *GitService) ScanAnalysis(ctx context.Context) ScanAnalysisResult {
 		} else {
 			setPartial("The cooperative time budget expired; exclude large generated directories and retry. A blocked filesystem system call may not return until the operating system releases it.")
 		}
+	}
+	finish := func() ScanAnalysisResult {
+		result.ElapsedMs = time.Since(started).Milliseconds()
+		result.Reason = "Measured only the configured diagnostic scope: .vantage internal state, symlinks, .git, linked worktrees, configured excludes, configured Vantage-ignore matches, and paths beyond walk_max_depth are not enumerated. Nested repositories are boundaries when stop_at_repos is enabled. Complete means this filtered scope completed, not that the raw tree was fully traversed. The 5-second deadline is cooperative; blocked filesystem system calls cannot be forcibly interrupted."
+		if partialReason != "" {
+			result.Reason += " " + partialReason
+		}
+		return result
+	}
+	matcher, matcherErr := ignore.NewDiagnosticMatcher(walkCtx, s.repoPath, s.opts.UseIgnoreFiles, ignore.DefaultUserIgnorePath())
+	if matcherErr != nil {
+		result.Partial = true
+		if errors.Is(walkCtx.Err(), context.Canceled) {
+			result.Comparison = ScanAnalysisComparison{Status: "partial", Reason: "Git comparison was skipped because loading the workspace .vantageignore or configured user ignore file was cancelled; reopen scan analysis to retry."}
+			setPartial("The diagnostic was cancelled while loading the workspace .vantageignore or configured user ignore file; reopen scan analysis to run it again.")
+		} else if errors.Is(walkCtx.Err(), context.DeadlineExceeded) {
+			result.Comparison = ScanAnalysisComparison{Status: "partial", Reason: "Git comparison was skipped because loading the workspace .vantageignore or configured user ignore file exceeded the cooperative time budget."}
+			setPartial("The diagnostic time budget expired while loading ignore rules; inspect and shrink the workspace .vantageignore and configured user ignore file, then retry.")
+		} else {
+			result.Comparison = ScanAnalysisComparison{Status: "partial", Reason: "Git comparison was skipped because ignore-rule visibility is unknown."}
+			setPartial("Ignore-rule visibility is unknown, so no paths were sampled. Inspect the workspace .vantageignore and configured user ignore file; make them readable regular files and shrink them below the diagnostic limits, then retry.")
+		}
+		return finish()
 	}
 	if walkCtx.Err() != nil {
 		setContextPartial()
@@ -279,12 +302,7 @@ func (s *GitService) ScanAnalysis(ctx context.Context) ScanAnalysisResult {
 		}
 	}
 	result.Recommendations = scanRecommendations(result.Directories, s.opts.UseIgnoreFiles)
-	result.ElapsedMs = time.Since(started).Milliseconds()
-	result.Reason = "Measured only the configured diagnostic scope: .vantage internal state, symlinks, .git, linked worktrees, configured excludes, configured Vantage-ignore matches, and paths beyond walk_max_depth are not enumerated. Nested repositories are boundaries when stop_at_repos is enabled. Complete means this filtered scope completed, not that the raw tree was fully traversed. The 5-second deadline is cooperative; blocked filesystem system calls cannot be forcibly interrupted."
-	if partialReason != "" {
-		result.Reason += " " + partialReason
-	}
-	return result
+	return finish()
 }
 
 func safeRepoRelative(path string) bool {
@@ -333,7 +351,7 @@ func scanRecommendations(dirs []ScanAnalysisDirectory, useIgnoreFiles bool) []Sc
 				reason += " This pattern takes effect only after enabling use_ignore_files."
 			}
 		} else {
-			reason = "No copyable .vantageignore pattern is offered because this directory name contains syntax the matcher cannot safely escape. Manually inspect the name and neighboring documents, or rename the directory, before writing a rule."
+			reason = "No copyable .vantageignore pattern is offered because this directory name cannot be represented safely as a rule. Manually inspect the name and neighboring documents, or rename the directory, before writing a rule."
 		}
 		out = append(out, ScanAnalysisRecommend{
 			Path:     d.Path,
@@ -345,7 +363,7 @@ func scanRecommendations(dirs []ScanAnalysisDirectory, useIgnoreFiles bool) []Sc
 }
 
 func anchoredIgnorePattern(path string) (string, bool) {
-	if !safeRepoRelative(path) {
+	if !utf8.ValidString(path) || !safeRepoRelative(path) {
 		return "", false
 	}
 	for _, segment := range strings.Split(path, "/") {
@@ -354,14 +372,14 @@ func anchoredIgnorePattern(path string) (string, bool) {
 		}
 	}
 	for _, r := range path {
-		if unicode.IsControl(r) || strings.ContainsRune("?[]\\", r) {
+		if r == utf8.RuneError || unicode.IsControl(r) || strings.ContainsRune("?[]\\", r) {
 			return "", false
 		}
 	}
 	return "/" + strings.ReplaceAll(path, "*", `\*`) + "/", true
 }
 
-func (s *GitService) compareGitignored(parent context.Context, directories []ScanAnalysisDirectory, root *os.Root, matcher *ignore.Matcher, showHidden bool) (ScanAnalysisComparison, map[string][]string) {
+func (s *GitService) compareGitignored(parent context.Context, directories []ScanAnalysisDirectory, root *os.Root, matcher *ignore.DiagnosticMatcher, showHidden bool) (ScanAnalysisComparison, map[string][]string) {
 	started := time.Now()
 	out := ScanAnalysisComparison{Status: "unknown", Reason: "The project is not a Git work tree; initialize or select a Git repository to compare ignored files."}
 	if s.workingDir == "" {
@@ -532,8 +550,17 @@ func scanRepoBoundary(root *os.Root, rel string) bool {
 	return scanLinkedWorktree(root, rel)
 }
 
-func (s *GitService) visibleUntrackedMarkdown(root *os.Root, matcher *ignore.Matcher, rel string, showHidden bool) bool {
-	if root == nil || ignore.IsAlwaysIgnored(rel) || !strings.EqualFold(filepath.Ext(rel), ".md") || s.shouldSkip(rel, matcher) {
+func (s *GitService) shouldSkipDiagnostic(rel string, matcher *ignore.DiagnosticMatcher) bool {
+	for _, part := range strings.Split(rel, "/") {
+		if _, ok := s.excludeDirs[part]; ok {
+			return true
+		}
+	}
+	return matcher != nil && matcher.IsIgnored(rel, false)
+}
+
+func (s *GitService) visibleUntrackedMarkdown(root *os.Root, matcher *ignore.DiagnosticMatcher, rel string, showHidden bool) bool {
+	if root == nil || ignore.IsAlwaysIgnored(rel) || !strings.EqualFold(filepath.Ext(rel), ".md") || s.shouldSkipDiagnostic(rel, matcher) {
 		return false
 	}
 	if !showHidden && hasHiddenParent(rel) {
