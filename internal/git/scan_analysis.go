@@ -372,7 +372,7 @@ func anchoredIgnorePattern(path string) (string, bool) {
 		}
 	}
 	for _, r := range path {
-		if r == utf8.RuneError || unicode.IsControl(r) || strings.ContainsRune("?[]\\", r) {
+		if r == utf8.RuneError || unicode.IsControl(r) || strings.ContainsRune("?[]\\+(){}|^$", r) {
 			return "", false
 		}
 	}

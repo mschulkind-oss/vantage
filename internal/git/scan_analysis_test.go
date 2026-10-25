@@ -91,6 +91,13 @@ func TestAnchoredIgnorePatternEscapesOnlyVerifiedStars(t *testing.T) {
 		"../outside",
 		"docs/vendor[old]/part.md",
 		"docs/vendor-old/part?.md",
+		"docs/group+one",
+		"docs/group(one)",
+		"docs/group{one}",
+		"docs/group|one",
+		"docs/group^one",
+		"docs/group$one",
+		"docs/#$~sentinel",
 		"docs/vendor\\old/part.md",
 		"docs/vendor-old/part.md ",
 		"docs/vendor-old/part\n.md",
@@ -107,6 +114,69 @@ func TestAnchoredIgnorePatternEscapesOnlyVerifiedStars(t *testing.T) {
 	require.True(t, matcher.IsIgnored("docs/vendor-old/part*.md", true))
 	require.False(t, matcher.IsIgnored("docs/vendor-old/partX.md", true))
 	require.False(t, matcher.IsIgnored("docs/vendor-old/parta.md", true))
+}
+
+func TestScanRecommendationsWithholdsRegexOperatorsAndRetainsEvidence(t *testing.T) {
+	for _, path := range []string{
+		"docs/group+one",
+		"docs/group(one)",
+		"docs/group)one",
+		"docs/group{one}",
+		"docs/group}one",
+		"docs/group|one",
+		"docs/group^one",
+		"docs/group$one",
+		"docs/#$~sentinel",
+	} {
+		t.Run(path, func(t *testing.T) {
+			examples := []string{path + "/example.md"}
+			recommendations := scanRecommendations([]ScanAnalysisDirectory{{
+				Path: path, ElapsedMs: 5, Entries: 50, Examples: examples,
+			}}, true)
+			if path == "docs/group+one" {
+				if pattern, ok := anchoredIgnorePattern(path); ok {
+					root := t.TempDir()
+					require.NoError(t, os.WriteFile(filepath.Join(root, ".vantageignore"), []byte(pattern+"\n"), 0o644))
+					matcher := ignore.NewMatcher(root, true, "")
+					require.True(t, matcher.IsIgnored(path, true), "a suggested rule must match the measured literal directory")
+					require.False(t, matcher.IsIgnored("docs/groupone", true), "a suggested rule must not match its neighboring name")
+				}
+			}
+			require.Len(t, recommendations, 1)
+			require.Equal(t, path, recommendations[0].Path)
+			require.Equal(t, examples, recommendations[0].Examples)
+			require.Contains(t, recommendations[0].Reason, "No copyable .vantageignore pattern")
+			require.Contains(t, recommendations[0].Reason, "Manually inspect")
+			require.NotContains(t, recommendations[0].Reason, "Add `")
+		})
+	}
+}
+
+func TestScanRecommendationIgnoreRuleStaysAnchoredToMeasuredPrefix(t *testing.T) {
+	path := "docs/vendor-old"
+	examples := []string{path + "/one.md"}
+	recommendations := scanRecommendations([]ScanAnalysisDirectory{{
+		Path: path, ElapsedMs: 5, Entries: 50, Examples: examples,
+	}}, true)
+	require.Len(t, recommendations, 1)
+	require.Equal(t, examples, recommendations[0].Examples)
+	require.Contains(t, recommendations[0].Reason, "Add `/docs/vendor-old/`")
+
+	root := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(root, ".vantageignore"), []byte("/docs/vendor-old/\n"), 0o644))
+	matcher := ignore.NewMatcher(root, true, "")
+	require.True(t, matcher.IsIgnored("docs/vendor-old", true))
+	require.True(t, matcher.IsIgnored("docs/vendor-old/child.md", false))
+	require.False(t, matcher.IsIgnored("docs/vendor-oldish/child.md", false))
+	require.False(t, matcher.IsIgnored("archive/docs/vendor-old/child.md", false))
+}
+
+func TestGoGitignoreTreatsPlusAsRegexpOperator(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(root, ".vantageignore"), []byte("/group+one/\n"), 0o644))
+	matcher := ignore.NewMatcher(root, true, "")
+	require.False(t, matcher.IsIgnored("group+one", true), "the unescaped plus does not match the literal directory")
+	require.True(t, matcher.IsIgnored("groupone", true), "the unescaped plus matches the neighboring name")
 }
 
 func TestScanAnalysisUncertainIgnoreSnapshotSkipsWalkAndGitProbe(t *testing.T) {
