@@ -6,6 +6,18 @@ are summarized one section per minor line; the commit log has the rest.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Added
+
+**A slow recent-files scan can explain its measured work.** The timeout warning
+links to the affected project's scan-analysis page. Opening it reads saved
+evidence only; a deliberate bounded diagnostic ranks current directory reads,
+shows partial or unknown comparisons, and offers exclusion examples without
+changing visibility or writing ignore files. Its timings are an approximation,
+not attribution of the earlier Git command. See
+[scan analysis](docs/reference/recent-scan-analysis.md).
+
 ## [0.10.0] - 2026-10-09
 
 The planning page becomes a to-do list of what needs you, every comment box

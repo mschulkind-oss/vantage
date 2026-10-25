@@ -479,8 +479,21 @@ log:
 | What happened | What the banner says is off | What to change |
 | ------------- | --------------------------- | -------------- |
 | The live-reload watcher ran out of the system's watches | Live reload, below the first folder it could not watch | Raise the limit (on Linux, `fs.inotify.max_user_watches`; on macOS, where every watched file holds an open file, `kern.maxfilesperproc`), or list the biggest folders in `.vantageignore` or `watcher_ignore_defaults` |
-| Finding untracked files took longer than `walk_timeout` | Recent files may be missing untracked documents | Raise `walk_timeout`, or list the biggest folders in `.vantageignore` |
+| Finding untracked files took longer than `walk_timeout` | Recent files may be missing untracked documents | Use **Analyze recent-file scan** in the warning before changing exclusions or raising `walk_timeout` |
 | The project's watcher could not start at all, usually because the system ran out of watcher instances (each project takes one) | Live reload, for the whole project | Raise the limit (on Linux, `fs.inotify.max_user_instances`), then restart Vantage |
+
+The timeout warning's **Analyze recent-file scan** link opens the affected
+project's recorded evidence without starting another scan. **Run bounded
+diagnostic** deliberately samples directory enumeration work, with a cooperative
+five-second budget and explicit partial/unknown results. The file tree and
+recents sidebar are paused on that page. Its excluding-Gitignored probe is a
+separate measurement, not proof that a setting change fixes the original timeout.
+
+Before adding a suggested `.vantageignore` rule, inspect its affected document
+examples: the rule can also hide tracked or Gitignored documents not listed in
+those samples. Rules take effect only with `use_ignore_files = true`; the page
+never writes one for you. See [scan analysis](../../docs/reference/recent-scan-analysis.md)
+for the measurement limits and failure guidance.
 
 The banner shows the open project's reports only, and the dismiss button hides it
 until the page is reloaded. Serving a directory of clones as one project with

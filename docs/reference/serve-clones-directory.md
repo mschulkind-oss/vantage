@@ -596,6 +596,13 @@ on each `degraded_changed`. The banner shows only the open project's reports whe
 served, and nothing until the project list has loaded. A static export has no
 server to ask, and shows none.
 
+A `walk_timeout` report includes **Analyze recent-file scan**, linking to the
+open project's [scan-analysis page](recent-scan-analysis.md). Opening that page
+reads captured evidence only and pauses automatic tree, recents and planning
+source refreshes; its optional diagnostic starts only on a deliberate request.
+The reserved `/.vantage/scan-analysis` namespace preserves existing project and
+document URLs.
+
 - **It floats over the bottom of the app shell's main pane**, the pane the
   viewer and the planning page draw in, so it never covers the sidebar. The
   history and recents pages are outside the app shell and have no banner.
