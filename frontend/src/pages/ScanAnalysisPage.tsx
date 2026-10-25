@@ -437,6 +437,16 @@ export const ScanAnalysisPage: React.FC = () => {
                 seconds within that total. Only one analysis runs globally at a
                 time; if the slot is occupied, retry after the other run ends.
               </p>
+              <p
+                data-testid="scan-analysis-snapshot-limits"
+                className="mt-2 text-sm text-slate-600 dark:text-slate-300"
+              >
+                The diagnostic ignore-file snapshot is bounded to 1 MiB of
+                combined file bytes, 4,096 lines combined, and 4 KiB per line.
+                The overall 5-second deadline is cooperative, not a hard
+                real-time guarantee; a blocked filesystem call can take longer
+                to return.
+              </p>
               {!diagnostic && (
                 <p className="mt-3 text-sm text-slate-600 dark:text-slate-300">
                   No diagnostic has run. Start one when you are ready to spend
@@ -529,19 +539,29 @@ function IgnoreRuleSuggestion({
         className="mt-1 text-xs text-[color:var(--vantage-tone-warning-ink)]"
       >
         A safe literal <code>.vantageignore</code> rule cannot be generated for
-        this name; inspect or rename the directory, or configure a verified
-        exclusion manually.
+        this name because its reported path may be lossy or unsafe to quote;
+        inspect or rename the directory, or configure a verified exclusion
+        manually.
       </p>
     );
   }
   return (
-    <p
-      data-testid="scan-analysis-ignore-suggestion"
-      className="mt-1 text-xs text-slate-600 dark:text-slate-300"
-    >
-      Suggested repository-root <code>.vantageignore</code> rule (not applied):{" "}
-      <code>{rule}</code>
-    </p>
+    <>
+      <p
+        data-testid="scan-analysis-ignore-suggestion"
+        className="mt-1 text-xs text-slate-600 dark:text-slate-300"
+      >
+        Suggested repository-root <code>.vantageignore</code> rule (not
+        applied): <code>{rule}</code>
+      </p>
+      <p
+        data-testid="scan-analysis-ignore-impact"
+        className="mt-1 text-xs text-slate-600 dark:text-slate-300"
+      >
+        Examples are not exhaustive. This rule can also hide tracked or
+        Gitignored documents in this directory that are not listed above.
+      </p>
+    </>
   );
 }
 
