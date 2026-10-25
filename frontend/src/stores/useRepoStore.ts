@@ -38,7 +38,10 @@ interface RepoState {
 
   loadRepos: () => Promise<void>;
   refreshRepos: () => Promise<void>;
-  setCurrentRepo: (repo: string | null) => void;
+  setCurrentRepo: (
+    repo: string | null,
+    options?: { refreshTree?: boolean },
+  ) => void;
   setRepoSortMode: (mode: "alphabetical" | "recent") => void;
   sortedRepos: () => RepoInfo[];
   loadFile: (path: string, options?: LoadOptions) => Promise<void>;
@@ -257,7 +260,7 @@ export const useRepoStore = create<RepoState>((set, get) => ({
     }
   },
 
-  setCurrentRepo: (repo) => {
+  setCurrentRepo: (repo, options) => {
     // Skip full reset if already on this repo (e.g. coming back from HistoryPage)
     if (repo === get().currentRepo) return;
     set({
@@ -271,8 +274,9 @@ export const useRepoStore = create<RepoState>((set, get) => ({
       isLoading: false,
       error: null,
     });
-    // Refresh tree for the new repo
-    get().refreshTree();
+    // Refresh tree for the new repo unless a route opening only needs to scope
+    // its own evidence request (for example scan analysis).
+    if (options?.refreshTree !== false) get().refreshTree();
   },
 
   setRepoSortMode: (mode) => {

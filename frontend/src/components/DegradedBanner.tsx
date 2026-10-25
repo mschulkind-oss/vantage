@@ -2,6 +2,8 @@ import React, { useEffect, useId, useLayoutEffect, useRef } from "react";
 import { AlertTriangle, X } from "lucide-react";
 import { useRepoStore } from "../stores/useRepoStore";
 import { degradationKey, useDegradedStore } from "../stores/useDegradedStore";
+import { scanAnalysisPath } from "../lib/scanAnalysisRoute";
+import { AppLink } from "./AppLink";
 import type { Degradation } from "../types";
 
 /** The banner's distance from the bottom of the pane it floats over (bottom-4). */
@@ -142,9 +144,17 @@ export const DegradedBanner: React.FC<DegradedBannerProps> = ({
             className="pointer-events-auto flex items-start gap-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-700 shadow-lg dark:border-amber-600 dark:bg-slate-800 dark:text-slate-200"
           >
             <AlertTriangle size={16} className="mt-0.5 shrink-0" aria-hidden />
-            <p id={messageId} className="min-w-0 flex-1">
-              {d.message}
-            </p>
+            <div className="min-w-0 flex-1">
+              <p id={messageId}>{d.message}</p>
+              {d.kind === "walk_timeout" && (!isMultiRepo || d.repo) && (
+                <AppLink
+                  to={scanAnalysisPath(isMultiRepo, d.repo)}
+                  className="mt-1 inline-block font-medium underline underline-offset-2 hover:text-amber-900 dark:hover:text-white"
+                >
+                  Analyze recent-file scan
+                </AppLink>
+              )}
+            </div>
             <button
               type="button"
               data-dismiss={key}
