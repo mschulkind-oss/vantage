@@ -379,7 +379,7 @@ func (s *GitService) compareGitignored(parent context.Context, directories []Sca
 	}
 	ctx, cancel := context.WithTimeout(parent, 2*time.Second)
 	defer cancel()
-	args := []string{"--no-optional-locks", "ls-files", "--others", "-z", "--exclude-standard"}
+	args := []string{"--no-optional-locks", "-c", "core.fsmonitor=false", "ls-files", "--others", "-z", "--exclude-standard"}
 	args = append(args, s.walkExcludeArgs()...)
 	args = append(args, "--exclude=.vantage", "--", "*.md")
 	cmd := exec.CommandContext(ctx, "git", args...)
@@ -395,6 +395,16 @@ func (s *GitService) compareGitignored(parent context.Context, directories []Sca
 		out.Status, out.Reason = "unavailable", "Git could not start the excluding-gitignored comparison; check Git availability and repository access, then retry."
 		return out, map[string][]string{}
 	}
+	closed := make(chan struct{})
+	stopClose := context.AfterFunc(ctx, func() {
+		_ = stdout.Close()
+		close(closed)
+	})
+	defer func() {
+		if !stopClose() {
+			<-closed
+		}
+	}()
 	reader := bufio.NewReader(stdout)
 	count := 0
 	readCount := 0
@@ -412,7 +422,14 @@ func (s *GitService) compareGitignored(parent context.Context, directories []Sca
 			_ = cmd.Process.Kill()
 			_ = cmd.Wait()
 			out.Status = "partial"
-			out.Reason = "The excluding-gitignored comparison was interrupted; check repository access and retry."
+			if errors.Is(ctx.Err(), context.Canceled) {
+				out.Reason = "The excluding-gitignored comparison was cancelled; reopen scan analysis to run it again."
+			} else if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+				out.Reason = "The excluding-gitignored comparison reached its time budget; exclude large generated directories and retry."
+			} else {
+				out.Status = "partial"
+				out.Reason = "The excluding-gitignored comparison was interrupted; check repository access and retry."
+			}
 			out.ElapsedMs = time.Since(started).Milliseconds()
 			out.Entries = count
 			return out, samples
@@ -469,7 +486,7 @@ func (s *GitService) compareGitignored(parent context.Context, directories []Sca
 		out.Reason = "Git could not complete the excluding-gitignored comparison; check repository access and retry."
 	} else {
 		out.Status = "completed"
-		out.Reason = "Git ls-files --others --exclude-standard reports raw untracked Markdown pathspec matches from this project root after Git and configured Vantage ignore rules; these file counts are not comparable to the filtered filesystem directory-entry count or its elapsed time. Examples additionally apply hidden, symlink, repository-boundary, and depth visibility filters."
+		out.Reason = "Git ls-files --others --exclude-standard runs with core.fsmonitor=false to avoid invoking a repository-configured filesystem-monitor helper. It reports raw untracked Markdown pathspec matches from this project root after Git and configured Vantage ignore rules; these file counts are not comparable to the filtered filesystem directory-entry count or its elapsed time. Examples additionally apply hidden, symlink, repository-boundary, and depth visibility filters."
 	}
 	return out, samples
 }

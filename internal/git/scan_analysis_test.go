@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -41,6 +43,7 @@ func TestScanAnalysisUsesBoundedFilesystemWalkAndGitignoredComparison(t *testing
 	require.Equal(t, "completed", got.Comparison.Status)
 	require.Equal(t, 61, got.Comparison.Entries, "ignored/secret.md is omitted; Markdown pathspecs are counted")
 	require.NotContains(t, got.Comparison.Reason, repo)
+	require.Contains(t, got.Comparison.Reason, "core.fsmonitor=false")
 	require.Contains(t, got.Comparison.Reason, "not comparable")
 	require.Contains(t, got.Reason, "Complete means this filtered scope completed")
 	large, ok := findScanDirectory(got.Directories, "large")
@@ -176,6 +179,55 @@ func TestScanAnalysisCapsDirectoryQueue(t *testing.T) {
 	require.True(t, got.Partial)
 	require.Contains(t, got.Reason, "directory limit")
 	require.LessOrEqual(t, len(got.Directories), scanAnalysisDirResults)
+}
+
+func TestScanAnalysisComparisonCancelsWhenHelperKeepsStdoutOpen(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fake Git shell requires a POSIX process environment")
+	}
+	repo := initRepo(t)
+	svc := NewService(repo, Options{})
+	bin := filepath.Join(t.TempDir(), "bin")
+	require.NoError(t, os.MkdirAll(bin, 0o755))
+	pidFile := filepath.Join(t.TempDir(), "helper.pid")
+	fakeGit := "#!/bin/sh\nsleep 30 &\necho $! > \"$FAKE_GIT_PID_FILE\"\nwait\n"
+	require.NoError(t, os.WriteFile(filepath.Join(bin, "git"), []byte(fakeGit), 0o755))
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("FAKE_GIT_PID_FILE", pidFile)
+
+	var helperPID int
+	t.Cleanup(func() {
+		if helperPID != 0 {
+			process, err := os.FindProcess(helperPID)
+			if err == nil {
+				_ = process.Kill()
+			}
+		}
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	result := make(chan ScanAnalysisResult, 1)
+	go func() { result <- svc.ScanAnalysis(ctx) }()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		data, err := os.ReadFile(pidFile)
+		if err == nil {
+			helperPID, err = strconv.Atoi(strings.TrimSpace(string(data)))
+			require.NoError(t, err)
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	require.NotZero(t, helperPID, "fake Git started a child holding the stdout pipe")
+	cancel()
+	select {
+	case got := <-result:
+		require.True(t, got.Partial)
+		require.Contains(t, got.Comparison.Reason, "cancelled")
+		require.Less(t, got.ElapsedMs, int64(1000), "closing the pipe must not wait for the helper to exit")
+	case <-time.After(time.Second):
+		t.Fatal("diagnostic hung after request cancellation while a child held stdout open")
+	}
 }
 
 func TestScanAnalysisIsCancellableAndCapsEntries(t *testing.T) {
