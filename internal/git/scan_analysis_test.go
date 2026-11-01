@@ -212,6 +212,14 @@ func TestScanAnalysisLossyUTF8DirectoryNamesRequireManualGuidance(t *testing.T) 
 	if runtime.GOOS == "windows" {
 		t.Skip("POSIX filenames may contain invalid UTF-8 bytes")
 	}
+	if runtime.GOOS == "darwin" {
+		// The first name is a directory Git reports lossily because the
+		// filesystem holds bytes that are not UTF-8, and APFS will not create
+		// such a name at all: "mkdir …/\ufffd: illegal byte sequence". So the
+		// shape this test measures cannot exist there; the rule stays covered
+		// on Linux.
+		t.Skip("APFS refuses a name that is not valid UTF-8")
+	}
 	repo := initRepo(t)
 	lossyNames := []string{string([]byte{0xff}), "\uFFFD"}
 	for _, name := range lossyNames {
