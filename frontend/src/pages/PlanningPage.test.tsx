@@ -2368,8 +2368,8 @@ describe("the reviews, in one request (planning-index.md §9.3)", () => {
     const rest = pathsOf(1);
     expect(rest.filter((path) => first.has(path))).toEqual([]);
     // The first holds the cards' documents and every one holding a question
-    // that needs you: plans/answered.md's OQ-A1 has no card, and its answers
-    // are what the need-you numbers painted with the sections read.
+    // the page lists: plans/answered.md's OQ-A1 is ✅, so it has no card and
+    // no need-you count, but it is on the page under *Maintenance*.
     expect(first.has("plans/answered.md")).toBe(true);
     expect(rest).toContain("plans/waits.md");
     expect(new Set([...first, ...rest])).toEqual(
@@ -2948,7 +2948,7 @@ describe("several roadmaps (§6.8)", () => {
     seed(TWO);
     await renderPage();
     expect(options()).toEqual([
-      "roadmap.md (3 need you)",
+      "roadmap.md (2 need you)",
       "docs/plans/roadmap.md (2 need you)",
     ]);
     expect(picker().value).toBe("roadmap.md");
@@ -2975,7 +2975,7 @@ describe("several roadmaps (§6.8)", () => {
     // Drawn by the page, since a closed select clips its text to one line,
     // and hidden from a screen reader, which hears the select's own value.
     const shown = screen.getByTestId("roadmap-shown");
-    expect(shown).toHaveTextContent(/^roadmap\.md \(3 need you\)$/);
+    expect(shown).toHaveTextContent(/^roadmap\.md \(2 need you\)$/);
     expect(shown).toHaveAttribute("aria-hidden", "true");
     expect(shown).toHaveClass("[overflow-wrap:anywhere]");
     expect(picker()).toHaveAttribute("title", "roadmap.md");
@@ -3023,7 +3023,7 @@ describe("several roadmaps (§6.8)", () => {
     ]);
     expect(listedIn("Not on a roadmap")).toEqual(["OQ-X1: Question OQ-X1?"]);
     expect(screen.getByTestId("other-roadmaps")).toHaveTextContent(
-      PLANNING_NOTICES.otherRoadmaps(2),
+      PLANNING_NOTICES.otherRoadmaps(1),
     );
     expect(screen.getByTestId("needs-you-count")).toHaveTextContent("3");
     // No history entry: Back leaves the page.
@@ -3164,7 +3164,7 @@ describe("several roadmaps (§6.8)", () => {
     await settle();
     expect(cardsIn("Needs you")[0]).toBe("OQ-U1: Question OQ-U1?");
     expect(screen.getByTestId("other-roadmaps")).toHaveTextContent(
-      PLANNING_NOTICES.otherRoadmaps(2),
+      PLANNING_NOTICES.otherRoadmaps(1),
     );
     expect(screen.getByTestId("roadmap-spinner-slot")).toBe(slot);
     expect(slot).toBeEmptyDOMElement();
@@ -3870,7 +3870,7 @@ describe("each section's explanation, and Copy agent request", () => {
       ).toBeTruthy();
     }
     expect(section("Needs you")).toHaveAccessibleDescription(
-      "Open or answered questions on this roadmap, in its order. Rule each open one, then Copy answers.",
+      "Open questions on this roadmap, in its order. Rule each one, then Copy answers.",
     );
   });
 
@@ -5302,16 +5302,16 @@ describe("a comment on a question is its answer (§6.7)", () => {
       await renderPage();
 
       expect(options()).toEqual([
-        "roadmap.md (2 need you)",
+        "roadmap.md (1 needs you)",
         "docs/plans/roadmap.md (1 needs you)",
       ]);
       const shown = screen.getByTestId("roadmap-shown");
-      expect(shown).toHaveTextContent("roadmap.md (2 need you)");
+      expect(shown).toHaveTextContent("roadmap.md (1 needs you)");
       // Room for the count the index gives, so a count lowered later moves
       // nothing.
       expect(shown.querySelector(".hdr-reserve")).toHaveAttribute(
         "data-reserve",
-        "(3 needs you)",
+        "(2 needs you)",
       );
       const others = screen.getByTestId("other-roadmaps");
       expect(others).toHaveTextContent(
@@ -5353,7 +5353,7 @@ describe("a comment on a question is its answer (§6.7)", () => {
       await renderPage();
       expect(screen.getByTestId("pending-answers")).toHaveTextContent("1");
       expect(options()).toEqual([
-        "roadmap.md (3 need you)",
+        "roadmap.md (2 need you)",
         "docs/plans/roadmap.md (1 needs you)",
       ]);
       expect(screen.getByTestId("other-roadmaps")).toHaveTextContent(
@@ -5403,7 +5403,7 @@ describe("a comment on a question is its answer (§6.7)", () => {
       await settle();
       // The reserved counts follow at once, within the room they kept.
       expect(options()).toEqual([
-        "roadmap.md (1 needs you)",
+        "roadmap.md (0 need you)",
         "docs/plans/roadmap.md (0 need you)",
       ]);
       expect(screen.getByTestId("other-roadmaps")).toHaveTextContent(
@@ -5901,7 +5901,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       await renderPage("/.vantage/planning?filter=-md");
       expect(nothingMatchesLines()).toEqual([
         "Nothing matches -md.",
-        "Without -md it would keep 9 entries, and every one of them matches md.",
+        "Without -md it would keep 8 entries, and every one of them matches md.",
       ]);
       expect(
         Array.from(
@@ -5923,9 +5923,9 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       );
       expect(nothingMatchesLines()).toEqual([
         "Nothing matches path:plans/answered.md is:open.",
-        "Without is:open it would keep 1 entry, and it is not an open question.",
+        "It keeps 1 document, and it has no question or next step listed here.",
       ]);
-      expect(nothingMatches()!.querySelectorAll("code")).toHaveLength(2);
+      expect(nothingMatches()!.querySelectorAll("code")).toHaveLength(1);
     });
 
     it("clears the filter as the box's ✕ does: at once, as a new history entry Back undoes, with the box emptied, focused and said", async () => {
@@ -6341,7 +6341,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
         "nothing-matches-reason",
       );
       expect(status()).toHaveTextContent(
-        "0 match, 9 hidden. Nothing matches path:plans/answered.md is:open. Without is:open it would keep 1 entry, and it is not an open question.",
+        "0 match, 9 hidden. Nothing matches path:plans/answered.md is:open. It keeps 1 document, and it has no question or next step listed here.",
       );
       expect(box().getAttribute("aria-describedby")).toContain(
         `${headline.id} ${reason.id}`,
@@ -6743,7 +6743,12 @@ describe("the planning filter (planning-index.md §6.11)", () => {
         "/.vantage/planning?filter=path:/plans/answered.md",
       );
       expect(box().value).toBe("path:./plans/answered.md");
-      expect(listedIn("To fold into the ledger")).toEqual([A1]);
+      // A ✅ question is not an entry, so a filter keeping only this document
+      // keeps nothing to show: the notice says so, naming the document.
+      expect(nothingMatchesLines()).toEqual([
+        "Nothing matches path:/plans/answered.md.",
+        "It keeps 1 document, and it has no question or next step listed here.",
+      ]);
       box().focus();
       await enter();
       expect(box().value).toBe("path:/plans/answered.md");
@@ -7608,14 +7613,14 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       const count = () =>
         screen.getByTestId("roadmap-shown").querySelector(".hdr-reserve")!;
       const others = () => screen.getByTestId("other-roadmaps");
-      expect(count()).toHaveTextContent("(3 need you)");
+      expect(count()).toHaveTextContent("(2 need you)");
       expect(others()).toHaveTextContent(PLANNING_NOTICES.otherRoadmaps(2));
       const rooms = () => [
         count().getAttribute("data-reserve"),
         others().getAttribute("data-reserve"),
       ];
       expect(rooms()).toEqual([
-        "(3 needs you)",
+        "(2 needs you)",
         PLANNING_NOTICES.otherRoadmaps(2),
       ]);
       box().focus();
@@ -7627,7 +7632,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       expect(count()).toHaveTextContent("(0 need you)");
       expect(others()).toHaveTextContent(PLANNING_NOTICES.otherRoadmaps(1));
       expect(rooms()).toEqual([
-        "(3 needs you)",
+        "(2 needs you)",
         PLANNING_NOTICES.otherRoadmaps(2),
       ]);
     });

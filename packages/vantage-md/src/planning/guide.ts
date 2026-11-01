@@ -85,7 +85,7 @@ export const PLANNING_SECTION_GUIDE: Readonly<
     "needsYou",
     "Needs you",
     "you",
-    "Open or answered questions on this roadmap, in its order. Rule each open one, then Copy answers.",
+    "Open questions on this roadmap, in its order. Rule each one, then Copy answers.",
   ),
   unrouted: guide(
     "unrouted",

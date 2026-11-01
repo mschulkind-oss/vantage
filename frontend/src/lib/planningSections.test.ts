@@ -295,7 +295,7 @@ describe("several roadmaps (§4, §6.8)", () => {
     expect(derivePlanningSections(index).roadmaps).toEqual([
       { path: "roadmap.md", state: "routes", needsYouCount: 3 },
       { path: "docs/old/roadmap.md", state: "done", needsYouCount: 0 },
-      { path: "docs/plans/roadmap.md", state: "routes", needsYouCount: 3 },
+      { path: "docs/plans/roadmap.md", state: "routes", needsYouCount: 2 },
     ]);
   });
 
@@ -328,12 +328,9 @@ describe("several roadmaps (§4, §6.8)", () => {
     });
     expect(sections.chosenRoadmap).toBe("docs/plans/roadmap.md");
     // OQ-B3 is blocked: its referent still waits, so it does not need you.
-    expect(ids(sections.needsYou)).toEqual(["OQ-B1", "OQ-B2", "OQ-A1"]);
-    expect(sections.needsYou.map((q) => q.heading)).toEqual([
-      "Later",
-      "Later",
-      "Later",
-    ]);
+    // OQ-B2 is ✅ answered: compaction waits on it, not a ruling of yours.
+    expect(ids(sections.needsYou)).toEqual(["OQ-B1", "OQ-A1"]);
+    expect(sections.needsYou.map((q) => q.heading)).toEqual(["Later", "Later"]);
   });
 
   it.each([
@@ -359,11 +356,6 @@ describe("several roadmaps (§4, §6.8)", () => {
     expect(derivePlanningSections(index).onOtherRoadmaps).toEqual([
       {
         ...ref(index, "OQ-B1"),
-        heading: "Later",
-        roadmap: "docs/plans/roadmap.md",
-      },
-      {
-        ...ref(index, "OQ-B2"),
         heading: "Later",
         roadmap: "docs/plans/roadmap.md",
       },
@@ -437,9 +429,8 @@ describe("the sections (§6.2)", () => {
   const index = indexOf(tree, STAGES);
   const sections = derivePlanningSections(index);
 
-  it("lists routed open and answered questions under Needs you, in roadmap order", () => {
+  it("lists routed open questions under Needs you, in roadmap order", () => {
     expect(sections.needsYou).toEqual([
-      { ...ref(index, "OQ-N1"), heading: "Roadmap" },
       { ...ref(index, "OQ-D1"), heading: "Roadmap" },
     ]);
   });
@@ -547,7 +538,7 @@ describe("the sections (§6.2)", () => {
       ),
     );
     expect(answered.nothingNeedsYou).toBe(true);
-    expect(answered.needsYou.map((q) => q.id)).toEqual(["OQ-N1"]);
+    expect(answered.needsYou.map((q) => q.id)).toEqual([]);
     expect(sections.nothingNeedsYou).toBe(false);
   });
 

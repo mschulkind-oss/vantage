@@ -664,10 +664,16 @@ export function withoutPages(search: URLSearchParams): URLSearchParams | null {
 }
 
 /**
- * Every question with a card, on any page, in page order, and every question
- * that needs you on another roadmap: what Copy answers covers, under every
- * roadmap, so choosing another changes neither what it copies nor its count
- * (`planning-index.md` §6.7).
+ * Every question the page accounts for, in page order: every question with a
+ * card, on any page, every question that needs you on another roadmap, and
+ * every ✅ one *To fold into the ledger* lists. That is what Copy answers
+ * covers, under every roadmap, so choosing another changes neither what it
+ * copies nor its count (`planning-index.md` §6.7).
+ *
+ * The ✅ ones are here though they need nothing from the human, because they
+ * are the page's own list of questions: a comment is placed over these before
+ * any filter narrows them, so one on a ✅ question nested inside an open one is
+ * that question's and is never credited to the open one around it (§6.7).
  */
 export function listedQuestions(
   index: PlanningIndex,
@@ -680,11 +686,18 @@ export function listedQuestions(
     ...sections.waiting.flatMap((w) =>
       w.kind === "question" ? [w.question] : [],
     ),
+    ...answeredQuestions(index),
   ];
-  return refs.flatMap((ref) => {
+  const seen = new Set<string>();
+  const questions: PlanningQuestion[] = [];
+  for (const ref of refs) {
+    const key = `${ref.path}\n${ref.line}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
     const question = questionFor(index, ref);
-    return question === undefined ? [] : [question];
-  });
+    if (question !== undefined) questions.push(question);
+  }
+  return questions;
 }
 
 /**

@@ -175,9 +175,9 @@ export interface NeedYou {
   nothing: boolean;
 }
 
-/** A routed question that needs a ruling, or an answer compacted (§6.2). */
+/** A routed question that needs a ruling (§6.2). */
 const needs = (question: PlanningQuestion | undefined): boolean =>
-  question?.state === "open" || question?.state === "answered";
+  question?.state === "open";
 
 /**
  * The page's need-you numbers for `sections`, with every question `answered`

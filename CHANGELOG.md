@@ -18,6 +18,19 @@ changing visibility or writing ignore files. Its timings are an approximation,
 not attribution of the earlier Git command. See
 [scan analysis](docs/reference/recent-scan-analysis.md).
 
+### Changed
+
+**✅ questions are maintenance, never *needs you*.** A question marked ✅ is
+answered: what waits on it is compaction, an agent's request (`compact`), not a
+ruling of yours. All of them now count nowhere — the roadmap picker, the line
+naming what other roadmaps hold, `vantage-check index`'s roadmap line and its
+JSON `needsYouCount` count open questions only, and a ✅ question is listed
+under *Maintenance* → *To fold into the ledger* alone. Before, the index counted
+open **and** ✅ questions while the page below it counted only open ones, so a
+project carrying a backlog of answered-but-unfolded questions read as far more
+work than it had. See
+[the planning index](docs/reference/planning-index.md#62-sections-top-to-bottom).
+
 ### Fixed
 
 **A project written without a `name` no longer becomes an unopenable blank
