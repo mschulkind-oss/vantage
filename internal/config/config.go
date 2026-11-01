@@ -433,10 +433,50 @@ func LoadDaemonFile(path string) (*Config, error) {
 	if err := c.Resolve(); err != nil {
 		return nil, err
 	}
+	c.deriveRepoNames(runtime.GOOS)
 	if len(c.SourceDirs) > 0 {
 		c.DiscoverReposFromSourceDirs()
 	}
 	return c, nil
+}
+
+// deriveRepoNames gives every [[repos]] entry written without a name the base
+// name of its resolved path, with a numeric "-N" suffix when that name is
+// already taken. It is the name [Config.DiscoverReposFromSourceDirs] gives a
+// repository it finds, and the name a reader who left the key out assumes.
+//
+// Leaving the name out must not leave it empty. The empty string is single-repo
+// mode's sentinel, and the router refuses to route it (see resolveRepo in
+// internal/server), so a project holding it lists as a blank row that no URL
+// opens. A name written down always wins, wherever in the file it appears; only
+// then is a derived one suffixed.
+func (c *Config) deriveRepoNames(goos string) {
+	taken := make(map[string]struct{}, len(c.Repos))
+	for _, r := range c.Repos {
+		if r.Name != "" {
+			taken[fsname.Key(goos, r.Name)] = struct{}{}
+		}
+	}
+	for i := range c.Repos {
+		if c.Repos[i].Name != "" {
+			continue
+		}
+		c.Repos[i].Name = uniqueRepoName(goos, filepath.Base(c.Repos[i].Path), taken)
+	}
+}
+
+// uniqueRepoName returns base, or the first "base-N" (N counting from 2) whose
+// [fsname.Key] is not in taken, and records the name it chose in taken.
+func uniqueRepoName(goos, base string, taken map[string]struct{}) string {
+	name := base
+	for counter := 2; ; counter++ {
+		if _, held := taken[fsname.Key(goos, name)]; !held {
+			break
+		}
+		name = fmt.Sprintf("%s-%d", base, counter)
+	}
+	taken[fsname.Key(goos, name)] = struct{}{}
+	return name
 }
 
 // Resolve makes all configured paths absolute and symlink-resolved. It is
@@ -539,18 +579,9 @@ func (c *Config) discoverReposFromSourceDirs(goos string) []RepoConfig {
 				continue
 			}
 
-			repoName := name
-			for counter := 2; ; counter++ {
-				if _, taken := existingNames[fsname.Key(goos, repoName)]; !taken {
-					break
-				}
-				repoName = fmt.Sprintf("%s-%d", name, counter)
-			}
-
-			repo := RepoConfig{Name: repoName, Path: resolved, Discovered: true}
+			repo := RepoConfig{Name: uniqueRepoName(goos, name, existingNames), Path: resolved, Discovered: true}
 			c.Repos = append(c.Repos, repo)
 			existing.add(resolved)
-			existingNames[fsname.Key(goos, repoName)] = struct{}{}
 			added = append(added, repo)
 		}
 	}
@@ -656,11 +687,12 @@ func (c *Config) GetRepo(name string) *RepoConfig {
 	return nil
 }
 
-// Validate reports configuration errors for daemon mode. The four error classes
-// are: no repositories configured, duplicate repository names, a repository
-// path that is missing or not a directory, and an allowed read root that is
-// missing or not a directory. It returns one human-readable string per problem,
-// in a stable order, or an empty slice when the config is sound.
+// Validate reports configuration errors for daemon mode. The five error classes
+// are: no repositories configured, a repository name that is empty, duplicate
+// repository names, a repository path that is missing or not a directory, and
+// an allowed read root that is missing or not a directory. It returns one
+// human-readable string per problem, in a stable order, or an empty slice when
+// the config is sound.
 func (c *Config) Validate() []string {
 	var errs []string
 
@@ -670,6 +702,9 @@ func (c *Config) Validate() []string {
 
 	seen := make(map[string]struct{}, len(c.Repos))
 	for _, repo := range c.Repos {
+		if repo.Name == "" {
+			errs = append(errs, fmt.Sprintf("Repository name is empty: %s", repo.Path))
+		}
 		if _, dup := seen[repo.Name]; dup {
 			errs = append(errs, fmt.Sprintf("Duplicate repository name: %s", repo.Name))
 		}

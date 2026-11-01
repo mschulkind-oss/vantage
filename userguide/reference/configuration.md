@@ -51,6 +51,11 @@ path = "~/code/my-project"
 Each directory is accessible at `http://localhost:8000/{name}/` — or
 whatever port Vantage printed on startup, if 8000 was taken.
 
+A `[[repos]]` entry may leave `name` out, in which case the directory's own name
+is used — the same name it would have had under `source_dirs` — with a numeric
+suffix (`my-project-2`) when another repo already has it. A name you write down
+always wins over a derived one.
+
 ## Reference
 
 | Key                        | Type             | Default       | Description                                          |
@@ -58,7 +63,7 @@ whatever port Vantage printed on startup, if 8000 was taken.
 | `host`                     | string           | `"127.0.0.1"` | Server bind address                                  |
 | `port`                     | integer          | `8000`        | Server port. Set explicitly (config, env, or flag) it must be free or startup fails; only the default falls forward, scanning up to 100 ports |
 | `repos`                    | array            | `[]`          | List of directories to serve                         |
-| `repos[].name`             | string           | _required_    | Display name and URL slug                            |
+| `repos[].name`             | string           | the directory's own name | Display name and URL slug; with a numeric `-N` suffix when that name is taken |
 | `repos[].path`             | string           | _required_    | Path to the directory (supports `~`)                 |
 | `repos[].allowed_read_roots` | array of strings | `[]`        | Additional directories this repo may read (see below) |
 | `source_dirs`              | array of strings | `[]`          | Parent directories to scan for git repos (see below) |

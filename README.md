@@ -157,7 +157,7 @@ falls forward; see the note under `--port` below).
 | `host`                       | string           | `"127.0.0.1"`      | Server bind address                              |
 | `port`                       | integer          | `8000`             | Server port. Set explicitly it must be free or startup fails; only the default falls forward, scanning up to 100 ports |
 | `source_dirs`                | array of strings | `[]`               | Parent directories to scan for git repos         |
-| `repos[].name`               | string           | _required_         | Display name and URL slug for the directory      |
+| `repos[].name`               | string           | the directory's own name | Display name and URL slug for the directory; a suffix is added when the name is taken |
 | `repos[].path`               | string           | _required_         | Path to directory (supports `~`)                 |
 | `repos[].allowed_read_roots` | array of strings | `[]`               | Additional directories this repo may read        |
 | `exclude_dirs`               | array of strings | _(see below)_      | Directories to hide from file listings            |

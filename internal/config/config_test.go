@@ -314,6 +314,92 @@ func TestLoadDaemonFileWalkTimeoutSubSecond(t *testing.T) {
 	require.Equal(t, 2500*time.Millisecond, c.WalkTimeout)
 }
 
+// A [[repos]] entry written without a name used to be served as a project named
+// "": that is single-repo mode's sentinel, so every /api/r//… request answered
+// 404 and the project list drew a blank row nothing could open, while the daemon
+// logged "- : <path>" and said nothing else about it. Leaving the name out is a
+// request for the directory's own name, which is what source_dirs discovery has
+// always used.
+func TestLoadDaemonFileDerivesAMissingRepoNameFromItsPath(t *testing.T) {
+	parent := t.TempDir()
+	mattCraft := filepath.Join(parent, "code", "matt-craft")
+	notes := filepath.Join(parent, "notes")
+	require.NoError(t, os.MkdirAll(mattCraft, 0o755))
+	require.NoError(t, os.MkdirAll(notes, 0o755))
+
+	// One entry leaves the key out, the other writes it empty; both mean the
+	// same thing.
+	body := `
+[[repos]]
+path = "` + mattCraft + `"
+
+[[repos]]
+name = ""
+path = "` + notes + `"
+`
+	c, err := LoadDaemonFile(writeTOML(t, body))
+	require.NoError(t, err)
+
+	require.Equal(t, []string{"matt-craft", "notes"}, repoNames(c.Repos))
+	require.Empty(t, c.Validate())
+}
+
+func TestDeriveRepoNamesSuffixesLikeDiscovery(t *testing.T) {
+	notesIn := func() string {
+		dir := filepath.Join(t.TempDir(), "notes")
+		require.NoError(t, os.MkdirAll(dir, 0o755))
+		return dir
+	}
+	newRepos := func(rs ...RepoConfig) *Config {
+		c := Defaults()
+		c.MultiRepo = true
+		c.Repos = rs
+		return c
+	}
+
+	t.Run("two derived names", func(t *testing.T) {
+		c := newRepos(
+			RepoConfig{Path: notesIn()},
+			RepoConfig{Path: notesIn()},
+		)
+		c.deriveRepoNames("linux")
+		require.Equal(t, []string{"notes", "notes-2"}, repoNames(c.Repos))
+	})
+
+	t.Run("a derived name steps over one already taken", func(t *testing.T) {
+		c := newRepos(
+			RepoConfig{Path: notesIn()},
+			RepoConfig{Name: "notes-2", Path: t.TempDir()},
+		)
+		c.deriveRepoNames("linux")
+		require.Equal(t, []string{"notes", "notes-2"}, repoNames(c.Repos))
+	})
+
+	// An explicit name is a statement about the project, so it wins however
+	// late in the file it is written; the derived one moves aside.
+	t.Run("an explicit name written later still wins", func(t *testing.T) {
+		c := newRepos(
+			RepoConfig{Path: notesIn()},
+			RepoConfig{Name: "notes", Path: t.TempDir()},
+		)
+		c.deriveRepoNames("linux")
+		require.Equal(t, []string{"notes-2", "notes"}, repoNames(c.Repos))
+	})
+
+	// Discovery decides a collision the way the filesystem does, because a
+	// project's review files are named after it in one shared directory.
+	for goos, want := range map[string]string{"darwin": "notes-2", "linux": "notes"} {
+		t.Run("collides as the filesystem does on "+goos, func(t *testing.T) {
+			c := newRepos(
+				RepoConfig{Name: "Notes", Path: t.TempDir()},
+				RepoConfig{Path: notesIn()},
+			)
+			c.deriveRepoNames(goos)
+			require.Equal(t, []string{"Notes", want}, repoNames(c.Repos))
+		})
+	}
+}
+
 func TestLoadDaemonFileMissing(t *testing.T) {
 	_, err := LoadDaemonFile(filepath.Join(t.TempDir(), "nope.toml"))
 	require.Error(t, err)
@@ -490,6 +576,17 @@ func TestValidateErrorClasses(t *testing.T) {
 		}
 		errs := c.Validate()
 		require.Contains(t, joinAll(errs), "Duplicate repository name: dup")
+	})
+
+	// A name is what a URL and every review file are keyed on, so a project
+	// without one is unopenable rather than merely unnamed.
+	t.Run("empty-name", func(t *testing.T) {
+		c := Defaults()
+		c.MultiRepo = true
+		repo := t.TempDir()
+		c.Repos = []RepoConfig{{Name: "", Path: repo}}
+		errs := c.Validate()
+		require.Contains(t, joinAll(errs), "Repository name is empty: "+repo)
 	})
 
 	t.Run("bad-repo-path", func(t *testing.T) {
