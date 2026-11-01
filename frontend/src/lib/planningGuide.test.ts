@@ -170,7 +170,7 @@ describe("the section guide", () => {
     );
 
     expect(sectionExplanation("needs-you", routed)).toBe(
-      "Open or answered questions on this roadmap, in its order. Rule each open one, then Copy answers.",
+      "Open questions on this roadmap, in its order. Rule each one, then Copy answers.",
     );
     expect(sectionExplanation("needs-you", none)).toBe(
       "Open questions, by document. Rule each, then Copy answers.",

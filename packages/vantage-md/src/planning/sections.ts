@@ -74,7 +74,7 @@ export type RoadmapState =
 export interface PlanningRoadmap {
   path: string;
   state: RoadmapState;
-  /** Its routed questions that are open or answered: Needs you when chosen. 0 unless `routes`. */
+  /** Its routed open questions: Needs you when chosen. 0 unless `routes`. */
   needsYouCount: number;
 }
 
@@ -97,14 +97,14 @@ export interface PlanningSections {
   /** No open question in any document outside the `done` role. */
   nothingNeedsYou: boolean;
   /**
-   * The chosen roadmap's routed open or answered questions, in its order.
-   * With none chosen: every open question, by path, then line.
+   * The chosen roadmap's routed open questions, in its order. With none
+   * chosen: every open question, by path, then line.
    */
   needsYou: RoutedQuestion[];
   /**
-   * Open or answered questions another roadmap routes and the chosen one does
-   * not, each once, in roadmap order and then that roadmap's own order: what
-   * the page counts beside its picker (§6.8). Empty when none is chosen.
+   * Open questions another roadmap routes and the chosen one does not, each
+   * once, in roadmap order and then that roadmap's own order: what the page
+   * counts beside its picker (§6.8). Empty when none is chosen.
    */
   onOtherRoadmaps: OtherRoadmapQuestion[];
   /** Open questions no roadmap routes; `null` when none is chosen. */
@@ -787,19 +787,20 @@ interface Routing {
 }
 
 /**
- * Whether a question talks to you as the referent decides it (§6.2): open —
- * the unactioned case included — or ✅, answered and awaiting compaction. A
- * blocked one does not, whatever its marker says.
+ * Whether a question waits on the human as the referent decides it (§6.2):
+ * open — the unactioned case included. A blocked one does not, whatever its
+ * marker says, and neither does a ✅ one: it is answered, and what waits on it
+ * is compaction, an agent's request (*To fold into the ledger*) rather than a
+ * ruling of yours.
  */
 export function questionNeedsYou(
   index: PlanningIndex,
   question: PlanningQuestion,
 ): boolean {
-  const state = questionState(index, question);
-  return state === "open" || state === "answered";
+  return questionState(index, question) === "open";
 }
 
-/** Whether a routed question needs a ruling, or an answer compacted. */
+/** Whether a routed question needs a ruling. */
 function needsYouFilter(index: PlanningIndex): (ref: QuestionRef) => boolean {
   return (ref) => {
     const question = questionFor(index, ref);

@@ -139,7 +139,7 @@ describe("needYou", () => {
     const counts = needYou(index, sections, none);
     expect(Object.fromEntries(counts.roadmaps)).toEqual({
       "plans/roadmap.md": 2,
-      "roadmap.md": 3,
+      "roadmap.md": 2,
     });
     expect(counts.others).toBe(sections.onOtherRoadmaps.length);
     expect(counts.nothing).toBe(false);
@@ -154,7 +154,7 @@ describe("needYou", () => {
     // OQ-A2 is routed by both; OQ-B1 by the other roadmap alone.
     expect(Object.fromEntries(counts.roadmaps)).toEqual({
       "plans/roadmap.md": 0,
-      "roadmap.md": 2,
+      "roadmap.md": 1,
     });
     expect(counts.others).toBe(0);
     expect(counts.nothing).toBe(false);
@@ -166,8 +166,9 @@ describe("needYou", () => {
     );
     const counts = needYou(index, sections, new Set(open));
     expect(counts.nothing).toBe(true);
-    // The ✅ question still needs compacting, so its roadmap counts it.
-    expect(counts.roadmaps.get("roadmap.md")).toBe(1);
+    // The ✅ question awaits compaction, an agent's request, not the human:
+    // it is in no roadmap's count.
+    expect(counts.roadmaps.get("roadmap.md")).toBe(0);
     // One open question unanswered, and something needs you.
     expect(needYou(index, sections, new Set(open.slice(1))).nothing).toBe(
       false,
@@ -178,11 +179,11 @@ describe("needYou", () => {
 describe("answeredPerSection", () => {
   it("counts each question section's answered entries, and leaves out a section with none", () => {
     const answered = new Set(
-      ["OQ-A1", "OQ-A3", "OQ-C1"].map((id) => questionKey(byId(id))),
+      ["OQ-A1", "OQ-C1"].map((id) => questionKey(byId(id))),
     );
-    // Needs you lists A1, A2 and A3 (✅); Not on a roadmap, C1.
+    // Needs you lists A1 and A2; Not on a roadmap, C1.
     expect(Object.fromEntries(answeredPerSection(sections, answered))).toEqual({
-      "needs-you": 2,
+      "needs-you": 1,
       unrouted: 1,
     });
     expect(answeredPerSection(sections, new Set()).size).toBe(0);
@@ -232,7 +233,7 @@ describe("under a planning filter (planning-index.md §6.7)", () => {
   // The fixture of forms' docs/design/a.md: OQ-A4, ✅, nested in OQ-A3, open.
   it("leaves out a comment on a hidden ✅ question nested in a kept open one, never crediting it to the kept one", () => {
     const forms = filterFormsIndex();
-    const all = listedQuestions(forms, sectionsOf(forms));
+    const all = forms.documents.flatMap((document) => document.questions);
     const of = (id: string) => all.find((q) => q.id === id)!;
     const [a3, a4] = [of("OQ-A3"), of("OQ-A4")];
     // A4's unit is inside A3's, so placement by line alone over A3 would
@@ -264,7 +265,7 @@ describe("under a planning filter (planning-index.md §6.7)", () => {
     // The filtered sections' own counts, with nothing answered.
     expect(
       Object.fromEntries(needYou(index, filtered, new Set(), keeps).roadmaps),
-    ).toEqual({ "plans/roadmap.md": 1, "roadmap.md": 3 });
+    ).toEqual({ "plans/roadmap.md": 1, "roadmap.md": 2 });
     // Answering B1, which the filter hides, takes nothing more off; A1 does.
     const counts = needYou(
       index,
@@ -274,7 +275,7 @@ describe("under a planning filter (planning-index.md §6.7)", () => {
     );
     expect(Object.fromEntries(counts.roadmaps)).toEqual({
       "plans/roadmap.md": 1,
-      "roadmap.md": 2,
+      "roadmap.md": 1,
     });
     // Every open question it keeps answered: nothing it keeps needs you.
     expect(

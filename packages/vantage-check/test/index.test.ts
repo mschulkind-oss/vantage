@@ -118,10 +118,9 @@ describe("index, as text", () => {
     expect(stderr).toBe("");
     expect(stdout).toBe(
       [
-        "Needs you (3) · for the human",
-        "Open or answered questions on this roadmap, in its order. Rule each open one, then Copy answers.",
+        "Needs you (2) · for the human",
+        "Open questions on this roadmap, in its order. Rule each one, then Copy answers.",
         "  docs/a.md:8  💬 OQ-A1: Question A1?  (Rule these first)",
-        "  docs/b.md:8  ✅ OQ-B1: Question B1?  (Rule these first)",
         "  docs/b.md:14  💬 🤷 OQ-B2: Question B2?  (Rule these first)",
         "",
         "Not on a roadmap (2)",
@@ -235,7 +234,7 @@ describe("index, as text", () => {
 
   // ✅ questions await compaction rather than a ruling, so the page can say
   // both at once (§6.2).
-  it("says nothing needs you above a Needs you holding only answered questions", async () => {
+  it("says nothing needs you, and draws no Needs you, for a roadmap holding only answered questions", async () => {
     const root = makeTree({
       ".git/HEAD": "",
       "roadmap.md": "# Roadmap\n\n- [A](a.md)\n",
@@ -243,14 +242,7 @@ describe("index, as text", () => {
     });
     const { stdout } = await index(root);
 
-    const head = [
-      PLANNING_NOTICES.nothingNeedsYou,
-      "",
-      "Needs you (1) · for the human",
-      PLANNING_SECTION_GUIDE["needs-you"].explanation,
-      "  a.md:7  ✅ OQ-A1: Question A1?  (Roadmap)",
-      "",
-    ].join("\n");
+    const head = [PLANNING_NOTICES.nothingNeedsYou, ""].join("\n");
     expect(stdout.slice(0, head.length)).toBe(head);
     expect(stdout).toContain("- [A](a.md) [draft]\n");
   });
@@ -1354,8 +1346,8 @@ describe("index --filter, with words, phrases and exclusions", () => {
     expect(text.code).toBe(EXIT_OK);
     expect(text.stderr).toBe("");
     expect(text.stdout.split("\n").slice(0, 3)).toEqual([
-      "Filtered by `nothing-holds-this`: 0 of 12 entries, none of them open questions.",
-      "Run without --filter to see the other 12.",
+      "Filtered by `nothing-holds-this`: 0 of 11 entries, none of them open questions.",
+      "Run without --filter to see the other 11.",
       `Planning page: ${linkIn(root, "filter=nothing-holds-this")}`,
     ]);
 
@@ -1365,7 +1357,7 @@ describe("index --filter, with words, phrases and exclusions", () => {
       "nothing-holds-this",
     );
     expect(code).toBe(EXIT_OK);
-    expect(payload.filter.entries).toEqual({ shown: 0, of: 12 });
+    expect(payload.filter.entries).toEqual({ shown: 0, of: 11 });
     expect(entryKeys(payload.filter.sections)).toEqual([]);
 
     const request = await index(
@@ -1389,9 +1381,9 @@ describe("index --filter, with words, phrases and exclusions", () => {
     expect(code).toBe(EXIT_OK);
     expect(stderr).toBe("");
     expect(stdout.split("\n").slice(0, 3)).toEqual([
-      "Filtered by `stage:ready`: 0 of 12 entries, none of them open questions.",
+      "Filtered by `stage:ready`: 0 of 11 entries, none of them open questions.",
       "`stage:` is not a filter key, so `stage:ready` is searched as text. The keys are `path:` and `is:`.",
-      "Run without --filter to see the other 12.",
+      "Run without --filter to see the other 11.",
     ]);
   });
 
@@ -1495,9 +1487,9 @@ describe("index --filter, as text", () => {
     expect(stderr).toBe("");
     expect(stdout).toBe(
       [
-        "Filtered by `path:docs/c.md path:/docs/e.md`: 3 of 12 entries, in 2 of 10 paths, 1 of them an open question.",
+        "Filtered by `path:docs/c.md path:/docs/e.md`: 3 of 11 entries, in 2 of 10 paths, 1 of them an open question.",
         "docs/c.md waits on docs/a.md#OQ-A2, which this filter leaves out.",
-        "Run without --filter to see the other 9.",
+        "Run without --filter to see the other 8.",
         `Planning page: ${linkIn(root, "filter=path:docs/c.md+path:/docs/e.md")}`,
         PASTE_HINT,
         SPACE_HINT,
@@ -1546,9 +1538,9 @@ describe("index --filter, as text", () => {
     expect(code).toBe(EXIT_OK);
     expect(stdout.split("\n\n")[0]).toBe(
       [
-        "Filtered by `path:/docs/a.md is:open`: 2 of 12 entries, in 1 of 10 paths, 2 of them open questions.",
+        "Filtered by `path:/docs/a.md is:open`: 2 of 11 entries, in 1 of 10 paths, 2 of them open questions.",
         "1 of its questions is blocked and will need you later.",
-        "Run without --filter to see the other 10.",
+        "Run without --filter to see the other 9.",
         `Planning page: ${linkIn(root, "filter=path:/docs/a.md+is:open")}`,
         PASTE_HINT,
         SPACE_HINT,
@@ -1567,8 +1559,8 @@ describe("index --filter, as text", () => {
     expect(code).toBe(EXIT_OK);
     expect(stdout.split("\n\n").slice(0, 3)).toEqual([
       [
-        "Filtered by `path:docs/d.md`: 1 of 12 entries, in 1 of 10 paths, none of them open questions.",
-        "Run without --filter to see the other 11.",
+        "Filtered by `path:docs/d.md`: 1 of 11 entries, in 1 of 10 paths, none of them open questions.",
+        "Run without --filter to see the other 10.",
         `Planning page: ${linkIn(root, "filter=path:docs/d.md")}`,
         PASTE_HINT,
         SPACE_HINT,
@@ -1846,14 +1838,18 @@ describe("index --filter, keeping no entry", () => {
       ].join("\n"),
     );
     // The agent's last round, every question ruled, run without --roadmap.
-    for (const text of ["oq-b1 is:open", "path:/docs/b.md is:open"]) {
-      expect(await why(answered, text)).toBe(
-        [
-          `Nothing matches \`${text}\`.`,
-          "Without `is:open` it would keep 1 question on another roadmap, and it is not an open question.",
-        ].join("\n"),
-      );
-    }
+    expect(await why(answered, "oq-b1 is:open")).toBe(
+      [
+        "Nothing matches `oq-b1 is:open`.",
+        "Words and quoted phrases are matched only against a question's id, title and leaning, and a document's path, stage and next step.",
+      ].join("\n"),
+    );
+    expect(await why(answered, "path:/docs/b.md is:open")).toBe(
+      [
+        "Nothing matches `path:/docs/b.md is:open`.",
+        "It keeps 1 document, and it has no question or next step listed here.",
+      ].join("\n"),
+    );
     // The word is what leaves OQ-B1 out, not the document.
     expect(await why(open, "path:/docs/b.md zz")).toBe(
       [
@@ -1885,7 +1881,7 @@ describe("index --filter, keeping no entry", () => {
       "--filter",
       "path:docs/old.md",
     );
-    expect(payload.filter.entries).toEqual({ shown: 0, of: 12 });
+    expect(payload.filter.entries).toEqual({ shown: 0, of: 11 });
     expect(Object.keys(payload.filter)).toEqual([
       "text",
       "canonical",
@@ -2019,7 +2015,7 @@ describe("index --filter, as JSON", () => {
       canonical: "path:/docs/a.md is:open",
       link: linkIn(root, "filter=path:/docs/a.md+is:open"),
       documents: { kept: 1, of: 10 },
-      entries: { shown: 2, of: 12 },
+      entries: { shown: 2, of: 11 },
       openQuestions: 2,
       blockedLeftOut: 1,
       otherRoadmaps: [],
@@ -2498,13 +2494,15 @@ describe("index --request compact", () => {
     expect(heads).toEqual(["Ready to graduate (1)", "Compact (1)"]);
   });
 
-  it("keeps the sections, JSON and text exactly as they were: the ✅ question stays in Needs you", async () => {
+  it("keeps the sections, JSON and text exactly as they were: the ✅ question is not in Needs you", async () => {
     const root = fullTree();
     const { payload } = await indexJson(root);
 
-    expect(
-      payload.sections.needsYou.map((q: { id: string }) => q.id),
-    ).toContain("OQ-B1");
+    const ids: string[] = payload.sections.needsYou.map(
+      (q: { id: string }) => q.id,
+    );
+    expect(ids).toContain("OQ-A1");
+    expect(ids).not.toContain("OQ-B1");
     expect(payload.sectionGuide.map((g: { id: string }) => g.id)).not.toContain(
       "compact",
     );

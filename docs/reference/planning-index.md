@@ -913,7 +913,7 @@ everything else (`layoutPlanningPage` in `frontend/src/lib/planningPages.ts`).
 
 | Section (id) | Contains | Order | Actor | On the page |
 | :--- | :--- | :--- | :--- | :--- |
-| **Needs you** (`needs-you`) | Questions the chosen roadmap routes whose state is *open* or *answered* | the chosen roadmap's order | you | *Needs you*: its open questions, then the unrouted open questions each marked *Not on a roadmap* ([§6.4](#64-needs-you-as-a-to-do-list)); a ✅ one is under *Maintenance* |
+| **Needs you** (`needs-you`) | Open questions the chosen roadmap routes | the chosen roadmap's order | you | *Needs you*: its open questions, then the unrouted open questions each marked *Not on a roadmap* ([§6.4](#64-needs-you-as-a-to-do-list)); a ✅ one is under *Maintenance* |
 | **Not on a roadmap** (`unrouted`) | Open questions no roadmap routes | path, then document order | agent | a kind of *Maintenance* |
 | **Blocked** (`waiting`) | Questions a live `blocked-on` referent blocks, each with the entries that still wait: a target waits as a `depends-on` entry does (a question while that question is open, a document while that document has an open question), and an external blocker name always | path | nobody | the *Blocked* group |
 | **Ready to build** (`ready`) | Documents whose stage has the `ready` role and no open questions, whether or not a `depends-on` still waits | path | agent | a kind of *Maintenance* |
@@ -1625,8 +1625,8 @@ planning outline instead, so there is only ever one picker.
   the platform's menu and is what a screen reader hears.
 - **After the picker,** when some questions need you only on other roadmaps, the
   line says so: *3 more questions need you on other roadmaps*. It counts the open
-  and answered questions another roadmap routes and the chosen one does not, each
-  once, less those answered by a comment, and keeps the room its index count
+  questions another roadmap routes and the chosen one does not, each once, less
+  those answered by a comment, and keeps the room its index count
   takes; with every one answered it says *No more questions need you on other
   roadmaps*. It is text, not a control.
 - **Which roadmap is chosen,** in order: the URL's `roadmap=`, when it names one
@@ -3578,7 +3578,7 @@ the page, with no memory between runs:
         "id": "needs-you",
         "key": "needsYou",
         "title": "Needs you",
-        "explanation": "Open or answered questions on this roadmap, in its order. Rule each open one, then Copy answers.",
+        "explanation": "Open questions on this roadmap, in its order. Rule each one, then Copy answers.",
         "actor": "you"
       },
       { "id": "unrouted", "key": "unrouted", "title": "Not on a roadmap", "…": "…" }
@@ -4262,9 +4262,10 @@ What each place holds, independent of the repository's size where it can be:
 - **Infinite scroll, windowing, or pages** ([OQ-TD5](#why-its-this-way)). The reader
   chooses the page size; a virtualized list is infinite scroll by another name.
 - **For the to-do list** ([§6.4](#64-needs-you-as-a-to-do-list)):
-  - **No change to the index, the scan, or `vantage-check index`'s sections and
-    JSON.** The checker counts ✅ and answered questions in *Needs you*; the page
-    does not ([OQ-TD12](#why-its-this-way)).
+  - **One count, and no second one for the checker.** ✅ questions are in no
+    section, so *Needs you* counts what the page shows; the page alone subtracts
+    the answers a comment gives, which the checker cannot read
+    ([OQ-TD12](#why-its-this-way)).
   - **No default filter.** *Needs you* holding only what needs the reader is the
     page's default view, not a filter ([OQ-TD3](#why-its-this-way)).
   - **No read state, snooze or dismissal.** Refresh applies held updates; it never
@@ -4757,7 +4758,7 @@ into the text above or are in git.
 | OQ-TD9 | Answering shrinks a card to a row in place, and the list fills in to keep the page size; answered rows gather at the top at the next layout, the first 5 shown, and the 5 is fixed until it proves to need a setting. Removing an answered card was rejected: the next card would jump up under the pointer, and Undo would have nowhere to be ([§6.4](#64-needs-you-as-a-to-do-list)) | 2026-10-08 |
 | OQ-TD10 | Late changes never change an item's height, position or presence: they mark it, a reply with visual weight, and Refresh in the header applies them, rather than a dismiss, which would hide a reply that may need you. Comments save as you type, with a *Saved* indicator and a Close button, no Save, no Cancel and no draft state: Copy answers copies what is saved ([§6.4](#64-needs-you-as-a-to-do-list), [§12](#12-late-data-never-moves-painted-content)) | 2026-10-08 |
 | OQ-TD11 | Old links do not matter: page parameters are dropped by the in-place rewrite, and none is honored ([§6.4](#64-needs-you-as-a-to-do-list)) | 2026-10-08 |
-| OQ-TD12 | The page and the checker counting *Needs you* differently is acceptable: the checker counts ✅ and answered questions in it, and the page does not; they are views of the same data at different times, and converge once the agent acts. The index's sections and JSON keep their meaning ([§6.2](#62-sections-top-to-bottom)) | 2026-10-08 |
+| OQ-TD12 | **Superseded 2026-11-01.** It had the checker count ✅ and answered questions in *Needs you* while the page did not, and called the two views acceptable. A ✅ question waits on an agent's compaction, not on the human, so it counts nowhere: *Maintenance* lists it, `compact` asks for it, and the index's sections, JSON and text count open questions only, so the checker and the page agree ([§6.2](#62-sections-top-to-bottom)) | 2026-11-01 |
 | OQ-TD13 | ✕ adds a history entry when it clears the filter, as *hidden* does, so Back undoes either; Esc still never clears ([§6.17](#617-the-filter-line)) | 2026-10-09 |
 | OQ-TD14 | An answered row shows the leaning it filed and the comments the reader wrote, each cut to `answerChars`, with **Undo** on a leaning that is still the whole thread and **Edit** on a pending comment; the leaning is italic behind a *Leaning:* label, since the reader did not write it. It replaces the row's chip. This overrules the [§17](#17-non-goals) non-goal *No reply or edit box on the planning page* for edits only: a reply is still its document's, and a question the agent answered back is still answered again with **Answer…**. A card's pending comments get the same **Edit**. Ruled in conversation over editing the first pending comment alone, since the row can show them all ([§6.4](#64-needs-you-as-a-to-do-list), [§6.7](#67-answering-and-copy-answers)) | 2026-10-11 |
 | OQ-PF10 | A click on a document in the planning outline scopes the page to it, applying `path:/<its path>` as the document's own planning-page link does, rather than scrolling to its card in the whole list; its link carries that filter for a modified click. [OQ-PF4](#why-its-this-way)'s rejection of a per-card *show only this document* control stands: this is the outline's entry, not a control on the card or row, and it keeps the scroll. Ruled in conversation ([§6.9](#69-the-planning-outline), [§6.11](#611-the-planning-filter)) | 2026-10-11 |

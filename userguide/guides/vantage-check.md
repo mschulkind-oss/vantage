@@ -815,9 +815,9 @@ four large fields emptied:
   for a listed one the index does not hold, `missing`) and its
   `needsYouCount`, the length of *Needs you* when it is chosen.
   `sections.chosenRoadmap` is the one followed, or `null` when there is none
-  to follow. `sections.onOtherRoadmaps` holds the open and answered questions
-  another roadmap links to and the chosen one does not, each once, with the
-  first roadmap that links to it. Its keys are the sections' ids in camel case, and
+  to follow. `sections.onOtherRoadmaps` holds the open questions another
+  roadmap links to and the chosen one does not, each once, with the first
+  roadmap that links to it. Its keys are the sections' ids in camel case, and
   `unreadable` is *Unreadable*'s.
 - **`sectionGuide`** lists every section in page order, as the page shows it:
   its `id` (`needs-you`, `unrouted`, `waiting`, `ready`, `graduate`,
@@ -880,7 +880,7 @@ Planning page: /.vantage/planning?filter=path:/docs/design/search.md+path:/docs/
   space= is this checkout's id, kept in .vantage/space: with an address in front, the link opens this project's page even where one Vantage serves several.
 
 Needs you (3) · for the human
-Open or answered questions on this roadmap, in its order. Rule each open one, then Copy answers.
+Open questions on this roadmap, in its order. Rule each one, then Copy answers.
   docs/design/search.md:13  💬 OQ-S1: Is search case-sensitive?  (Roadmap)
   docs/design/search.md:19  💬 OQ-S2: Does it search code blocks?  (Roadmap)
   docs/design/search-plan.md:9  💬 OQ-SP1: One worker or two?  (Roadmap)
@@ -1068,7 +1068,7 @@ Verify: in the repository, run `vantage-check` on every Markdown file you change
 | Ready to build | build each document's plan and give it a stage with the `built` role, or, if one should not be built, ask you, and only with your agreement give it the stage with the `done` role you choose. It skips a document marked blocked, which *Blocked* lists too |
 | Ready to graduate | write each as a reference document of the system as built, with the stage the repository's other reference documents carry; delete the design document and any plan written for it; and repoint every link and citation of them, in documents, code comments and tests |
 | Stage conflict | find which is wrong, the stage or the questions, and fix a wrong stage, or propose moving a follow-up question to a new document; it rules and answers nothing, and asks you for rulings |
-| Compact | for each ✅ question, fold its ruling into the body section it governs, add a Decision Ledger row keeping its exact id, remove its question directive, and repoint the links to its anchor at the ledger, keeping question-specific `depends-on` fragments. The sections, the JSON and the text output do not change: a ✅ question stays in *Needs you* |
+| Compact | for each ✅ question, fold its ruling into the body section it governs, add a Decision Ledger row keeping its exact id, remove its question directive, and repoint the links to its anchor at the ledger, keeping question-specific `depends-on` fragments. The sections, the JSON and the text output do not change: a ✅ question is in no section, and `compact` is where it is listed |
 
 The request is generated when it is asked for, from the documents and
 `[planning.stages]` as they are then, so it names the stage words the
