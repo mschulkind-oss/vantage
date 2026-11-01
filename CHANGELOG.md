@@ -18,6 +18,18 @@ changing visibility or writing ignore files. Its timings are an approximation,
 not attribution of the earlier Git command. See
 [scan analysis](docs/reference/recent-scan-analysis.md).
 
+### Fixed
+
+**A project written without a `name` no longer becomes an unopenable blank
+row.** A `[[repos]]` entry that leaves `name` out, or writes it empty, now takes
+the directory's own name — the name `source_dirs` discovery would have given it —
+with a numeric suffix when another project already has that name. Before, it was
+served under the empty name, which is single-repo mode's sentinel: every request
+for it answered *Repository not found*, the project list drew a row that led
+nowhere, and nothing reported it. The daemon now also refuses to start on a
+project with an empty name it did not derive. See
+[configuration](userguide/reference/configuration.md#example-config).
+
 ## [0.10.0] - 2026-10-09
 
 The planning page becomes a to-do list of what needs you, every comment box
