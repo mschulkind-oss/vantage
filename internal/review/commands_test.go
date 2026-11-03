@@ -96,7 +96,7 @@ func TestCommandsOnAbsentReviewReturnNotFound(t *testing.T) {
 	require.ErrorIs(t, err, ErrCommentNotFound)
 	_, err = s.Reply("ghost.md", "", "c1", "", "hi", cmdDoc)
 	require.ErrorIs(t, err, ErrCommentNotFound)
-	_, err = s.DeleteComment("ghost.md", "", "c1")
+	_, err = s.DeleteComment("ghost-delete.md", "", "c1")
 	require.ErrorIs(t, err, ErrCommentNotFound)
 	_, err = s.DismissMany("ghost.md", "", nil)
 	require.ErrorIs(t, err, ErrReviewNotFound)
@@ -682,4 +682,62 @@ func TestEditReplyRefusesWhatItCannotFind(t *testing.T) {
 	// An empty id names nothing, though a reply without an id is held.
 	_, err = s.EditReply("a.md", "", "abcd1234", "", "x", cmdDoc)
 	require.ErrorIs(t, err, ErrReplyNotFound)
+}
+
+func TestDeleteCommentRecordsIdSoLateWritesAreRefused(t *testing.T) {
+	s := NewStore(t.TempDir())
+
+	// Deleting an id that was never stored still records it, and still 404s.
+	_, err := s.DeleteComment("a.md", "", "late")
+	require.ErrorIs(t, err, ErrCommentNotFound)
+	got, err := s.Get("a.md", "")
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	require.Equal(t, []string{"late"}, got.DeletedIDs)
+
+	// A create that arrives after the delete is refused and writes nothing.
+	_, err = s.AddComment("a.md", "", anchoredComment("late", "x", 3), cmdDoc)
+	require.ErrorIs(t, err, ErrCommentNotFound)
+	got, err = s.Get("a.md", "")
+	require.NoError(t, err)
+	require.Empty(t, got.Comments)
+
+	// Every id-addressed write is refused for a deleted id.
+	_, err = s.AddComment("a.md", "", anchoredComment("c1", "one", 3), cmdDoc)
+	require.NoError(t, err)
+	_, err = s.DeleteComment("a.md", "", "c1")
+	require.NoError(t, err)
+	_, err = s.EditCommentText("a.md", "", "c1", "new", cmdDoc)
+	require.ErrorIs(t, err, ErrCommentNotFound)
+	_, err = s.Reply("a.md", "", "c1", "r1", "hi", cmdDoc)
+	require.ErrorIs(t, err, ErrCommentNotFound)
+	_, err = s.SetResolved("a.md", "", "c1", true)
+	require.ErrorIs(t, err, ErrCommentNotFound)
+
+	// The record is persisted, deduplicated, and survives a reload.
+	_, err = s.DeleteComment("a.md", "", "c1")
+	require.ErrorIs(t, err, ErrCommentNotFound)
+	reloaded, err := NewStore(s.Dir()).Get("a.md", "")
+	require.NoError(t, err)
+	require.Equal(t, []string{"late", "c1"}, reloaded.DeletedIDs)
+}
+
+func TestMoveCarriesDeletedIDs(t *testing.T) {
+	s := NewStore(t.TempDir())
+	_, _ = s.DeleteComment("a.md", "", "gone1")
+	_, _ = s.DeleteComment("b.md", "", "gone2")
+	_, err := s.AddComment("b.md", "", anchoredComment("c1", "one", 3), cmdDoc)
+	require.NoError(t, err)
+
+	moved, ok, err := s.Move("a.md", "b.md", "")
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.ElementsMatch(t, []string{"gone1", "gone2"}, moved.DeletedIDs)
+
+	_, ok, err = s.Move("b.md", "c.md", "")
+	require.NoError(t, err)
+	require.True(t, ok)
+	got, err := s.Get("c.md", "")
+	require.NoError(t, err)
+	require.ElementsMatch(t, []string{"gone1", "gone2"}, got.DeletedIDs)
 }

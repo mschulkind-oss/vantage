@@ -34,6 +34,7 @@ import {
   type PlanningQuestion,
 } from "vantage-md/planning";
 import { MarkdownViewer } from "./MarkdownViewer";
+import { anchorFromRange } from "../lib/selectionAnchor";
 import { planningBadgeElement } from "./PlanningBadge";
 import {
   PlanningQuestionCard,
@@ -68,6 +69,7 @@ import {
   blockVisibleText,
   buildWholeBlockAnchor,
   hashBlockText,
+  stripBlockText,
 } from "../lib/reviewAnchor";
 import {
   CARD_CUT_ATTR,
@@ -1602,6 +1604,328 @@ describe("the comments already filed on a question", () => {
     expect(screen.queryByRole("button", { name: "Take this leaning" })).toBe(
       null,
     );
+  });
+
+  it("confirms a whole-thread Delete, defaulting to Keep answer, and counts replies", async () => {
+    const base = await takenOn(byId("OQ-B3"));
+    const reaction = (summary: string) => ({
+      actor: "reviewer" as const,
+      kind: "needs_clarification" as const,
+      summary,
+      before_text: "",
+      after_text: "",
+      timestamp: Date.now() / 1000,
+    });
+    const threaded: ReviewComment = {
+      ...base,
+      reactions: [reaction("one"), reaction("two")],
+    };
+    const remove = vi.spyOn(axios, "delete").mockResolvedValue({ data: null });
+    renderCard(byId("OQ-B3"), { comments: [threaded], cardKey: "b3" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete answer" }));
+    const dialog = screen.getByRole("alertdialog");
+    expect(dialog).toHaveTextContent("Delete this answer and its 2 replies?");
+    expect(screen.getByRole("button", { name: "Keep answer" })).toBe(
+      document.activeElement,
+    );
+
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    expect(screen.queryByRole("alertdialog")).toBe(null);
+    expect(remove).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete answer" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    });
+    await waitFor(() => expect(remove).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(screen.queryByText(threaded.comment)).toBe(null),
+    );
+    remove.mockRestore();
+  });
+
+  it("hides Edit while a delete is retrying and restores Edit and Delete, keeping the reason, when the server refuses", async () => {
+    const base = await takenOn(byId("OQ-B3"));
+    const refuse = vi.spyOn(axios, "delete").mockRejectedValue({
+      response: { status: 403, data: { error: "read-only review" } },
+    });
+    renderCard(byId("OQ-B3"), { comments: [base], cardKey: "b3" });
+    expect(screen.getByRole("button", { name: /^Edit/ })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete answer" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    });
+    await waitFor(() =>
+      expect(screen.getByText(/Delete failed — read-only review/)).toBeTruthy(),
+    );
+    expect(screen.getByRole("button", { name: /^Edit/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Delete answer" })).toBeTruthy();
+
+    // A transient failure keeps Edit hidden while the delete is still pending.
+    refuse.mockRejectedValue({ response: { status: 503 } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Delete answer" }));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    });
+    await waitFor(() => expect(screen.getByText(/retrying in/)).toBeTruthy());
+    expect(screen.queryByRole("button", { name: /^Edit/ })).toBe(null);
+    // End the pending retry here, so its timer cannot fire into a later test.
+    refuse.mockRejectedValue({
+      response: { status: 403, data: { error: "read-only review" } },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Retry now" }));
+    });
+    await waitFor(() =>
+      expect(screen.getByText(/Delete failed —/)).toBeTruthy(),
+    );
+    refuse.mockRestore();
+  });
+
+  describe("commenting on a selection", () => {
+    const AFFORDANCE = "[data-planning-selection-affordance]";
+    let restoreRect: (() => void) | undefined;
+    beforeEach(() => {
+      const original = Range.prototype.getBoundingClientRect;
+      Range.prototype.getBoundingClientRect = () => new DOMRect(5, 5, 40, 12);
+      restoreRect = () => {
+        Range.prototype.getBoundingClientRect = original;
+      };
+    });
+    afterEach(() => {
+      restoreRect?.();
+      window.getSelection()?.removeAllRanges();
+      vi.useRealTimers();
+    });
+
+    /** A text node of the card's visible body, with room to select in. */
+    function bodyText(container: HTMLElement): Text {
+      const body = container.querySelector(".planning-card-body")!;
+      const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT);
+      for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+        const el = (n as Text).parentElement!;
+        if (
+          (n as Text).data.trim().length > 30 &&
+          el.closest(`[${CARD_PART_ATTR}="title"]`) === null &&
+          el.closest("[data-source-line]") !== null
+        ) {
+          return n as Text;
+        }
+      }
+      throw new Error("no body text to select");
+    }
+    function select(a: Node, from: number, b: Node, to: number) {
+      const range = document.createRange();
+      range.setStart(a, from);
+      range.setEnd(b, to);
+      const sel = window.getSelection()!;
+      sel.removeAllRanges();
+      sel.addRange(range);
+    }
+    const settle = async () => {
+      await act(async () => {
+        fireEvent.mouseUp(document.body);
+        await new Promise((r) => setTimeout(r, 30));
+      });
+    };
+    const affordance = (c: HTMLElement) => c.querySelector(AFFORDANCE);
+
+    it("offers the button on a selection in the body without opening a box, and Enter's click files the exact anchor", async () => {
+      const { container } = renderCard(byId("OQ-B3"), {
+        comments: [],
+        cardKey: "b3",
+      });
+      const node = bodyText(container);
+      const block =
+        node.parentElement!.closest<HTMLElement>("[data-source-line]")!;
+      select(node, 2, node, 16);
+      await settle();
+
+      const button = affordance(container)!.querySelector("button")!;
+      expect(button.textContent).toBe("Comment on selection");
+      expect(screen.queryByPlaceholderText("Your comment...")).toBe(null);
+
+      const picked = node.data.slice(2, 16);
+      const canonical = stripBlockText(blockVisibleText(block));
+      vi.mocked(axios.post).mockClear();
+      act(() => {
+        fireEvent.click(button);
+      });
+      expect(affordance(container)).toBe(null);
+      fireEvent.change(screen.getByPlaceholderText("Your comment..."), {
+        target: { value: "on the selection" },
+      });
+      await act(async () => {
+        fireEvent.click(screen.getByText("Close"));
+      });
+      await waitFor(() => expect(vi.mocked(axios.post)).toHaveBeenCalled());
+      const body = vi.mocked(axios.post).mock.calls.at(-1)![1] as Filed;
+      const anchor = body.anchor!;
+
+      // The same selection in the bare viewer, on the card's own markdown,
+      // anchors identically but for the card's line offset.
+      const card = blockOf(byId("OQ-B3"))!;
+      const bare = render(
+        <BrowserRouter>
+          <MarkdownViewer content={card.markdown} currentPath="b3.md" />
+        </BrowserRouter>,
+      );
+      const bareBlock = bare.container.querySelector<HTMLElement>(
+        `p[data-source-line="${Number(block.getAttribute("data-source-line")) - card.lineOffset}"]`,
+      )!;
+      const textNodes = (el: Element) => {
+        const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+        const all: Node[] = [];
+        for (let n = w.nextNode(); n; n = w.nextNode()) all.push(n);
+        return all;
+      };
+      const bareNode = textNodes(bareBlock)[textNodes(block).indexOf(node)]!;
+      const bareRange = document.createRange();
+      bareRange.setStart(bareNode, 2);
+      bareRange.setEnd(bareNode, 16);
+      const bareAnchor = anchorFromRange(bare.container, bareRange)!.anchor;
+      expect(anchor).toEqual({
+        ...bareAnchor,
+        source_line: bareAnchor.source_line + card.lineOffset,
+      });
+      bare.unmount();
+
+      expect(anchor).toMatchObject({
+        source_line: Number(block.getAttribute("data-source-line")),
+        block_text_hash: hashBlockText(blockVisibleText(block)),
+        selection_length: picked.length,
+      });
+      expect(
+        canonical.slice(
+          anchor.selection_offset,
+          anchor.selection_offset + anchor.selection_length,
+        ),
+      ).toBe(picked.toLowerCase());
+    });
+
+    it("ignores a selection under three characters and one that leaves the body", async () => {
+      const { container } = renderCard(byId("OQ-B3"), {
+        comments: [],
+        cardKey: "b3",
+      });
+      const node = bodyText(container);
+      select(node, 2, node, 4);
+      await settle();
+      expect(affordance(container)).toBe(null);
+
+      const link = container.querySelector("article a")!.firstChild!;
+      select(link, 0, node, 10);
+      await settle();
+      expect(affordance(container)).toBe(null);
+    });
+
+    it("offers Open document, and no anchor, for a selection in the headline", async () => {
+      const { container } = renderCard(byId("OQ-B3"), {
+        card: null,
+        comments: [],
+        cardKey: "b3",
+      });
+      const walker = document.createTreeWalker(
+        container.querySelector("[data-planning-card-headline]")!,
+        NodeFilter.SHOW_TEXT,
+      );
+      let head = walker.nextNode()!;
+      for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+        if (n.textContent!.length > head.textContent!.length) head = n;
+      }
+      select(head, 0, head, Math.min(8, head.textContent!.length));
+      await settle();
+      const el = affordance(container)!;
+      expect(el.querySelector("button")).toBe(null);
+      expect(el.textContent).toContain("Open document");
+    });
+
+    it("offers nothing, and opens no second box, for a selection settled while the answer box is open", async () => {
+      const { container } = renderCard(byId("OQ-B3"), {
+        comments: [],
+        cardKey: "b3",
+      });
+      const node = bodyText(container);
+      select(node, 2, node, 16);
+      await settle();
+      act(() => {
+        fireEvent.click(affordance(container)!.querySelector("button")!);
+      });
+      expect(screen.getAllByPlaceholderText("Your comment...")).toHaveLength(1);
+
+      // By mouse.
+      select(node, 20, node, 30);
+      await settle();
+      expect(affordance(container)).toBe(null);
+      expect(screen.getAllByPlaceholderText("Your comment...")).toHaveLength(1);
+
+      // By keyboard.
+      vi.useFakeTimers();
+      select(node, 18, node, 32);
+      act(() => {
+        fireEvent.keyUp(node.parentElement!, { key: "Shift" });
+        vi.advanceTimersByTime(400);
+      });
+      expect(affordance(container)).toBe(null);
+      expect(screen.getAllByPlaceholderText("Your comment...")).toHaveLength(1);
+
+      // Closing the box does not surface the selection made behind it.
+      await act(async () => {
+        fireEvent.click(screen.getByText("Close"));
+      });
+      expect(affordance(container)).toBe(null);
+    });
+
+    it("offers nothing, and opens no second box, for a selection settled while the edit box is open", async () => {
+      const base = await takenOn(byId("OQ-B3"));
+      const { container } = renderCard(byId("OQ-B3"), {
+        comments: [base],
+        cardKey: "b3",
+      });
+      fireEvent.click(screen.getByRole("button", { name: /^Edit/ }));
+      expect(screen.getAllByPlaceholderText("Your comment...")).toHaveLength(1);
+
+      const node = bodyText(container);
+      select(node, 2, node, 16);
+      await settle();
+      expect(affordance(container)).toBe(null);
+      expect(screen.getAllByPlaceholderText("Your comment...")).toHaveLength(1);
+
+      vi.useFakeTimers();
+      select(node, 18, node, 32);
+      act(() => {
+        fireEvent.keyUp(node.parentElement!, { key: "ArrowRight" });
+        vi.advanceTimersByTime(400);
+      });
+      expect(affordance(container)).toBe(null);
+      expect(screen.getAllByPlaceholderText("Your comment...")).toHaveLength(1);
+    });
+
+    it("settles a keyboard selection after 300 ms of quiet, and Escape on the button discards it", async () => {
+      const { container } = renderCard(byId("OQ-B3"), {
+        comments: [],
+        cardKey: "b3",
+      });
+      const node = bodyText(container);
+      vi.useFakeTimers();
+      select(node, 2, node, 16);
+      act(() => {
+        fireEvent.keyUp(node.parentElement!, { key: "Shift" });
+        vi.advanceTimersByTime(299);
+      });
+      expect(affordance(container)).toBe(null);
+      act(() => {
+        vi.advanceTimersByTime(2);
+      });
+      const button = affordance(container)!.querySelector("button")!;
+      expect(button).toBeTruthy();
+      fireEvent.keyDown(button, { key: "Escape" });
+      expect(affordance(container)).toBe(null);
+    });
   });
 
   /**

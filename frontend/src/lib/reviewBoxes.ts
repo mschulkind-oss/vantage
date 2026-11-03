@@ -28,10 +28,19 @@ import type { CommentAnchor, ReviewComment, ReviewData } from "../types";
  */
 export type OnSaved = (target: ReviewTarget, data: ReviewData | null) => void;
 
+/**
+ * Reports an answer to `onSaved` unless `retired()` says the box that sent it
+ * has been retired since: a retired box adopts nothing, and an answer that
+ * predates a delete must not put the deleted comment back on screen.
+ */
 const told =
-  (target: ReviewTarget, onSaved: OnSaved | undefined) =>
+  (
+    target: ReviewTarget,
+    onSaved: OnSaved | undefined,
+    retired: () => boolean = () => false,
+  ) =>
   (data: ReviewData | null) => {
-    onSaved?.(target, data);
+    if (!retired()) onSaved?.(target, data);
     return data;
   };
 
@@ -40,8 +49,9 @@ function newCommentOps(
   target: ReviewTarget,
   draft: ReviewComment,
   onSaved?: OnSaved,
+  retired?: () => boolean,
 ): BoxOps {
-  const tell = told(target, onSaved);
+  const tell = told(target, onSaved, retired);
   return {
     create: (text) =>
       saveNewComment(target, { ...draft, comment: text }).then(tell),
@@ -98,7 +108,7 @@ export function newCommentBox(
   draft: ReviewComment,
   options: { label?: string; onSaved?: OnSaved } = {},
 ): CommentBox {
-  return new CommentBox(
+  const box: CommentBox = new CommentBox(
     {
       kind: "comment",
       target,
@@ -107,10 +117,11 @@ export function newCommentBox(
       label: options.label ?? "New comment",
     },
     {
-      ...newCommentOps(target, draft, options.onSaved),
+      ...newCommentOps(target, draft, options.onSaved, () => box.isRetired),
       asNew: asNewComment(target, draft, options.onSaved),
     },
   );
+  return box;
 }
 
 /**
@@ -129,8 +140,8 @@ export function editCommentBox(
   if (live && !live.isOpen && live.subject.kind === "edit") return live;
   const text = live ? live.getState().text : comment.comment;
   if (live && !live.isOpen) live.retire();
-  const tell = told(target, options.onSaved);
-  return new CommentBox(
+  const tell = told(target, options.onSaved, () => box.isRetired);
+  const box: CommentBox = new CommentBox(
     { kind: "edit", target, commentId: comment.id, label: "Edited comment" },
     {
       update: (t) => saveCommentText(target, comment.id, t).then(tell),
@@ -138,6 +149,7 @@ export function editCommentBox(
     },
     { text, created: true, saved: comment.comment },
   );
+  return box;
 }
 
 /**

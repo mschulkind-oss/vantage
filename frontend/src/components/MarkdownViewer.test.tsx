@@ -13,6 +13,7 @@ import { BrowserRouter } from "react-router-dom";
 import { useReviewStore } from "../stores/useReviewStore";
 import { useRepoStore } from "../stores/useRepoStore";
 import { blockVisibleText, hashBlockText } from "../lib/reviewAnchor";
+import { anchorFromRange } from "../lib/selectionAnchor";
 import { layout } from "../test/layout";
 import type { CommentReaction, ReviewComment } from "../types";
 import { installReviewServer } from "../test/reviewServer";
@@ -1393,5 +1394,87 @@ describe("MarkdownViewer — commenting on a table cell", () => {
 
     expect(hovered?.tagName).toBe("P");
     expect(hovered?.textContent).toBe("Before the table.");
+  });
+});
+
+describe("MarkdownViewer mouse selection against anchorFromRange", () => {
+  const DOC = "Alpha beta gamma delta.\n\nSecond paragraph of text.";
+  let restoreRect: () => void;
+  beforeEach(() => {
+    const original = Range.prototype.getBoundingClientRect;
+    Range.prototype.getBoundingClientRect = () => new DOMRect(5, 5, 40, 12);
+    restoreRect = () => {
+      Range.prototype.getBoundingClientRect = original;
+    };
+    useReviewStore.setState({
+      comments: [],
+      filePath: "doc.md",
+      lastContent: DOC,
+      pendingSelection: null,
+    });
+    useRepoStore.setState({ currentRepo: null, isMultiRepo: false });
+    vi.clearAllMocks();
+  });
+  afterEach(() => {
+    restoreRect();
+    window.getSelection()?.removeAllRanges();
+  });
+
+  const selectAndRelease = async (
+    container: HTMLElement,
+    from: [Node, number],
+    to: [Node, number],
+  ) => {
+    const range = document.createRange();
+    range.setStart(from[0], from[1]);
+    range.setEnd(to[0], to[1]);
+    const sel = window.getSelection()!;
+    sel.removeAllRanges();
+    sel.addRange(range);
+    await act(async () => {
+      fireEvent.mouseUp(container.querySelector(".prose") ?? container);
+      await new Promise((r) => setTimeout(r, 30));
+    });
+    return range;
+  };
+
+  const render_ = () =>
+    render(
+      <BrowserRouter>
+        <MarkdownViewer content={DOC} currentPath="doc.md" isReviewMode />
+      </BrowserRouter>,
+    );
+
+  it("clamps to the start block and files the anchor anchorFromRange computes for the same range", async () => {
+    const { container } = render_();
+    const [p1, p2] = Array.from(
+      container.querySelectorAll<HTMLElement>("p[data-source-line]"),
+    );
+    const range = await selectAndRelease(
+      container,
+      [p1!.firstChild!, 6],
+      [p2!.firstChild!, 6],
+    );
+
+    const pending = useReviewStore.getState().pendingSelection;
+    const expected = anchorFromRange(container, range)!;
+    expect(pending).not.toBeNull();
+    expect(pending!.clamped).toBe(true);
+    expect(pending!.anchor.source_line).toBe(
+      Number(p1!.getAttribute("data-source-line")),
+    );
+    expect(pending!.anchor).toEqual(expected.anchor);
+    expect(pending!.displayText).toBe(expected.displayText);
+    expect(pending!.anchor.selection_length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("keeps the three-character minimum: a shorter selection captures nothing", async () => {
+    const { container } = render_();
+    const p1 = container.querySelector<HTMLElement>("p[data-source-line]")!;
+    await selectAndRelease(container, [p1.firstChild!, 2], [p1.firstChild!, 4]);
+    expect(useReviewStore.getState().pendingSelection).toBeNull();
+    expect(
+      anchorFromRange(container, window.getSelection()!.getRangeAt(0)),
+    ).toBeNull();
   });
 });

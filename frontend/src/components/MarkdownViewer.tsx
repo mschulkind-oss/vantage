@@ -55,13 +55,10 @@ import {
 import { editCommentBox, newCommentBox, replyBox } from "../lib/reviewBoxes";
 import { ReviewCommentPopover } from "./ReviewCommentPopover";
 import {
-  blockVisibleText,
-  canonicalOffsetsFromRange,
-  hashBlockText,
-  stripBlockText,
-} from "../lib/reviewAnchor";
+  buildCapturedSelection,
+  resolveAnchorBlock,
+} from "../lib/selectionAnchor";
 import { hoverTargetAt } from "../lib/reviewHover";
-import type { CommentAnchor } from "../types";
 
 interface MarkdownViewerProps {
   content: string;
@@ -94,24 +91,6 @@ interface MarkdownViewerProps {
   embedded?: boolean;
 }
 
-/**
- * Tags eligible to be the anchor block for a comment — the tags
- * `resolveAnchorBlock` stops on. Container-only tags that `rehypeSourceLines`
- * also stamps (`ul`, `ol`, `tr`, `div`, `hr`) are deliberately absent:
- * selecting "an item in a list" should anchor on the `<li>` rather than
- * collapse to the parent `<ul>`. This mirrors `ANCHORABLE_BLOCK_SELECTOR`'s tag
- * list — keep the two together, or a selection will anchor to a block the
- * highlighter never indexes.
- *
- * `td`/`th` are reached before `table` by virtue of being deeper, so a
- * selection inside a cell anchors to the cell. That is also what makes a
- * cross-cell drag report itself as clamped — two different cells, where both
- * ends used to resolve to the one table — and hint that the comment lands
- * where the selection started.
- */
-const ANCHOR_TAGS =
-  "p, h1, h2, h3, h4, h5, h6, li, blockquote, pre, table, td, th";
-
 const MULTIBLOCK_HINT_KEY = "vantage.reviewMode.multiBlockHintShown";
 
 function showMultiBlockHintToast(rect: DOMRect) {
@@ -140,39 +119,6 @@ function showMultiBlockHintToast(rect: DOMRect) {
 
   setTimeout(() => toast.remove(), 2500);
   writePreference(MULTIBLOCK_HINT_KEY, "1");
-}
-
-interface CapturedSelection {
-  anchor: CommentAnchor;
-  block: HTMLElement;
-  displayText: string;
-  rect: DOMRect;
-  clamped: boolean;
-}
-
-/**
- * Resolve the anchor block for a DOM node.  Walks ancestors looking for
- * the closest `[data-source-line]` whose tag is in ANCHOR_TAGS — this
- * keeps comments off of pure-container elements.
- */
-function resolveAnchorBlock(
-  container: HTMLElement,
-  node: Node | null,
-): HTMLElement | null {
-  if (!node) return null;
-  const start =
-    node.nodeType === Node.ELEMENT_NODE
-      ? (node as HTMLElement)
-      : node.parentElement;
-  if (!start) return null;
-  let cur: HTMLElement | null = start;
-  while (cur && cur !== container) {
-    if (cur.matches?.(ANCHOR_TAGS) && cur.hasAttribute("data-source-line")) {
-      return cur;
-    }
-    cur = cur.parentElement;
-  }
-  return null;
 }
 
 const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
@@ -454,65 +400,6 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
     answerQuestion,
   );
 
-  // Build a CapturedSelection from the current window selection or a
-  // hovered block (whole-block click).  Returns null if nothing is
-  // capture-worthy at this moment.
-  const buildCapturedSelection = useCallback(
-    (block: HTMLElement, range: Range | null): CapturedSelection | null => {
-      const sourceLineAttr = block.getAttribute("data-source-line");
-      if (!sourceLineAttr) return null;
-      const sourceLine = Number.parseInt(sourceLineAttr, 10);
-      if (!Number.isFinite(sourceLine)) return null;
-
-      const blockText = blockVisibleText(block);
-      const blockHash = hashBlockText(blockText);
-      const canonicalBlock = stripBlockText(blockText);
-
-      let offset = 0;
-      let length = 0;
-      let displayText = canonicalBlock;
-      let clamped = false;
-      let rect: DOMRect;
-
-      if (range && !range.collapsed) {
-        const offsets = canonicalOffsetsFromRange(block, range);
-        if (offsets && offsets.length >= 3) {
-          offset = offsets.offset;
-          length = offsets.length;
-          displayText = canonicalBlock.slice(offset, offset + length);
-        }
-        rect = range.getBoundingClientRect();
-      } else {
-        rect = block.getBoundingClientRect();
-      }
-
-      if (range && !range.collapsed) {
-        const startBlock = resolveAnchorBlock(
-          (block.closest("[data-content-scroll]") as HTMLElement | null) ??
-            block.parentElement!,
-          range.startContainer,
-        );
-        const endBlock = resolveAnchorBlock(
-          (block.closest("[data-content-scroll]") as HTMLElement | null) ??
-            block.parentElement!,
-          range.endContainer,
-        );
-        if (startBlock && endBlock && startBlock !== endBlock) {
-          clamped = true;
-        }
-      }
-
-      const anchor: CommentAnchor = {
-        source_line: sourceLine,
-        block_text_hash: blockHash,
-        selection_offset: offset,
-        selection_length: length,
-      };
-      return { anchor, block, displayText, rect, clamped };
-    },
-    [],
-  );
-
   // Capture the current window selection (if any) and promote it to a
   // pending review comment.  Returns true if something was captured.
   // Shared between mouseup and the "toggle review mode while text already
@@ -557,7 +444,7 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
       clamped: captured.clamped,
     });
     return true;
-  }, [setPendingSelection, buildCapturedSelection]);
+  }, [setPendingSelection]);
 
   // Text selection handler for review mode.
   // We listen on the document for mouseup so we catch selections that start
@@ -678,7 +565,7 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
 
     el.addEventListener("click", onClick);
     return () => el.removeEventListener("click", onClick);
-  }, [isReviewMode, setPendingSelection, buildCapturedSelection]);
+  }, [isReviewMode, setPendingSelection]);
 
   // Factory for heading components with hover anchor links. Like every
   // override below, it takes `node` out before it spreads the rest:
