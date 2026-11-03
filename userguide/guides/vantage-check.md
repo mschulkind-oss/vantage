@@ -371,6 +371,7 @@ will ever tell you.
 | `vantage/block-split` | A directive that restructures the document around it — a table losing its remaining rows, a paragraph cut in two, a setext heading losing its underline | error |
 | `vantage/duplicate-key` | The same key twice in one directive, or across a run of them, which merges the same way — the last one wins, so a warning | warning |
 | `vantage/oq-missing` | An open question (💬) in a list item, with an `OQ-…` id and a `_Leaning:_` line but no `question` directive, so review mode offers no one-click answer for it. Under a [`target`](../reference/configuration.md#the-oldest-release-your-readers-use) before 0.8 it asks for an `oq` instead | error |
+| `vantage/question-candidate` | A 💬 or 🔒 list item with an `OQ-…` id and no `question` directive, or a table with a Leaning or Answer column holding `OQ-…` ids (a table whose first header is `ID` is a ledger and is not reported), which the planning index cannot count. File each as a list item with a `question` directive | warning |
 | `vantage/question-name` | An `oq` directive on a 🔒 blocked or ✅ answered question, which every Vantage before 0.8 offers to answer in one click, or a question directive below a 🔒 or ✅ title outside a list, where it lands on an unmarked block and the question reads as open | error |
 | `vantage/oq-deprecated` | Any other `oq` directive: it still works in every Vantage, and the message quotes the `question` directive to write instead, keys unchanged. Not reported under a [`target`](../reference/configuration.md#the-oldest-release-your-readers-use) before 0.8, whose readers answer only an `oq` in one click | warning |
 | `vantage/question-layout` | A question's `_Leaning:_` run into a paragraph with other text — after the title or the context, or followed by its `**Answer:**` — which neither the page nor the planning card can lay out as its leaning | warning |
@@ -1147,13 +1148,23 @@ them the planning page filtered to that work. The loop:
    when the human has told you theirs.
 4. **The human answers on the page** and presses **Copy answers**, which under
    the filter copies only the answers to the questions it keeps.
-5. **Apply the answers, and rerun the same command** until it says *Nothing
-   this filter keeps needs you*, or, once no entry is left at all, *Nothing
-   matches*, as in *Without `is:open` it would keep 1 entry, and it is not an
-   open question.* *Nothing on this roadmap matches* is not the end: the
-   questions it keeps are on the roadmaps its line names, so rerun with
-   `--roadmap` naming each. The line counting blocked questions says whether
-   another round will follow.
+5. **Apply the answers, and rerun the same command.** Recording an answer in
+   the saved document makes the CLI's count agree with the page, so expect it
+   to fall. Stop when no entry the filter keeps asks the human for another
+   answer, or, once no entry is left at all, *Nothing matches*, as in
+   *Without `is:open` it would keep 1 entry, and it is not an open question.*
+   *Nothing on this roadmap matches* is not the end: the questions it keeps are
+   on the roadmaps its line names, so rerun with `--roadmap` naming each. The
+   line counting blocked questions says whether another round will follow.
+   When the CLI says *Nothing this filter keeps needs you*, it means no kept
+   entry is open in Markdown; it cannot see an answer pending in review, so that
+   line is not the page's *waiting on you*.
+
+The [style guide](#vantage-check-style-guide) states the whole handoff
+contract once, in six steps (file the questions, save them in the served
+checkout, run the one combined command, hand over its line, say what each
+command covers, hand over only what is indexed); this section does not restate
+it. Its count is *open in Markdown*, never *waiting on you*.
 
 What you hand over can be as short as this:
 

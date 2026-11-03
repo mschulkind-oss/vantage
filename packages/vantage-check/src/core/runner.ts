@@ -16,6 +16,7 @@ import { checkMath } from "../rules/math.js";
 import { checkMarkdownHygiene } from "../rules/markdown.js";
 import { checkMermaid } from "../rules/mermaid.js";
 import { checkProse } from "../rules/prose.js";
+import { checkQuestionCandidates } from "../rules/questionCandidate.js";
 import { checkQuestionLayout } from "../rules/questionLayout.js";
 import { checkPipeline } from "../rules/render.js";
 import { checkVantageFrontmatter } from "../rules/vantageFrontmatter.js";
@@ -70,6 +71,7 @@ export async function checkFiles(
     checkVantageFrontmatter(collector);
     checkDirectives(collector);
     checkOpenQuestions(collector);
+    checkQuestionCandidates(collector);
     checkQuestionNames(collector);
     checkQuestionLayout(collector);
     checkOpenQuestionIds(collector);

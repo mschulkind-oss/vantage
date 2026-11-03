@@ -1170,6 +1170,10 @@ const notUnderstood = (named: string) =>
  * notice's wording, from the planning module (§6.18, §13.4), whose own tests
  * pin its words.
  */
+/** The sentence a filter adds: the CLI count is Markdown state, not review state. */
+const PENDING_REVIEW_NOTE =
+  "The count is open in Markdown: answers pending in review are not subtracted here, and the Planning page shows them.";
+
 const unmatched = (...terms: string[]) =>
   terms
     .map(
@@ -1345,9 +1349,10 @@ describe("index --filter, with words, phrases and exclusions", () => {
     const text = await index(root, "--filter", "nothing-holds-this");
     expect(text.code).toBe(EXIT_OK);
     expect(text.stderr).toBe("");
-    expect(text.stdout.split("\n").slice(0, 3)).toEqual([
+    expect(text.stdout.split("\n").slice(0, 4)).toEqual([
       "Filtered by `nothing-holds-this`: 0 of 11 entries, none of them open questions.",
       "Run without --filter to see the other 11.",
+      PENDING_REVIEW_NOTE,
       `Planning page: ${linkIn(root, "filter=nothing-holds-this")}`,
     ]);
 
@@ -1418,7 +1423,7 @@ describe("index --filter, with words, phrases and exclusions", () => {
 
       expect(code).toBe(EXIT_USAGE);
       expect(stdout).toBe("");
-      expect(stderr).toBe(unmatched("-path:docs/desing"));
+      expect(stderr.startsWith(unmatched("-path:docs/desing"))).toBe(true);
     }
   });
 });
@@ -1438,7 +1443,9 @@ describe("index --filter, with a term that matches nothing", () => {
 
       expect(code).toBe(EXIT_USAGE);
       expect(stdout).toBe("");
-      expect(stderr).toBe(unmatched("path:docs/desing", "path:notes"));
+      expect(
+        stderr.startsWith(unmatched("path:docs/desing", "path:notes")),
+      ).toBe(true);
     }
   });
 
@@ -1490,6 +1497,7 @@ describe("index --filter, as text", () => {
         "Filtered by `path:docs/c.md path:/docs/e.md`: 3 of 11 entries, in 2 of 10 paths, 1 of them an open question.",
         "docs/c.md waits on docs/a.md#OQ-A2, which this filter leaves out.",
         "Run without --filter to see the other 8.",
+        PENDING_REVIEW_NOTE,
         `Planning page: ${linkIn(root, "filter=path:docs/c.md+path:/docs/e.md")}`,
         PASTE_HINT,
         SPACE_HINT,
@@ -1541,6 +1549,7 @@ describe("index --filter, as text", () => {
         "Filtered by `path:/docs/a.md is:open`: 2 of 11 entries, in 1 of 10 paths, 2 of them open questions.",
         "1 of its questions is blocked and will need you later.",
         "Run without --filter to see the other 9.",
+        PENDING_REVIEW_NOTE,
         `Planning page: ${linkIn(root, "filter=path:/docs/a.md+is:open")}`,
         PASTE_HINT,
         SPACE_HINT,
@@ -1561,6 +1570,7 @@ describe("index --filter, as text", () => {
       [
         "Filtered by `path:docs/d.md`: 1 of 11 entries, in 1 of 10 paths, none of them open questions.",
         "Run without --filter to see the other 10.",
+        PENDING_REVIEW_NOTE,
         `Planning page: ${linkIn(root, "filter=path:docs/d.md")}`,
         PASTE_HINT,
         SPACE_HINT,
@@ -1609,6 +1619,7 @@ describe("index --filter, as text", () => {
         /^Filtered by `path:\/plans\/design\.md is:open`: 2 of \d+ entries, in 1 of \d+ paths, 2 of them open questions\.$/,
       ),
       expect.stringMatching(/^Run without --filter to see the other \d+\.$/),
+      PENDING_REVIEW_NOTE,
       `Planning page: ${linkIn(root, "filter=path:/plans/design.md+is:open")}`,
       PASTE_HINT,
       SPACE_HINT,
@@ -1676,6 +1687,7 @@ describe("index --filter, as text", () => {
       [
         "Filtered by `path:/a.md`: 1 of 1 entry, 1 of them an open question.",
         "It hides no entry.",
+        PENDING_REVIEW_NOTE,
         `Planning page: ${linkIn(worktree, "filter=path:/a.md")}`,
         PASTE_HINT,
         SPACE_HINT,
@@ -1922,6 +1934,7 @@ describe("index --filter, with several roadmaps", () => {
         // matches, which says what they hold.
         "Filtered by `path:docs/b.md`: 0 of 3 entries, in 1 of 6 paths, none of them open questions.",
         "Run without --filter to see the other 3.",
+        PENDING_REVIEW_NOTE,
         `Planning page: ${linkIn(root, "filter=path:docs/b.md&roadmap=roadmap.md")}`,
         PASTE_HINT,
         SPACE_HINT,
@@ -2128,7 +2141,7 @@ describe("index --filter over the fixture of forms", () => {
     if (entry.unmatched.length > 0) {
       expect(json.code).toBe(EXIT_USAGE);
       expect(json.stdout).toBe("");
-      expect(json.stderr).toBe(unmatched(...entry.unmatched));
+      expect(json.stderr.startsWith(unmatched(...entry.unmatched))).toBe(true);
       return;
     }
 

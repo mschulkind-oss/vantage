@@ -331,8 +331,28 @@ describe("the style guide's filtered planning page", () => {
     );
   });
 
+  it("states the six-step handoff contract and keeps the two counts apart", () => {
+    const guide = STYLE_GUIDE.replace(/\s+/g, " ");
+    for (const step of [
+      "File before handing over.",
+      "Save in the checkout their Vantage serves.",
+      "Run one combined command",
+      "Hand over the generated `Planning page:` line",
+      "Say what each command covers.",
+      "Hand over only what is saved and indexed now.",
+    ]) {
+      expect(guide).toContain(step);
+    }
+    expect(guide).toContain("**open in Markdown**");
+    expect(guide).toContain("**Waiting on you**");
+    expect(guide).toContain("`vantage/question-candidate`");
+    expect(guide).not.toContain("Once you have applied their answers");
+  });
+
   it("names the line the command prints for the human", async () => {
-    expect(STYLE_GUIDE).toContain("give the human the `Planning page:` line");
+    expect(STYLE_GUIDE).toContain(
+      "Hand over the generated `Planning page:` line",
+    );
     const root = fullTree();
     const io = bufferIo(root);
     const named = taught()

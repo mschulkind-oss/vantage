@@ -187,6 +187,12 @@ export const RULES: readonly RuleMeta[] = [
     default: "error",
   },
   {
+    id: "vantage/question-candidate",
+    summary:
+      "A 💬 or 🔒 list item with an `OQ-` id and no `question` directive, or a table with a Leaning or Answer column holding `OQ-` ids (not an `ID`-first ledger), which the planning index cannot count",
+    default: "warning",
+  },
+  {
     id: "vantage/question-name",
     summary:
       "An `oq` directive on a 🔒 or ✅ question, which every viewer before 0.8 offers to answer, or a question directive below a 🔒 or ✅ title outside a list, where the question reads as open",

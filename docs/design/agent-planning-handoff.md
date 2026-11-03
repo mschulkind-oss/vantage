@@ -1,13 +1,13 @@
 ---
 status: accepted
-stage: DECIDED
+stage: BUILT
 title: "Grounded agent handoffs: one command, two counts"
-next: "Complete an implementation plan for the guidance correction and default-on diagnostic"
+next: "None; the contract, the filter readout wording and the question-candidate rule are built"
 ---
 
 # Grounded agent handoffs — one command, two counts, and what the tool cannot see
 
-**Status:** 2026-11-03. Nothing built. Evidence verified at `01837a0a`; the owner's quoted report is the only specimen of the failure and its three documents are not in this checkout.
+**Status:** 2026-11-03. Built: the handoff contract and two-count vocabulary ([§3](#3-two-counts-two-names), [§4](#4-the-agent-handoff-contract-docs-first-shippable-alone)), the filter readout wording ([§5.1](#51-filter-readout-wording-cli-no-new-flag)) and `vantage/question-candidate` ([§5.2](#52-structural-diagnostic-for-unfiled-candidates-checker-warning)). Evidence verified at `01837a0a`; the owner's quoted report is the only specimen of the failure and its three documents are not in this checkout.
 
 > **In short.** The quoted handoff's ungrounded claims — about combining paths, table rows, ledger rows and `is:open` — are each answered by documentation the agent did not find or trust, so the fix is first a documentation correction (one canonical instruction, one false loop, one false equivalence) and only second two small optional safeguards; waiting on other writers is ordinary coordination and stays. Nothing here is a prerequisite for anything else.
 
@@ -127,4 +127,4 @@ A review-aware CLI query ("what is actually waiting on me") would need the CLI t
 
 | ID | Ruling / Decision | Date | Settled in | Built |
 | :--- | :--- | :--- | :--- | :--- |
-| OQ-AH1 | Ship the narrowly scoped question-candidate diagnostic as a default-on warning. Existing `--strict` runs can fail on new findings; the documented false-positive boundaries remain. | 2026-11-03 | [Structural diagnostic](#52-structural-diagnostic-for-unfiled-candidates-checker-warning) | No |
+| OQ-AH1 | Ship the narrowly scoped question-candidate diagnostic as a default-on warning. Existing `--strict` runs can fail on new findings; the documented false-positive boundaries remain. | 2026-11-03 | [Structural diagnostic](#52-structural-diagnostic-for-unfiled-candidates-checker-warning) | Yes |

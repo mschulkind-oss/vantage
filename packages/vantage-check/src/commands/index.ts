@@ -243,6 +243,7 @@ export function indexCommand(options: IndexOptions, io: Io): number {
         `vantage-check: --filter: ${PLANNING_NOTICES.filterUnmatched(term)}\n`,
       );
     }
+    io.err(unmatchedHelp(applied.filtered.summary.unmatched, project.root));
     return EXIT_USAGE;
   }
 
@@ -447,6 +448,55 @@ function isLinkedWorktree(root: string): boolean {
   }
 }
 
+/** Said once under a filter: the CLI reads files, never review state. */
+const PENDING_REVIEW_NOTE =
+  "The count is open in Markdown: answers pending in review are not subtracted here, and the Planning page shows them.";
+
+/**
+ * What an exit 2 for unmatched `path:` terms adds to the notice's own lines
+ * (agent-planning-handoff.md §5.1): what was checked, that several `path:`
+ * terms combine in one filter, and, for a root-anchored literal path only,
+ * whether a file is there. A pattern is an unmatched pattern, never a missing
+ * file. Why an existing file went unlisted is not determined, and it says so.
+ */
+function unmatchedHelp(terms: readonly string[], root: string): string {
+  const lines = [
+    "The term matched none of the documents the scan indexed, skipped or could not read, and several `path:` terms combine in one filter.",
+  ];
+  for (const term of terms) {
+    const path = term
+      .replace(/^-/, "")
+      .replace(/^path:/, "")
+      .replace(/^"(.*)"$/, "$1");
+    if (!path.startsWith("/") || /[*?]/.test(path)) {
+      lines.push(
+        `${codeSpan(term)} is a pattern that matched nothing, not a missing file.`,
+      );
+      continue;
+    }
+    const relative = path.slice(1);
+    if (relative.split("/").includes("..")) continue;
+    const kind = entryKind(join(root, relative));
+    lines.push(
+      kind === "file"
+        ? `A file exists at ${codeSpan(relative)}; whether the scan excluded, ignored or did not recognize it is not determined.`
+        : kind === "folder"
+          ? `${codeSpan(relative)} is a folder; whether the scan excluded, ignored or did not recognize anything in it is not determined.`
+          : `No file exists at ${codeSpan(relative)}.`,
+    );
+  }
+  return `${lines.map((line) => `vantage-check: --filter: ${line}`).join("\n")}\n`;
+}
+
+function entryKind(path: string): "file" | "folder" | "none" {
+  try {
+    const stat = statSync(path);
+    return stat.isFile() ? "file" : stat.isDirectory() ? "folder" : "none";
+  } catch {
+    return "none";
+  }
+}
+
 /**
  * What the text prints before everything else under a filter (§13.4): the
  * filter notice, its clauses included, then the `Planning page:` line and its
@@ -466,7 +516,11 @@ function filterHead(
     applied.filtered.summary,
     "checker",
   ).map(noticeText);
-  lines.push(`Planning page: ${applied.link}`, `  ${PASTE_HINT}`);
+  lines.push(
+    PENDING_REVIEW_NOTE,
+    `Planning page: ${applied.link}`,
+    `  ${PASTE_HINT}`,
+  );
   const space =
     applied.space === null ? null : spaceHint(project.root, applied.space);
   if (space !== null) lines.push(`  ${space}`);

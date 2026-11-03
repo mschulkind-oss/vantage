@@ -110,7 +110,10 @@ describe("ref/unlinked-oq", () => {
 
       const report = await checkTree(root);
 
-      expect(ruleIds(report)).toEqual([]);
+      // (`vantage/question-candidate` reports the missing directive.)
+      expect(
+        ruleIds(report).filter((id) => id !== "vantage/question-candidate"),
+      ).toEqual([]);
     });
 
     // A compacted question lives in a ledger row; that row is the record, not a
