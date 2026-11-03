@@ -2,12 +2,12 @@
 title: "Always-on review for planning questions — and a way to actually delete an answer"
 status: in-review
 stage: DESIGN
-next: "Review the linked session-restoration contract before completing the implementation plan"
+next: "Map the card headline and leaning to source blocks (plan S4) so their selections anchor; build Escape/× Restore/Discard per planning-question-state §7"
 ---
 
 # Always-on review for planning questions — and a way to actually delete an answer
 
-**Status:** 2026-11-03. Nothing built. Code evidence verified against `01837a0a` on 2026-11-03; the planning card, popover, autosave controller, store and backend delete command are cited as shipped behavior. The three owner directions are the ledger rows; every other decision here is a recommendation awaiting the owner's review.
+**Status:** 2026-11-03. Partially built: D2 ships (the deletion record on the server, and an explicit whole-thread Delete on the card's answer rows), and D1 ships for the question's body: a settled selection, made with the mouse or the keyboard, offers **Comment on selection**. A selection in the headline or the leaning aside only offers **Open document**, because the card's headline element is not the document's block and no anchor is fabricated for it. Escape/× Restore/Discard ([`OQ-PRA1`](#decision-ledger)) is not built: it needs the session-restoration protocol. Code evidence verified against `b93e0dc0` on 2026-11-03; the planning card, popover, autosave controller, store and backend delete command are cited as shipped behavior. The three owner directions are the ledger rows; every other decision here is a recommendation awaiting the owner's review.
 
 > **In short.** The planning card gets a *scoped* selection-to-comment capability (reusing the viewer's anchor algorithm, not its review mode), and an answer gets a real **Delete**. Escape and × offer to undo the editing session: delete a new answer or restore an existing answer to its opening text; every other way of leaving keeps the text — and keeping is never a trap, because every kept answer can be deleted afterwards.
 
@@ -146,10 +146,10 @@ Half-typed answers **remain externally visible** exactly as shipped: the first n
 
 ## Decision Ledger
 
-Owner directions are recorded here. Session cancellation is settled; its proposed restoration mechanism is specified in [Planning question state](planning-question-state.md#7-restoring-an-editing-session). The deletion record and other implementation mechanisms remain unbuilt.
+Owner directions are recorded here. Session cancellation is settled; its proposed restoration mechanism is specified in [Planning question state](planning-question-state.md#7-restoring-an-editing-session). The deletion record and the explicit Delete are built; session restoration is not.
 
 | ID | Ruling / Decision | Date | Settled in | Built |
 | :--- | :--- | :--- | :--- | :--- |
-| D1 | The planning page always offers review: selecting words of a question lets the user comment on those words without toggling review mode or opening the document. | 2026-11-03 | [Selection comments on the card](#selection-comments-on-the-card) | No |
-| D2 | An already-stored answer must be removable from the card with an explicit Delete, not merely dismissed or blanked. | 2026-11-03 | [Actions: what each way of leaving does](#actions-what-each-way-of-leaving-does) | No |
+| D1 | The planning page always offers review: selecting words of a question lets the user comment on those words without toggling review mode or opening the document. | 2026-11-03 | [Selection comments on the card](#selection-comments-on-the-card) | Partly: a settled selection inside the question's body offers Comment on selection and opens the answer popover on the exact anchor; a headline or leaning-aside selection offers Open document only. |
+| D2 | An already-stored answer must be removable from the card with an explicit Delete, not merely dismissed or blanked. | 2026-11-03 | [Actions: what each way of leaving does](#actions-what-each-way-of-leaving-does) | Yes: `deleted_ids` on the review rejects late writes to a deleted id; the card's Delete asks first, retries until the server confirms, and holds the leave guard. |
 | OQ-PRA1 | Escape and × offer to undo whatever was done since the box opened: remove a new answer, or restore an existing answer’s opening text without deleting its thread or replies. Save keeps the edits. Keyboard and mouse both support the flow. | 2026-11-03 | [Actions](#actions-what-each-way-of-leaving-does) | No |

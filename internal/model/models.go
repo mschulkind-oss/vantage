@@ -309,6 +309,10 @@ type ReviewData struct {
 	// so the record survives restarts and is written in the same atomic save as
 	// the reactions it guards.
 	Nonces []string `json:"nonces,omitempty"`
+	// DeletedIDs records every comment id the reviewer deleted, so a create or
+	// edit still in flight from the browser cannot resurrect or address the
+	// comment after its delete. Ids never expire.
+	DeletedIDs []string `json:"deleted_ids,omitempty"`
 }
 
 // NewReviewData returns a ReviewData for filePath with Comments initialized

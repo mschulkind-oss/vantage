@@ -242,6 +242,8 @@ export interface ReviewData {
   comments: ReviewComment[];
   /** Delivery dedup keys, most-recent-last. Server-side only. */
   nonces?: string[];
+  /** Ids of comments the reviewer deleted. Server-side only. */
+  deleted_ids?: string[];
 }
 
 /**

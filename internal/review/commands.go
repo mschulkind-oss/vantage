@@ -3,6 +3,7 @@ package review
 import (
 	"errors"
 	"log/slog"
+	"slices"
 	"strings"
 	"time"
 
@@ -65,6 +66,9 @@ func (s *Store) AddComment(filePath, repo string, c model.ReviewComment, docCont
 	}
 	if data == nil {
 		data = model.NewReviewData(filePath)
+	}
+	if slices.Contains(data.DeletedIDs, c.ID) {
+		return nil, ErrCommentNotFound
 	}
 	if held := commentByID(data.Comments, c.ID); held != nil {
 		if held.Comment == c.Comment {
@@ -176,7 +180,7 @@ func (s *Store) EditReply(filePath, repo, id, replyID, text, docContent string) 
 		return nil, ErrCommentNotFound
 	}
 	comment := commentByID(data.Comments, id)
-	if comment == nil {
+	if comment == nil || slices.Contains(data.DeletedIDs, id) {
 		return nil, ErrCommentNotFound
 	}
 	held := reviewerReply(comment, replyID)
@@ -253,7 +257,7 @@ func (s *Store) DeleteComment(filePath, repo, id string) (*model.ReviewData, err
 		return nil, err
 	}
 	if data == nil {
-		return nil, ErrCommentNotFound
+		data = model.NewReviewData(filePath)
 	}
 	at := -1
 	for i := range data.Comments {
@@ -262,12 +266,19 @@ func (s *Store) DeleteComment(filePath, repo, id string) (*model.ReviewData, err
 			break
 		}
 	}
-	if at < 0 {
-		return nil, ErrCommentNotFound
+	if !slices.Contains(data.DeletedIDs, id) {
+		data.DeletedIDs = append(data.DeletedIDs, id)
 	}
-	data.Comments = append(data.Comments[:at], data.Comments[at+1:]...)
+	if at >= 0 {
+		data.Comments = append(data.Comments[:at], data.Comments[at+1:]...)
+	}
+	// The record is persisted even when the comment was absent: its create may
+	// still be in flight, and must find the id deleted when it lands.
 	if err := s.saveLocked(filePath, repo, data); err != nil {
 		return nil, err
+	}
+	if at < 0 {
+		return nil, ErrCommentNotFound
 	}
 	return data, nil
 }
@@ -444,7 +455,7 @@ func (s *Store) mutateComment(filePath, repo, id string, fn func(c *model.Review
 		return nil, ErrCommentNotFound
 	}
 	comment := commentByID(data.Comments, id)
-	if comment == nil {
+	if comment == nil || slices.Contains(data.DeletedIDs, id) {
 		return nil, ErrCommentNotFound
 	}
 	fn(comment, nowSeconds())

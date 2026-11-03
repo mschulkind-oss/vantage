@@ -326,6 +326,22 @@ func TestReviewCommentDelete(t *testing.T) {
 	require.Equal(t, http.StatusNotFound, w.Code)
 }
 
+func TestReviewCommentDeleteOfMissingIDRecordsItAnd404s(t *testing.T) {
+	e := newCmdEnv(t)
+
+	w := e.doID(e.h.ReviewCommentDelete, http.MethodDelete, "/review/comments/late?path=a.md", "", "late")
+	require.Equal(t, http.StatusNotFound, w.Code)
+
+	// The create that was in flight when the delete landed is now refused.
+	body := `{"id":"late","comment":"x","anchor":{"source_line":3,"block_text_hash":"deadbeef","selection_offset":0,"selection_length":0},"created_at":1717000000}`
+	w = e.do(e.h.ReviewCommentCreate, http.MethodPost, "/review/comments?path=a.md", body, true)
+	require.Equal(t, http.StatusNotFound, w.Code)
+	got, err := e.h.deps.Reviews.Get("a.md", "")
+	require.NoError(t, err)
+	require.Equal(t, []string{"late"}, got.DeletedIDs)
+	require.Empty(t, got.Comments)
+}
+
 func TestReviewDismissalsAll(t *testing.T) {
 	e := newCmdEnv(t)
 	e.createComment(t, "c1", 3)

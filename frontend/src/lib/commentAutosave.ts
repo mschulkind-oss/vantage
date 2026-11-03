@@ -156,6 +156,8 @@ export class CommentBox {
   private copied = false;
   /** Handed over to another box (`retire`): nothing more is sent or adopted. */
   private retired = false;
+  /** The request sent and not yet answered, for {@link retireBoxesFor} to wait on. */
+  private requestInFlight: Promise<unknown> | null = null;
   private readonly listeners = new Set<() => void>();
   private state: BoxState;
 
@@ -287,9 +289,24 @@ export class CommentBox {
     this.changed();
   }
 
+  /**
+   * {@link CommentBox.retire}, resolving once the request already on its way
+   * has been answered either way, so nothing of this box is still in flight.
+   */
+  retireAndSettle(): Promise<void> {
+    const pending = this.requestInFlight;
+    this.retire();
+    return pending ? pending.then(noop, noop) : Promise.resolve();
+  }
+
   /** The text the server holds for this box, or null before anything is. */
   get savedText(): string | null {
     return this.saved;
+  }
+
+  /** Whether the box was handed over or retired: it adopts nothing more. */
+  get isRetired(): boolean {
+    return this.retired;
   }
 
   /** Whether the box is open on a surface. */
@@ -370,6 +387,7 @@ export class CommentBox {
     } catch (e) {
       request = Promise.reject(e);
     }
+    this.requestInFlight = request;
     const removed = () => {
       this.created = false;
       this.createTried = false;
@@ -528,8 +546,41 @@ export function openNewCommentIds(): string {
   return ids.sort().join(" ");
 }
 
+/**
+ * Deletions of answers (`lib/answerDelete.ts`) not yet confirmed by the server:
+ * like unsaved text, leaving the page before they land would drop them.
+ */
+export const pendingDeletions = new Set<object>();
+
+function noop(): void {}
+
+/**
+ * Retire every box writing to comment `commentId` of the document `target`
+ * names — whatever its kind — and resolve once their in-flight requests are
+ * answered. A deletion sends nothing until then, so no save of the comment can
+ * land after it.
+ */
+export async function retireBoxesFor(
+  target: ReviewTarget,
+  commentId: string,
+): Promise<void> {
+  const settling: Promise<void>[] = [];
+  for (const box of [...boxes]) {
+    const { subject } = box;
+    if (
+      subject.commentId === commentId &&
+      subject.target.base === target.base &&
+      subject.target.path === target.path
+    ) {
+      settling.push(box.retireAndSettle());
+    }
+  }
+  await Promise.all(settling);
+}
+
 /** Whether any text typed in any box is not saved yet. */
 export function hasUnsavedText(): boolean {
+  if (pendingDeletions.size > 0) return true;
   for (const box of boxes) if (box.getState().unsaved) return true;
   return false;
 }
@@ -706,5 +757,6 @@ export const STATUS_TICK_MS = 15_000;
 /** For tests: forget every box. */
 export function resetBoxesForTest(): void {
   boxes.clear();
+  pendingDeletions.clear();
   notifyRegistry();
 }

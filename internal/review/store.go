@@ -19,6 +19,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 
@@ -267,6 +268,11 @@ func (s *Store) Move(from, to, repo string) (*model.ReviewData, bool, error) {
 		for _, n := range src.Nonces {
 			if _, dup := seen[n]; !dup {
 				moved.Nonces = append(moved.Nonces, n)
+			}
+		}
+		for _, id := range src.DeletedIDs {
+			if !slices.Contains(moved.DeletedIDs, id) {
+				moved.DeletedIDs = append(moved.DeletedIDs, id)
 			}
 		}
 		if n := len(moved.Nonces); n > maxNonces {

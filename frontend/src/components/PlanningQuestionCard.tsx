@@ -83,6 +83,7 @@ import React, {
   useLayoutEffect,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown, ChevronUp, Eye } from "lucide-react";
@@ -91,7 +92,7 @@ import type {
   PlanningBadge,
   PlanningQuestion,
 } from "vantage-md/planning";
-import { ExternalLink, MessageSquarePlus, Pencil } from "lucide-react";
+import { ExternalLink, MessageSquarePlus, Pencil, Trash2 } from "lucide-react";
 import { MarkdownViewer } from "./MarkdownViewer";
 import { PlanningBadgeChip, type PlanningMark } from "./PlanningBadge";
 import { ReviewCommentPopover } from "./ReviewCommentPopover";
@@ -122,7 +123,9 @@ import {
   type DocumentQuestion,
   type QuestionOffer,
 } from "../hooks/useOpenQuestionButtons";
+import { deleteAnswer, type AnswerDeletion } from "../lib/answerDelete";
 import { buildWholeBlockAnchor, indexBlocks } from "../lib/reviewAnchor";
+import { anchorFromRange } from "../lib/selectionAnchor";
 import { isStaticMode } from "../lib/staticMode";
 import {
   CARD_CLAMP_LINES,
@@ -788,6 +791,15 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
     anchor: CommentAnchor;
     target: ReviewTarget;
   } | null>(null);
+  // The settled selection in the card the reader may comment on: an anchor in
+  // the question's body, or, for text the body cannot anchor (the headline),
+  // only a way to the document. `left`/`top` place it in the card.
+  const [picked, setPicked] = useState<{
+    anchor: CommentAnchor | null;
+    text: string;
+    left: number;
+    top: number;
+  } | null>(null);
   // The comment a press on Edit opened, with the button's rect it is drawn by.
   const [editing, setEditing] = useState<{
     rect: DOMRect;
@@ -806,6 +818,18 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
   } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Delete on an answer row: the comment awaiting the reader's confirmation,
+  // the deletions in flight, and the ids the server has confirmed gone.
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [deletions, setDeletions] = useState<Record<string, AnswerDeletion>>(
+    {},
+  );
+  // A deletion the server refused: kept apart from `deletions` so the row
+  // offers Edit and Delete again, with the reason and Retry now beside them.
+  const [refused, setRefused] = useState<
+    Record<string, { deletion: AnswerDeletion; reason: string }>
+  >({});
+  const [deletedIds, setDeletedIds] = useState<readonly string[]>([]);
   // The comment list is open unless its comments came late; the reader's own
   // toggle, or an answer filed here, wins.
   const [open, setOpen] = useState<boolean | null>(null);
@@ -981,6 +1005,94 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
     }
   }, [unfolded]);
 
+  // One box per card: while an answer or edit box is open, no selection offers
+  // a second one.
+  const boxOpenRef = useRef(false);
+  const boxOpen = answering !== null || editing !== null;
+  useEffect(() => {
+    boxOpenRef.current = boxOpen;
+  }, [boxOpen]);
+  // A selection settles on mouse-up, or, made from the keyboard, once 300 ms
+  // pass after a Shift or arrow key with the selection quiet. Only a
+  // selection with both ends in the question's body anchors; one in the
+  // headline or the leaning aside offers Open document; any other is ignored,
+  // never clipped. It is kept past a loss of focus and dropped by a new
+  // selection, a click that collapses it in the body, or the card folding.
+  useEffect(() => {
+    const article = articleRef.current;
+    const body = bodyRef.current;
+    if (article === null || body === null || previewing) return;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let keyboard = false;
+    const schedule = (ms: number) => {
+      if (timer !== null) clearTimeout(timer);
+      timer = setTimeout(settle, ms);
+    };
+    function settle() {
+      timer = null;
+      keyboard = false;
+      if (boxOpenRef.current) {
+        setPicked(null);
+        return;
+      }
+      const sel = window.getSelection();
+      if (sel === null || sel.rangeCount === 0) return;
+      if (sel.isCollapsed) {
+        if (body!.contains(sel.anchorNode)) setPicked(null);
+        return;
+      }
+      const range = sel.getRangeAt(0);
+      const within = (el: Element | null) =>
+        el !== null &&
+        el.contains(range.startContainer) &&
+        el.contains(range.endContainer);
+      const inBody = within(body);
+      const inHeadline =
+        within(article!.querySelector("[data-planning-card-headline]")) ||
+        within(article!.querySelector("[data-planning-card-leaning-aside]"));
+      if (!inBody && !(inHeadline && range.toString().trim().length >= 3)) {
+        setPicked(null);
+        return;
+      }
+      const box = article!.getBoundingClientRect();
+      const end = range.getBoundingClientRect();
+      // At most 160px short of the card's right edge, so the button fits.
+      const place = {
+        left: Math.max(0, Math.min(end.right - box.left, box.width - 160)),
+        top: end.bottom - box.top + 4,
+      };
+      if (inBody) {
+        const got = anchorFromRange(body!, range);
+        setPicked(
+          got === null
+            ? null
+            : { anchor: got.anchor, text: got.displayText, ...place },
+        );
+      } else {
+        setPicked({ anchor: null, text: "", ...place });
+      }
+    }
+    const onMouseUp = () => schedule(10);
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.key === "Shift" || e.key.startsWith("Arrow")) {
+        keyboard = true;
+        schedule(300);
+      }
+    };
+    const onSelectionChange = () => {
+      if (keyboard) schedule(300);
+    };
+    document.addEventListener("mouseup", onMouseUp);
+    document.addEventListener("selectionchange", onSelectionChange);
+    article.addEventListener("keyup", onKeyUp);
+    return () => {
+      if (timer !== null) clearTimeout(timer);
+      document.removeEventListener("mouseup", onMouseUp);
+      document.removeEventListener("selectionchange", onSelectionChange);
+      article.removeEventListener("keyup", onKeyUp);
+    };
+  }, [previewing, markdown]);
+
   // The focus on something the folded card cuts off — a link in its first
   // block, below its last line — unfolds it: the reader tabbed to text they
   // cannot see. Unfolding moves only what is below the card, and the focus
@@ -1001,6 +1113,7 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
 
   const toggleFold = (e: React.MouseEvent<HTMLButtonElement>) => {
     const next = !unfolded;
+    setPicked(null);
     const article = articleRef.current;
     const pane = article?.closest<HTMLElement>("[data-content-scroll]") ?? null;
     foldAnchorRef.current = {
@@ -1085,15 +1198,55 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
   // The count is the comments in hand. The list is what the box held while
   // it is open, and otherwise, until the reader opens or toggles it, the
   // comments the layout painted (planning-index.md §12.1).
-  const liveListed = (comments ?? []).filter((c) =>
-    state.scoped.includes(c.id),
+  const stillThere = (c: ReviewComment) => !deletedIds.includes(c.id);
+  const liveListed = (comments ?? []).filter(
+    (c) => state.scoped.includes(c.id) && stillThere(c),
   );
-  const counted = held ? held.listed : liveListed;
+  const counted = held ? held.listed.filter(stillThere) : liveListed;
   const listed = held
-    ? held.listed
+    ? held.listed.filter(stillThere)
     : open === null && listComments !== undefined
-      ? listComments.filter((c) => state.scoped.includes(c.id))
+      ? listComments.filter((c) => state.scoped.includes(c.id) && stillThere(c))
       : liveListed;
+  // Moves a deletion the server refused from `deletions` to `refused`.
+  const watchDeletion = (id: string, deletion: AnswerDeletion) => {
+    const stop = deletion.subscribe(() => {
+      const now = deletion.getState();
+      if (now.phase === "failed") {
+        stop();
+        setDeletions(({ [id]: _failed, ...rest }) => rest);
+        setRefused((prev) => ({
+          ...prev,
+          [id]: { deletion, reason: now.reason },
+        }));
+      } else if (now.phase === "done") {
+        stop();
+      }
+    });
+  };
+  const startDelete = (id: string) => {
+    const target = reviewTarget(question.path);
+    if (target === null) return;
+    setConfirmDeleteId(null);
+    setRefused(({ [id]: _old, ...rest }) => rest);
+    const deletion: AnswerDeletion = deleteAnswer(target, id, {
+      onDone: (data) => {
+        setDeletedIds((prev) => [...prev, id]);
+        setDeletions(({ [id]: _gone, ...rest }) => rest);
+        if (data !== null) onBoxSaved?.(target, data);
+      },
+    });
+    setDeletions((prev) => ({ ...prev, [id]: deletion }));
+    watchDeletion(id, deletion);
+  };
+  const retryRefused = (id: string) => {
+    const entry = refused[id];
+    if (entry === undefined) return;
+    setRefused(({ [id]: _old, ...rest }) => rest);
+    setDeletions((prev) => ({ ...prev, [id]: entry.deletion }));
+    watchDeletion(id, entry.deletion);
+    entry.deletion.retryNow();
+  };
 
   // The box **Answer…** opens, made once when it opens: its first save files
   // the comment as the take does, its later ones edit it, and closing it empty
@@ -1230,6 +1383,54 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
           />
         )}
       </div>
+
+      {picked !== null &&
+        answering === null &&
+        editing === null &&
+        (picked.anchor === null || writable) && (
+          <div
+            data-planning-selection-affordance
+            className="absolute z-10 print:hidden"
+            style={{ left: picked.left, top: picked.top }}
+          >
+            {picked.anchor === null ? (
+              <AppLink
+                to={href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="rounded border border-slate-300 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-700 no-underline shadow-sm dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
+              >
+                Open document{" "}
+                <span className="sr-only">(opens in a new tab)</span>
+              </AppLink>
+            ) : (
+              <button
+                type="button"
+                className="rounded border border-slate-300 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-700 shadow-sm dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
+                // The press must not collapse the selection it comments on.
+                onMouseDown={(e) => e.preventDefault()}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") setPicked(null);
+                }}
+                onClick={(e) => {
+                  const target = reviewTarget(question.path);
+                  if (target === null || picked.anchor === null) return;
+                  setHeld({ offer: state.offer, listed: liveListed });
+                  onAnswering?.(cardKey, true);
+                  setAnswering({
+                    rect: e.currentTarget.getBoundingClientRect(),
+                    text: picked.text,
+                    anchor: picked.anchor,
+                    target,
+                  });
+                  setPicked(null);
+                }}
+              >
+                Comment on selection
+              </button>
+            )}
+          </div>
+        )}
 
       {leaningAside !== null && (
         <p
@@ -1436,31 +1637,71 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
                 ) : c.resolved ? (
                   <span className="ml-2 text-[11px]">dismissed</span>
                 ) : null}
-                {isPendingForAgent(c) && writable && (
+                {isPendingForAgent(c) &&
+                  writable &&
+                  deletions[c.id] === undefined && (
+                    <button
+                      type="button"
+                      data-planning-comment-edit
+                      className="review-oq-edit ml-2"
+                      title="Edit comment"
+                      onClick={(e) => {
+                        if (reviewTarget(question.path) === null) return;
+                        // The list goes on the live comments, so the edit shows
+                        // as it is typed rather than from what the layout
+                        // painted (planning-index.md §6.4).
+                        setOpen(true);
+                        setEditing({
+                          rect: e.currentTarget.getBoundingClientRect(),
+                          comment: c,
+                        });
+                      }}
+                    >
+                      <Pencil
+                        size={12}
+                        aria-hidden="true"
+                        className="mr-0.5 inline"
+                      />
+                      Edit
+                    </button>
+                  )}
+                {writable && deletions[c.id] === undefined && (
                   <button
                     type="button"
-                    data-planning-comment-edit
+                    data-planning-comment-delete
                     className="review-oq-edit ml-2"
-                    title="Edit comment"
-                    onClick={(e) => {
-                      if (reviewTarget(question.path) === null) return;
-                      // The list goes on the live comments, so the edit shows
-                      // as it is typed rather than from what the layout
-                      // painted (planning-index.md §6.4).
-                      setOpen(true);
-                      setEditing({
-                        rect: e.currentTarget.getBoundingClientRect(),
-                        comment: c,
-                      });
-                    }}
+                    title="Delete this answer and its replies"
+                    onClick={() => setConfirmDeleteId(c.id)}
                   >
-                    <Pencil
+                    <Trash2
                       size={12}
                       aria-hidden="true"
                       className="mr-0.5 inline"
                     />
-                    Edit
+                    Delete answer
                   </button>
+                )}
+                {deletions[c.id] !== undefined && (
+                  <DeletionStatus deletion={deletions[c.id]!} />
+                )}
+                {refused[c.id] !== undefined && (
+                  <span className="ml-2 text-[11px] text-red-600 dark:text-red-400">
+                    Delete failed — {refused[c.id]!.reason}{" "}
+                    <button
+                      type="button"
+                      className="underline"
+                      onClick={() => retryRefused(c.id)}
+                    >
+                      Retry now
+                    </button>
+                  </span>
+                )}
+                {confirmDeleteId === c.id && (
+                  <DeleteConfirm
+                    replies={(c.reactions ?? []).length}
+                    onKeep={() => setConfirmDeleteId(null)}
+                    onDelete={() => startDelete(c.id)}
+                  />
                 )}
                 {reply !== undefined && !c.resolved && (
                   <div className="mt-0.5 pl-3 text-[12px] text-slate-500 dark:text-slate-400">
@@ -1502,3 +1743,96 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
     </article>
   );
 });
+
+/** The confirmation Delete on an answer asks, focused on the safe choice. */
+function DeleteConfirm({
+  replies,
+  onKeep,
+  onDelete,
+}: {
+  replies: number;
+  onKeep: () => void;
+  onDelete: () => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const outside = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) onKeep();
+    };
+    document.addEventListener("mousedown", outside);
+    return () => document.removeEventListener("mousedown", outside);
+  }, [onKeep]);
+  return (
+    <div
+      ref={ref}
+      role="alertdialog"
+      aria-label="Delete answer"
+      onKeyDown={(e) => {
+        if (e.key === "Escape") {
+          e.stopPropagation();
+          onKeep();
+        }
+      }}
+      className="mt-1 rounded border border-slate-200 bg-slate-50 p-2 text-[12px] dark:border-slate-600 dark:bg-slate-800"
+    >
+      <p>
+        Delete this answer and its {replies}{" "}
+        {replies === 1 ? "reply" : "replies"}?
+      </p>
+      <div className="mt-1.5 flex gap-2">
+        <button
+          type="button"
+          autoFocus
+          onClick={onKeep}
+          className="rounded border border-slate-300 px-2 py-0.5 dark:border-slate-600"
+        >
+          Keep answer
+        </button>
+        <button
+          type="button"
+          onClick={onDelete}
+          className="rounded border border-slate-300 px-2 py-0.5 text-red-600 dark:border-slate-600 dark:text-red-400"
+        >
+          Delete
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** What a deletion in progress shows in the answer's row. */
+function DeletionStatus({ deletion }: { deletion: AnswerDeletion }) {
+  const state = useSyncExternalStore(
+    (listener) => deletion.subscribe(listener),
+    () => deletion.getState(),
+  );
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (state.phase !== "retrying") return;
+    const tick = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(tick);
+  }, [state.phase]);
+  if (state.phase === "deleting") {
+    return (
+      <span className="ml-2 text-[11px] text-slate-600 dark:text-slate-300">
+        Deleting…
+      </span>
+    );
+  }
+  if (state.phase === "retrying") {
+    const seconds = Math.max(0, Math.ceil((state.nextAt - now) / 1000));
+    return (
+      <span className="ml-2 text-[11px] text-slate-600 dark:text-slate-300">
+        Delete failed — retrying in {seconds}s{" "}
+        <button
+          type="button"
+          className="underline"
+          onClick={() => deletion.retryNow()}
+        >
+          Retry now
+        </button>
+      </span>
+    );
+  }
+  return null;
+}
