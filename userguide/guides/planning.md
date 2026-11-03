@@ -988,9 +988,14 @@ leaves out what it matches:
 - **`path:` searches the path and nothing else.** `path:design` keeps every
   entry whose path holds *design*, while the word `design` also keeps a
   question whose title holds it.
-- **`is:open` keeps a question you have already answered** with a comment,
-  since Vantage reads no comments to decide what is open. It stays an answered
-  row of *Needs you*.
+- **`is:open` is open in Markdown, not waiting on you.** It keeps a question
+  you have already answered with a comment, since Vantage reads no comments to
+  decide what is open; it stays an answered row of *Needs you*. The page
+  subtracts answers pending in review, and `vantage-check index` cannot, so
+  its count is *open in Markdown* and never *waiting on you*. An agent handing
+  you a filter follows the contract in the [style guide](../reference/style-guide.md);
+  a `OQ-` id in a table is no question until it is filed with a `question`
+  directive, and `vantage-check` warns about one (`vantage/question-candidate`).
 - **A filter never reorders anything.** *Needs you* keeps its roadmap's order,
   and a section the filter empties is not shown.
 

@@ -3887,8 +3887,10 @@ needs no click at all.
    that is the agent's knowledge, not Vantage's, and the checker never reads it.
 5. **The human answers on the page** and presses Copy answers, which follows the
    filter ([§6.7](#67-answering-and-copy-answers)).
-6. **The agent applies the answers** and reruns the same command until it reports
-   *Nothing this filter keeps needs you*, or, once no entry is left at all,
+6. **The agent applies the answers** and reruns the scan only for what Markdown
+   says: it makes no claim about review. Source-open questions the filter keeps
+   may remain while their answers are already in review, so it stops when no
+   entry the filter keeps asks the human for another answer, or, once no entry is left at all,
    [*Nothing matches*](#618-the-filters-counts-the-notice-and-nothing-matches), as the last
    round can: with every question ruled, `is:open` keeps none, and the line reads,
    for one, ``Without `is:open` it would keep 3 entries, and none of them is an

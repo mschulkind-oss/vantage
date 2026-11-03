@@ -1101,10 +1101,10 @@ export function orList(values: readonly string[]): string {
  * convention — four independent markers of it — which is what the house rule
  * means by a question the parsed tree has settled.
  */
-const OQ_ID = /\bOQ-[A-Za-z]*\d+\b/;
+export const OQ_ID = /\bOQ-[A-Za-z]*\d+\b/;
 
 /** Flatten a node's text the way a reader sees it, phrasing included. */
-function nodeText(node: RootContent | ListItem): string {
+export function nodeText(node: RootContent | ListItem): string {
   let out = "";
   visit(node, (child) => {
     if (child.type === "text" || child.type === "inlineCode")
@@ -1160,21 +1160,7 @@ export function checkOpenQuestions(collector: Collector): void {
   if (!collector.enabled("vantage/oq-missing")) return;
   const root = collector.doc.mdast;
 
-  /** Every question directive's owning scope, `oq` or `question`, once. */
-  const scopesWithOq = new Set<Parents | Root>();
-  visit(root, "html", (node: Html, _index, parent) => {
-    // The cheap prefix test first, as the render pass does: the overwhelming
-    // majority of html nodes in a document carry no directive at all.
-    if (!node.value.includes(VANTAGE_SENTINEL) || !parent) return;
-    for (const segment of scanComments(node.value)) {
-      if (segment.kind !== "comment") continue;
-      if (!hasVantageSentinel(segment.value)) continue;
-      const parsed = parseVantageDirective(segment.value);
-      if (parsed?.kind === "directive" && isQuestionDirective(parsed.name)) {
-        scopesWithOq.add(parent);
-      }
-    }
-  });
+  const scopesWithOq = questionDirectiveScopes(root);
 
   visit(root, "listItem", (item: ListItem) => {
     if (scopesWithOq.has(item)) return;
@@ -1182,10 +1168,7 @@ export function checkOpenQuestions(collector: Collector): void {
     if (vantageOqStatus(text) !== "open") return;
     if (!OQ_ID.test(text)) return;
 
-    const leaning = item.children.find(
-      (child) =>
-        child.type === "paragraph" && LEANING_MARKER.test(nodeText(child)),
-    );
+    const leaning = leaningParagraph(item);
     if (leaning === undefined) return;
 
     collector.report(
@@ -1197,6 +1180,37 @@ export function checkOpenQuestions(collector: Collector): void {
       OQ_MISSING_MESSAGE,
     );
   });
+}
+
+/** The item's `_Leaning:_` paragraph, which makes an open question `vantage/oq-missing`'s. */
+export function leaningParagraph(item: ListItem): RootContent | undefined {
+  return item.children.find(
+    (child) =>
+      child.type === "paragraph" && LEANING_MARKER.test(nodeText(child)),
+  );
+}
+
+/**
+ * Every node that owns a question directive, `oq` or `question`, once. Shared
+ * by `vantage/oq-missing` and `vantage/question-candidate`, which must agree on
+ * what counts as a filed question.
+ */
+export function questionDirectiveScopes(root: Root): Set<Parents | Root> {
+  const scopes = new Set<Parents | Root>();
+  visit(root, "html", (node: Html, _index, parent) => {
+    // The cheap prefix test first, as the render pass does: the overwhelming
+    // majority of html nodes in a document carry no directive at all.
+    if (!node.value.includes(VANTAGE_SENTINEL) || !parent) return;
+    for (const segment of scanComments(node.value)) {
+      if (segment.kind !== "comment") continue;
+      if (!hasVantageSentinel(segment.value)) continue;
+      const parsed = parseVantageDirective(segment.value);
+      if (parsed?.kind === "directive" && isQuestionDirective(parsed.name)) {
+        scopes.add(parent);
+      }
+    }
+  });
+  return scopes;
 }
 
 /** `vantage/oq-missing`, for a repository whose readers are all on 0.8 or later. */

@@ -1305,6 +1305,10 @@ describe("vantage/oq-missing", () => {
       "",
     ].join("\n");
 
+  /** Findings of this rule alone, so a neighbouring rule's report is not its. */
+  const missing = async (markdown: string) =>
+    (await check(markdown)).filter((id) => id === "vantage/oq-missing");
+
   it("reports an open question with a leaning and no directive", async () => {
     expect(await check(question("💬"))).toEqual(["vantage/oq-missing"]);
   });
@@ -1349,8 +1353,9 @@ describe("vantage/oq-missing", () => {
   it("says nothing about a question blocked on something upstream", async () => {
     // 🔒 means it cannot be answered yet, so a one-click answer would be a lie.
     // This is the carve-out that matters most now the rule fails a build.
-    expect(await check(question("🔒"))).toEqual([]);
-    expect(await check(question("💬 🔒"))).toEqual([]);
+    // (`vantage/question-candidate` does report it; that is its own rule.)
+    expect(await missing(question("🔒"))).toEqual([]);
+    expect(await missing(question("💬 🔒"))).toEqual([]);
   });
 
   it("says nothing without the convention's stable ID", async () => {
@@ -1387,7 +1392,7 @@ describe("vantage/oq-missing", () => {
       "   > _(empty)_",
       "",
     ].join("\n");
-    expect(await check(noLeaning)).toEqual([]);
+    expect(await missing(noLeaning)).toEqual([]);
   });
 
   it("reads a leaning with a note before its colon, or a dash in place of it", async () => {
@@ -1412,7 +1417,7 @@ describe("vantage/oq-missing", () => {
       "   My leaning here would depend on what the benchmark says.",
       "",
     ].join("\n");
-    expect(await check(prose)).toEqual([]);
+    expect(await missing(prose)).toEqual([]);
   });
 
   it("reports each uncovered question separately", async () => {
@@ -1869,7 +1874,9 @@ describe("vantage/question-layout", () => {
   it("warns on a whole question run into its title's paragraph, with no directive", async () => {
     const markdown =
       "1. 💬 **OQ-1: Should the gate run on push?** The tradeoff is latency. _Leaning:_ on push. **Answer:** pending.\n";
-    expect(await check(markdown)).toEqual(["vantage/question-layout"]);
+    expect(
+      (await check(markdown)).filter((id) => id === "vantage/question-layout"),
+    ).toEqual(["vantage/question-layout"]);
   });
 
   it("warns outside a list, where the title is the block above", async () => {
