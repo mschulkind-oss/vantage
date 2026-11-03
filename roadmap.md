@@ -1,6 +1,6 @@
 # Roadmap
 
-**Updated:** 2026-10-13
+**Updated:** 2026-11-03
 
 The order is the one thing this file holds that no other document can. Each entry is a link and the reason it sits where it does. What the linked document owns, its status, its stage and its open questions, is not copied here: Vantage shows it in a badge beside the link, and on GitHub it is one click away in that document's frontmatter. Prose beneath an entry holds only what has no other home. What a link here routes, and how `vantage-check index` finds the questions this file misses: [Planning Documents](userguide/guides/planning.md#the-roadmap).
 
@@ -69,6 +69,8 @@ The order is the one thing this file holds that no other document can. Each entr
 
 1. [Large-collection Overview default](docs/brainstorm/overview-at-scale.md#OQ-OAS1) — choose whether a large board starts summary-first or with every active group expanded before proposing a browsing change.
 
-2. [Planning selection comments and answer removal](docs/design/planning-review-actions.md) — settle Escape and × behavior before changing how planning answers are kept or deleted.
+2. [Planning selection comments and answer removal](docs/design/planning-review-actions.md) — pair scoped review and explicit Delete with the session-restoration contract, because cancelling an edit must not delete its existing thread.
 
-3. [Grounded agent planning handoffs](docs/design/agent-planning-handoff.md) — clarify what agents can hand over before adding optional diagnostics for unfiled questions.
+3. [Grounded agent planning handoffs](docs/design/agent-planning-handoff.md) — correct what agents can hand over and plan the default-on warning for unfiled question candidates.
+
+4. [Planning question ownership and lifecycle](docs/design/planning-question-state.md) — pair with review actions before changing comment placement or refresh, because source movement must not transfer answers and an agent reply is not a recorded document ruling.

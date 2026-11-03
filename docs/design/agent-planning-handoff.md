@@ -1,8 +1,8 @@
 ---
-status: in-review
-stage: DESIGN
+status: accepted
+stage: DECIDED
 title: "Grounded agent handoffs: one command, two counts"
-next: "Owner reviews the proposed agent-handoff contract and rules OQ-AH1"
+next: "Complete an implementation plan for the guidance correction and default-on diagnostic"
 ---
 
 # Grounded agent handoffs — one command, two counts, and what the tool cannot see
@@ -13,13 +13,13 @@ next: "Owner reviews the proposed agent-handoff contract and rules OQ-AH1"
 
 **Why it matters.** The owner was told to open a whole document because `is:open` "won't pick up" a table, to run three filters because the agent did not know whether paths combine, and to confirm two ledger rows as if they were new decisions. Each costs the owner a trip; the last costs trust in what *Needs you* means. Asking the owner to wait for other writers is fine; it is only a defect when it stands in for saying what is saved and indexed now.
 
-**The shape.** A six-step agent handoff contract (docs), a corrected vocabulary for two counts the tool already distinguishes (docs), and two optional checker-side safeguards with their boundaries stated (product).
+**The shape.** A six-step agent handoff contract (docs), a corrected vocabulary for two counts the tool already distinguishes (docs), and two proposed checker-side safeguards with their boundaries stated (product).
 
-**Cost.** Wording changes in the printed style guide and the guides that cross-reference it; one new warning name if [OQ-AH1](#OQ-AH1) rules for it. No schema, MCP, index-shape or filter-notation change.
+**Cost.** Wording changes in the printed style guide and the guides that cross-reference it; one new default-on warning for the two narrowly defined candidate shapes. No schema, MCP, index-shape or filter-notation change.
 
 **Start at [§2](#2-what-the-report-got-wrong-and-what-is-already-true)** — the ledger of report claims against current behavior; everything proposed falls out of it.
 
-**Needs your ruling:** [OQ-AH1](#OQ-AH1).
+**Needs your ruling:** None.
 
 **Reads with:** [`answer-publication.md`](answer-publication.md) (owns how an agent's response is recorded as document evidence; not a prerequisite here), [`planning-index.md`](../reference/planning-index.md) (the index this document's counts refer to), [`planning.md`](../../userguide/guides/planning.md) and [`vantage-check.md`](../../userguide/guides/vantage-check.md) (the guides this design corrects).
 
@@ -88,7 +88,7 @@ Where the text filter currently prints the Planning link and notice ([`index.ts#
 - a list item whose first inline run is a 💬 or 🔒 marker followed by an OQ-shaped id, with no directive, excluding every item `vantage/oq-missing` already reports (open, id, leaning), so no occurrence is reported twice;
 - a GFM table whose header row has a cell spelled `Leaning` or `Answer`, whose body rows carry an OQ-shaped id as plain text or inline code in one column, and whose first header cell is not `ID`; a row whose id is a link to a question elsewhere is a reference and is excluded.
 
-Never reported: a table whose first header is exactly `ID` (the ledger form, and the exact ledger schema `ID | Ruling / Decision | …`), ids inside fenced code, ids that are links or inline code in prose, bare mentions in paragraphs, and ✅ items (compaction is the fix there, which other guidance owns). Stated limitation: the owner's pasted table was not seen; if its first column is `ID` this rule does not detect it. An `ID`-first table could be reported only on an explicit 💬/🔒 state at the row start plus a question-specific header; that is not proposed until a real case is surveyed. Default severity is the subject of [OQ-AH1](#OQ-AH1). Compatibility: existing repositories gain findings only on the two shapes above; `--strict` will fail on warnings, so the rollout default matters. Zero candidates produces no output. The rule never edits, infers intent, or converts a table.
+Never reported: a table whose first header is exactly `ID` (the ledger form, and the exact ledger schema `ID | Ruling / Decision | …`), ids inside fenced code, ids that are links or inline code in prose, bare mentions in paragraphs, and ✅ items (compaction is the fix there, which other guidance owns). Stated limitation: the owner's pasted table was not seen; if its first column is `ID` this rule does not detect it. An `ID`-first table could be reported only on an explicit 💬/🔒 state at the row start plus a question-specific header; that is not proposed until a real case is surveyed. Default severity is **warning, enabled by default** ([Decision Ledger](#decision-ledger)). Compatibility: existing repositories gain findings only on the two shapes above; `--strict` will fail on warnings, so the rollout default matters. Zero candidates produces no output. The rule never edits, infers intent, or converts a table.
 
 ### 5.3 Not proposed
 
@@ -114,7 +114,7 @@ A review-aware CLI query ("what is actually waiting on me") would need the CLI t
 | Root-anchored literal `path:` matching no indexed, skipped or unreadable document | Exit 2 preserved; message says the term matched nothing the scan saw, adds the combine hint, and states file existence only for a literal path inside the perimeter. |
 | `path:` with a wildcard matching nothing | Exit 2; reported as an unmatched pattern, never as a missing file. |
 | Table with `ID` first header and OQ ids (ledger, or a question table shaped like one) | No candidate finding — stated limitation. |
-| Table with `Leaning` header and OQ ids in a column, no `ID` first | One candidate finding per table (if [OQ-AH1](#OQ-AH1) enables the rule). |
+| Table with `Leaning` header and OQ ids in a column, no `ID` first | One default-on candidate warning per table. |
 | Open list item with id and leaning, no directive | `vantage/oq-missing` only; no second finding. |
 | OQ ids in fenced code, links, inline code or prose mention | No finding. |
 | 🔒 list item with id and no directive | Candidate finding; today nothing. |
@@ -123,19 +123,8 @@ A review-aware CLI query ("what is actually waiting on me") would need the CLI t
 | Old checker rejects `--filter` | Agent runs the current checkout build or `uvx` latest honoring the repo pin; if none runs, hands over direct source links and says no filter was generated. |
 | `index` exit 0 with skipped/unreadable documents | Scan ran; handoff names them as gaps, not as zero waiting. |
 
-## 8. Open questions
+## Decision Ledger
 
-1. 💬 **OQ-AH1: Should the question-candidate diagnostic ship as a default-on warning, default-off, or not at all?**
-
-   <!-- vantage: question id=OQ-AH1 leaning="Ship the docs changes now regardless; if the diagnostic ships, default-off so --strict pipelines are untouched." -->
-
-   An agent files decisions as a table or a 🔒 item; today's checker may miss them. The proposed warning catches two narrow shapes, not an `ID`-first question table.
-
-   - **A — Default on.** Warn everywhere; matching tables may fail existing `--strict` runs.
-   - **B — Default off.** Warn only when enabled; existing pipelines stay unchanged.
-   - **C — No new warning.** Ship the guidance changes alone.
-
-   _Leaning:_ Ship the docs changes now regardless; if the diagnostic ships, default-off so `--strict` pipelines are untouched.
-
-   **Answer:**
-   > _(empty — fill in when decided)_
+| ID | Ruling / Decision | Date | Settled in | Built |
+| :--- | :--- | :--- | :--- | :--- |
+| OQ-AH1 | Ship the narrowly scoped question-candidate diagnostic as a default-on warning. Existing `--strict` runs can fail on new findings; the documented false-positive boundaries remain. | 2026-11-03 | [Structural diagnostic](#52-structural-diagnostic-for-unfiled-candidates-checker-warning) | No |
