@@ -2,24 +2,24 @@
 title: "Always-on review for planning questions — and a way to actually delete an answer"
 status: in-review
 stage: DESIGN
-next: "Rule OQ-PRA1 (does Escape/× also ask when editing a stored answer?); then review the deletion-record proposal in Ordering, failure and recovery"
+next: "Review the linked session-restoration contract before completing the implementation plan"
 ---
 
 # Always-on review for planning questions — and a way to actually delete an answer
 
 **Status:** 2026-11-03. Nothing built. Code evidence verified against `01837a0a` on 2026-11-03; the planning card, popover, autosave controller, store and backend delete command are cited as shipped behavior. The three owner directions are the ledger rows; every other decision here is a recommendation awaiting the owner's review.
 
-> **In short.** The planning card gets a *scoped* selection-to-comment capability (reusing the viewer's anchor algorithm, not its review mode), and an answer gets a real **Delete**. Escape and × on a *new* answer ask "delete or save?"; every other way of leaving keeps the text — and keeping is never a trap, because every kept answer can be deleted afterwards.
+> **In short.** The planning card gets a *scoped* selection-to-comment capability (reusing the viewer's anchor algorithm, not its review mode), and an answer gets a real **Delete**. Escape and × offer to undo the editing session: delete a new answer or restore an existing answer to its opening text; every other way of leaving keeps the text — and keeping is never a trap, because every kept answer can be deleted afterwards.
 
 **Why it matters.** Today a question can only be answered as a whole block or via the full document in review mode; and once autosave has stored an answer, nothing on the planning page can remove it — Escape, ×, outside click, and a blanked Edit all keep it ([The gap today](#the-gap-today)).
 
-**Cost.** One confirmation step on Escape/× for a new answer; a Delete on comment rows; one new controller-level operation — an explicit deletion intent composing the existing retire/quiesce and remove steps; and one small backend contract extension — a per-comment-id deletion record kept with the review data, so a late create can never resurrect a deleted answer. Nothing deleted from the shipped review system.
+**Cost.** A selection-comment affordance and Delete on comment rows; confirmation on Escape/×; a per-comment-id deletion record that prevents late creates from resurrecting removed answers. Existing-answer cancellation also needs the server-held session baseline and reply-coverage contract in [Planning question state](planning-question-state.md#7-restoring-an-editing-session); it is not a text-only PATCH.
 
-**Start at [Actions](#actions-what-each-way-of-leaving-does)** — the behavior table; [Ordering, failure and recovery](#ordering-failure-and-recovery) is what makes it safe.
+**Start at [Actions](#actions-what-each-way-of-leaving-does)** — the behavior table; [Ordering, failure and recovery](#ordering-failure-and-recovery) makes explicit deletion safe, and [session restoration](planning-question-state.md#7-restoring-an-editing-session) governs cancellation.
 
-**Needs your ruling:** [OQ-PRA1](#OQ-PRA1).
+**Needs your ruling:** None filed; the linked restoration contract is a recommendation awaiting review, not implemented behavior.
 
-**Reads with:** [`comment-autosave.md`](../reference/comment-autosave.md) (shipped keep/flush semantics this builds on), [`planning-index.md`](../reference/planning-index.md) (cards and stable paint), [`planning.md`](../../userguide/guides/planning.md) ("a comment on a question is your answer"), [`answer-publication.md`](answer-publication.md) (independent proposal; not a prerequisite and not assumed).
+**Reads with:** [Planning question state](planning-question-state.md) (question ownership, factual lifecycle labels, update actions and the governing session-restoration contract), [`comment-autosave.md`](../reference/comment-autosave.md) (shipped keep/flush semantics this builds on), [`planning-index.md`](../reference/planning-index.md) (cards and stable paint), [`planning.md`](../../userguide/guides/planning.md) ("a comment on a question is your answer"), [`answer-publication.md`](answer-publication.md) (independent proposal; not a prerequisite and not assumed).
 
 ---
 
@@ -28,7 +28,7 @@ next: "Rule OQ-PRA1 (does Escape/× also ask when editing a stored answer?); the
 Build both requests as one change to the planning card's answer lifecycle, at the smallest state surface:
 
 - **P1 — Review is a capability, not a mode.** Selecting words inside a question yields a comment on those words without toggling review mode or opening the document. The card gains a scoped selection capability; the global review store's single-viewed-document state is untouched.
-- **P2 — Keeping is the default; deletion is explicit.** Only Escape and × on a *new* answer ask. Outside click, navigation, refresh and tab close keep, as shipped. No single keystroke destroys text.
+- **P2 — Cancel means undo this session.** Escape and × offer to remove a new answer or restore an existing answer to the text held when its box opened. Save keeps the session’s changes. Deleting an existing thread is always a separate explicit action, never the cancel path.
 - **P3 — Every stored answer is deletable afterwards.** Delete is a first-class action on a comment row, independent of empty-text behavior. This is what makes P2 safe.
 - **P4 — Save is flush-and-finish, not publication.** Autosave stays. "Save" means: flush pending text, close the box, show the answer row. It does not change who can already see the text ([Visibility](#visibility-what-save-does-not-change)).
 - **P5 — Markdown is never written for the user.** Deleting an answer changes review state only; question directives and planning metadata are untouched. Waiting state is recomputed from the comments that remain.
@@ -37,7 +37,7 @@ Build both requests as one change to the planning card's answer lifecycle, at th
 
 - No new review system, no second Markdown renderer or parser, no inline highlights inside planning cards.
 - No change to agent-side publication semantics (that is [`answer-publication.md`](answer-publication.md), [OQ-AP1](answer-publication.md#OQ-AP1)).
-- No "revert my edit to the previous text" for an existing answer (edits autosave; a revert needs original-text capture and is a later, separate addition).
+- No rollback of an entire conversation: restoring an answer undoes this box’s text edits, not agent replies or independent changes to other threads.
 - No reply-only deletion: an agent reply cannot be removed on its own. Deleting an answer removes its whole thread, replies included, and says so ([Actions](#actions-what-each-way-of-leaving-does)). No mass deletion and no cross-target side effects: the planning page intentionally shows cards from many documents, and each Delete addresses exactly one comment in its own card's source document.
 
 ## The gap today
@@ -53,7 +53,7 @@ Build both requests as one change to the planning card's answer lifecycle, at th
 | The store already has `removeComment(target,id)` (fixed base, safe) and `deleteCommentFrom(path,id)` (derives the *current* base — unsafe after a repository switch). | [`useReviewStore.ts#L354-L440`](../../frontend/src/stores/useReviewStore.ts#L354-L440) |
 | Backend `DeleteComment` takes the per-document lock, returns `ErrCommentNotFound` when the document has no review or the id is absent, removes the **entire root object** (replies and reactions included) and persists. The API handler delegates to it. Nothing records that an id was deleted, so a late create for that id is accepted. | [`commands.go#L248-L275`](../../internal/review/commands.go#L248-L275); [`review_command_handlers.go#L221-L227`](../../internal/api/review_command_handlers.go#L221-L227) |
 
-Net: the owner's two complaints are one missing operation (delete a stored answer, from the card and from an abandoned new box) plus one missing capability (selection comments on the card). Most of the machinery exists. The one server gap is that nothing stops a late create from re-inserting an id that was just deleted; closing it is the only backend change proposed.
+Net: the owner's two complaints are one missing operation (delete a stored answer, from the card and from an abandoned new box) plus one missing capability (selection comments on the card). Most of the machinery exists. The explicit-deletion gap is that nothing stops a late create from re-inserting an id that was just deleted. Existing-answer restoration additionally requires the [session contract](planning-question-state.md#7-restoring-an-editing-session); the deletion record is not its entire backend mechanism.
 
 ## Selection comments on the card
 
@@ -65,52 +65,29 @@ Net: the owner's two complaints are one missing operation (delete a stored answe
 - **Settled selection.** Acted on when `mouseup` lands with both endpoints inside the unit, or a keyboard selection ends (Shift released, or `selectionchange` quiet for 300 ms) with both endpoints inside the unit. A selection touching anything outside the unit — another card, controls, a hidden sibling — is ignored, not clipped.
 - **Captured anchor.** On settling, the card resolves the anchor and keeps it. Focusing the affordance collapses the browser selection; the captured anchor survives until activated or discarded. Discard: a new settled selection, a click inside the unit that collapses the selection, card collapse, or Escape while the affordance is focused.
 - **Affordance, not auto-open.** A captured anchor shows a small **Comment on selection** button adjacent to the selection end, focusable and next in Tab order after the unit; plain copying never opens a box. Click, Enter or Space opens the answer box with the captured anchor. When the mapping is uncertain (no source node, or the hash disagrees with the canonical block) the button reads **Open document** and opens the full document at the question with the selection — never a silent fallback to a whole-question anchor. One box per card: the button is hidden while a box is open.
-- **Consequence for answers.** The comment is created exactly as a whole-block answer is today (`newCommentBox`, `reviewTarget(question.path)`), differing only in anchor, so it is the question's answer, pending for the agent, in the same list and waiting state. Showing the selected words in the row is the implementer's choice.
+- **Consequence for answers.** Selection comments and whole-block answers use the same fixed review target and durable question binding from [Planning question state](planning-question-state.md#4-ownership-and-legacy-migration), differing only in their source anchor. A selection anchor is evidence for the quote, not independent proof of question ownership. A valid binding puts the comment in that question's list and pending state; ambiguous or id-less ownership keeps it visible under Unassigned instead. Showing the selected words in the row is the implementer's choice.
 
 ## Actions: what each way of leaving does
 
-Three states of an answer: **new** (box opened from Answer or Comment on selection, comment not yet stored or stored only by autosave in this box's lifetime), **saved** (a row in the comment list), **edited** (saved answer reopened in the edit box). "Empty" means no non-whitespace characters.
+**Opening text** is the existing answer’s text when the editor opened, retained for the life of that editing session; it is not whatever an autosave last stored. The owner’s ruling is recorded in the [Decision Ledger](#decision-ledger). The governing baseline, concurrency and reply-preservation rules are in [Session restoration](planning-question-state.md#7-restoring-an-editing-session).
 
-| Action | New answer, empty | New answer, nonempty | Edited answer, nonempty | Edited answer, blanked | Saved answer (row) |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **Escape** | Close, remove (shipped) | **Ask: Delete / Save** | Close, keep (shipped) | Close, previous text kept (shipped) + hint | — |
-| **× (top right)** | Close, remove | **Ask: Delete / Save** | Close, keep | Close, previous text kept + hint | — |
-| **Save** (footer, Ctrl/⌘+Enter) | Close, remove | Flush, close, show row | Flush, close | Close, previous text kept + hint | — |
-| **Delete** (footer / row) | n/a (nothing stored) | **Ask**, then retire and delete | **Ask**, then delete thread | **Ask**, then delete thread | **Ask** (anchored dialog), then delete thread |
-| **Outside click** | Close, remove | Flush, close, show row | Flush, close | Close, previous text kept | — |
-| **Navigate (SPA)** | Nothing stored | Flush continues (shipped); row present on return | Flush continues | Previous text kept | pending delete continues |
-| **Reload / tab close** | Nothing stored | Flush attempted (shipped); leave prompt if pending | same | Previous text kept | leave prompt if a delete is pending |
+| Action | New answer | Existing answer being edited | Saved answer row |
+| :--- | :--- | :--- | :--- |
+| Escape or × after changes | Keep editing / Discard; Discard removes this session’s new answer even if autosaved, warning about any replies it gathered | Keep editing / Restore; Restore undoes only this session's changes, preserving the existing thread and replies | No editor action |
+| Escape or × with no changes | Close an unpublished empty session; if it created a thread, use Discard with the reply warning | Finish the unchanged session without rollback | No editor action |
+| Save or Ctrl/⌘+Enter | Flush and finish | Flush and finish | No editor action |
+| Explicit Delete | Confirm whole-thread removal | Separately confirm whole-thread removal, naming replies | Confirm whole-thread removal, naming replies |
+| Outside click or SPA navigation | Keep text, flush and finish the session | Keep text, flush and finish the session | No deletion |
 
-Notes that bind the table:
-
-- **Scope of the popover change.** The Save/Delete footer, the Escape/× prompt and the blank-edit hint apply to **planning answer boxes only** — new-answer and edit boxes opened from a card — as a per-box flavor of the shared popover. The document viewer's selection, reply and edit boxes keep today's Close/Escape behavior; changing them is a separate decision, not a side effect of this one.
-- The footer's **Close** becomes **Save** for planning boxes, keeping Ctrl/⌘+Enter; the footer wording no longer says Escape closes. The footer gains **Delete** (secondary styling).
-- **Save is honest.** Save closes the box at once; the row reads *Saving…* until the flush succeeds, and *Save failed — retrying* (shipped backoff) if it does not. It never reads Saved before the server confirmed.
-- **Hint** on a blanked edit: *"Blank text keeps the previous answer — use Delete to remove it."* It appears as soon as the text is blank, stays while it is blank, and is repeated as a shell notice on close so it remains actionable after the box is gone. The shipped empty-edit rule is unchanged.
-- **Edit boxes keep on Escape/× — open as [OQ-PRA1](#OQ-PRA1), not an owner direction.** The owner asked that Escape and × ask generally. For a *stored* answer this doc recommends the opposite: Escape and × keep (today's behavior) and removal is the explicit row or footer Delete. The trade-off: asking on edits would offer to delete a stored, possibly replied, answer on a reflexive keystroke and nag the common glance-and-close path; explicit Delete gives the same removal on purpose. If the owner prefers asking on edits too, the prompt in [Confirmation](#confirmation-and-keyboard-contract) applies unchanged with Save as the keep path.
-- A **dismissed** comment is still a row the user authored; it gets Delete too. Deleting it never changes waiting state (it was not pending).
-- **Replied thread.** Deleting an answer that has agent replies removes the whole thread — the server deletes the root object with its replies and reactions — and the confirmation says so: *"Delete this answer and its N replies?"* This is the only way replies are removed; there is no reply-only delete. The default-focused button is the keep path, so a thread is never lost by a stray Enter.
-- **Waiting state after delete** is recomputed from the remaining comments: if another pending comment on this question remains, the card stays *Answered — waiting on the agent*; otherwise it returns to the open-question row. Markdown is untouched (P5).
+Blanking an existing answer is a text edit, not deletion; Escape offers restoration of the opening text. A new empty answer can close without confirmation only if its session created no thread; otherwise cancellation names the thread and any replies it removes. Autosave remains: cancellation must undo effects that already reached the server, not just clear the textarea. "Unchanged" excludes any prior server text mutation in the session, even if the textarea now spells the original text again.
 
 ## Confirmation and keyboard contract
 
-Two surfaces, one contract; never a browser `confirm()`. **In a box** (new or edit) the prompt is rendered inside the popover in place of the footer; the popover may grow by one row, but the card and the other rows do not move. **On a row** no popover exists, so the prompt is a small anchored dialog opened beside the row's Delete control, positioned so the row itself does not move.
-
-| Element | In a box (Escape, ×, footer Delete) | On a row (row Delete) |
-| :--- | :--- | :--- |
-| Role and name | `role="dialog"`, `aria-modal="true"`, labelled by its prompt text | same |
-| Prompt | *"Delete this answer?"*; adds *"It has already been autosaved."* once a create succeeded; *"…and its N replies?"* when replies exist | *"Delete this answer?"* / *"Delete this answer and its N replies?"* |
-| Buttons, in order | **Save** (default) · **Delete** (destructive styling) | **Keep answer** (default) · **Delete** |
-| Initial focus | Save — a second Escape never deletes | Keep answer |
-| Tab / Shift+Tab | cycles the two buttons only while the prompt is shown | same |
-| Enter / Space | activates the focused button | same |
-| Escape | returns to editing: prompt closes, focus to the textarea at its previous caret; nothing deleted | cancels: dialog closes, focus to the row's Delete control; nothing deleted |
-| Outside click | returns to editing (box stays open); nothing saved or deleted by the click itself | cancels — it never saves, opens or edits anything |
-| Keep path | Save: flush, close, show row; focus → that row's **Edit** | Keep answer: dialog closes; focus → the row's **Delete** |
-| Delete | runs the deletion intent in [Ordering](#ordering-failure-and-recovery); focus → the question's **Answer** button, or the next row's Edit if rows remain | same |
-| Delete fails | prompt closes; the row shows the failure state from Ordering with focus on it | same |
-| Mouse / keyboard | fully operable with either alone | same |
-| Escape handlers | exactly one handler decides per keypress: while a planning box or prompt is open, that handler owns Escape and stops propagation, and the document-level listener ignores Escape. No cascade from "ask" through to "close". | same |
+- **Safe default:** focus Keep editing for session cancellation, Keep answer for explicit row deletion. The destructive or restoring action requires a separate activation.
+- **Keyboard:** Tab/Shift+Tab reaches each action; Enter/Space activates the focused action; Escape within the confirmation returns to editing at the previous caret, never cascading into another close or deletion.
+- **Mouse:** Escape and × have identical cancellation semantics; clicking outside an open confirmation dismisses it without undoing anything.
+- **Thread safety:** Restore previous version never deletes an existing answer or agent replies. Explicit Delete remains visibly separate and names the whole thread it removes.
+- **Restoration mechanism:** [Session restoration](planning-question-state.md#7-restoring-an-editing-session) is the single contract for the server-held baseline, closed-session barrier, concurrent autosaves/replies, legacy writers and conflict recovery. Do not independently restore through ordinary PATCH or replace the whole review.
 
 ## Ordering, failure and recovery
 
@@ -120,7 +97,7 @@ Two client-side facts must be kept apart. **Client-known success**: a 2xx for th
 
 1. **Server contract (extension).** `DELETE` for an id adds the id to the document's deletion record *before* persisting, whether or not the comment exists (a document with no review gets a review holding only the record); the response shape is kept, so a missing id still answers `404`. A create or update whose id is in the record is refused with `404` — the same answer a missing comment gets today — and writes nothing. Entries never expire — the cost is one id per deletion, persisted with the review, surviving restarts and travelling with the review on a document move. Ids are never reused: **Post as new** always mints a fresh id. The existing delete endpoint remains the single entry point; no other endpoint or lock is added.
 2. **Compatibility.** `404` rather than `410` is deliberate: the shipped client's gone detection recognizes only `404` ([`commentAutosave.ts#L122-L125`](../../frontend/src/lib/commentAutosave.ts#L122-L125)) and its send path handles only that case ([`commentAutosave.ts#L399`](../../frontend/src/lib/commentAutosave.ts#L399)), so a `410` would leave a pre-change client retrying indefinitely with a visible failure. With `404`, a pre-change client retrying a create or update for a deleted id stops on its existing gone path (Copy text / Post as new) and nothing is resurrected; new clients use the same path, so "gone" and "deleted" are one case.
-3. **One deletion intent.** Every entry point — new-box Escape/×/Delete, edit-box Delete, row Delete — runs the same **deletion intent**, keyed by (repository base, document path, comment id): look up any local controller for that key in the registry and **retire** it — the existing operation at [`commentAutosave.ts#L279-L286`](../../frontend/src/lib/commentAutosave.ts#L279-L286) — (cancel timers; drop queued creates and updates; mark retired so a late success callback neither marks the answer kept, opens the list, calls `onAnswered`, nor adopts the box text), then send `DELETE` through `removeComment(target,id)` with the fixed base — `deleteCommentFrom` is not used. This covers a row deleted while its closed controller is still retrying, and an edit in flight.
+3. **One deletion intent.** Every explicit Delete entry point — new-box Delete, edit-box Delete, row Delete — runs the same **deletion intent**, keyed by (repository base, document path, comment id): look up any local controller for that key in the registry and **retire** it — the existing operation at [`commentAutosave.ts#L279-L286`](../../frontend/src/lib/commentAutosave.ts#L279-L286) — (cancel timers; drop queued creates and updates; mark retired so a late success callback neither marks the answer kept, opens the list, calls `onAnswered`, nor adopts the box text), then send `DELETE` through `removeComment(target,id)` with the fixed base — `deleteCommentFrom` is not used. This covers a row deleted while its closed controller is still retrying, and an edit in flight.
 4. **In flight.** If a request for that id is in flight, the `DELETE` waits behind it (one request in flight per controller) and goes when it settles — success, failure or abort. Correctness no longer depends on that order; the wait only preserves the one-writer rule.
 5. **Nothing sent yet.** If no create was ever sent, retire removes the local box and sends nothing (today's empty-close path).
 6. **Success.** A 2xx or `404` on `DELETE` completes the intent: remove the row, recompute waiting state from the remaining comments (dismissed excluded), and let the existing push inform other tabs. The server's `404` still wrote the record, so a late create is refused.
@@ -141,7 +118,7 @@ Half-typed answers **remain externally visible** exactly as shipped: the first n
 | Force `isReviewMode=true` on embedded viewers | **Rejected.** Global store holds one document; planning embeds several; drags across cards would misattach. |
 | Open the full document in review mode on selection | **Rejected.** Fails the request (no page switch), and loses the card context. |
 | Auto-open the box on any selection | **Rejected.** Breaks ordinary copy and link use; the affordance button costs one click. |
-| Escape/× also ask on edit boxes (the owner's general wording) | **Not recommended; open as [OQ-PRA1](#OQ-PRA1).** A stored, possibly replied, answer would be offered for deletion on a reflexive keystroke; row Delete removes it on purpose. The prompt is ready if the owner wants it on edits. |
+| Delete an existing answer when cancelling its edit | **Rejected.** Cancellation restores the opening text; explicit Delete is the only whole-thread removal path. |
 | Outside click also asks | **Rejected.** Turns every stray click into a modal; P3 makes keeping safe instead. |
 | Blank text on edit deletes the answer | **Rejected.** Reverses a shipped rule (empty edit preserves text) and hides deletion behind an accident; explicit Delete plus a hint is clearer. |
 | Delete disabled once the agent has replied | **Rejected.** Owner needs removal; the confirmation names the replies instead. |
@@ -153,42 +130,26 @@ Half-typed answers **remain externally visible** exactly as shipped: the first n
 
 ## Acceptance scenarios (observable)
 
-1. Select at least three characters in a collapsed question's visible body on the planning page; a **Comment on selection** button appears; Enter opens a box; typing and Save produce a row, the card shows *Answered — waiting on the agent*, and the same comment in the full document anchors to exactly those characters.
+1. Select at least three characters in a collapsed question's visible body on the planning page; a **Comment on selection** button appears; Enter opens a box; typing and Save produce a row, the card shows *Response saved — waiting for agent*, and the same comment in the full document anchors to exactly those characters.
 2. Select words in the card's headline (and in a rendered leaning where the source has one): the comment anchors to the original title/leaning line in the full document. On an index-only preview with no source node, the button reads **Open document** and no comment is created from the card.
 3. Drag from one card into another, or from a question into its controls: no button appears. Select text and copy: no box opens.
-4. Keyboard-only: Shift+arrows select text, Tab reaches the button (selection highlight collapses, button stays), Enter opens the box with the selected words as anchor; type; Escape → prompt with focus on Save; Tab → Delete; Enter → box closes. Online, no row and no notice remain once the server confirmed; offline, the row shows *Delete failed — retrying in Ns* until it does.
-5. Type in a new answer, wait 2 s (autosave fired), Escape, Delete: no row remains, waiting state is recomputed from the remaining comments (back to open if this was the only pending one), and another tab sees the comment appear and then vanish; a stale create retry from that tab is refused and nothing reappears.
+4. Keyboard-only: Shift+arrows select text, Tab reaches the button (selection highlight collapses, button stays), Enter opens the box with the selected words as anchor; type; Escape → prompt with focus on Keep editing; Tab → Discard; Enter → box closes. Online, no row and no notice remain once the server confirmed; offline, the box shows *Restore failed — retrying in Ns* until the session outcome is known.
+5. Type in a new answer, wait 2 s (autosave fired), Escape, Discard: no row remains, waiting state is recomputed from the remaining comments (back to open if this was the only pending one), and another tab sees the comment appear and then vanish; a stale create retry from that tab is refused and nothing reappears.
 6. Type, Escape, Escape: box returns to editing with text intact; nothing deleted.
 7. Type, click elsewhere on the page: row appears with Edit and Delete; Delete → anchored dialog with focus on **Keep answer**; click outside → dialog closes, row unchanged; Delete again → Delete removes it and the question returns to open.
-8. Two pending comments on one question; delete one: card stays *Answered — waiting on the agent*.
+8. Two pending comments on one question; delete one: card stays *Response saved — waiting for agent*.
 9. Answer with two agent replies; the prompt reads "and its 2 replies"; Keep answer (default) leaves everything; Delete removes the thread.
-10. Edit an existing answer, blank it: hint appears at once; Escape: previous text kept, hint repeated as a notice; no prompt.
+10. Edit an existing answer, let autosave run, then Escape and Restore previous version: the opening text returns; existing agent replies remain, and the question is not newly answered by the discarded edit.
 11. Go offline, delete a saved answer: row muted with *Delete failed — retrying in Ns* and **Retry now**; back online the row disappears without a second click. Reload while offline: leave prompt fires; leaving anyway shows the row again on return.
 12. Delete a saved answer while another tab is mid-edit of it: that tab's next update gets `404` and offers Copy text / Post as new; Post as new creates a comment with a fresh id.
 13. Refresh mid-typing a new answer: text already acknowledged by autosave is a row with Delete available on return. Unsent text triggers the leave prompt; leaving anyway may lose those last keystrokes — no claim is made that an unacknowledged save always reaches the server.
 
-## Open Questions
-
-1. 💬 **OQ-PRA1: Should Escape and × also ask "delete or save?" when editing an answer that is already stored?**
-
-   Priya starts an answer and presses Escape: the box asks *Delete / Save*. Later she opens Edit on that saved answer, now with an agent reply, and presses Escape. Today closing keeps text; should the requested confirmation apply here too?
-
-   - **A — Ask on both.** Every Escape/× prompts, with Save focused; deleting a replied answer removes its thread.
-   - **B — Ask on new answers only.** Edit closes and keeps; use the row or footer Delete to confirm removal.
-
-   <!-- vantage: question id=OQ-PRA1 leaning="B — a stored, possibly replied answer should not be offered for deletion by a reflexive keystroke; explicit Delete gives the same removal on purpose." -->
-
-   _Leaning:_ B — a stored, possibly replied answer should not be offered for deletion by a reflexive keystroke; explicit Delete gives the same removal on purpose.
-
-   **Answer:**
-   > _(empty — fill in when decided)_
-
 ## Decision Ledger
 
-Only owner directions are recorded here. Everything else in this document — the edit-box Escape exception ([OQ-PRA1](#OQ-PRA1)), outside-click and leave behavior, the thread-deletion prompt, the deletion record — is a proposal awaiting the owner's review and is described in the body, not settled.
+Owner directions are recorded here. Session cancellation is settled; its proposed restoration mechanism is specified in [Planning question state](planning-question-state.md#7-restoring-an-editing-session). The deletion record and other implementation mechanisms remain unbuilt.
 
 | ID | Ruling / Decision | Date | Settled in | Built |
 | :--- | :--- | :--- | :--- | :--- |
 | D1 | The planning page always offers review: selecting words of a question lets the user comment on those words without toggling review mode or opening the document. | 2026-11-03 | [Selection comments on the card](#selection-comments-on-the-card) | No |
 | D2 | An already-stored answer must be removable from the card with an explicit Delete, not merely dismissed or blanked. | 2026-11-03 | [Actions: what each way of leaving does](#actions-what-each-way-of-leaving-does) | No |
-| D3 | Escape and the top-right × on an answer box ask whether to delete, confirmed by a Delete button, with Save as the keep path; the whole flow is mouse- and keyboard-operable. The owner stated this generally; whether it also applies to editing a stored answer is [OQ-PRA1](#OQ-PRA1). | 2026-11-03 | [Confirmation and keyboard contract](#confirmation-and-keyboard-contract) | No |
+| OQ-PRA1 | Escape and × offer to undo whatever was done since the box opened: remove a new answer, or restore an existing answer’s opening text without deleting its thread or replies. Save keeps the edits. Keyboard and mouse both support the flow. | 2026-11-03 | [Actions](#actions-what-each-way-of-leaving-does) | No |
