@@ -68,3 +68,7 @@ The order is the one thing this file holds that no other document can. Each entr
 ## Candidate work
 
 1. [Large-collection Overview default](docs/brainstorm/overview-at-scale.md#OQ-OAS1) — choose whether a large board starts summary-first or with every active group expanded before proposing a browsing change.
+
+2. [Planning selection comments and answer removal](docs/design/planning-review-actions.md) — settle Escape and × behavior before changing how planning answers are kept or deleted.
+
+3. [Grounded agent planning handoffs](docs/design/agent-planning-handoff.md) — clarify what agents can hand over before adding optional diagnostics for unfiled questions.
