@@ -17,6 +17,7 @@ import {
   commentsOnQuestions,
   documentQuestions,
   leaningComment,
+  locateQuestion,
   questionOffer,
   questionUnit,
   questionUnitBlocks,
@@ -1714,5 +1715,216 @@ describe("useOpenQuestionButtons — Take and Answer pass question_id (seam 4)",
     const btn = container.querySelector<HTMLElement>(".review-oq-answer")!;
     fireEvent.click(btn);
     expect(onAnswer2.mock.calls[0][3]).toBe("OQ-U");
+  });
+});
+
+describe("useOpenQuestionButtons — rows outside review mode (inline entry)", () => {
+  type Entry = import("./useOpenQuestionButtons").InlineReviewEntry;
+  type Intent = import("./useOpenQuestionButtons").QuestionIntent;
+  let request: ReturnType<typeof vi.fn>;
+  let settle: ReturnType<typeof vi.fn>;
+  let onAnswer: ReturnType<typeof vi.fn> & AnswerQuestion;
+
+  const entryOf = (over: Partial<Entry> = {}): Entry => ({
+    path: "doc.md",
+    ready: true,
+    request: request as Entry["request"],
+    armed: null,
+    settle: settle as Entry["settle"],
+    ...over,
+  });
+
+  interface EProps {
+    cs: ReviewComment[];
+    on: boolean;
+    entry: Entry | undefined;
+  }
+  const renderEntry = (
+    entry: Entry | undefined,
+    enabled = false,
+    comments: ReviewComment[] = [],
+  ) => {
+    const ref = { current: container };
+    return renderHook(
+      ({ cs, on, entry: e }: EProps) =>
+        useOpenQuestionButtons(
+          ref,
+          cs,
+          on,
+          "doc content",
+          onTake,
+          onUndo,
+          undefined,
+          onAnswer,
+          e,
+        ),
+      { initialProps: { cs: comments, on: enabled, entry } },
+    );
+  };
+  const answerButtons = () =>
+    Array.from(
+      container.querySelectorAll<HTMLButtonElement>(".review-oq-answer"),
+    );
+
+  beforeEach(() => {
+    request = vi.fn();
+    settle = vi.fn();
+    onAnswer = vi.fn() as ReturnType<typeof vi.fn> & AnswerQuestion;
+  });
+
+  it("offers Take this leaning and Answer… outside review mode, writing nothing", () => {
+    renderEntry(entryOf());
+
+    expect(takeButtons()).toHaveLength(3);
+    expect(answerButtons()).toHaveLength(3);
+    expect(onTake).not.toHaveBeenCalled();
+    expect(onAnswer).not.toHaveBeenCalled();
+  });
+
+  it("renders nothing outside review mode without an entry, or before the comments are loaded", () => {
+    renderEntry(undefined);
+    expect(container.querySelector("[data-vantage-oq-button]")).toBeNull();
+    renderEntry(entryOf({ ready: false }));
+    expect(container.querySelector("[data-vantage-oq-button]")).toBeNull();
+  });
+
+  it("renders nothing in a static export, entry offered or not", () => {
+    window.__VANTAGE_STATIC__ = true;
+    renderEntry(entryOf());
+    expect(container.querySelector("[data-vantage-oq-button]")).toBeNull();
+  });
+
+  it("a click asks to enter review with the exact question, and does not act", () => {
+    renderEntry(entryOf());
+    const built = buildWholeBlockAnchor(blockAt(11))!;
+
+    fireEvent.click(takeButtons()[1]);
+    fireEvent.click(answerButtons()[1]);
+
+    expect(onTake).not.toHaveBeenCalled();
+    expect(onAnswer).not.toHaveBeenCalled();
+    const [take, answer] = request.mock.calls.map((c) => c[0] as Intent);
+    expect(take).toEqual({
+      kind: "take",
+      path: "doc.md",
+      anchor: built.anchor,
+      questionId: undefined,
+    });
+    expect(answer.kind).toBe("answer");
+    expect(answer.anchor).toEqual(built.anchor);
+    // Cancel must find the row as it was: the button is not spent.
+    expect(takeButtons()[1].disabled).toBe(false);
+  });
+
+  it("shows chips but no Undo outside review mode", () => {
+    const { rerender } = renderEntry(entryOf());
+    fireEvent.click(takeButtons()[0]);
+    const taken = {
+      id: "t1",
+      anchor: (request.mock.calls[0][0] as Intent).anchor,
+      comment: LEANING,
+      fallback_text: "x",
+      created_at: 0,
+      reactions: [],
+    } as ReviewComment;
+    rerender({ cs: [taken], on: false, entry: entryOf() });
+
+    expect(container.querySelector(".review-oq-taken")).not.toBeNull();
+    expect(container.querySelector(".review-oq-undo")).toBeNull();
+  });
+
+  it("carries out an armed take once review mode is on, exactly once", () => {
+    const intent = (): Intent => ({
+      kind: "take",
+      path: "doc.md",
+      anchor: buildWholeBlockAnchor(blockAt(11))!.anchor,
+    });
+    const armed = intent();
+    const { rerender } = renderEntry(entryOf({ armed }), false);
+    expect(onTake).not.toHaveBeenCalled();
+
+    rerender({ cs: [], on: true, entry: entryOf({ armed }) });
+    rerender({ cs: [], on: true, entry: entryOf({ armed }) });
+
+    expect(onTake).toHaveBeenCalledTimes(1);
+    expect(onTake.mock.calls[0][0]).toEqual(armed.anchor);
+    expect(onTake.mock.calls[0][1]).toBe("Take the stated leaning.");
+    expect(settle).toHaveBeenCalledTimes(1);
+    expect(settle).toHaveBeenCalledWith(armed, "done");
+  });
+
+  it("carries out an armed answer once, opening the answer at the question", () => {
+    const armed: Intent = {
+      kind: "answer",
+      path: "doc.md",
+      anchor: buildWholeBlockAnchor(blockAt(11))!.anchor,
+    };
+    renderEntry(entryOf({ armed }), true);
+
+    expect(onAnswer).toHaveBeenCalledTimes(1);
+    expect(onAnswer.mock.calls[0][0]).toEqual(armed.anchor);
+    expect(onTake).not.toHaveBeenCalled();
+    expect(settle).toHaveBeenCalledWith(armed, "done");
+  });
+
+  it("settles as changed, filing nothing, when the question moved or its text changed", () => {
+    const anchor = buildWholeBlockAnchor(blockAt(11))!.anchor;
+    container.querySelector('p[data-source-line="11"]')!.textContent =
+      "A different question entirely?";
+    const armed: Intent = { kind: "take", path: "doc.md", anchor };
+    renderEntry(entryOf({ armed }), true);
+
+    expect(onTake).not.toHaveBeenCalled();
+    expect(onAnswer).not.toHaveBeenCalled();
+    expect(settle).toHaveBeenCalledWith(armed, "changed");
+  });
+
+  it("settles as changed for another document's intent", () => {
+    const armed: Intent = {
+      kind: "take",
+      path: "other.md",
+      anchor: buildWholeBlockAnchor(blockAt(11))!.anchor,
+    };
+    renderEntry(entryOf({ armed }), true);
+
+    expect(onTake).not.toHaveBeenCalled();
+    expect(settle).toHaveBeenCalledWith(armed, "changed");
+  });
+
+  it("does not take a question that was answered meanwhile (no duplicate create)", () => {
+    const anchor = buildWholeBlockAnchor(blockAt(11))!.anchor;
+    const answered: ReviewComment = {
+      id: "a1",
+      anchor,
+      comment: "my own answer",
+      fallback_text: "x",
+      created_at: 0,
+      reactions: [],
+    } as ReviewComment;
+    const armed: Intent = { kind: "take", path: "doc.md", anchor };
+    renderEntry(entryOf({ armed }), true, [answered]);
+
+    expect(onTake).not.toHaveBeenCalled();
+    expect(settle).toHaveBeenCalledWith(armed, "changed");
+  });
+
+  it("never runs an armed intent while review mode is off", () => {
+    const armed: Intent = {
+      kind: "take",
+      path: "doc.md",
+      anchor: buildWholeBlockAnchor(blockAt(11))!.anchor,
+    };
+    renderEntry(entryOf({ armed }), false);
+
+    expect(onTake).not.toHaveBeenCalled();
+    expect(settle).not.toHaveBeenCalled();
+  });
+
+  it("locateQuestion refuses an ambiguous anchor", () => {
+    // Two identical questions on one line cannot be told apart: no guess.
+    container.innerHTML += `<p data-source-line="11" data-vantage-oq="true">Should the retry budget be shared?</p>`;
+    const anchor = buildWholeBlockAnchor(blockAt(11))!.anchor;
+    const intent: Intent = { kind: "take", path: "doc.md", anchor };
+    expect(locateQuestion(container, [], intent)).toBeNull();
   });
 });

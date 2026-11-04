@@ -29,7 +29,7 @@
  * for.
  */
 
-import { useLayoutEffect, type RefObject } from "react";
+import { useLayoutEffect, useRef, type RefObject } from "react";
 import {
   VANTAGE_LEANING_ATTRIBUTE,
   VANTAGE_OQ_HOST_TARGETS,
@@ -609,6 +609,101 @@ export const takeUndoable = (take: ReviewComment): boolean =>
   (take.reactions?.length ?? 0) === 0;
 
 /**
+ * What a reader asked for from a question's row while review mode was off:
+ * identified by the document, the question's validated whole-block source
+ * anchor (line and block-text hash) and, when the document's DOM states one,
+ * its unique id. Nothing fuzzier identifies it — an intent that no longer
+ * finds exactly one such question is not carried out.
+ */
+export interface QuestionIntent {
+  kind: "take" | "answer";
+  path: string;
+  anchor: CommentAnchor;
+  questionId?: string;
+}
+
+/**
+ * How rows exist outside review mode (owner ruling 2026-10-12): the row is
+ * offered, a click asks `request` to put the reader's consent to entering
+ * review, and `armed` is that consented intent, carried out once by the pass
+ * after review mode is actually on and the fresh DOM still proves the question.
+ */
+export interface InlineReviewEntry {
+  /** The document these rows belong to; an intent for another is refused. */
+  path: string;
+  /** Whether the store's comments are this document's, loaded. */
+  ready: boolean;
+  request: (intent: QuestionIntent, opener: HTMLElement) => void;
+  armed: QuestionIntent | null;
+  /** Called once per armed intent: `done`, or `changed` when it did not run. */
+  settle: (intent: QuestionIntent, outcome: "done" | "changed") => void;
+}
+
+const sameAnchor = (a: CommentAnchor, b: CommentAnchor): boolean =>
+  a.source_line === b.source_line &&
+  a.block_text_hash === b.block_text_hash &&
+  a.selection_offset === b.selection_offset &&
+  a.selection_length === b.selection_length;
+
+/**
+ * Every open question's row inputs, read from the DOM as it is now. The one
+ * reading of a question's identity and state: the rendering pass and the
+ * proof an intent is carried out against both use it.
+ */
+function readQuestionRows(el: HTMLElement, comments: readonly ReviewComment[]) {
+  // Every open question, and none of the 🔒 or ✅ ones (Plan Q5). Filtered
+  // here and never inside `documentQuestions`, which the contents column
+  // lists from: the column keeps every state, and only the row is withheld.
+  // A skipped question gets no row at all — no button, no chip, no Undo.
+  const all = documentQuestions(el);
+  const on = commentsOnQuestions(el, all, comments);
+  const rows = all
+    .filter(({ stamped }) => offersTake(stamped))
+    .flatMap((question) => {
+      const built = buildWholeBlockAnchor(question.block);
+      if (built === null) return [];
+      const text = leaningComment(question.stamped);
+      const state = questionOffer(built.anchor, text, on.get(question) ?? []);
+      // The id in the DOM, when unique among all document questions (never
+      // from the index or the old line). A duplicate id is ambiguous.
+      const stampedId = question.stamped.id || null;
+      const questionId =
+        stampedId && all.filter((q) => q.stamped.id === stampedId).length === 1
+          ? stampedId
+          : undefined;
+      return [{ question, built, text, state, questionId }];
+    });
+  return { all, rows };
+}
+
+type QuestionRow = ReturnType<typeof readQuestionRows>["rows"][number];
+
+/**
+ * The one row `intent` names in the DOM as it is now, or null: the anchor no
+ * longer matches exactly one question, or the question no longer offers what
+ * was asked for (a take needs the question still unanswered).
+ */
+export function locateQuestion(
+  el: HTMLElement,
+  comments: readonly ReviewComment[],
+  intent: QuestionIntent,
+): QuestionRow | null {
+  const matches = readQuestionRows(el, comments).rows.filter(
+    (row) =>
+      sameAnchor(row.built.anchor, intent.anchor) &&
+      row.questionId === intent.questionId,
+  );
+  if (matches.length !== 1) return null;
+  const [row] = matches;
+  const kind = row.state.kind;
+  const offered =
+    intent.kind === "take"
+      ? kind === "take"
+      : kind === "take" || kind === "retake";
+  return offered ? row : null;
+}
+
+/**
  * Render the row of controls at the end of every open question in the prose
  * container.
  *
@@ -637,6 +732,7 @@ export function useOpenQuestionButtons(
   onUndo: UndoLeaning,
   onCount?: (count: number) => void,
   onAnswer?: AnswerQuestion,
+  entry?: InlineReviewEntry,
 ): void {
   useLayoutEffect(() => {
     const el = containerRef.current;
@@ -646,23 +742,9 @@ export function useOpenQuestionButtons(
     // left behind (D4(a): no button and no trace of one).
     sweep(el);
     // A card's embedded viewer neither renders rows nor reports a count.
-    if (!enabled && onCount === undefined) return;
+    if (!enabled && onCount === undefined && entry === undefined) return;
 
-    // Every open question, and none of the 🔒 or ✅ ones (Plan Q5). Filtered
-    // here and never inside `documentQuestions`, which the contents column
-    // lists from: the column keeps every state, and only the row is withheld.
-    // A skipped question gets no row at all — no button, no chip, no Undo.
-    const all = documentQuestions(el);
-    const on = commentsOnQuestions(el, all, comments);
-    const rows = all
-      .filter(({ stamped }) => offersTake(stamped))
-      .flatMap((question) => {
-        const built = buildWholeBlockAnchor(question.block);
-        if (built === null) return [];
-        const text = leaningComment(question.stamped);
-        const state = questionOffer(built.anchor, text, on.get(question) ?? []);
-        return [{ question, built, text, state }];
-      });
+    const { all, rows } = readQuestionRows(el, comments);
     // The takes on offer: the Review toggle says how many questions here can
     // be answered in one click, and a question already answered is not one.
     //
@@ -674,24 +756,19 @@ export function useOpenQuestionButtons(
     // that cannot work (D4).
     onCount?.(rows.filter(({ state }) => state.kind === "take").length);
 
-    // D4. Review mode only — and never where the click cannot be persisted: a
-    // static export runs review mode with every write coerced by the axios
-    // interceptor into a GET of a file that does not exist, so an ungated button
-    // would look live and do nothing. That is worse than no button, because the
-    // reviewer believes they answered.
-    if (!enabled || isStaticMode()) return;
+    // D4. Never where the click cannot be persisted: a static export runs
+    // review mode with every write coerced by the axios interceptor into a GET
+    // of a file that does not exist, so an ungated button would look live and
+    // do nothing. That is worse than no button, because the reviewer believes
+    // they answered. Outside review mode the rows exist only when the viewer
+    // offers entry (`entry`) for this document's loaded comments: a click then
+    // asks consent to enter review instead of writing.
+    if (isStaticMode()) return;
+    const live = enabled;
+    if (!live && !(entry !== undefined && entry.ready)) return;
 
-    for (const { question, built, text, state } of rows) {
+    for (const { question, built, text, state, questionId } of rows) {
       const row = makeRow(question, el, all);
-
-      // The id of this question in the DOM, when it is unique among all
-      // document questions (never from the index or the old line).  A duplicate
-      // id is treated as no id: the binding is ambiguous.
-      const stampedId = question.stamped.id || null;
-      const questionId =
-        stampedId && all.filter((q) => q.stamped.id === stampedId).length === 1
-          ? stampedId
-          : undefined;
 
       if (state.kind === "answered") {
         // The answer is filed, and its card holds it: no Undo, because a
@@ -729,8 +806,12 @@ export function useOpenQuestionButtons(
         // anyone has replied, deleting the comment would discard the reply with
         // it, and nothing brings a deleted comment back — so the chip says
         // where the thread is rather than offering to destroy it.
+        // Undo deletes a comment, so it is a review-mode control: outside review
+        // mode the chip stands alone.
         if (!takeUndoable(taken)) {
           chip.title = OQ_ANSWERED_TITLE;
+        } else if (!live) {
+          if (state.kind === "retake") chip.title = OQ_TAKEN_DISMISSED_HINT;
         } else {
           if (state.kind === "retake") chip.title = OQ_TAKEN_DISMISSED_HINT;
           const undo = document.createElement("button");
@@ -769,6 +850,19 @@ export function useOpenQuestionButtons(
           // button with the taken chip. This guard covers only the window
           // before that commit — a physical double-click delivering two clicks
           // in one gesture.
+          if (!live) {
+            // Not disabled: Cancel must leave the row exactly as it was.
+            entry?.request(
+              {
+                kind: "take",
+                path: entry.path,
+                anchor: built.anchor,
+                questionId,
+              },
+              btn,
+            );
+            return;
+          }
           if (btn.disabled) return;
           btn.disabled = true;
           onTake(built.anchor, text, built.fallbackText, questionId);
@@ -778,7 +872,7 @@ export function useOpenQuestionButtons(
 
       // Last in the row, so the row's other states, which drop it, move
       // nothing that was painted after it.
-      if (onAnswer !== undefined) {
+      if (live ? onAnswer !== undefined : entry !== undefined) {
         const answer = document.createElement("button");
         answer.setAttribute(OQ_BUTTON_ATTR, "answer");
         answer.type = "button";
@@ -787,7 +881,19 @@ export function useOpenQuestionButtons(
         answer.append(answerIcon(), OQ_ANSWER_LABEL);
         answer.addEventListener("click", (e) => {
           claimClick(e);
-          onAnswer(
+          if (!live) {
+            entry?.request(
+              {
+                kind: "answer",
+                path: entry.path,
+                anchor: built.anchor,
+                questionId,
+              },
+              answer,
+            );
+            return;
+          }
+          onAnswer?.(
             built.anchor,
             built.fallbackText,
             answer.getBoundingClientRect(),
@@ -809,6 +915,59 @@ export function useOpenQuestionButtons(
     onTake,
     onUndo,
     onCount,
+    onAnswer,
+    entry,
+  ]);
+
+  // Carries out the intent the reader consented to, once. After the pass
+  // above (effects run in order), so the DOM it proves against is the one
+  // review mode now renders; and only with review mode actually on and the
+  // intent still naming exactly one question that offers what was asked for.
+  // Anything else is settled as `changed`, never carried out on an old source.
+  const armed = entry?.armed ?? null;
+  const settle = entry?.settle;
+  const entryPath = entry?.path;
+  const entryReady = entry?.ready ?? false;
+  const ran = useRef<QuestionIntent | null>(null);
+  useLayoutEffect(() => {
+    const el = containerRef.current;
+    if (!el || armed === null || settle === undefined || !enabled) return;
+    if (ran.current === armed || !entryReady) return;
+    ran.current = armed;
+    const found =
+      armed.path === entryPath && !isStaticMode()
+        ? locateQuestion(el, comments, armed)
+        : null;
+    if (found === null) {
+      settle(armed, "changed");
+      return;
+    }
+    if (armed.kind === "take") {
+      onTake(
+        found.built.anchor,
+        found.text,
+        found.built.fallbackText,
+        found.questionId,
+      );
+    } else {
+      onAnswer?.(
+        found.built.anchor,
+        found.built.fallbackText,
+        found.question.block.getBoundingClientRect(),
+        found.questionId,
+      );
+    }
+    settle(armed, "done");
+  }, [
+    containerRef,
+    armed,
+    settle,
+    entryPath,
+    entryReady,
+    enabled,
+    comments,
+    currentContent,
+    onTake,
     onAnswer,
   ]);
 }

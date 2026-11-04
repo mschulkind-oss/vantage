@@ -211,10 +211,13 @@ in whatever state it is in. A question written
 without one is not listed, and nothing else in Vantage counts it either
 ([Planning Documents](guides/planning.md#what-vantage-reads)).
 
-Only the open ones can be answered in one click. Review mode's **Take this
-leaning** button appears on a 💬 question, or one with no marker, and never on
+Only the open ones can be answered in one click. The **Take this
+leaning** and **Answer…** buttons appear on a 💬 question, or one with no marker, and never on
 a 🔒 blocked or ✅ answered one: a blocked question cannot be answered yet, and
-an answered one has been ruled. The **Review** toggle's tooltip, while review
+an answered one has been ruled. Outside review mode, clicking either asks
+whether to enter review mode first; confirm and the action carries on, cancel
+and nothing changes. On an exported static site they are not offered, since
+nothing there can be saved. The **Review** toggle's tooltip, while review
 mode is off, counts those buttons and nothing else, so it can count fewer
 questions than the column lists. The tally's own tooltip says which is which,
 such as *3 questions here — 1 open, 1 answered, 1 blocked; 1 can be answered in

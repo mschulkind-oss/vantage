@@ -229,11 +229,10 @@ export const ViewerPage: React.FC = () => {
   /**
    * How many Open Questions the open document offers a one-click answer for.
    *
-   * Reported by the viewer whether or not review mode is on, because the
-   * button is gated on review mode (D4) and nothing else says the affordance
-   * is there at all — a document with three `oq` directives and review mode
-   * off otherwise looks exactly like one with none. It reaches the reader
-   * through the Review toggle's tooltip; see `advertiseOpenQuestions`.
+   * Reported by the viewer whether or not review mode is on. The row is also
+   * offered outside review mode behind a consent (`offerReviewEntry`), and the
+   * count still reaches the reader through the Review toggle's tooltip; see
+   * `advertiseOpenQuestions`.
    */
   const [openQuestionCount, setOpenQuestionCount] = useState(0);
   const [copied, setCopied] = useState(false);
@@ -1439,6 +1438,7 @@ export const ViewerPage: React.FC = () => {
                         currentPath={fileContent.path}
                         isReviewMode={isReviewMode}
                         onOpenQuestionCount={setOpenQuestionCount}
+                        offerReviewEntry={reviewToggleVisible}
                       />
                     )}
                   </div>

@@ -1481,3 +1481,262 @@ describe("MarkdownViewer mouse selection against anchorFromRange", () => {
     ).toBeNull();
   });
 });
+
+describe("MarkdownViewer — inline review entry", () => {
+  const DOC =
+    '<!-- vantage: oq id=OQ-9 leaning="Back of the queue." -->\n\nWhere does the ticket go on re-entry?\n\nAn ordinary paragraph.\n';
+  const OTHER =
+    '<!-- vantage: oq id=OQ-9 leaning="Front." -->\n\nA rewritten question?\n';
+
+  /** The page's wiring: the viewer reads review mode from the store. */
+  const Page = ({
+    content,
+    path = "doc.md",
+  }: {
+    content: string;
+    path?: string;
+  }) => {
+    const on = useReviewStore((s) => s.isReviewMode);
+    return (
+      <BrowserRouter>
+        <MarkdownViewer
+          content={content}
+          currentPath={path}
+          isReviewMode={on}
+          offerReviewEntry
+        />
+      </BrowserRouter>
+    );
+  };
+
+  const take = () =>
+    screen.queryByRole("button", { name: "Take this leaning" });
+  const answer = () => screen.queryByRole("button", { name: /Answer…/ });
+  const dialog = () => screen.queryByRole("alertdialog");
+  const posts = () => vi.mocked(axios.post).mock.calls.length;
+
+  beforeEach(() => {
+    useReviewStore.setState({
+      comments: [],
+      filePath: "doc.md",
+      lastContent: DOC,
+      pendingSelection: null,
+      commentsDrifted: false,
+      isReviewMode: false,
+      isLoading: false,
+    });
+    useRepoStore.setState({ currentRepo: null, isMultiRepo: false });
+    vi.clearAllMocks();
+    vi.mocked(axios.post).mockResolvedValue({ data: null });
+  });
+  afterEach(() => {
+    useReviewStore.setState({ isReviewMode: false });
+    delete window.__VANTAGE_STATIC__;
+  });
+
+  it("shows Take this leaning and Answer… outside review mode, with no prompt and no write", () => {
+    render(<Page content={DOC} />);
+
+    expect(take()).not.toBeNull();
+    expect(answer()).not.toBeNull();
+    expect(dialog()).toBeNull();
+    expect(posts()).toBe(0);
+  });
+
+  it("asks consent on a click, and Cancel changes nothing", () => {
+    render(<Page content={DOC} />);
+    fireEvent.click(take()!);
+
+    expect(dialog()).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Enter review mode" })).toBe(
+      document.activeElement,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+    expect(dialog()).toBeNull();
+    expect(useReviewStore.getState().isReviewMode).toBe(false);
+    expect(useReviewStore.getState().comments).toEqual([]);
+    expect(posts()).toBe(0);
+    expect(take()).not.toBeNull();
+  });
+
+  it("Escape cancels the same way", () => {
+    render(<Page content={DOC} />);
+    fireEvent.click(answer()!);
+    fireEvent.keyDown(dialog()!, { key: "Escape" });
+
+    expect(dialog()).toBeNull();
+    expect(useReviewStore.getState().isReviewMode).toBe(false);
+    expect(useReviewStore.getState().pendingSelection).toBeNull();
+  });
+
+  it("confirming enables review, announces the change first, and files the take exactly once", async () => {
+    const before = vi.fn();
+    const { subscribeBeforeReviewModeChange } =
+      await import("../stores/useReviewStore");
+    const off = subscribeBeforeReviewModeChange(before);
+    render(<Page content={DOC} />);
+    fireEvent.click(take()!);
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole("button", { name: "Enter review mode" }),
+      );
+    });
+    off();
+
+    expect(before).toHaveBeenCalledTimes(1);
+    expect(useReviewStore.getState().isReviewMode).toBe(true);
+    const comments = useReviewStore.getState().comments;
+    expect(comments).toHaveLength(1);
+    expect(comments[0].comment).toBe("Back of the queue.");
+    expect(posts()).toBe(1);
+    expect(dialog()).toBeNull();
+    // Taken: no second take, and the intent is spent.
+    expect(take()).toBeNull();
+  });
+
+  it("confirming an Answer… opens the answer popover once, and files nothing yet", async () => {
+    render(<Page content={DOC} />);
+    fireEvent.click(answer()!);
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole("button", { name: "Enter review mode" }),
+      );
+    });
+
+    expect(useReviewStore.getState().isReviewMode).toBe(true);
+    const pending = useReviewStore.getState().pendingSelection;
+    expect(pending).not.toBeNull();
+    expect(pending!.anchor.source_line).toBe(3);
+    expect(useReviewStore.getState().comments).toEqual([]);
+    // The open popover talks to the session routes; no comment is created.
+    expect(
+      vi
+        .mocked(axios.post)
+        .mock.calls.filter(([url]) => String(url).endsWith("/review/comments")),
+    ).toHaveLength(0);
+  });
+
+  it("in review mode the same controls act at once, with no prompt", async () => {
+    useReviewStore.setState({ isReviewMode: true });
+    render(<Page content={DOC} />);
+    await act(async () => {
+      fireEvent.click(take()!);
+    });
+
+    expect(dialog()).toBeNull();
+    expect(useReviewStore.getState().comments).toHaveLength(1);
+    expect(posts()).toBe(1);
+  });
+
+  it("offers nothing in a static export, and enters nothing", () => {
+    window.__VANTAGE_STATIC__ = true;
+    const { container } = render(<Page content={DOC} />);
+
+    expect(container.querySelector("[data-vantage-oq-button]")).toBeNull();
+    expect(useReviewStore.getState().isReviewMode).toBe(false);
+  });
+
+  it("offers nothing without offerReviewEntry (a card, an embedded viewer)", () => {
+    const { container } = render(
+      <BrowserRouter>
+        <MarkdownViewer
+          content={DOC}
+          currentPath="doc.md"
+          isReviewMode={false}
+        />
+      </BrowserRouter>,
+    );
+    expect(container.querySelector("[data-vantage-oq-button]")).toBeNull();
+  });
+
+  it("drops the consent when the content is replaced while it is open, and says so", () => {
+    const { rerender } = render(<Page content={DOC} />);
+    fireEvent.click(take()!);
+    expect(dialog()).not.toBeNull();
+
+    rerender(<Page content={OTHER} />);
+
+    expect(dialog()).toBeNull();
+    expect(useReviewStore.getState().isReviewMode).toBe(false);
+    expect(screen.getByRole("status").textContent).toContain(
+      "Click Take this leaning or Answer…",
+    );
+    expect(posts()).toBe(0);
+  });
+
+  it("drops the consent when the path changes while it is open", () => {
+    const { rerender } = render(<Page content={DOC} />);
+    fireEvent.click(take()!);
+    rerender(<Page content={DOC} path="elsewhere.md" />);
+
+    expect(dialog()).toBeNull();
+    expect(useReviewStore.getState().isReviewMode).toBe(false);
+    expect(posts()).toBe(0);
+  });
+
+  it("does not take a question answered while the consent was open: says what changed, review stays off", async () => {
+    render(<Page content={DOC} />);
+    fireEvent.click(take()!);
+    const block = document.querySelector<HTMLElement>(
+      'p[data-source-line="3"]',
+    )!;
+    const text = blockVisibleText(block);
+    act(() => {
+      useReviewStore.setState({
+        comments: [
+          {
+            id: "typed",
+            comment: "my own answer",
+            fallback_text: text,
+            created_at: 0,
+            reactions: [],
+            anchor: {
+              source_line: 3,
+              block_text_hash: hashBlockText(text),
+              selection_offset: 0,
+              selection_length: 0,
+            },
+          } as ReviewComment,
+        ],
+      });
+    });
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole("button", { name: "Enter review mode" }),
+      );
+    });
+
+    expect(useReviewStore.getState().isReviewMode).toBe(false);
+    expect(useReviewStore.getState().comments).toHaveLength(1);
+    expect(posts()).toBe(0);
+    expect(screen.getByRole("status").textContent).toContain(
+      "nothing was filed",
+    );
+  });
+
+  it("an unmount with the consent open files nothing", () => {
+    const { unmount } = render(<Page content={DOC} />);
+    fireEvent.click(take()!);
+    unmount();
+
+    expect(dialog()).toBeNull();
+    expect(useReviewStore.getState().isReviewMode).toBe(false);
+    expect(posts()).toBe(0);
+  });
+
+  it("survives a re-render while the consent is open and still files once", async () => {
+    const { rerender } = render(<Page content={DOC} />);
+    fireEvent.click(take()!);
+    rerender(<Page content={DOC} />);
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole("button", { name: "Enter review mode" }),
+      );
+    });
+    rerender(<Page content={DOC} />);
+
+    expect(useReviewStore.getState().comments).toHaveLength(1);
+    expect(posts()).toBe(1);
+  });
+});
