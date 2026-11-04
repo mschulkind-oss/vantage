@@ -129,7 +129,11 @@ a bug, not a trade-off.
    matters equally: newer CSS meeting an older plugin's output, which is why the
    run selector is positive rather than negated.
 4. **D4 — Review affordances are additive, and never lie.** They appear only in
-   review mode and never remove an existing path. **A control that cannot work
+   review mode and never remove an existing path. One exception, by the owner's
+   ruling of 2026-10-12: an Open Question's **Take this leaning** and
+   **Answer…** are also offered outside review mode, because they are how a
+   reader reaches review mode from the question they are reading; a click there
+   asks consent first ([below](#the-count-and-why-the-gate-needed-one)). **A control that cannot work
    must not render**, which means an explicit static-mode gate for anything that
    writes. A non-interactive chip is not a control and is deliberately not gated.
 5. **D5 — Every renderer agrees.** The live viewer, the package's exported
@@ -755,8 +759,8 @@ question by question, and walks the take's states on both.
 
 ### The count, and why the gate needed one
 
-The button renders only in review mode, which is correct and was also, on its
-own, a dead end: a document carrying three question directives with leanings
+Until 2026-10-12 the button rendered only in review mode, which was correct and
+was also, on its own, a dead end: a document carrying three question directives with leanings
 rendered as three ordinary paragraphs, and **nothing anywhere said the affordance
 existed**. The reader had to already know.
 
@@ -795,7 +799,25 @@ has no button in any state and is no question to the planning index either. The
 planning page's card is the fourth caller, finding its question's host
 ([above](#the-same-comment-from-the-planning-page)).
 
-The take renders only when **all five** hold: review mode is on, the directive
+**Outside review mode the row is offered too, behind a consent.** On the live
+viewer's own document (`offerReviewEntry`; never an embedded viewer or a planning
+card, and never in a static export, where nothing can be saved and D4's "a
+control that cannot work must not render" still holds), once its comments have
+loaded, the row shows Take this leaning and Answer… (and the chips, without
+Undo, which deletes). A click opens a dialog, *Enter review mode?*, and does
+nothing else: Cancel and Escape leave review mode, the preference and the
+comments as they were. Confirming turns review mode on through the store's
+`toggleReviewMode` (which is what keeps the reader's place) and then carries out
+the clicked action **once**, after proving against the freshly rendered
+document that exactly one question still has the clicked source anchor
+(`locateQuestion`, the row's own reading) and still offers that action. If it
+does not — the document or its comments changed while the dialog was open — the
+reader is told what changed and to click again on the current question; nothing
+is filed against the old one. The pending intent is dropped on cancel, a
+path or content change, and unmount. In review mode the row acts at once, as
+before.
+
+Inside review mode the take renders when **all five** hold: review mode is on, the directive
 parsed, static mode is off, the question is open, and no comment answers it yet
 ([below](#a-comment-on-a-question-is-its-answer)). Which name declared the
 question plays no part. The static gate is not optional — an exported site runs

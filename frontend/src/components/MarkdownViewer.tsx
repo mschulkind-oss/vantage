@@ -25,9 +25,13 @@ import {
   type InlineReviewActions,
 } from "../hooks/useReviewHighlights";
 import {
+  locateQuestion,
   useOpenQuestionButtons,
   type AnswerQuestion,
+  type InlineReviewEntry,
+  type QuestionIntent,
 } from "../hooks/useOpenQuestionButtons";
+import { EnterReviewDialog, EntryNotice } from "./EnterReviewDialog";
 import {
   MARKDOWN_LINK_ATTR,
   linkTargetAttributes,
@@ -89,6 +93,13 @@ interface MarkdownViewerProps {
    * sections stay, because they are how the text reads.
    */
   embedded?: boolean;
+  /**
+   * Offer the Open Question row outside review mode (the page's own document
+   * only): a click asks consent to enter review mode, then continues the
+   * action once. Never in a static export, where nothing can be saved, nor in
+   * an embedded viewer.
+   */
+  offerReviewEntry?: boolean;
 }
 
 const MULTIBLOCK_HINT_KEY = "vantage.reviewMode.multiBlockHintShown";
@@ -128,6 +139,7 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
   onOpenQuestionCount,
   sourceLineOffset = 0,
   embedded = false,
+  offerReviewEntry = false,
 }) => {
   // Review mode belongs to the page's own document, never to one embedded in
   // another page (see `embedded`).
@@ -389,15 +401,119 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
       }),
     [setPendingSelection],
   );
+  // Outside review mode (see `offerReviewEntry`): the consent being asked
+  // for, and the intent carried out once review mode is on. Both belong to
+  // this document and this content; any change of either clears them.
+  const reviewLoading = useReviewStore((s) => s.isLoading);
+  const [consent, setConsent] = useState<{
+    intent: QuestionIntent;
+    opener: HTMLElement;
+  } | null>(null);
+  const [armed, setArmed] = useState<QuestionIntent | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const entering = offerReviewEntry && !embedded && !isStaticMode();
+  const holdsIntent = consent !== null || armed !== null;
+  const holdsIntentRef = useRef(holdsIntent);
+  holdsIntentRef.current = holdsIntent;
+  useEffect(() => {
+    if (holdsIntentRef.current) {
+      setConsent(null);
+      setArmed(null);
+      setNotice(
+        "The document changed while review mode was being entered, so nothing was filed. Click Take this leaning or Answer… on the current question to continue.",
+      );
+    }
+  }, [currentPath, body]);
+  // Review mode on by other means ends a pending consent; review mode going
+  // off ends an intent that has not run, so a later re-entry cannot replay it.
+  const wasReviewMode = useRef(isReviewMode);
+  useEffect(() => {
+    if (isReviewMode) setConsent(null);
+    else if (wasReviewMode.current) setArmed(null);
+    wasReviewMode.current = isReviewMode;
+  }, [isReviewMode]);
+
+  const requestEntry = useCallback(
+    (intent: QuestionIntent, opener: HTMLElement) => {
+      setNotice(null);
+      setConsent({ intent, opener });
+    },
+    [],
+  );
+  const settleEntry = useCallback(
+    (_intent: QuestionIntent, outcome: "done" | "changed") => {
+      setArmed(null);
+      if (outcome === "changed") {
+        setNotice(
+          "That question changed while review mode was being entered, so nothing was filed. Review mode is on: click Take this leaning or Answer… on the current question to continue.",
+        );
+      }
+    },
+    [],
+  );
+  const entry = useMemo<InlineReviewEntry | undefined>(
+    () =>
+      entering
+        ? {
+            path: currentPath,
+            ready: reviewPath === currentPath && !reviewLoading,
+            request: requestEntry,
+            armed,
+            settle: settleEntry,
+          }
+        : undefined,
+    [
+      entering,
+      currentPath,
+      reviewPath,
+      reviewLoading,
+      requestEntry,
+      armed,
+      settleEntry,
+    ],
+  );
+  const confirmEntry = useCallback(() => {
+    if (consent === null) return;
+    const { intent } = consent;
+    setConsent(null);
+    const el = containerRef.current;
+    const state = useReviewStore.getState();
+    // The question must still be the one that was clicked, in the document as
+    // it is now, before review mode is turned on for it.
+    if (
+      !el ||
+      intent.path !== currentPath ||
+      state.filePath !== currentPath ||
+      locateQuestion(el, state.comments, intent) === null
+    ) {
+      setNotice(
+        "That question changed before review mode was entered, so nothing was filed and review mode is still off. Click Take this leaning or Answer… on the current question to continue.",
+      );
+      return;
+    }
+    setArmed(intent);
+    if (!state.isReviewMode) {
+      // Through the store's own toggle: it announces the change first, which
+      // is how the page keeps the reader's place.
+      state.toggleReviewMode();
+    }
+    if (!useReviewStore.getState().isReviewMode) {
+      setArmed(null);
+      setNotice(
+        "Review mode is not available here, so nothing was filed. Open this document in a live Vantage server to answer its questions.",
+      );
+    }
+  }, [consent, currentPath]);
   useOpenQuestionButtons(
     containerRef,
     comments,
     isReviewMode,
-    isReviewMode ? body : null,
+    isReviewMode || entering ? body : null,
     addComment,
     deleteComment,
     onOpenQuestionCount,
     answerQuestion,
+    entry,
   );
 
   // Capture the current window selection (if any) and promote it to a
@@ -879,6 +995,17 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
           </div>
         ) : null)}
       {markdown}
+      {consent && !isReviewMode && (
+        <EnterReviewDialog
+          kind={consent.intent.kind}
+          opener={consent.opener}
+          onConfirm={confirmEntry}
+          onCancel={() => setConsent(null)}
+        />
+      )}
+      {notice !== null && (
+        <EntryNotice text={notice} onDismiss={() => setNotice(null)} />
+      )}
       {/* Review mode: comment popover for new selections */}
       {isReviewMode && pendingSelection && (
         <ReviewCommentPopover
