@@ -36,6 +36,9 @@ type ResponseEntry struct {
 	Summary string
 	Nonce   string
 	Round   int
+	// RootVersion is the root_text_version the delivery echoed, "" when it
+	// named none (coverage unknown).
+	RootVersion string
 }
 
 // RoundUnknown marks a delivery that carries no round. Reactions recorded from
@@ -48,7 +51,32 @@ const RoundUnknown = -1
 // does not hold, or one that is not the reviewer's. Handlers map it to a 404.
 var ErrReplyNotFound = errors.New("review: reply not found")
 
-// AddComment appends c to the review for filePath in repo, creating the review
+// CreateOptions are the optional parts of a create that legacy callers do not
+// send.
+type CreateOptions struct {
+	// SessionID names the editing session this write belongs to ("" for none).
+	SessionID string
+	// Preconditions, when non-nil, must also hold against the observation (boot,
+	// generation, content hash; the mutation revision is ignored on create) for
+	// the comment's QuestionID to count.
+	// Whatever they are, a QuestionID counts only when the scanner proves it
+	// names exactly one question of the document and the evidence is about that
+	// unit ([proveQuestion]); otherwise the comment is stored unbound. A create
+	// with a bare question_id is therefore bound only on that proof, and stores
+	// the server's own evidence for it.
+	Preconditions *BindPreconditions
+	// Doc reads the document under the review's lock, so the text, its evidence
+	// and the scanner's units are one coherent reading with the review. Nil
+	// means the docContent argument, which proves no question ownership.
+	Doc DocSource
+}
+
+// AddComment is [Store.AddCommentWith] without options: a legacy create.
+func (s *Store) AddComment(filePath, repo string, c model.ReviewComment, docContent string) (*model.ReviewData, error) {
+	return s.AddCommentWith(filePath, repo, c, docContent, CreateOptions{})
+}
+
+// AddCommentWith appends c to the review for filePath in repo, creating the review
 // if absent. The anchored block's current text is captured from docContent so a
 // later agent response has an honest "before" even across restarts.
 //
@@ -56,9 +84,14 @@ var ErrReplyNotFound = errors.New("review: reply not found")
 // box that saves as the reviewer types retries a create whose answer it never
 // heard, so a create naming a comment the review already holds is an edit of
 // that comment's text ([Store.EditCommentText]), and nothing else about it
-// changes. The same text again changes nothing at all, so a pure retry does not
-// mark the comment edited (docs/reference/comment-autosave.md §5).
-func (s *Store) AddComment(filePath, repo string, c model.ReviewComment, docContent string) (*model.ReviewData, error) {
+// changes — the held comment's question_id included. The same text again
+// changes nothing at all, so a pure retry does not mark the comment edited
+// (docs/reference/comment-autosave.md §5).
+//
+// A create carrying a session id is accepted only while that session is open
+// for this comment: an unknown or closed session is [ErrSessionNotFound], a
+// session whose root was edited elsewhere [ErrSessionConflict].
+func (s *Store) AddCommentWith(filePath, repo string, c model.ReviewComment, docContent string, opts CreateOptions) (*model.ReviewData, error) {
 	defer s.lock(filePath, repo)()
 	data, err := s.getLocked(filePath, repo)
 	if err != nil {
@@ -70,11 +103,15 @@ func (s *Store) AddComment(filePath, repo string, c model.ReviewComment, docCont
 	if slices.Contains(data.DeletedIDs, c.ID) {
 		return nil, ErrCommentNotFound
 	}
+	if err := checkSessionWrite(data, c.ID, opts.SessionID); err != nil {
+		return nil, err
+	}
+	doc := observeFrom(orStatic(opts.Doc, docContent))
 	if held := commentByID(data.Comments, c.ID); held != nil {
 		if held.Comment == c.Comment {
 			return data, nil
 		}
-		editText(held, c.Comment, nowSeconds(), docContent)
+		editText(data, held, c.Comment, nowSeconds(), doc, opts.SessionID)
 		if err := s.saveLocked(filePath, repo, data); err != nil {
 			return nil, err
 		}
@@ -83,7 +120,30 @@ func (s *Store) AddComment(filePath, repo string, c model.ReviewComment, docCont
 	if c.Reactions == nil {
 		c.Reactions = []model.CommentReaction{}
 	}
-	c.CapturedBlock = blockTextAt(docContent, anchorLineOf(&c))
+	if c.QuestionID != "" {
+		reason := ""
+		if p := opts.Preconditions; p != nil {
+			// The review's mutation revision is not a precondition of a create: the
+			// server proves the id itself, under this lock, and an unrelated write
+			// between the evidence and the create must not unbind the answer.
+			held := *p
+			held.MutationRevision = data.MutationRevision
+			reason = held.violation(doc.Evidence, data.MutationRevision)
+		}
+		if reason == "" {
+			c.QuestionEvidence, reason = proveQuestion(doc, c.QuestionID, c.QuestionEvidence)
+		}
+		if reason != "" {
+			c.QuestionID = ""
+			c.QuestionEvidence = nil
+		} else {
+			bindOwnership(&c, doc)
+		}
+	}
+	c.CapturedBlock = blockTextAt(doc.Content, anchorLineOf(&c))
+	c.RootTextVersion = newRandomID()
+	c.MutationCounter = 1
+	markOtherSessionsExternal(data, c.ID, opts.SessionID)
 	data.Comments = append(data.Comments, c)
 	if err := s.saveLocked(filePath, repo, data); err != nil {
 		return nil, err
@@ -91,27 +151,102 @@ func (s *Store) AddComment(filePath, repo string, c model.ReviewComment, docCont
 	return data, nil
 }
 
-// EditCommentText rewrites the comment's text, stamps EditedAt — which is what
-// marks pre-edit agent responses as answering different wording — and
-// re-captures the anchored block from docContent.
+// EditCommentText is [Store.EditCommentTextIn] outside any session.
+func (s *Store) EditCommentText(filePath, repo, id, text, docContent string) (*model.ReviewData, error) {
+	return s.EditCommentTextIn(filePath, repo, id, text, docContent, "")
+}
+
+// EditCommentTextIn rewrites the comment's text, stamps EditedAt — which is what
+// marks pre-edit agent responses as answering different wording — gives the
+// root a new text version, and re-captures the anchored block from docContent
+// when that block is provably still the comment's own ([recapture]).
 //
 // Editing is a capture point for the same reason replying is: a reviewer
 // rewording a comment is looking at the document as it stands now, so the next
 // response's "before" is this block now. Keeping the original capture would
 // make the round-2 diff span round 1 as well, crediting the agent's second
 // answer with changes its first answer made.
-func (s *Store) EditCommentText(filePath, repo, id, text, docContent string) (*model.ReviewData, error) {
-	return s.mutateComment(filePath, repo, id, func(c *model.ReviewComment, now float64) {
-		editText(c, text, now, docContent)
+//
+// sessionID is "" for a write outside any session, which marks every open
+// session of the comment as externally edited; otherwise see [checkSessionWrite].
+func (s *Store) EditCommentTextIn(filePath, repo, id, text, docContent, sessionID string) (*model.ReviewData, error) {
+	return s.EditCommentTextFrom(filePath, repo, id, text, StaticDoc(docContent), sessionID)
+}
+
+// EditCommentTextFrom is [Store.EditCommentTextIn] reading the document through
+// doc, under the lock.
+func (s *Store) EditCommentTextFrom(filePath, repo, id, text string, doc DocSource, sessionID string) (*model.ReviewData, error) {
+	return s.mutateCommentErr(filePath, repo, id, func(data *model.ReviewData, c *model.ReviewComment, now float64) error {
+		if err := checkSessionWrite(data, id, sessionID); err != nil {
+			return err
+		}
+		editText(data, c, text, now, observeFrom(doc), sessionID)
+		return nil
 	})
 }
 
-// editText is the edit [Store.EditCommentText] makes, shared with a repeated
-// create.
-func editText(c *model.ReviewComment, text string, now float64, docContent string) {
+// editText is the edit [Store.EditCommentTextIn] makes, shared with a repeated
+// create: it is the one place the root's text is written.
+func editText(data *model.ReviewData, c *model.ReviewComment, text string, now float64, doc *Observation, sessionID string) {
 	c.Comment = text
 	c.EditedAt = now
-	c.CapturedBlock = blockTextAt(docContent, anchorLineOf(c))
+	recapture(c, doc)
+	c.RootTextVersion = newRandomID()
+	c.MutationCounter++
+	markOtherSessionsExternal(data, c.ID, sessionID)
+}
+
+// recapture refreshes the comment's per-round CapturedBlock from the document
+// and records, in Ownership, what the shared planning scanner proved.
+//
+// A comment bound to a question is refreshed only when the scanner proves the
+// block at the anchor line lies in that question's unit (its directive id
+// unique in the scanned document).
+//
+// A comment bound to none is a note on whatever sits at its anchor line, and is
+// refreshed only when the scanner proves that line lies in no question unit.
+// Where it lies in one, nothing the server holds says whether that question is
+// the block the comment captured or one that took its slot — the comment has no
+// id and no similarity of words or neighbours is identity — so the older capture
+// stays and the comment is marked unknown.
+//
+// Where the scanner is unavailable (none installed, it failed, the document
+// changed under it) the capture stays too, marked unknown with
+// scanner_unavailable: never a guess in either direction.
+func recapture(c *model.ReviewComment, doc *Observation) {
+	line := anchorLineOf(c)
+	sc := doc.Scanned()
+	switch {
+	case line == 0:
+		c.CapturedBlock = blockTextAt(doc.Content, line)
+		return
+	case sc == nil:
+		setOwnership(c, model.OwnershipUnknown, doc.scanFailure())
+	case c.QuestionID != "" && ownsAnchor(doc, c.QuestionID, line):
+		setOwnership(c, model.OwnershipProven, "")
+		c.CapturedBlock = blockTextAt(doc.Content, line)
+	case c.QuestionID != "":
+		setOwnership(c, model.OwnershipUnknown, model.ReasonQuestionMoved)
+	case sc.covers(line):
+		setOwnership(c, model.OwnershipUnknown, model.ReasonAnchorInQuestion)
+	default:
+		setOwnership(c, model.OwnershipUnowned, "")
+		c.CapturedBlock = blockTextAt(doc.Content, line)
+	}
+}
+
+// bindOwnership records whether the question a comment was just bound to holds
+// its anchor line, which the bind's own proof (a unique id) does not say.
+func bindOwnership(c *model.ReviewComment, doc *Observation) {
+	if ownsAnchor(doc, c.QuestionID, anchorLineOf(c)) {
+		setOwnership(c, model.OwnershipProven, "")
+		return
+	}
+	setOwnership(c, model.OwnershipUnknown, model.ReasonQuestionMoved)
+}
+
+func setOwnership(c *model.ReviewComment, state, reason string) {
+	c.Ownership, c.OwnershipReason = state, reason
 }
 
 // SetResolved sets the comment's resolved flag: dismiss-without-reaction
@@ -131,23 +266,30 @@ func (s *Store) SetResolved(filePath, repo, id string, resolved bool) (*model.Re
 // the comment already holds the reviewer's reply of that id, its text is edited
 // in place ([Store.EditReply]) rather than a second reply appended.
 func (s *Store) Reply(filePath, repo, id, replyID, text, docContent string) (*model.ReviewData, error) {
-	return s.reply(filePath, repo, id, replyID, text, docContent, false)
+	return s.reply(filePath, repo, id, replyID, text, StaticDoc(docContent), false)
+}
+
+// ReplyFrom is [Store.Reply] reading the document through doc, under the lock;
+// reopen also sets resolved=false ([Store.ReopenReply]).
+func (s *Store) ReplyFrom(filePath, repo, id, replyID, text string, doc DocSource, reopen bool) (*model.ReviewData, error) {
+	return s.reply(filePath, repo, id, replyID, text, doc, reopen)
 }
 
 // ReopenReply is Reply plus resolved=false, atomically — reopening a resolved
 // thread with the follow-up that explains why.
 func (s *Store) ReopenReply(filePath, repo, id, replyID, text, docContent string) (*model.ReviewData, error) {
-	return s.reply(filePath, repo, id, replyID, text, docContent, true)
+	return s.reply(filePath, repo, id, replyID, text, StaticDoc(docContent), true)
 }
 
-func (s *Store) reply(filePath, repo, id, replyID, text, docContent string, reopen bool) (*model.ReviewData, error) {
+func (s *Store) reply(filePath, repo, id, replyID, text string, src DocSource, reopen bool) (*model.ReviewData, error) {
 	return s.mutateComment(filePath, repo, id, func(c *model.ReviewComment, now float64) {
 		if reopen {
 			c.Resolved = false
 		}
+		doc := observeFrom(src)
 		if held := reviewerReply(c, replyID); held != nil {
 			if held.Summary != text {
-				editReply(c, held, text, now, docContent)
+				editReply(c, held, text, now, doc)
 			}
 			return
 		}
@@ -158,7 +300,7 @@ func (s *Store) reply(filePath, repo, id, replyID, text, docContent string, reop
 			Summary:   text,
 			Timestamp: now,
 		})
-		c.CapturedBlock = blockTextAt(docContent, anchorLineOf(c))
+		recapture(c, doc)
 	})
 }
 
@@ -171,6 +313,12 @@ func (s *Store) reply(filePath, repo, id, replyID, text, docContent string, reop
 // A missing comment is ErrCommentNotFound; a reply the comment does not hold,
 // or one that is not the reviewer's, is ErrReplyNotFound.
 func (s *Store) EditReply(filePath, repo, id, replyID, text, docContent string) (*model.ReviewData, error) {
+	return s.EditReplyFrom(filePath, repo, id, replyID, text, StaticDoc(docContent))
+}
+
+// EditReplyFrom is [Store.EditReply] reading the document through doc, under
+// the lock.
+func (s *Store) EditReplyFrom(filePath, repo, id, replyID, text string, doc DocSource) (*model.ReviewData, error) {
 	defer s.lock(filePath, repo)()
 	data, err := s.getLocked(filePath, repo)
 	if err != nil {
@@ -187,7 +335,7 @@ func (s *Store) EditReply(filePath, repo, id, replyID, text, docContent string) 
 	if held == nil {
 		return nil, ErrReplyNotFound
 	}
-	editReply(comment, held, text, nowSeconds(), docContent)
+	editReply(comment, held, text, nowSeconds(), observeFrom(doc))
 	if err := s.saveLocked(filePath, repo, data); err != nil {
 		return nil, err
 	}
@@ -209,10 +357,10 @@ func reviewerReply(c *model.ReviewComment, replyID string) *model.CommentReactio
 	return nil
 }
 
-func editReply(c *model.ReviewComment, r *model.CommentReaction, text string, now float64, docContent string) {
+func editReply(c *model.ReviewComment, r *model.CommentReaction, text string, now float64, doc *Observation) {
 	r.Summary = text
 	r.EditedAt = now
-	c.CapturedBlock = blockTextAt(docContent, anchorLineOf(c))
+	recapture(c, doc)
 }
 
 // DismissMany resolves comments in bulk without recording reactions. A nil ids
@@ -382,6 +530,8 @@ func (s *Store) ApplyResponses(filePath, repo string, entries []ResponseEntry, d
 			AfterText:    blockTextAt(docContent, anchorLineOf(comment)),
 			Timestamp:    now,
 			AnswersRound: answersRound,
+
+			RootTextVersion: e.RootVersion,
 		})
 		applied++
 		if e.Nonce != "" {
@@ -446,6 +596,15 @@ func sameRound(a, b *int) bool {
 // mutate it (fn receives the current time as epoch seconds), save, return the
 // persisted review. A missing review or comment is ErrCommentNotFound.
 func (s *Store) mutateComment(filePath, repo, id string, fn func(c *model.ReviewComment, now float64)) (*model.ReviewData, error) {
+	return s.mutateCommentErr(filePath, repo, id, func(_ *model.ReviewData, c *model.ReviewComment, now float64) error {
+		fn(c, now)
+		return nil
+	})
+}
+
+// mutateCommentErr is [Store.mutateComment] for a mutation that sees the whole
+// review and can refuse: nothing is saved when fn returns an error.
+func (s *Store) mutateCommentErr(filePath, repo, id string, fn func(data *model.ReviewData, c *model.ReviewComment, now float64) error) (*model.ReviewData, error) {
 	defer s.lock(filePath, repo)()
 	data, err := s.getLocked(filePath, repo)
 	if err != nil {
@@ -458,7 +617,9 @@ func (s *Store) mutateComment(filePath, repo, id string, fn func(c *model.Review
 	if comment == nil || slices.Contains(data.DeletedIDs, id) {
 		return nil, ErrCommentNotFound
 	}
-	fn(comment, nowSeconds())
+	if err := fn(data, comment, nowSeconds()); err != nil {
+		return nil, err
+	}
 	if err := s.saveLocked(filePath, repo, data); err != nil {
 		return nil, err
 	}

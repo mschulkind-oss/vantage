@@ -15,6 +15,7 @@ import (
 	"github.com/mschulkind-oss/vantage/internal/model"
 	"github.com/mschulkind-oss/vantage/internal/planning"
 	"github.com/mschulkind-oss/vantage/internal/repoconfig"
+	"github.com/mschulkind-oss/vantage/internal/review"
 )
 
 // planningBatchGone is the old batch's answer. The only client still asking
@@ -217,6 +218,21 @@ func acceptsGzip(r *http.Request) bool {
 type planningReview struct {
 	Path   string            `json:"path"`
 	Review *model.ReviewData `json:"review"`
+	// Evidence is the document's evidence sampled before and after this
+	// batch's reads (planning-question-state.md §4).
+	Evidence planningReviewEvidence `json:"evidence"`
+}
+
+// planningReviewEvidence is the coherent-pair evidence for one entry.
+// SampleChanged is true when the document's content hash differed between the
+// sample before the batch and the sample after it: the pair is then unknown and
+// DocumentGeneration/ContentHash describe the later sample.
+type planningReviewEvidence struct {
+	BootID             string `json:"boot_id"`
+	DocumentGeneration int64  `json:"document_generation"`
+	ContentHash        string `json:"content_hash"`
+	MutationRevision   int64  `json:"mutation_revision"`
+	SampleChanged      bool   `json:"sample_changed"`
 }
 
 // PlanningReviews handles POST /planning/reviews (and
@@ -261,6 +277,15 @@ func (h *Handlers) PlanningReviews(w http.ResponseWriter, r *http.Request) {
 
 	reviews := make([]planningReview, 0, len(paths))
 	seen := make(map[string]bool, len(paths))
+	before := make(map[string]review.Evidence, len(paths))
+	for _, path := range paths {
+		if path == "" || seen[path] {
+			continue
+		}
+		seen[path] = true
+		before[path] = h.documentEvidence(svc, path)
+	}
+	seen = make(map[string]bool, len(paths))
 	for _, path := range paths {
 		if path == "" || seen[path] {
 			continue
@@ -272,7 +297,14 @@ func (h *Handlers) PlanningReviews(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		if data != nil {
-			reviews = append(reviews, planningReview{Path: path, Review: data})
+			after := h.documentEvidence(svc, path)
+			reviews = append(reviews, planningReview{Path: path, Review: data, Evidence: planningReviewEvidence{
+				BootID:             after.BootID,
+				DocumentGeneration: after.DocumentGeneration,
+				ContentHash:        after.ContentHash,
+				MutationRevision:   data.MutationRevision,
+				SampleChanged:      after.ContentHash != before[path].ContentHash,
+			}})
 		}
 	}
 	writeJSON(w, http.StatusOK, struct {

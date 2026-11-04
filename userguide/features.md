@@ -324,9 +324,13 @@ Every comment box — a new comment, **Answer…** in a document or on a plannin
 card, and editing or replying to a comment, in the document or in the Review
 panel — saves what you type as you type it, a second after you pause, or every
 five seconds if you keep typing. There is no Save and no Cancel: the box has
-one button, **Close**, and closing it any way at all keeps your text — Close,
-the ✕, Ctrl+Enter (⌘+Enter on a Mac), Esc, a click outside the box, opening
-another document, turning review mode off, or leaving the page.
+one button, **Close**, and closing it keeps your text — Close, Ctrl+Enter
+(⌘+Enter on a Mac), a click outside the box, opening another document, turning
+review mode off, or leaving the page. The exception is **Esc** and the ✕ on a
+comment or answer you changed: they ask whether to **Restore** the text you
+opened it with (or **Discard** a new one), with _Keep editing_ selected
+([details](guides/planning.md#leaving-an-answer-box-close-keeps-esc-asks)). A
+reply box has no such question; Esc keeps its text.
 
 - **The box's foot says where it stands:** *Not saved yet* while you type,
   *Saving…* once you pause, then *Saved just now*, *Saved 1 min ago* and so

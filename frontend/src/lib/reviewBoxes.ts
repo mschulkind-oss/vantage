@@ -12,8 +12,10 @@ import {
   type BoxOps,
   type ReviewTarget,
 } from "./commentAutosave";
+import { CommentSession } from "./commentSession";
 import {
   newReviewId,
+  sessionApiFor,
   removeComment,
   saveCommentText,
   saveNewComment,
@@ -50,12 +52,25 @@ function newCommentOps(
   draft: ReviewComment,
   onSaved?: OnSaved,
   retired?: () => boolean,
+  session?: () => CommentSession | null,
 ): BoxOps {
   const tell = told(target, onSaved, retired);
+  // Inside a session every text write waits for the begin ack and names it.
+  const inSession = <T>(
+    send: (sessionId?: string) => Promise<T>,
+  ): Promise<T> => {
+    const s = session?.() ?? null;
+    return s === null ? send() : s.write(send);
+  };
   return {
     create: (text) =>
-      saveNewComment(target, { ...draft, comment: text }).then(tell),
-    update: (text) => saveCommentText(target, draft.id, text).then(tell),
+      inSession((sid) =>
+        saveNewComment(target, { ...draft, comment: text }, sid),
+      ).then(tell),
+    update: (text) =>
+      inSession((sid) => saveCommentText(target, draft.id, text, sid)).then(
+        tell,
+      ),
     remove: () => removeComment(target, draft.id).then(tell),
   };
 }
@@ -108,6 +123,8 @@ export function newCommentBox(
   draft: ReviewComment,
   options: { label?: string; onSaved?: OnSaved } = {},
 ): CommentBox {
+  const known: Known = { version: "", replies: 0 };
+  const onSaved = watching(options.onSaved, known, draft.id);
   const box: CommentBox = new CommentBox(
     {
       kind: "comment",
@@ -117,10 +134,20 @@ export function newCommentBox(
       label: options.label ?? "New comment",
     },
     {
-      ...newCommentOps(target, draft, options.onSaved, () => box.isRetired),
-      asNew: asNewComment(target, draft, options.onSaved),
+      ...newCommentOps(
+        target,
+        draft,
+        onSaved,
+        () => box.isRetired,
+        () => box.editingSession,
+      ),
+      asNew: asNewComment(target, draft, onSaved),
     },
   );
+  attachEditingSession(box, target, onSaved, known, () => ({
+    isNew: !box.exists,
+    openingText: box.savedText ?? "",
+  }));
   return box;
 }
 
@@ -140,15 +167,30 @@ export function editCommentBox(
   if (live && !live.isOpen && live.subject.kind === "edit") return live;
   const text = live ? live.getState().text : comment.comment;
   if (live && !live.isOpen) live.retire();
-  const tell = told(target, options.onSaved, () => box.isRetired);
+  const known: Known = {
+    version: comment.root_text_version ?? "",
+    replies: comment.reactions?.length ?? 0,
+  };
+  const onSaved = watching(options.onSaved, known, comment.id);
+  const tell = told(target, onSaved, () => box.isRetired);
   const box: CommentBox = new CommentBox(
     { kind: "edit", target, commentId: comment.id, label: "Edited comment" },
     {
-      update: (t) => saveCommentText(target, comment.id, t).then(tell),
-      asNew: asNewComment(target, comment, options.onSaved),
+      update: (t) =>
+        (box.editingSession
+          ? box.editingSession.write((sid) =>
+              saveCommentText(target, comment.id, t, sid),
+            )
+          : saveCommentText(target, comment.id, t)
+        ).then(tell),
+      asNew: asNewComment(target, comment, onSaved),
     },
     { text, created: true, saved: comment.comment },
   );
+  attachEditingSession(box, target, onSaved, known, () => ({
+    isNew: false,
+    openingText: box.savedText ?? comment.comment,
+  }));
   return box;
 }
 
@@ -180,4 +222,61 @@ export function replyBox(
       asNew: asNewComment(target, comment),
     },
   );
+}
+
+/**
+ * Make `box` write inside a server-held editing session
+ * (`lib/commentSession.ts`): the session is begun when the box opens, every
+ * text save waits for its acknowledgement and names it, and it finishes once
+ * the closed box is quiet. A stale acknowledgement (the root changed since it
+ * was shown) puts the server's text in the box and keeps what was typed apart.
+ */
+function attachEditingSession(
+  box: CommentBox,
+  target: ReviewTarget,
+  onSaved: OnSaved | undefined,
+  known: Known,
+  opening: () => { isNew: boolean; openingText: string },
+): void {
+  const build = (): CommentSession => {
+    const { isNew, openingText } = opening();
+    const shownVersion = known.version;
+    return new CommentSession({
+      api: sessionApiFor(target, box.subject.commentId),
+      commentId: box.subject.commentId,
+      isNew,
+      openingText,
+      shownVersion,
+      onReview: (data) => {
+        if (data) onSaved?.(target, data);
+      },
+      onAck: (ack) => {
+        if (ack.stale && ack.comment) box.adoptServerText(ack.comment.comment);
+      },
+      replyCount: () => known.replies,
+    });
+  };
+  box.attachSession(build(), build);
+}
+
+/** What the box last saw of its comment on the server. */
+interface Known {
+  version: string;
+  replies: number;
+}
+
+/** `onSaved`, also noting the comment's wording version and reply count. */
+function watching(
+  onSaved: OnSaved | undefined,
+  known: Known,
+  commentId: string,
+): OnSaved {
+  return (target, data) => {
+    const c = data?.comments.find((x) => x.id === commentId);
+    if (c) {
+      known.version = c.root_text_version ?? "";
+      known.replies = c.reactions?.length ?? 0;
+    }
+    onSaved?.(target, data);
+  };
 }

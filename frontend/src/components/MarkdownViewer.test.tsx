@@ -905,10 +905,13 @@ describe("MarkdownViewer — the one-click Open Question answer", () => {
     );
   });
 
-  it("posts exactly one comment carrying the leaning, and renders it anchored", () => {
+  it("posts exactly one comment carrying the leaning, and renders it anchored", async () => {
     const { container } = renderDoc(OQ_DOC);
 
-    act(() => {
+    // A comment on a question reads the document's evidence before it posts;
+    // the server here answers with no review to adopt.
+    vi.mocked(axios.post).mockResolvedValue({ data: null });
+    await act(async () => {
       fireEvent.click(takeButton()!);
     });
 
@@ -1181,11 +1184,11 @@ describe("MarkdownViewer — the new-comment box saves as you type", () => {
     expect(screen.queryByPlaceholderText("Your comment...")).toBeNull();
   });
 
-  it("keeps the text on Esc", async () => {
+  it("keeps the text on Ctrl+Enter", async () => {
     installReviewServer([]);
     const { textarea } = open();
     fireEvent.change(textarea, { target: { value: "kept on Esc" } });
-    fireEvent.keyDown(document, { key: "Escape" });
+    fireEvent.keyDown(textarea, { key: "Enter", ctrlKey: true });
     await waitFor(() =>
       expect(useReviewStore.getState().comments[0]?.comment).toBe(
         "kept on Esc",

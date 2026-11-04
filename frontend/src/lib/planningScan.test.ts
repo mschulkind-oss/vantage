@@ -420,6 +420,8 @@ describe("a question (§3.3)", () => {
       line: 12,
       unitLine: 7,
       unitEndLine: 13,
+      unitFingerprint: expect.stringMatching(/^[0-9a-f]{32}$/),
+      unitText: expect.stringContaining("OQ-B1: A question?"),
       block: { startLine: 7, endLine: 19 },
       cardChars: card.length,
     });

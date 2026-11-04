@@ -34,6 +34,7 @@ covers:
   - packages/vantage-check/src/commands/index.ts
   - packages/vantage-check/src/rules/planning.ts
   - packages/vantage-check/src/rules/questionLength.ts
+  - packages/vantage-check/src/rules/questionCandidate.ts
   - packages/vantage-check/src/rules/registry.ts
   - packages/vantage-check/src/core/candidates.ts
   - packages/vantage-check/src/core/config.ts
@@ -621,7 +622,10 @@ A question is identified by **(document path, id)** and carries a **state**, a
   by ([§6.4](#64-needs-you-as-a-to-do-list)). `unitEndLine` has no rendered twin — a rendered
   `<li>` carries only its start line — so it is tested against parse
   positions, and placement by it against the page's own reading of every
-  block of every document under `docs/`.
+  block of every document under `docs/`. `unitText` is the unit as the page
+  renders it (the DOM's `textContent`: bold, link and code contribute what they
+  show, not their markup), which a server checks a reviewer's selected quote
+  against.
 
 Which directives are questions, and what their markers say, is the contents
 column's own reading, predicted from the parse: the scan uses the same host-target
@@ -1235,7 +1239,7 @@ the whole height the card gave up.
 An index update, reviews arriving, an agent's reply or an answer made elsewhere
 changes text, numbers and marks on what is painted, never its layout. Each late
 change marks the item it concerns (_New reply_, _Answered elsewhere_, _Done_,
-_Changed in the document_, in the item's own line; the New reply mark adds a bar in
+_Newer than shown_, in the item's own line; the New reply mark adds a bar in
 the item's left gutter), or is counted in the header's **updates slot**, _N updates
 · Refresh_, or both. The count is one per item a new layout would bring in, take
 out, change between row and card, or render again, and one for a reordered roadmap,
@@ -1250,9 +1254,12 @@ Blocks fetched for a row opened into its card are keyed by their document's cont
 hash as well as their place, so a row opened after an edit and a Refresh shows the
 document as it is.
 
-**Refresh** closes every open comment box first (`closeBoxes`), which saves what it
-holds, and waits for those saves, at most the reviews deadline; then lays the page
-out from the data in hand, as opening it would, every mark cleared; and keeps the
+**Refresh** (the tooltip says _Apply updates_) is refused while an open comment box
+holds changes: the button is disabled with "Save or Restore the open answer first"
+([planning-ownership.md §8](./planning-ownership.md#8-apply-updates-reload-from-server-and-selection-anchors)),
+and it never saves or restores for the reader. Otherwise it closes the unchanged
+open boxes (`closeBoxes`) and waits for them, at most the reviews deadline; then
+lays the page out from the data in hand, as opening it would, every mark cleared; and keeps the
 first item on screen at the same height, or _Needs you_'s top with none left, by a
 scroll in a layout effect before the paint. Pressed from the keyboard, its button
 goes as the count reaches 0, so the focus goes to the item it kept, or to _Needs
@@ -1351,7 +1358,7 @@ Each question appears as a card:
   ([§6.2](#62-sections-top-to-bottom)), answered from its document.
 - **Its marks** ([§6.4](#64-needs-you-as-a-to-do-list)): _New reply_, a button
   that opens the reply, with a bar in the card's left gutter; _Answered
-  elsewhere_, _Done_ and _Changed in the document_, as text in the card's top
+  elsewhere_, _Done_ and _Newer than shown_, as text in the card's top
   line. Each is drawn in room the card already has, so a mark changes no card's
   height. The card's comment list is the one the layout painted until the reader
   opens it.
@@ -3038,8 +3045,13 @@ returns. `reviews` is `[]`, never null.
   out. A store read error leaves that path out with a warning, as `GET /review`
   degrades to `null`.
 
-It replaces one `GET /review` per listed document. A `review_changed` push still
-refetches its one document through `GET /review`.
+It replaces one `GET /review` per listed document. A `review_changed` push
+refetches its one document with a single-path `POST …/planning/reviews`, not
+`GET /review`: only this answer carries the reading the pair is keyed on (each
+entry's `evidence`: `boot_id`, `document_generation`, `content_hash`,
+`mutation_revision`, `sample_changed`).
+[planning-ownership.md §2](./planning-ownership.md#2-evidence-which-reading-a-pair-belongs-to)
+defines them, and the session, bind and evidence endpoints beside this one.
 
 ### 9.4 What the server holds
 
@@ -3404,7 +3416,7 @@ by number.
 | The sections                                                                                                     | planning page                      | the empty region below the frame, filled in one commit: every full card of a layout at once                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | _Needs you_'s heading count, the groups' and kinds' counts, the filter line's counts, the header buttons' counts | planning page                      | live, in slots sized for them: _Needs you_'s count three digits wide, the groups' counts in theirs, the filter line's number in room for four digits and its word in the room of _matches_, Copy answers' and Copy answers + maintenance's in four digits, each growing to the right; _Maintenance_'s heading line never wraps ([§6.4](#64-needs-you-as-a-to-do-list))                                                                                                                                                              |
 | An agent's reply on a painted item                                                                               | planning page                      | the _New reply_ mark in the item's own line, and a bar in its left gutter, room the item already has; pressed, it opens the reply, the reader's action                                                                                                                                                                                                                                                                                                                                                                              |
-| An answer made elsewhere, a ✅ or a gone question, a changed question                                            | planning page                      | _Answered elsewhere_, _Done_, _Changed in the document_ in the item's own line; the card keeps the text and the comment list it painted                                                                                                                                                                                                                                                                                                                                                                                             |
+| An answer made elsewhere, a ✅ or a gone question, a changed question                                            | planning page                      | _Answered elsewhere_, _Done_, _Newer than shown_ in the item's own line; the card keeps the text and the comment list it painted                                                                                                                                                                                                                                                                                                                                                                                             |
 | A new question, a reordered roadmap, a group or kind that came or went                                           | planning page                      | counted in the header's updates slot only, whose room is kept from first paint; a group the layout did not have is not drawn, and one it had keeps its line at a count of 0                                                                                                                                                                                                                                                                                                                                                         |
 | Held updates                                                                                                     | planning page                      | the next layout the reader makes: **Refresh**, a filter, a roadmap, a page size, or opening the page; Refresh keeps the first item on screen at its height                                                                                                                                                                                                                                                                                                                                                                          |
 | The roadmap line                                                                                                 | planning page                      | ready at first paint in the outline's head, from the index and the remembered choice, which is read synchronously; where the column is not drawn, on _Needs you_'s heading line, which arrives with the sections                                                                                                                                                                                                                                                                                                                    |
@@ -3673,13 +3685,13 @@ the same under every roadmap.
 `check` has six planning rules (`packages/vantage-check/src/rules/registry.ts`;
 `vantage-check help` prints their ids, summaries and defaults):
 
-| Rule                            | Reports                                                                                                                                                                                                                                                                                                                                                         |
-| :------------------------------ | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `planning/stage-vocabulary`     | a `stage` outside the declared words; inert when no stages are declared, even at `error`                                                                                                                                                                                                                                                                        |
-| `planning/depends-on-missing`   | a `depends-on` entry whose target does not exist or lies outside the repository, or whose `#OQ-…` id appears nowhere in its target                                                                                                                                                                                                                              |
-| `planning/stage-disagrees`      | the page's _Stage conflict_ section                                                                                                                                                                                                                                                                                                                             |
-| `planning/blocked-on-disagrees` | a question whose marker disagrees with its `blocked-on` referent: a 🔒 with nothing that still waits, or a 💬 whose referent does                                                                                                                                                                                                                               |
-| `planning/unrouted`             | the page's _Not on a roadmap_ section: an open question no roadmap routes. Off by default; this repository runs it as a warning, so the gate lists those questions without failing                                                                                                                                                                              |
+| Rule                            | Reports                                                                                                                                                                                                                                                                                                                                                                            |
+| :------------------------------ | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `planning/stage-vocabulary`     | a `stage` outside the declared words; inert when no stages are declared, even at `error`                                                                                                                                                                                                                                                                                           |
+| `planning/depends-on-missing`   | a `depends-on` entry whose target does not exist or lies outside the repository, or whose `#OQ-…` id appears nowhere in its target                                                                                                                                                                                                                                                 |
+| `planning/stage-disagrees`      | the page's _Stage conflict_ section                                                                                                                                                                                                                                                                                                                                                |
+| `planning/blocked-on-disagrees` | a question whose marker disagrees with its `blocked-on` referent: a 🔒 with nothing that still waits, or a 💬 whose referent does                                                                                                                                                                                                                                                  |
+| `planning/unrouted`             | the page's _Not on a roadmap_ section: an open question no roadmap routes. Off by default; this repository runs it as a warning, so the gate lists those questions without failing                                                                                                                                                                                                 |
 | `planning/question-length`      | a question whose text, less its leaning and its Answer, runs past `max-words`, well past the few lines its card shows folded. off by default, including in strict runs. Its opt-in threshold's calibration is in `rules/questionLength.ts` and the [vantage-check guide](../../userguide/guides/vantage-check.md#what-it-checks); enable it only when a word-count check is useful |
 
 The first five are the same derivations the page uses, so the page and the gate cannot
@@ -3866,6 +3878,42 @@ Planning page: /.vantage/planning?filter=path:/docs/design/x.md+is:open&space=q4
   before 0.8 has no planning page, and one before 0.9 ignores this filter and shows
   every entry._ The releases are `PLANNING_PAGE_RELEASE` and `FILTER_RELEASE`
   ([Current values](#current-values)). Both cautions are text only, with no JSON key.
+
+**What the handoff says, and where the contract lives.** The six-step agent
+handoff contract is stated once, in the printed style guide
+(`packages/vantage-md/src/styleGuide.ts`, `vantage-check style-guide`); this page
+does not restate it, and the two user guides point to it. What the checker adds
+to it:
+
+- **Two counts, two names.** The CLI's count is _open in Markdown_: what
+  `is:open`, `index` and the JSON `openQuestions` report from the saved files,
+  for the documents the scan read and the chosen roadmap routes. It never sees a
+  review comment, so a question answered only in review still counts. _Waiting on
+  you_ is the Planning page's count after it subtracts answers pending in review,
+  and only the served app can compute it. A CLI count is never worded as waiting.
+- **The readout.** Under a filter the text output says once: _The count is open in
+  Markdown: answers pending in review are not subtracted here, and the Planning
+  page shows them._ (`PENDING_REVIEW_NOTE` in `commands/index.ts`).
+- **Exit 2 for an unmatched `path:` term** adds, per term, what was checked: the
+  term matched none of the documents the scan indexed, skipped or could not read,
+  and several `path:` terms combine in one filter. For a root-anchored literal path
+  with no wildcard, no `..` segment, it also says whether a file, a folder or
+  nothing is at that path inside the project root; a pattern is reported as a
+  pattern that matched nothing, never as a missing file. Why an existing file went
+  unlisted (excluded, ignored, not recognized) is not determined, and it says so.
+  The exit code, the JSON shape and the scan perimeter are unchanged.
+- **`vantage/question-candidate`** is a default-on warning ([OQ-AH1](../design/agent-planning-handoff.md#decision-ledger)),
+  `packages/vantage-check/src/rules/questionCandidate.ts`. It reads the shared parse and
+  reports two shapes with no `question` directive: a list item whose first inline
+  run is a 💬 or 🔒 marker followed by an `OQ-` id (excluding every item
+  `vantage/oq-missing` already reports), and a GFM table with a `Leaning` or
+  `Answer` header, `OQ-` ids as plain text or inline code in a body column, and a
+  first header that is not `ID`, once per table. Never reported: a table whose first
+  header is `ID` (the ledger form, so an `ID`-first question table is a known miss),
+  ids in fenced code, links, inline code in prose or bare mentions, a row whose id
+  is a link, and ✅ items. `--strict` fails on it. It never edits or infers.
+- **Not built, by decision:** a review-aware CLI query, a readiness flag for
+  concurrent writers, and any reply-outcome vocabulary ([OQ-AP1](../design/answer-publication.md#OQ-AP1)).
 
 **The encoding.** One function in the planning module, `encodePlanningQueryValue`,
 holds how a filter's value is written, and `planningLink` writes the parameter's
@@ -4758,7 +4806,7 @@ is the only place most of the numbers are stated.
 | Characters of a leaning or a comment an answered row shows                                                                                                             | 160, then cut                                                                                                                                                                    | `answerChars`                                                                                                                                                                 |
 | The hold                                                                                                                                                               | 150 ms after the content arrives; for a space's answer, after the repositories arrive, or the page mounts                                                                        | `holdMs`; `usePlanningSpaceHold` in `frontend/src/lib/planningSpace.ts`                                                                                                       |
 | Referenced by headings per row                                                                                                                                         | 4, then _+M more_                                                                                                                                                                | `HEADINGS_SHOWN` in `ReferencedBy.tsx`                                                                                                                                        |
-| `planning/question-length` opt-in threshold                                                                                                                                     | 120 words (`max-words`)                                                                                                                                                          | `QUESTION_WORDS_DEFAULT` in `rules/questionLength.ts`                                                                                                                         |
+| `planning/question-length` opt-in threshold                                                                                                                            | 120 words (`max-words`)                                                                                                                                                          | `QUESTION_WORDS_DEFAULT` in `rules/questionLength.ts`                                                                                                                         |
 | A question answered by a comment, its chip                                                                                                                             | _Leaning taken_ for its own take, else _Answered — waiting on the agent_                                                                                                         | `OQ_TAKEN_LABEL`, `OQ_ANSWERED_LABEL` in `frontend/src/hooks/useOpenQuestionButtons.ts`                                                                                       |
 | `index` JSON format version                                                                                                                                            | 3                                                                                                                                                                                | `INDEX_FORMAT_VERSION` in `commands/index.ts`                                                                                                                                 |
 

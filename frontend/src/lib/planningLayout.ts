@@ -284,7 +284,7 @@ export type Mark = "done" | "answered-elsewhere" | "changed";
 export const MARK_LABELS: Readonly<Record<Mark, string>> = {
   done: "Done",
   "answered-elsewhere": "Answered elsewhere",
-  changed: "Changed in the document",
+  changed: "Newer than shown",
 };
 
 /** The New reply mark's words (§6.4). */
@@ -366,6 +366,19 @@ const textOf = (q: PlanningQuestion, withBlock: boolean): string =>
     ...(withBlock ? [q.cardChars, q.block.endLine - q.block.startLine] : []),
   ].join("\n");
 
+/**
+ * Whether the scanner's fingerprint of the unit's source lines differs from
+ * the one the card was painted with. Empty when the scanner could not hash
+ * the unit, which is no evidence either way.
+ */
+export const unitChanged = (
+  painted: PlanningQuestion,
+  now: PlanningQuestion,
+): boolean =>
+  painted.unitFingerprint !== "" &&
+  now.unitFingerprint !== "" &&
+  painted.unitFingerprint !== now.unitFingerprint;
+
 /** Whether a question is gone, ✅, or no longer one that needs a ruling. */
 const isDone = (facts: QuestionFacts): boolean =>
   facts.now === undefined || facts.now.state === "answered";
@@ -390,7 +403,8 @@ export function marksOf(
     const withBlock = facts.siblingsThen === facts.siblingsNow;
     if (
       facts.now !== undefined &&
-      textOf(facts.now, withBlock) !== textOf(facts.painted, withBlock)
+      (unitChanged(facts.painted, facts.now) ||
+        textOf(facts.now, withBlock) !== textOf(facts.painted, withBlock))
     ) {
       marks.push("changed");
     }

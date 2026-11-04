@@ -35,6 +35,7 @@ import (
 // file. Without the lock their steps interleave and one silently overwrites
 // the other.
 type Store struct {
+	ev  evidenceState
 	dir string
 	// A fixed set of mutexes, chosen by hashing the review file path. Keeping a
 	// mutex per path would grow without bound and is keyed by a client-supplied
@@ -167,6 +168,10 @@ func (s *Store) Save(filePath, repo string, data *model.ReviewData) error {
 
 // saveLocked is Save without acquiring the lock. Callers must already hold it.
 func (s *Store) saveLocked(filePath, repo string, data *model.ReviewData) error {
+	data.MutationRevision++
+	for i := range data.Comments {
+		refreshReplyCoverage(&data.Comments[i])
+	}
 	if err := os.MkdirAll(s.dir, 0o755); err != nil {
 		return err
 	}

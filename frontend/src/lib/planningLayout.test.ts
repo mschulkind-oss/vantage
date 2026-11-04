@@ -229,7 +229,7 @@ describe("marks (§6.4)", () => {
     ).toEqual(["done"]);
   });
 
-  it("marks Changed in the document when its text changed, not when it moved", () => {
+  it("marks Newer than shown when its text changed, not when it moved", () => {
     const moved = {
       ...painted,
       line: painted.line + 3,
@@ -240,6 +240,17 @@ describe("marks (§6.4)", () => {
     expect(
       marksOf(facts({ now: { ...painted, title: "Other?" } }), "card").marks,
     ).toEqual(["changed"]);
+  });
+
+  it("marks Changed when the scanner's unit fingerprint differs, and not when it is the same (Repair 2)", () => {
+    expect(painted.unitFingerprint).not.toBe("");
+    expect(
+      marksOf(
+        facts({ now: { ...painted, unitFingerprint: "another-unit" } }),
+        "card",
+      ).marks,
+    ).toEqual(["changed"]);
+    expect(marksOf(facts({ now: { ...painted } }), "card").marks).toEqual([]);
   });
 
   it("reads a longer block as a change only while the block holds the same questions", () => {

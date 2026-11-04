@@ -80,6 +80,7 @@ import React, {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
 import {
   useLocation,
@@ -131,9 +132,33 @@ import {
 } from "../components/PlanningFilterLine";
 import { PlanningOutline } from "../components/PlanningOutline";
 import { PlanningPendingAnswers } from "../components/PlanningPendingAnswers";
+import { PlanningUnresolved } from "../components/PlanningUnresolved";
+import { useLegacyAutoBind } from "../hooks/useLegacyAutoBind";
+import {
+  lifecycleFor,
+  ownershipMap,
+  questionQuote,
+  unresolvedGroups,
+  type CommentOwnership,
+  type OwnershipMap,
+} from "../lib/questionOwnership";
+
+const EMPTY_OWNERSHIP: OwnershipMap = {
+  entries: [],
+  boundPending: new Map(),
+  boundBy: new Map(),
+  unpaired: new Set(),
+  unresolved: {
+    unassigned: [],
+    ambiguous: [],
+    removed: [],
+    unknown: [],
+    compacted: [],
+  },
+};
 import { AnsweredRow, PlanningNeedsYou } from "../components/PlanningNeedsYou";
 import { PlanningGroups, type GroupId } from "../components/PlanningGroups";
-import { PlanningUpdates } from "../components/PlanningUpdates";
+import { PlanningReload, PlanningUpdates } from "../components/PlanningUpdates";
 import { PlanningCopyPanel } from "../components/PlanningCopyPanel";
 import { maintenancePayload } from "../lib/planningCopy";
 import {
@@ -153,6 +178,8 @@ import { CONTENTS_COLUMN_QUERY, useMediaQuery } from "../hooks/useMediaQuery";
 import { usePersistentFlag } from "../hooks/usePersistentFlag";
 import {
   fetchPlanningReviews,
+  reloadPlanningReviews,
+  useReloadStatusOf,
   usePlanningReviews,
 } from "../hooks/usePlanningReviews";
 import { repoLabel, useRepoRoot } from "../hooks/useRepoRoot";
@@ -214,7 +241,13 @@ import {
 } from "../planningScan/client";
 import { planningLimits } from "../planningScan/limits";
 import type { OnSaved } from "../lib/reviewBoxes";
-import { closeBoxes, liveBoxes, type CommentBox } from "../lib/commentAutosave";
+import {
+  boxesVersion,
+  closeBoxes,
+  liveBoxes,
+  subscribeBoxes,
+  type CommentBox,
+} from "../lib/commentAutosave";
 import { useRepoStore } from "../stores/useRepoStore";
 import {
   usePlanningIndex,
@@ -223,6 +256,9 @@ import {
 } from "../stores/usePlanningStore";
 import {
   answersPayload,
+  bindCommentQuestion,
+  bindRefusal,
+  commandErrorMessage,
   deleteCommentFrom,
   isPendingForAgent,
   postCommentTo,
@@ -271,6 +307,13 @@ import { OQ_DEFAULT_LEANING } from "../hooks/useOpenQuestionButtons";
 
 /** No marks: one object, so a card's props stay equal render to render. */
 const NO_MARKS: readonly Mark[] = Object.freeze([]);
+
+/** A card painted again from the live scan when the reader opened it. */
+interface RefreshedCard {
+  question: PlanningQuestion;
+  block: CardBlock;
+}
+const NO_REFRESHED: ReadonlyMap<string, RefreshedCard> = new Map();
 
 /**
  * The line under *To fold into the ledger*: the ✅ questions the `compact`
@@ -679,6 +722,7 @@ const spokenLine = (line: PlanningNoticeLine): string =>
   line.map((part) => (typeof part === "string" ? part : part.code)).join("");
 
 /** What the filter's live region says after a clear, when there is no notice. */
+const APPLY_BLOCKED = "Save or Restore the open answer first";
 const FILTER_CLEARED = "The filter is cleared. Every entry is shown.";
 
 /**
@@ -2001,6 +2045,28 @@ export const PlanningPage: React.FC = () => {
     [],
   );
 
+  // Keyed on the evidence each document's reviews were read with, so a pair
+  // read at different moments reads Unknown rather than a guess.
+  const ownership = useMemo(
+    () =>
+      index === null
+        ? EMPTY_OWNERSHIP
+        : ownershipMap(index, reviews.byPath, {
+            evidence: reviews.evidence,
+            hashes: hashes ?? {},
+          }),
+    [index, reviews.byPath, reviews.evidence, hashes],
+  );
+  // The reviews Copy answers and the counts may read: a document whose reviews
+  // and scan are not one reading holds no answer, its comments are Unknown.
+  const answerable = useMemo(() => {
+    if (ownership.unpaired.size === 0) return reviews.byPath;
+    return Object.fromEntries(
+      Object.entries(reviews.byPath).filter(
+        ([path]) => !ownership.unpaired.has(path),
+      ),
+    );
+  }, [reviews.byPath, ownership.unpaired]);
   // Copy answers (§6.7): every comment still
   // pending for the agent on a question listed on any page, grouped by
   // document — built from the reviews, never from the cards, so a comment
@@ -2014,12 +2080,12 @@ export const PlanningPage: React.FC = () => {
       () =>
         pendingAnswers(
           listedQuestions,
-          reviews.byPath,
+          answerable,
           scoped,
           frameKeeps,
           index === null ? undefined : allQuestionsByPath(index),
         ),
-      [scoped, listedQuestions, reviews.byPath, frameKeeps, index],
+      [scoped, listedQuestions, answerable, frameKeeps, index],
     );
 
   // The documents whose reviews the page's need-you numbers read (§6.7, §12):
@@ -2054,10 +2120,59 @@ export const PlanningPage: React.FC = () => {
     const out: Record<string, readonly ReviewComment[]> = {};
     for (const path of counted.paths) {
       const comments = reviews.byPath[path];
-      if (comments !== undefined) out[path] = comments;
+      // Comments read as a pair with another version of the document are not
+      // answers to any question: the unresolved groups hold them instead.
+      if (comments !== undefined && !ownership.unpaired.has(path)) {
+        out[path] = comments;
+      }
     }
     return out;
-  }, [counted.paths, reviews.byPath]);
+  }, [counted.paths, reviews.byPath, ownership.unpaired]);
+  // One ownership map over every scanned question, not the filtered listing:
+  // the comments Copy answers does not carry sit in its unresolved groups.
+  const { refusals: bindRefusals } = useLegacyAutoBind(ownership.entries, {
+    enabled: onThisRepo && index !== null,
+    adopt: reviews.adopt,
+  });
+  const questionsOf = useCallback(
+    (path: string): readonly PlanningQuestion[] =>
+      index?.documents
+        .find((d) => d.path === path)
+        ?.questions.filter((q) => q.id !== null) ?? [],
+    [index],
+  );
+  const attachComment = useCallback(
+    async (
+      entry: CommentOwnership,
+      question: PlanningQuestion,
+    ): Promise<string | null> => {
+      if (!entry.reading || !question.id) return "Not attached: no reading.";
+      try {
+        const data = await bindCommentQuestion(
+          entry.path,
+          entry.comment.id,
+          {
+            questionId: question.id,
+            unitFingerprint: question.unitFingerprint,
+            selectedQuote: questionQuote(question),
+          },
+          entry.reading,
+          Boolean(entry.comment.question_id),
+        );
+        reviews.adopt(entry.path, data);
+        return null;
+      } catch (e) {
+        return bindRefusal(e) ?? commandErrorMessage(e, "Could not attach");
+      }
+    },
+    [reviews],
+  );
+  const unresolved = useMemo(() => {
+    const placed = new Set(
+      pendingGroups.flatMap((g) => g.comments.map((c) => c.id)),
+    );
+    return unresolvedGroups(ownership, placed);
+  }, [ownership, pendingGroups]);
   const { linesOf, loading: quotesLoading } = useQuotedText(
     onThisRepo ? repo : null,
     hashes,
@@ -2353,10 +2468,103 @@ export const PlanningPage: React.FC = () => {
   // elsewhere mark, and no held update.
   const [own, setOwn] = useState<ReadonlySet<string>>(() => new Set());
 
+  // Cards the reader opened since the layout, each painted again from the
+  // live scan, by `itemKey` (planning-question-state.md §6): only that card's
+  // body and chip, never another's. A new layout (Apply updates) empties it.
+  const [refreshed, setRefreshed] = useState<{
+    layout: string;
+    cards: ReadonlyMap<string, RefreshedCard>;
+  }>(() => ({ layout: "", cards: NO_REFRESHED }));
+  // A layout is its generation and its inputs (filter, roadmap, page size):
+  // either changing paints every card again, so a refreshed card is only
+  // valid under the layout it was refreshed for.
+  const layoutId =
+    current === null ? "" : `${current.generation}\n${current.inputsKey}`;
+  const refreshedCards =
+    current !== null && refreshed.layout === layoutId
+      ? refreshed.cards
+      : NO_REFRESHED;
+  const refreshInputs = useRef<{
+    liveQuestions: ReadonlyMap<string, PlanningQuestion>;
+    hashes: typeof hashes;
+    layout: string;
+    factsOf: (key: string) => QuestionFacts | undefined;
+  }>({
+    liveQuestions,
+    hashes,
+    layout: layoutId,
+    factsOf: () => undefined,
+  });
+  // Opening one card: when the card carries the Newer than shown chip (the
+  // unit's fingerprint differs, or the size heuristic says the text did), ask
+  // the scan store for that one block (the held scan and its cache, no parse
+  // of its own) and paint the card from it. Resolves whether the card was
+  // refreshed; on any failure the card and its chip stay as they were, and an
+  // answer that arrives after the layout moved on is dropped.
+  const refreshCard = useCallback(
+    async (key: string): Promise<boolean> => {
+      const input = refreshInputs.current;
+      const live = input.liveQuestions.get(key);
+      const facts = input.factsOf(key);
+      const hash = live === undefined ? undefined : input.hashes?.[live.path];
+      if (
+        repo === null ||
+        live === undefined ||
+        facts === undefined ||
+        hash === undefined ||
+        !marksOf(facts, "card").marks.includes("changed")
+      ) {
+        return false;
+      }
+      try {
+        const [answer] = await planningScanner().cards(repo, [
+          { path: live.path, hash, startLine: live.block.startLine },
+        ]);
+        if (answer === undefined || !("block" in answer)) return false;
+        await predrawDiagrams([answer.block.markdown]);
+        // Dropped too when the live scan moved on while this was asked: a
+        // newer refresh of the card may already be painted, and this older
+        // block would paint over it.
+        if (
+          refreshInputs.current.layout !== input.layout ||
+          refreshInputs.current.liveQuestions.get(key) !== live
+        ) {
+          return false;
+        }
+        setRefreshed((prev) => ({
+          layout: input.layout,
+          cards: new Map(prev.layout === input.layout ? prev.cards : []).set(
+            key,
+            { question: live, block: answer.block },
+          ),
+        }));
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    [repo],
+  );
+  // The item each card key (`refKey`) stands for, so a card's own expand
+  // finds its item without the card's props changing.
+  const itemOfCard = useRef(new Map<string, string>());
+  const expandCard = useCallback(
+    (cardKey: string) => {
+      const key = itemOfCard.current.get(cardKey);
+      if (key !== undefined) void refreshCard(key);
+    },
+    [refreshCard],
+  );
+
   // What the page knows of an item at its layout and now (§6.4).
   const factsOf = useCallback(
     (key: string): QuestionFacts | undefined => {
-      const painted = shownQuestions.get(key) ?? liveQuestions.get(key);
+      // A card the reader opened is painted from the live scan again: its
+      // refreshed question, and no other card's.
+      const painted =
+        refreshedCards.get(key)?.question ??
+        shownQuestions.get(key) ??
+        liveQuestions.get(key);
       if (painted === undefined || current === null) return undefined;
       const now = liveQuestions.get(key);
       return {
@@ -2376,6 +2584,7 @@ export const PlanningPage: React.FC = () => {
     },
     [
       shownQuestions,
+      refreshedCards,
       liveQuestions,
       shownBlocks,
       liveBlocks,
@@ -2385,6 +2594,15 @@ export const PlanningPage: React.FC = () => {
       liveComments,
     ],
   );
+
+  useLayoutEffect(() => {
+    refreshInputs.current = {
+      liveQuestions,
+      hashes,
+      layout: layoutId,
+      factsOf,
+    };
+  });
 
   // The data in hand, laid out under the layout's own roadmap, filter and
   // page size: what a new layout would show, which the live counts and the
@@ -2599,7 +2817,9 @@ export const PlanningPage: React.FC = () => {
       const { shown: on, extraBlocks: extra } = blocksRef.current;
       const hash = on?.inputs.hashes[question.path];
       const extraKey = extraBlockKey(hash, at);
+      const fresh = await refreshCard(key);
       if (
+        !fresh &&
         !entry.preview &&
         on !== null &&
         !on.inputs.blocks.has(at) &&
@@ -2635,7 +2855,7 @@ export const PlanningPage: React.FC = () => {
       focusRef.current = { key, on: "card", onlyIfLost: false };
       changeInPlace((s) => openRow(s.inPlace, key));
     },
-    [repo, changeInPlace],
+    [repo, changeInPlace, refreshCard],
   );
 
   // Refresh (§6.4): every open comment box closed first, which saves what it
@@ -2648,7 +2868,18 @@ export const PlanningPage: React.FC = () => {
     key: string | null;
     top: number;
   } | null>(null);
+  // Apply updates is guarded by the page's editors: an open answer with
+  // buffered changes or earlier text writes blocks it. It never saves,
+  // restores or deletes a session itself (planning-question-state.md §6).
+  useSyncExternalStore(subscribeBoxes, boxesVersion);
+  const applyBlocked = liveBoxes().some((box) => box.holdsChanges);
+  // Reload from server: reads again, repaints nothing (Apply updates does).
+  const reloadStatus = useReloadStatusOf(onThisRepo ? repo : null);
+  const reloadFromServer = useCallback(() => {
+    if (repo !== null) void reloadPlanningReviews(repo, listedPaths);
+  }, [repo, listedPaths]);
   const refresh = useCallback(async () => {
+    if (liveBoxes().some((box) => box.holdsChanges)) return;
     const open = liveBoxes().filter((box) => box.isOpen);
     closeBoxes(() => true);
     await Promise.all(open.map(boxSettled));
@@ -3105,31 +3336,42 @@ export const PlanningPage: React.FC = () => {
       );
     }
     const key = refKey(question);
+    itemOfCard.current.set(key, item.key);
+    const again = refreshedCards.get(item.key);
     const at = pageBlockKey(question.path, question.block.startLine);
     // `null` is a block the scanner could not give, which the card says;
     // `undefined`, one no set asked for.
     const block =
-      shown?.inputs.blocks.has(at) === true
-        ? shown.inputs.blocks.get(at)
-        : extraBlocks.get(
-            extraBlockKey(shown?.inputs.hashes[question.path], at),
-          );
+      again !== undefined
+        ? again.block
+        : shown?.inputs.blocks.has(at) === true
+          ? shown.inputs.blocks.get(at)
+          : extraBlocks.get(
+              extraBlockKey(shown?.inputs.hashes[question.path], at),
+            );
     // A card whose block no set holds, such as one that joined past the
     // blocks asked for ahead, is drawn as a preview card: whole once asked.
     const asPreview =
-      item.entry.preview ||
-      shown?.inputs.previews.has(at) === true ||
-      block === undefined;
+      again === undefined &&
+      (item.entry.preview ||
+        shown?.inputs.previews.has(at) === true ||
+        block === undefined);
     return (
       <PlanningQuestionCard
         key={key}
-        question={question}
-        card={asPreview ? null : block}
+        question={again?.question ?? question}
+        card={asPreview ? null : (block ?? null)}
+        onExpand={expandCard}
         preview={asPreview}
         onShowQuestion={showQuestion}
         badge={shownIndex === null ? null : badgeOf(shownIndex, question.path)}
         notOnRoadmap={item.entry.notOnRoadmap === true}
         comments={reviews.byPath[question.path]}
+        lifecycle={lifecycleFor(
+          ownership,
+          question,
+          reviews.byPath[question.path] !== undefined,
+        )}
         listComments={
           current?.inPlace.opened.has(item.key)
             ? undefined
@@ -3624,10 +3866,12 @@ export const PlanningPage: React.FC = () => {
       }
       tools={
         <>
+          <PlanningReload status={reloadStatus} onReload={reloadFromServer} />
           <PlanningUpdates
             count={updateCount}
             title={updatesTitle(updates)}
             onRefresh={() => void refresh()}
+            blockedReason={applyBlocked ? APPLY_BLOCKED : null}
           />
           <HeaderOverflow
             extra={
@@ -3643,6 +3887,13 @@ export const PlanningPage: React.FC = () => {
               </>
             }
           >
+            <PlanningUnresolved
+              groups={unresolved}
+              known={countKnown}
+              questionsOf={questionsOf}
+              onAttach={attachComment}
+              refusals={bindRefusals}
+            />
             <PlanningPendingAnswers
               key={repo}
               groups={pendingGroups}

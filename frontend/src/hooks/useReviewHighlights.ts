@@ -14,7 +14,9 @@ import {
   statusText,
   STATUS_TICK_MS,
   type CommentBox,
+  restoreEditingSession,
 } from "../lib/commentAutosave";
+import { cancelWords } from "../lib/commentSession";
 import { useOpenNewCommentIds } from "./useCommentBox";
 import {
   hasAgentReaction,
@@ -963,7 +965,8 @@ function openInlineBox(
     if (closesBox(ev)) {
       ev.preventDefault();
       ev.stopPropagation();
-      closeInlineBox(entry);
+      if (ev.key === "Escape") cancelInlineBox(entry);
+      else closeInlineBox(entry);
     }
   });
   foot.close.addEventListener("click", (ev) => {
@@ -977,6 +980,59 @@ function openInlineBox(
   box.open();
   attachBox(wrapper, entry);
   textarea.focus();
+}
+
+/**
+ * Escape on an inline box that holds an editing session (§7): close it when
+ * nothing changed, else ask Restore / Discard (or Keep editing), as the
+ * popover does.
+ */
+function cancelInlineBox(entry: InlineBox): void {
+  const session = entry.box.editingSession;
+  if (session === null || session.unchanged) {
+    closeInlineBox(entry);
+    return;
+  }
+  if (entry.el.querySelector("[data-cancel-confirm]")) return;
+  const words = cancelWords(session);
+  const ask = document.createElement("div");
+  ask.setAttribute("data-cancel-confirm", "");
+  ask.setAttribute("role", "alertdialog");
+  ask.setAttribute("aria-label", words.label);
+  ask.className = "comment-box-foot flex-wrap";
+  const question = document.createElement("span");
+  question.className = "font-medium";
+  question.textContent = words.question;
+  const keep = document.createElement("button");
+  keep.type = "button";
+  keep.className = "comment-box-close";
+  keep.textContent = "Keep editing";
+  const confirm = document.createElement("button");
+  confirm.type = "button";
+  confirm.className = "comment-box-close";
+  confirm.textContent = words.confirm;
+  const dismiss = () => {
+    ask.remove();
+    entry.textarea.focus();
+  };
+  keep.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    dismiss();
+  });
+  confirm.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    restoreEditingSession(entry.box);
+    closeInlineBox(entry);
+  });
+  ask.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape") {
+      ev.stopPropagation();
+      dismiss();
+    }
+  });
+  ask.append(question, keep, confirm);
+  entry.el.append(ask);
+  keep.focus();
 }
 
 /**

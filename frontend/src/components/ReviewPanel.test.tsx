@@ -783,3 +783,33 @@ describe("ReviewPanel — the delete arm expires", () => {
     expect(useReviewStore.getState().comments).toHaveLength(0);
   });
 });
+
+describe("ReviewPanel — ownership cue", () => {
+  beforeEach(() => {
+    useReviewStore.setState({ comments: [], filePath: null });
+    vi.clearAllMocks();
+  });
+
+  it("says ownership is unknown on a comment the server could not tie to its question, and only on that one", () => {
+    setComments([
+      baseComment({
+        id: "c1",
+        comment: "tied",
+        ownership: "proven",
+        reactions: [],
+      }),
+      baseComment({
+        id: "c2",
+        comment: "not tied",
+        ownership: "unknown",
+        ownership_reason: "question_not_at_anchor",
+        reactions: [],
+      }),
+    ]);
+    render(<ReviewPanel isOpen onClose={() => {}} />);
+    const cues = screen.getAllByTestId("ownership-cue");
+    expect(cues).toHaveLength(1);
+    expect(cues[0]).toHaveTextContent("(anchor moved)");
+    expect(cues[0].parentElement).toHaveTextContent("not tied");
+  });
+});

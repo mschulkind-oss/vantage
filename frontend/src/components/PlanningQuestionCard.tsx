@@ -77,6 +77,8 @@
  * in place — the reader's own action, so the page may grow. Show question goes
  * with it, so the focus it had goes to the card.
  */
+import { questionQuote, type Lifecycle } from "../lib/questionOwnership";
+import { ownershipCue, replyCoverageLabel } from "../lib/replyCoverage";
 import React, {
   useCallback,
   useEffect,
@@ -125,10 +127,12 @@ import {
 } from "../hooks/useOpenQuestionButtons";
 import { deleteAnswer, type AnswerDeletion } from "../lib/answerDelete";
 import { buildWholeBlockAnchor, indexBlocks } from "../lib/reviewAnchor";
-import { anchorFromRange } from "../lib/selectionAnchor";
+import { anchorFromHeadline, anchorFromRange } from "../lib/selectionAnchor";
 import { isStaticMode } from "../lib/staticMode";
+import { usePlanningDocument } from "../stores/usePlanningStore";
 import {
   CARD_CLAMP_LINES,
+  CARD_PART_ATTR,
   CARD_OVERFLOW_ATTR,
   cutSlot,
   cutState,
@@ -222,6 +226,12 @@ interface PlanningQuestionCardProps {
   /** The document's review comments, or `undefined` until they load. */
   comments: readonly ReviewComment[] | undefined;
   /**
+   * The question's factual lifecycle (`lifecycleFor`), drawn in a slot that is
+   * always there so a label that arrives late moves nothing; `null` for a
+   * question with no id, which owns no comments.
+   */
+  lifecycle?: Lifecycle | null;
+  /**
    * The comments were not in hand when the card painted, so they are listed
    * only once the reader opens the count.
    */
@@ -278,6 +288,11 @@ interface PlanningQuestionCardProps {
   listComments?: readonly ReviewComment[];
   /** Late data's marks on it, as text in its top line (§6.4). */
   marks?: readonly Mark[];
+  /**
+   * Told when the reader unfolds this card (its own Show full question): the
+   * page then refreshes this card's body alone from the live scan.
+   */
+  onExpand?: (cardKey: string) => void;
   /** The agent replied since it painted: the New reply mark (§6.4). */
   newReply?: boolean;
   /** New reply pressed: the list opens on the reply, and the page is told. */
@@ -684,6 +699,7 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
   badge,
   notOnRoadmap = false,
   comments,
+  lifecycle,
   commentsLate = false,
   href,
   onOpenHere,
@@ -694,6 +710,7 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
   cardKey = "",
   onScoped,
   unfoldedByDefault = false,
+  onExpand,
   folds,
   listComments,
   marks = NO_MARKS,
@@ -1008,6 +1025,17 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
   // One box per card: while an answer or edit box is open, no selection offers
   // a second one.
   const boxOpenRef = useRef(false);
+  // What the scan holds of this question's document: the block hashes it
+  // proves at their lines, which a headline selection's anchor must match.
+  const scanned = usePlanningDocument(question.path);
+  const blockLinesRef = useRef<Readonly<Record<string, number>>>({});
+  const questionLineRef = useRef(question.unitLine);
+  const questionMarkerRef = useRef(question.marker);
+  useEffect(() => {
+    blockLinesRef.current = scanned?.blockLines ?? {};
+    questionLineRef.current = question.unitLine;
+    questionMarkerRef.current = question.marker;
+  }, [scanned, question.unitLine, question.marker]);
   const boxOpen = answering !== null || editing !== null;
   useEffect(() => {
     boxOpenRef.current = boxOpen;
@@ -1069,7 +1097,30 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
             : { anchor: got.anchor, text: got.displayText, ...place },
         );
       } else {
-        setPicked({ anchor: null, text: "", ...place });
+        // The headline's words are the question's title: anchored in the
+        // block the scan puts it in, where the scan proves that block, else
+        // Open document. The leaning aside is the directive's text, which no
+        // block of the document holds, so it never anchors.
+        const headline = article!.querySelector<HTMLElement>(
+          "[data-planning-card-headline]",
+        );
+        const got =
+          headline !== null && within(headline)
+            ? anchorFromHeadline(
+                headline,
+                body!,
+                body!.querySelector<HTMLElement>(`[${CARD_PART_ATTR}="title"]`),
+                range,
+                questionLineRef.current,
+                blockLinesRef.current,
+                headlineMarker(questionMarkerRef.current).trim(),
+              )
+            : null;
+        setPicked(
+          got === null
+            ? { anchor: null, text: "", ...place }
+            : { anchor: got.anchor, text: got.displayText, ...place },
+        );
       }
     }
     const onMouseUp = () => schedule(10);
@@ -1125,6 +1176,7 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
     pane?.style.setProperty("overflow-anchor", "none");
     folds?.set(cardKey, next);
     setFold({ folds, unfolded: next });
+    if (next) onExpand?.(cardKey);
   };
 
   /** The anchor and fallback text the in-page button would send, from the card. */
@@ -1151,6 +1203,8 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
             text(now.host),
             now.fallbackText,
             question.id,
+            questionQuote(question),
+            question.unitFingerprint,
           ),
         );
         setOpen(true);
@@ -1161,7 +1215,7 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
         setBusy(false);
       }
     },
-    [anchorNow, onFile, question.path, question.id, onAnswered, cardKey],
+    [anchorNow, onFile, question, onAnswered, cardKey],
   );
 
   const writable = !isStaticMode() && state.found;
@@ -1264,7 +1318,14 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
   ) => {
     const box = newCommentBox(
       target,
-      newReviewComment(anchor, "", fallbackText, question.id),
+      newReviewComment(
+        anchor,
+        "",
+        fallbackText,
+        question.id,
+        questionQuote(question),
+        question.unitFingerprint,
+      ),
       { label: `Answer to ${question.title}`, onSaved: onBoxSaved },
     );
     boxRef.current = box;
@@ -1596,6 +1657,15 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
             Could not load the question.
           </span>
         )}
+        {lifecycle !== undefined && (
+          <span
+            data-testid="lifecycle"
+            data-planning-lifecycle
+            className="inline-block min-w-[16rem] text-[11px] text-slate-500 dark:text-slate-400"
+          >
+            {lifecycle}
+          </span>
+        )}
         {/* Always there, at a fixed width, so a count that arrives late
             moves nothing (§12.2). */}
         <span
@@ -1635,6 +1705,15 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
                 }
               >
                 <span className="whitespace-pre-wrap">{c.comment}</span>
+                {ownershipCue(c) !== null && (
+                  <span
+                    data-testid="ownership-cue"
+                    className="ml-2 text-[11px] text-slate-500 dark:text-slate-400"
+                    title={c.ownership_reason}
+                  >
+                    ({ownershipCue(c)})
+                  </span>
+                )}
                 {isPendingForAgent(c) ? (
                   <span className="ml-2 rounded bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
                     {WAITING_LABEL}
@@ -1710,7 +1789,15 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
                 )}
                 {reply !== undefined && !c.resolved && (
                   <div className="mt-0.5 pl-3 text-[12px] text-slate-500 dark:text-slate-400">
-                    Agent: {reply.summary}
+                    Agent: {reply.summary}{" "}
+                    <span data-testid="reply-coverage">
+                      (
+                      {replyCoverageLabel(
+                        c,
+                        (c.reactions ?? []).lastIndexOf(reply),
+                      )}
+                      )
+                    </span>
                   </div>
                 )}
               </li>

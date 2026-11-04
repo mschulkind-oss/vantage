@@ -48,6 +48,7 @@ import (
 	"maps"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -288,18 +289,19 @@ func NewServer(cfg *config.Config) (*Server, error) {
 	}
 
 	handlers := api.NewHandlers(api.Deps{
-		Reviews:        s.reviews,
-		Perf:           s.perf,
-		Config:         cfg,
-		ReviewChanged:  s.broadcastReviewChanged,
-		Starred:        s.starred,
-		StarredChanged: s.broadcastStarredChanged,
-		Promoted:       s.promoted,
-		ThemesDir:      themesDir,
-		DefaultTheme:   defaultTheme,
-		ThemeDefaults:  s.themeDefaults,
-		Degraded:       s.degradedList,
-		SpaceRepo:      s.spaceRepo,
+		Reviews:         s.reviews,
+		Perf:            s.perf,
+		Config:          cfg,
+		ReviewChanged:   s.broadcastReviewChanged,
+		QuestionScanner: api.ResolveQuestionScanner(logger, os.Getenv, exec.LookPath, os.Executable),
+		Starred:         s.starred,
+		StarredChanged:  s.broadcastStarredChanged,
+		Promoted:        s.promoted,
+		ThemesDir:       themesDir,
+		DefaultTheme:    defaultTheme,
+		ThemeDefaults:   s.themeDefaults,
+		Degraded:        s.degradedList,
+		SpaceRepo:       s.spaceRepo,
 	})
 
 	s.router = s.buildRouter(handlers)

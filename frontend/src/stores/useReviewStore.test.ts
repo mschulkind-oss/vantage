@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { MockInstance } from "vitest";
 import {
   answersPayload,
+  bindCommentQuestion,
+  bindRefusal,
   checkCommand,
   hasAgentReaction,
   isAnsweredByAgent,
@@ -1261,7 +1263,7 @@ describe("useReviewStore", () => {
       seedNested();
       const payload = await copiedPayload();
       expect(payload).toContain(
-        '{"path":"docs/design/guide.md","id":"<short-id>","round":<round>,"summary":"<one sentence: what you changed>","nonce":"<fresh random string>"}',
+        '{"path":"docs/design/guide.md","id":"<short-id>","round":<round>,"root_text_version":"<the root_text_version shown beside that id; omit when none>","summary":"<one sentence: what you changed>","nonce":"<fresh random string>"}',
       );
     });
 
@@ -2690,5 +2692,149 @@ describe("the planning page's review writes and payload", () => {
       // Unbound: current lines ARE quoted.
       expect(payload).toContain("B's text at line 2");
     });
+  });
+});
+
+describe("create sends the evidence the server proves a binding with", () => {
+  it("fetches the document evidence and sends preconditions and the quote with the question id", async () => {
+    mockedAxios.get.mockResolvedValueOnce({
+      data: {
+        boot_id: "boot-1",
+        document_generation: 3,
+        content_hash: "h",
+        mutation_revision: 7,
+      },
+    });
+    mockedAxios.post.mockResolvedValue({ data: null });
+    useRepoStore.setState({ activeRepo: "r" } as never);
+    const { postCommentTo, newReviewComment } =
+      await import("./useReviewStore");
+    const c = newReviewComment(
+      {
+        source_line: 1,
+        block_text_hash: "x",
+        selection_offset: 0,
+        selection_length: 0,
+      },
+      "hi",
+      "quote",
+      "OQ-A",
+      "Question text",
+    );
+    await postCommentTo("a.md", c).catch(() => undefined);
+    const body = mockedAxios.post.mock.calls.at(-1)?.[1] as Record<
+      string,
+      unknown
+    >;
+    expect(body.preconditions).toEqual({
+      boot_id: "boot-1",
+      document_generation: 3,
+      mutation_revision: 7,
+      content_hash: "h",
+    });
+    expect(body.question_evidence).toMatchObject({
+      document_generation: 3,
+      document_content_hash: "h",
+      selected_quote: "Question text",
+    });
+  });
+
+  it("sends the bare id alone when the evidence cannot be read", async () => {
+    mockedAxios.get.mockRejectedValueOnce(new Error("down"));
+    mockedAxios.post.mockResolvedValue({ data: null });
+    const { postCommentTo, newReviewComment } =
+      await import("./useReviewStore");
+    const c = newReviewComment(
+      {
+        source_line: 1,
+        block_text_hash: "x",
+        selection_offset: 0,
+        selection_length: 0,
+      },
+      "hi",
+      "quote",
+      "OQ-A",
+      "Question text",
+    );
+    await postCommentTo("a.md", c).catch(() => undefined);
+    const body = mockedAxios.post.mock.calls.at(-1)?.[1] as Record<
+      string,
+      unknown
+    >;
+    expect(body.question_id).toBe("OQ-A");
+    expect(body.preconditions).toBeUndefined();
+    expect(body.question_evidence).toBeUndefined();
+  });
+});
+
+describe("bindCommentQuestion", () => {
+  const reading = {
+    boot_id: "b1",
+    document_generation: 3,
+    content_hash: "h3",
+    mutation_revision: 7,
+  };
+  const target = {
+    questionId: "OQ-A1",
+    unitFingerprint: "f".repeat(32),
+    selectedQuote: "The question",
+  };
+
+  it("posts the reading as preconditions and the scanner's fingerprint as evidence", async () => {
+    vi.mocked(axios.post).mockResolvedValueOnce({ data: null });
+    await bindCommentQuestion("plans/a.md", "c1", target, reading);
+    const [url, body, config] = vi.mocked(axios.post).mock.calls.at(-1)!;
+    expect(String(url)).toMatch(/\/review\/bind-comment-question$/);
+    expect(body).toEqual({
+      comment_id: "c1",
+      question_id: "OQ-A1",
+      evidence: {
+        document_generation: 3,
+        document_content_hash: "h3",
+        unit_fingerprint: "f".repeat(32),
+        selected_quote: "The question",
+      },
+      preconditions: reading,
+      allow_rebind: false,
+    });
+    expect(config).toEqual({ params: { path: "plans/a.md" } });
+  });
+
+  it("asks to rebind only when told to", async () => {
+    vi.mocked(axios.post).mockResolvedValueOnce({ data: null });
+    await bindCommentQuestion("plans/a.md", "c1", target, reading, true);
+    const body = vi.mocked(axios.post).mock.calls.at(-1)![1] as {
+      allow_rebind: boolean;
+    };
+    expect(body.allow_rebind).toBe(true);
+  });
+
+  it("reads a 409 reason in plain words, and anything else as no refusal", () => {
+    const refused = (reason: string) => ({
+      response: { status: 409, data: { reason } },
+    });
+    expect(bindRefusal(refused("unit_fingerprint"))).toBe(
+      "Not attached: the question's text is not what was checked.",
+    );
+    expect(bindRefusal(refused("mutation_revision"))).toBe(
+      "Not attached: the comments changed since this was read.",
+    );
+    expect(bindRefusal(refused("scanner_unavailable"))).toBe(
+      "Not attached: the checker is not installed on the server.",
+    );
+    expect(bindRefusal(refused("scan_refused"))).toBe(
+      "Not attached: the checker refused the scan (too many documents).",
+    );
+    expect(bindRefusal(refused("scanner_failed"))).toBe(
+      "Not attached: the checker failed on the server.",
+    );
+    expect(bindRefusal(refused("scan_raced"))).toBe(
+      "Not attached: the document changed while it was checked.",
+    );
+    expect(bindRefusal(refused("something_new"))).toBe(
+      "Not attached: something_new.",
+    );
+    expect(bindRefusal({ response: { status: 500, data: {} } })).toBeNull();
+    expect(bindRefusal(new Error("offline"))).toBeNull();
   });
 });

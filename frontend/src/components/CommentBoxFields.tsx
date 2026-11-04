@@ -24,13 +24,18 @@ interface CommentBoxTextareaProps extends Omit<
   box: CommentBox;
   /** Close the box: Ctrl+Enter, ⌘+Enter and Esc do. */
   onClose: () => void;
+  /** Escape, where it undoes the editing session instead of closing (§7). */
+  onCancel?: () => void;
 }
 
 /** The box's textarea: every keystroke goes to the box, which saves on its own. */
 export const CommentBoxTextarea = React.forwardRef<
   HTMLTextAreaElement,
   CommentBoxTextareaProps
->(function CommentBoxTextarea({ box, onClose, onKeyDown, ...rest }, ref) {
+>(function CommentBoxTextarea(
+  { box, onClose, onCancel, onKeyDown, ...rest },
+  ref,
+) {
   const state = useCommentBox(box);
   return (
     <textarea
@@ -44,7 +49,8 @@ export const CommentBoxTextarea = React.forwardRef<
         if (closesBox(e)) {
           e.preventDefault();
           e.stopPropagation();
-          onClose();
+          if (e.key === "Escape" && onCancel) onCancel();
+          else onClose();
         }
       }}
     />

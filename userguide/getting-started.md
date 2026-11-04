@@ -16,6 +16,14 @@ go install github.com/mschulkind-oss/vantage/cmd/vantage@latest
 
 This places a `vantage` binary in your `GOBIN` (typically `~/go/bin` — make sure it's on your `PATH`).
 
+The server alone does not include `vantage-check`. Without it beside the
+`vantage` binary, on your `PATH`, or named by `VANTAGE_CHECK`, Vantage cannot
+tell which planning question a review comment belongs to, and logs one warning
+at startup. Your comments are kept, but the "before" text an agent's reply is
+compared with stops updating on each round, and a comment's ownership reads
+_Unknown_ (_checker not installed_). Release archives and Homebrew carry both
+binaries. See [Review answers without the checker](guides/planning.md#review-answers-without-the-checker).
+
 ### Homebrew
 
 ```bash

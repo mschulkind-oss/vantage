@@ -9,6 +9,9 @@
  * blocks and Copy's quoted lines come from the real inline scanner client,
  * over a fake planning server holding the same tree.
  */
+import { replyBox } from "../lib/reviewBoxes";
+import { resetBoxesForTest } from "../lib/commentAutosave";
+import { useReloadStatus } from "../hooks/usePlanningReviews";
 import {
   act,
   cleanup,
@@ -107,6 +110,7 @@ import {
 } from "../planningScan/client";
 import { memoryScanStore } from "../planningScan/memoryStore";
 import { setPlanningLimitsForTests } from "../planningScan/limits";
+import { blockTextHash } from "../../../packages/vantage-md/src/planning/evidence";
 import {
   contentHash,
   filterForms,
@@ -346,6 +350,26 @@ const reviewGets = () =>
 
 let reviews: Record<string, ReviewComment[]>;
 
+/** Every bind-comment-question the page sent, and the 409 reason to refuse with. */
+let binds: { path: string; body: Record<string, unknown> }[] = [];
+let bindRefusalReason: string | null = null;
+/** The server's reading names another version of the document than the scan's. */
+let staleEvidence = false;
+
+/** The reading the server would attach to `path`'s review: the scan's hash. */
+function evidenceFor(path: string) {
+  const hash = Object.values(usePlanningStore.getState().byRepo)
+    .flatMap((load) => (load.status === "ready" ? [load.hashes[path]] : []))
+    .find((h) => h !== undefined);
+  return {
+    boot_id: "boot-1",
+    document_generation: 1,
+    content_hash: staleEvidence ? "another-version" : (hash ?? ""),
+    mutation_revision: 1,
+    sample_changed: false,
+  };
+}
+
 function serveReviews(): void {
   vi.mocked(axios.get).mockImplementation(async (url, config) => {
     // The app shell's own reads: the sidebar's bookmarks, file tree and
@@ -366,21 +390,63 @@ function serveReviews(): void {
         data: {
           reviews: paths.flatMap((path) =>
             reviews[path]
-              ? [{ path, review: { file_path: path, comments: reviews[path] } }]
+              ? [
+                  {
+                    path,
+                    review: { file_path: path, comments: reviews[path] },
+                    evidence: evidenceFor(path),
+                  },
+                ]
               : [],
           ),
         },
       };
     }
+    if (String(url).includes("-comment-session")) {
+      // Editing sessions (lib/commentSession.ts): always open, never stale.
+      const path = (config?.params as { path: string }).path;
+      const b = body as { comment_id: string; session_id: string };
+      return {
+        data: {
+          session: {
+            session_id: b.session_id,
+            comment_id: b.comment_id,
+            state: String(url).includes("/begin-") ? "open" : "closed",
+            root_text_version: "",
+          },
+          review: { file_path: path, comments: reviews[path] ?? [] },
+        },
+      };
+    }
     if (String(url).endsWith("/review/comments")) {
       const path = (config?.params as { path: string }).path;
+      const { session_id: _session, ...fields } = body as ReviewComment & {
+        session_id?: string;
+      };
       const created = {
-        ...(body as ReviewComment),
+        ...fields,
         reactions: [],
       };
       reviews[path] = [...(reviews[path] ?? []), created];
       const data: ReviewData = { file_path: path, comments: reviews[path] };
       return { data };
+    }
+    if (String(url).endsWith("/review/bind-comment-question")) {
+      const path = (config?.params as { path: string }).path;
+      const b = body as { comment_id: string; question_id: string };
+      binds.push({ path, body: b });
+      if (bindRefusalReason !== null) {
+        throw Object.assign(new Error("409"), {
+          response: {
+            status: 409,
+            data: { error: "out of date", reason: bindRefusalReason },
+          },
+        });
+      }
+      reviews[path] = (reviews[path] ?? []).map((c) =>
+        c.id === b.comment_id ? { ...c, question_id: b.question_id } : c,
+      );
+      return { data: { file_path: path, comments: reviews[path] } };
     }
     throw new Error(`unexpected POST ${url}`);
   });
@@ -462,6 +528,9 @@ beforeEach(() => {
   });
   useReviewStore.setState({ comments: [], filePath: null });
   reviews = {};
+  binds = [];
+  bindRefusalReason = null;
+  staleEvidence = false;
   vi.mocked(axios.get).mockReset();
   vi.mocked(axios.post).mockReset();
   serveReviews();
@@ -1442,7 +1511,7 @@ describe("your own actions (planning-index.md §6.4)", () => {
     ).toBeNull();
     expect(updatesButton()).toHaveAttribute("aria-hidden", "true");
     await act(async () => {
-      fireEvent.click(screen.getAllByRole("button", { name: "Close" })[0]!);
+      fireEvent.click(screen.getAllByRole("button", { name: "Close" }).at(-1)!);
     });
     await settle();
     expect(rowIds()).toEqual(["OQ-T1"]);
@@ -1778,6 +1847,243 @@ describe("a card a row opens into (§6.4)", () => {
   });
 });
 
+describe("Newer than shown and opening one card (planning-question-state.md §5, §6)", () => {
+  /** `tree` with a same-length edit inside each of `ids`' units. */
+  const editedUnits = (
+    tree: Record<string, string>,
+    ...ids: string[]
+  ): Record<string, string> => {
+    let text = tree["plans/todo.md"]!;
+    for (const id of ids) {
+      const at = text.indexOf(`**${id}:`);
+      const line = text.indexOf("_Leaning:_ Yes.", at);
+      text = text.slice(0, line) + "_Leaning:_ Yes!" + text.slice(line + 15);
+    }
+    return { ...tree, "plans/todo.md": text };
+  };
+  const chip = (id: string) =>
+    within(cardFor(id)).queryByText("Newer than shown");
+  const show = async (id: string) => {
+    await act(async () => {
+      fireEvent.click(
+        within(
+          screen.getByRole("group", { name: `${id}: Question ${id}?` }),
+        ).getByRole("button", { name: /^Show/ }),
+      );
+    });
+    await settle();
+  };
+
+  it("marks only the card whose unit fingerprint changed, and never changes its painted body", async () => {
+    pageSize(2);
+    const tree = todoTree(2);
+    seed(tree);
+    await renderPage();
+    const bodyOf = () =>
+      cardFor("OQ-T1").querySelector(".planning-card-body")!.innerHTML;
+    const bodyBefore = bodyOf();
+    const after = editedUnits(tree, "OQ-T1");
+    serveTree(after);
+    setLoad(readyOf(after));
+    await settle();
+    expect(chip("OQ-T1")).toBeTruthy();
+    expect(chip("OQ-T2")).toBeNull();
+    expect(cardFor("OQ-T1")).toHaveTextContent("Yes.");
+    expect(cardFor("OQ-T1")).not.toHaveTextContent("Yes!");
+    expect(bodyOf()).toBe(bodyBefore);
+  });
+
+  it("shows no chip when the same document is read again", async () => {
+    pageSize(2);
+    const tree = todoTree(2);
+    seed(tree);
+    await renderPage();
+    setLoad(readyOf(tree));
+    await settle();
+    expect(chip("OQ-T1")).toBeNull();
+    expect(chip("OQ-T2")).toBeNull();
+  });
+
+  it("opening one row refreshes that card's body and chip only; Apply updates refreshes the rest", async () => {
+    pageSize(2);
+    const tree = todoTree(3);
+    seed(tree);
+    answer(tree, "OQ-T1");
+    await renderPage();
+    expect(rowIds()).toEqual(["OQ-T1"]);
+    const after = editedUnits(tree, "OQ-T1", "OQ-T2");
+    serveTree(after);
+    setLoad(readyOf(after));
+    await settle();
+    await show("OQ-T1");
+    expect(chip("OQ-T1")).toBeNull();
+  });
+});
+
+describe("a card's refresh follows the layout and the chip (repair 3)", () => {
+  const chip = (id: string) =>
+    within(cardFor(id)).queryByText("Newer than shown");
+  const show = async (id: string) => {
+    await act(async () => {
+      fireEvent.click(
+        within(
+          screen.getByRole("group", { name: `${id}: Question ${id}?` }),
+        ).getByRole("button", { name: /^Show/ }),
+      );
+    });
+    await settle();
+  };
+
+  it("clears the chip on open when only the size heuristic raised it", async () => {
+    pageSize(2);
+    const tree = todoTree(2);
+    seed(tree);
+    answer(tree, "OQ-T1");
+    await renderPage();
+    // The live scan hashed no unit (`""`: no evidence) but the leaning it read
+    // is another: only the size heuristic sees the change.
+    const load = readyOf(tree);
+    if (load.status !== "ready") throw new Error("not ready");
+    for (const d of load.index.documents) {
+      for (const question of d.questions) {
+        if (question.id === "OQ-T1") {
+          question.unitFingerprint = "";
+          question.leaning = "Another leaning.";
+        }
+      }
+    }
+    setLoad(load);
+    await settle();
+    await show("OQ-T1");
+    expect(chip("OQ-T1")).toBeNull();
+  });
+
+  /** `tree` with the leaning of each of `ids` ended by `mark`, same length. */
+  const leaningEnded = (
+    tree: Record<string, string>,
+    mark: string,
+    ...ids: string[]
+  ): Record<string, string> => {
+    let text = tree["plans/todo.md"]!;
+    for (const id of ids) {
+      const at = text.indexOf(`**${id}:`);
+      const line = text.indexOf("_Leaning:_ Yes.", at);
+      text =
+        text.slice(0, line) + `_Leaning:_ Yes${mark}` + text.slice(line + 15);
+    }
+    return { ...tree, "plans/todo.md": text };
+  };
+  it("drops a refreshed card when a page size chosen lays out again under the same generation", async () => {
+    pageSize(2);
+    setPlanningLimitsForTests({
+      pageSizes: [2, 20, 30, 50],
+      defaultPageSize: 2,
+    });
+    const tree = todoTree(3);
+    seed(tree);
+    answer(tree, "OQ-T1");
+    await renderPage();
+    const first = leaningEnded(tree, "!", "OQ-T1");
+    serveTree(first);
+    setLoad(readyOf(first));
+    await settle();
+    await show("OQ-T1");
+    expect(cardFor("OQ-T1")).toHaveTextContent("Yes!");
+    // The scan moves on while the layout waits; the page size is a layout
+    // of its own, which takes the data in hand, not the card opened before.
+    const second = leaningEnded(tree, "?", "OQ-T1");
+    serveTree(second);
+    setLoad(readyOf(second));
+    await settle();
+    // Unanswered, T1 is a card again in the layout the page size asks for.
+    reviews["plans/todo.md"] = [];
+    await reviewPushed("plans/todo.md");
+    await act(async () => {
+      fireEvent.click(
+        within(screen.getByTestId("needs-you-end")).getByRole("button", {
+          name: "20",
+        }),
+      );
+    });
+    await settle();
+    expect(cardFor("OQ-T1")).toHaveTextContent("Yes?");
+    expect(cardFor("OQ-T1")).not.toHaveTextContent("Yes!");
+    expect(chip("OQ-T1")).toBeNull();
+  });
+
+  /** The scanner, with the cards asked for while `hold` is set kept back. */
+  function holdingCards(tree: Record<string, string>) {
+    const held: (() => void)[] = [];
+    const state = { hold: false };
+    serveTree(tree, "/api", (inline) => ({
+      cards: (repo, want, options) =>
+        state.hold
+          ? new Promise<CardAnswer[]>((resolve) => {
+              held.push(() => resolve(inline.cards(repo, want, options)));
+            })
+          : inline.cards(repo, want, options),
+    }));
+    return { state, held };
+  }
+
+  it("keeps a newer refreshed card when an older layout's card refresh answers after Apply updates", async () => {
+    pageSize(2);
+    const tree = todoTree(4);
+    seed(tree);
+    answer(tree, "OQ-T1", "OQ-T2");
+    await renderPage();
+    const first = leaningEnded(tree, "!", "OQ-T1");
+    const gate = holdingCards(first);
+    setLoad(readyOf(first));
+    await settle();
+    gate.state.hold = true;
+    await show("OQ-T1");
+    expect(gate.held).toHaveLength(1);
+    // Apply updates paints the next frame; OQ-T2, newer in the scan since, is
+    // opened in it and painted from the scan.
+    gate.state.hold = false;
+    await refresh();
+    const second = leaningEnded(first, "?", "OQ-T2");
+    serveTree(second);
+    setLoad(readyOf(second));
+    await settle();
+    await show("OQ-T2");
+    expect(cardFor("OQ-T2")).toHaveTextContent("Yes?");
+    expect(chip("OQ-T2")).toBeNull();
+    gate.held.splice(0).forEach((release) => release());
+    await settle();
+    expect(cardFor("OQ-T2")).toHaveTextContent("Yes?");
+    expect(chip("OQ-T2")).toBeNull();
+  });
+
+  it("drops an older card refresh that answers after a newer refresh of the same card", async () => {
+    pageSize(2);
+    const tree = todoTree(3);
+    seed(tree);
+    answer(tree, "OQ-T1");
+    await renderPage();
+    const first = leaningEnded(tree, "!", "OQ-T1");
+    const older = holdingCards(first);
+    older.state.hold = true;
+    setLoad(readyOf(first));
+    await settle();
+    await show("OQ-T1");
+    expect(older.held).toHaveLength(1);
+    // The scan moves on and the card is opened again: its answer comes first.
+    const second = leaningEnded(tree, "?", "OQ-T1");
+    serveTree(second);
+    setLoad(readyOf(second));
+    await settle();
+    await show("OQ-T1");
+    expect(cardFor("OQ-T1")).toHaveTextContent("Yes?");
+    older.held.splice(0).forEach((release) => release());
+    await settle();
+    expect(cardFor("OQ-T1")).toHaveTextContent("Yes?");
+    expect(cardFor("OQ-T1")).not.toHaveTextContent("Yes!");
+    expect(chip("OQ-T1")).toBeNull();
+  });
+});
+
 describe("what arrives late (planning-index.md §6.4)", () => {
   /** A reply of the agent's on your comment on `id`. */
   function agentReplied(tree: Record<string, string>, id: string): string {
@@ -1941,15 +2247,11 @@ describe("what arrives late (planning-index.md §6.4)", () => {
     serveTree(after);
     setLoad(readyOf(after, { stages: STAGES }));
     await settle();
-    expect(
-      within(cardFor("OQ-T1")).getByText("Changed in the document"),
-    ).toBeTruthy();
+    expect(within(cardFor("OQ-T1")).getByText("Newer than shown")).toBeTruthy();
     expect(cardFor("OQ-T1")).not.toHaveTextContent("and more besides");
     await refresh();
     expect(cardFor("OQ-T1")).toHaveTextContent("and more besides");
-    expect(
-      within(cardFor("OQ-T1")).queryByText("Changed in the document"),
-    ).toBeNull();
+    expect(within(cardFor("OQ-T1")).queryByText("Newer than shown")).toBeNull();
   });
 
   it("counts a new question in the updates slot only, and Refresh places it in roadmap order", async () => {
@@ -2102,9 +2404,75 @@ describe("Refresh (planning-index.md §6.4)", () => {
     }
   });
 
-  it("closes an open comment box first, keeping its text, which the new layout shows as an answered row", async () => {
+  async function openAnswerWith(text: string | null) {
+    await act(async () => {
+      fireEvent.click(
+        within(cardFor("OQ-T2")).getByRole("button", { name: "Answer…" }),
+      );
+    });
+    const box = await screen.findByPlaceholderText(/comment/i);
+    if (text !== null) fireEvent.change(box, { target: { value: text } });
+    // Something late, so there is an update to apply.
+    const after = {
+      ...todoTree(3),
+      "roadmap.md":
+        "# Roadmap\n\n1. [First](plans/first.md)\n2. [The list](plans/todo.md)\n",
+      "plans/first.md": doc("stage: DESIGN", q("OQ-F1", OPEN)),
+    };
+    serveTree(after);
+    setLoad(readyOf(after));
+    await settle();
+    return box;
+  }
+
+  it("is disabled with the reason while an open answer holds changes, and never saves or closes it itself", async () => {
     pageSize(2);
     seed(todoTree(3));
+    await renderPage();
+    await openAnswerWith("Go the second way.");
+    const apply = updatesButton();
+    expect(apply).toBeDisabled();
+    expect(apply).toHaveAttribute(
+      "data-tip",
+      expect.stringContaining("Save or Restore the open answer first"),
+    );
+    await act(async () => {
+      fireEvent.click(apply);
+    });
+    await settle();
+    expect(screen.getByPlaceholderText(/comment/i)).toBeTruthy();
+    expect(reviews["plans/todo.md"]).toBeUndefined();
+  });
+
+  it("closes an unchanged open answer box and lays the page out, with no request", async () => {
+    pageSize(2);
+    seed(todoTree(3));
+    await renderPage();
+    await openAnswerWith(null);
+    expect(updatesButton()).not.toBeDisabled();
+    await refresh();
+    expect(screen.queryByPlaceholderText(/comment/i)).toBeNull();
+    expect(reviews["plans/todo.md"]).toBeUndefined();
+  });
+});
+
+describe("Reload from server and the reply guard (planning-question-state.md §6)", () => {
+  afterEach(() => {
+    // Open boxes and the pill outlive a test otherwise, in the registry.
+    resetBoxesForTest();
+    useReloadStatus.setState({ byRepo: {} });
+  });
+  const reloadButton = () =>
+    document.querySelector<HTMLButtonElement>("[data-planning-reload]")!;
+  const reloadPosts = () =>
+    vi
+      .mocked(axios.post)
+      .mock.calls.filter(([url]) => String(url).endsWith("/planning/reviews"));
+
+  it("reads the reviews again with one request, leaves an open answer's text and the painted cards alone, and shows no pill", async () => {
+    pageSize(2);
+    const tree = todoTree(3);
+    seed(tree);
     await renderPage();
     await act(async () => {
       fireEvent.click(
@@ -2113,15 +2481,79 @@ describe("Refresh (planning-index.md §6.4)", () => {
     });
     const box = await screen.findByPlaceholderText(/comment/i);
     fireEvent.change(box, { target: { value: "Go the second way." } });
-    // Something late, so there is an update to apply.
-    setLoad(readyOf(todoTree(3)));
+    const cards = cardIds();
+    const before = reloadPosts().length;
+    await act(async () => {
+      fireEvent.click(reloadButton());
+    });
     await settle();
-    await refresh();
-    expect(screen.queryByPlaceholderText(/comment/i)).toBeNull();
-    expect(reviews["plans/todo.md"]?.map((c) => c.comment)).toEqual([
+    expect(reloadPosts().length).toBe(before + 1);
+    expect(screen.getByPlaceholderText(/comment/i)).toHaveValue(
       "Go the second way.",
-    ]);
-    expect(rowIds()).toEqual(["OQ-T2"]);
+    );
+    expect(cardIds()).toEqual(cards);
+    expect(document.querySelector("[data-planning-reload-status]")).toBeNull();
+  });
+
+  it("shows the last success and the last failure as an Unknown pill, keeps what was held, and does not retry by itself", async () => {
+    pageSize(2);
+    const tree = todoTree(2);
+    seed(tree);
+    const { path, comment } = typedOnTitle(tree, "OQ-T2");
+    reviews[path] = [comment];
+    await renderPage();
+    const cards = cardIds();
+    await act(async () => {
+      fireEvent.click(reloadButton());
+    });
+    await settle();
+    const ok = vi.mocked(axios.post).getMockImplementation()!;
+    vi.mocked(axios.post).mockImplementation(async (url, ...rest) => {
+      if (String(url).endsWith("/planning/reviews")) throw new Error("down");
+      return ok(url, ...rest);
+    });
+    const before = reloadPosts().length;
+    await act(async () => {
+      fireEvent.click(reloadButton());
+    });
+    await settle();
+    const pill = document.querySelector("[data-planning-reload-status]")!;
+    expect(pill.textContent).toMatch(
+      /^Unknown · last successful read .*last attempt failed /,
+    );
+    expect(reloadPosts().length).toBe(before + 1);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(reloadPosts().length).toBe(before + 1);
+    expect(cardIds()).toEqual(cards);
+  });
+
+  it("disables Apply updates while a reply box holds typed text, and never closes or saves it", async () => {
+    pageSize(2);
+    const tree = todoTree(3);
+    seed(tree);
+    answer(tree, "OQ-T1");
+    await renderPage();
+    const { path, comment } = typedOnTitle(tree, "OQ-T1");
+    const box = replyBox({ base: "/api", path }, comment);
+    box.open();
+    box.input("A reply I am still typing.");
+    // Something late, so there is an update to apply.
+    const after = {
+      ...tree,
+      "roadmap.md":
+        "# Roadmap\n\n1. [First](plans/first.md)\n2. [The list](plans/todo.md)\n",
+      "plans/first.md": doc("stage: DESIGN", q("OQ-F1", OPEN)),
+    };
+    serveTree(after);
+    setLoad(readyOf(after));
+    await settle();
+    expect(updatesButton()).toBeDisabled();
+    expect(updatesButton()).toHaveAttribute(
+      "data-tip",
+      expect.stringContaining("Save or Restore the open answer first"),
+    );
+    expect(box.isOpen).toBe(true);
+    box.close();
   });
 });
 
@@ -2748,9 +3180,10 @@ describe("memoized cards (planning-index.md §6.6)", () => {
       usePlanningStore.getState().noteReviewChanged("", "plans/unrouted.md"),
     );
     await settle();
-    expect(vi.mocked(axios.get)).toHaveBeenCalledWith("/api/review", {
-      params: { path: "plans/unrouted.md" },
-    });
+    expect(vi.mocked(axios.post)).toHaveBeenCalledWith(
+      "/api/planning/reviews",
+      { paths: ["plans/unrouted.md"] },
+    );
     // Its own card rendered again, and no card of any other document did.
     expect(viewerRenders.get("plans/unrouted.md")).toBeGreaterThan(
       before.get("plans/unrouted.md") ?? 0,
@@ -8713,5 +9146,222 @@ describe("the planning filter (planning-index.md §6.11)", () => {
     } finally {
       delete window.__VANTAGE_STATIC__;
     }
+  });
+});
+
+describe("ownership under a filter (planning-question-state.md §4)", () => {
+  beforeEach(() => seed(ROUTED));
+
+  it("never shows a comment on a question the filter hides as unresolved: it belongs to that question", async () => {
+    answer(ROUTED, "OQ-D1");
+    await renderPage("/.vantage/planning?filter=OQ-D3");
+    expect(screen.getByRole("article", { name: /OQ-D3/ })).toBeTruthy();
+    expect(screen.queryByRole("article", { name: /OQ-D1/ })).toBeNull();
+    expect(screen.queryByTestId("unresolved-ownership")).toBeNull();
+  });
+
+  // Filters narrow what is drawn, never what a comment belongs to. Copy answers
+  // follows the filter by design (planning-index.md §6.7, OQ-PF2) and says what
+  // it leaves out; ownership does not: a comment on a hidden question is never
+  // Unassigned, and clearing the filter gives back the whole payload.
+  it.each([
+    ["a status", "is:closed"],
+    ["a text word", "OQ-U1"],
+    ["a path", "path:plans/unrouted.md"],
+    ["a status on another document", "path:plans/answered.md+is:open"],
+    ["nothing at all", "zzznomatch"],
+  ])(
+    "keeps ownership under %s that hides the commented question, and clearing it restores Copy answers",
+    async (_shape, filter) => {
+      answer(ROUTED, "OQ-D1", "OQ-A1");
+      await renderPage();
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: COPY_ANSWERS }));
+      });
+      const whole = writeText.mock.calls[0][0] as string;
+      cleanup();
+      writeText.mockClear();
+
+      await renderPage(`/.vantage/planning?filter=${filter}`);
+      expect(screen.queryByRole("article", { name: /OQ-D1/ })).toBeNull();
+      expect(screen.queryByTestId("unresolved-ownership")).toBeNull();
+      cleanup();
+      writeText.mockClear();
+
+      await renderPage();
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: COPY_ANSWERS }));
+      });
+      expect(writeText.mock.calls[0][0]).toBe(whole);
+    },
+  );
+
+  it("keeps them when the filter is typed into the real box", async () => {
+    answer(ROUTED, "OQ-D1");
+    await renderPage();
+    const filterBox = screen.getByRole("textbox", {
+      name: "Filter",
+    }) as HTMLInputElement;
+    await act(async () => {
+      fireEvent.change(filterBox, { target: { value: "OQ-U1" } });
+      fireEvent.submit(
+        screen.getByRole("search", { name: "Filter Questions" }),
+      );
+    });
+    await settle();
+    expect(screen.queryByRole("article", { name: /OQ-D1/ })).toBeNull();
+    expect(screen.queryByTestId("unresolved-ownership")).toBeNull();
+  });
+});
+
+describe("legacy comments: automatic bind and Attach to question…", () => {
+  const DETAIL = "Detail for OQ-U1 only.";
+  const TREE_WITH_DETAIL: Record<string, string> = {
+    ...ROUTED,
+    "plans/unrouted.md": doc(
+      "stage: DESIGN",
+      `${q("OQ-U1", OPEN)}\n   ${DETAIL}\n`,
+    ),
+  };
+  const legacyOn = (detail: string): ReviewComment => ({
+    id: "legacy-0001",
+    comment: "Old answer",
+    fallback_text: "the words it was filed on",
+    created_at: 0,
+    reactions: [],
+    anchor: {
+      source_line: 3,
+      block_text_hash: blockTextHash(detail),
+      selection_offset: 0,
+      selection_length: 0,
+    },
+  });
+  const unitOf = () =>
+    readyOf(TREE_WITH_DETAIL)
+      .index.documents.flatMap((d) => d.questions)
+      .find((x) => x.id === "OQ-U1")!;
+
+  beforeEach(() => seed(TREE_WITH_DETAIL));
+
+  it("binds a legacy comment whose block is unique to one question, once, with the scanner's fingerprint and the reading as preconditions", async () => {
+    reviews["plans/unrouted.md"] = [legacyOn(DETAIL)];
+    await renderPage();
+    await settle();
+    expect(binds).toHaveLength(1);
+    expect(binds[0].path).toBe("plans/unrouted.md");
+    expect(binds[0].body).toMatchObject({
+      comment_id: "legacy-0001",
+      question_id: "OQ-U1",
+      allow_rebind: false,
+      evidence: { unit_fingerprint: unitOf().unitFingerprint },
+      preconditions: { boot_id: "boot-1", document_generation: 1 },
+    });
+    // It is the question's now: no unresolved group holds it.
+    expect(screen.queryByTestId("unresolved-ownership")).toBeNull();
+  });
+
+  it("does not bind a comment whose block text is not found once in the document", async () => {
+    reviews["plans/unrouted.md"] = [legacyOn("words that are gone")];
+    await renderPage();
+    await settle();
+    expect(binds).toEqual([]);
+    expect(screen.getByTestId("unresolved-ownership")).toHaveTextContent(
+      "1 with unresolved ownership",
+    );
+  });
+
+  it("shows a refused automatic bind plainly, and does not ask again", async () => {
+    bindRefusalReason = "content_hash";
+    reviews["plans/unrouted.md"] = [legacyOn(DETAIL)];
+    await renderPage();
+    await settle();
+    await settle();
+    expect(binds).toHaveLength(1);
+    fireEvent.click(screen.getByTestId("unresolved-ownership"));
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Not attached: the document changed since this was read.",
+    );
+    expect(binds).toHaveLength(1);
+  });
+
+  it("attaches by hand: shows the original quote and the question's text, preselects nothing, and binds only on confirm", async () => {
+    reviews["plans/unrouted.md"] = [legacyOn("words that are gone")];
+    await renderPage();
+    await settle();
+    fireEvent.click(screen.getByTestId("unresolved-ownership"));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Attach to question…" }),
+    );
+    const select = screen.getByLabelText("Attach to question");
+    expect((select as HTMLSelectElement).value).toBe("");
+    expect(screen.queryByTestId("attach-proof")).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Confirm attach" }),
+    ).toHaveProperty("disabled", true);
+
+    fireEvent.change(select, { target: { value: "OQ-U1" } });
+    const proof = screen.getByTestId("attach-proof");
+    expect(proof).toHaveTextContent("the words it was filed on");
+    expect(proof).toHaveTextContent(DETAIL);
+    expect(binds).toEqual([]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Confirm attach" }));
+    await settle();
+    expect(binds).toHaveLength(1);
+    expect(binds[0].body).toMatchObject({
+      comment_id: "legacy-0001",
+      question_id: "OQ-U1",
+      allow_rebind: false,
+    });
+  });
+
+  it("says plainly when a manual attach is refused, and leaves the comment where it was", async () => {
+    reviews["plans/unrouted.md"] = [legacyOn("words that are gone")];
+    await renderPage();
+    await settle();
+    bindRefusalReason = "unit_fingerprint";
+    fireEvent.click(screen.getByTestId("unresolved-ownership"));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Attach to question…" }),
+    );
+    fireEvent.change(screen.getByLabelText("Attach to question"), {
+      target: { value: "OQ-U1" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Confirm attach" }));
+    await settle();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Not attached: the question's text is not what was checked.",
+    );
+    expect(reviews["plans/unrouted.md"][0].question_id).toBeUndefined();
+  });
+
+  it("draws a lifecycle label on each card", async () => {
+    await renderPage();
+    const labels = screen.getAllByTestId("lifecycle").map((n) => n.textContent);
+    expect(labels.length).toBeGreaterThan(1);
+    expect(new Set(labels)).toEqual(new Set(["Open"]));
+  });
+
+  it("reads Unknown on a card when its reviews were read against another version of the document", async () => {
+    staleEvidence = true;
+    reviews["plans/unrouted.md"] = [
+      { ...legacyOn(DETAIL), question_id: "OQ-U1", resolved: true },
+    ];
+    await renderPage();
+    expect(within(cardFor("OQ-U1")).getByTestId("lifecycle")).toHaveTextContent(
+      "Unknown",
+    );
+  });
+
+  it("counts a pending comment as unresolved, not as an answer, when its reviews were read against another version", async () => {
+    staleEvidence = true;
+    reviews["plans/unrouted.md"] = [
+      { ...legacyOn(DETAIL), question_id: "OQ-U1" },
+    ];
+    await renderPage();
+    fireEvent.click(screen.getByTestId("unresolved-ownership"));
+    expect(screen.getByTestId("unresolved-unknown")).toHaveTextContent(
+      "another version of the document",
+    );
   });
 });

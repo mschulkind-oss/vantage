@@ -4,6 +4,10 @@ import { MessageSquarePlus, X } from "lucide-react";
 import { popoverPosition } from "../lib/popoverPosition";
 import type { CommentBox } from "../lib/commentAutosave";
 import { CommentBoxFoot, CommentBoxTextarea } from "./CommentBoxFields";
+import { StaleBuffer } from "./CommentSessionViews";
+import { useBoxCancel } from "../hooks/useBoxCancel";
+import { useReviewStore } from "../stores/useReviewStore";
+import { ownershipCue } from "../lib/replyCoverage";
 
 interface ReviewCommentPopoverProps {
   /** The header's words: *Add Comment*, or *Edit Comment* for an edit box. */
@@ -53,6 +57,11 @@ export const ReviewCommentPopover: React.FC<ReviewCommentPopoverProps> = ({
     onClose(box);
   }, [box, onClose]);
 
+  // Escape and × undo the session (§7), after asking when it changed anything.
+  const { cancel, confirming, confirmation } = useBoxCancel(box, close, () =>
+    onClose(box),
+  );
+
   useEffect(() => {
     // Small delay so the popover renders before we focus — avoids the
     // browser collapsing the selection on immediate focus steal.
@@ -63,11 +72,11 @@ export const ReviewCommentPopover: React.FC<ReviewCommentPopoverProps> = ({
   // Esc anywhere closes it, keeping the text.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") close();
+      if (e.key === "Escape" && !confirming) cancel();
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [close]);
+  }, [cancel, confirming]);
 
   // So does a click outside it.
   useEffect(() => {
@@ -89,6 +98,13 @@ export const ReviewCommentPopover: React.FC<ReviewCommentPopoverProps> = ({
       document.removeEventListener("mousedown", handler);
     };
   }, [close]);
+
+  // The comment this box edits, when the open document holds it: its
+  // ownership cue, so the reader is not told more than the server proved.
+  const cue = useReviewStore((state) => {
+    const held = state.comments.find((c) => c.id === box.subject.commentId);
+    return held ? ownershipCue(held) : null;
+  });
 
   const truncated =
     selectedText.length > 200
@@ -116,7 +132,7 @@ export const ReviewCommentPopover: React.FC<ReviewCommentPopoverProps> = ({
         </div>
         <button
           type="button"
-          onClick={close}
+          onClick={cancel}
           title="Close"
           aria-label="Close"
           className="p-0.5 rounded hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400"
@@ -128,14 +144,25 @@ export const ReviewCommentPopover: React.FC<ReviewCommentPopoverProps> = ({
         <div className="text-xs text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-900 rounded px-2 py-1.5 border-l-2 border-blue-400 max-h-24 overflow-y-auto whitespace-pre-wrap">
           {truncated}
         </div>
+        {cue !== null && (
+          <div
+            data-testid="ownership-cue"
+            className="text-[11px] text-slate-500 dark:text-slate-400"
+          >
+            ({cue})
+          </div>
+        )}
         <CommentBoxTextarea
           ref={textareaRef}
           box={box}
           onClose={close}
+          onCancel={cancel}
           placeholder="Your comment..."
           rows={6}
           className="w-full text-sm rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 px-3 py-2 resize-y min-h-[120px] focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
         />
+        <StaleBuffer box={box} />
+        {confirmation}
         <CommentBoxFoot box={box} onClose={close} />
       </div>
     </div>,

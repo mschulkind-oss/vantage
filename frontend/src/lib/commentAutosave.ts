@@ -21,6 +21,7 @@
  */
 import type { CommentReaction, ReviewComment } from "../types";
 import { copyText } from "./clipboard";
+import { sessionsNeedGuard, type CommentSession } from "./commentSession";
 
 /** A save is sent this long after the last keystroke. */
 export const SAVE_PAUSE_MS = 1000;
@@ -109,6 +110,13 @@ export interface BoxState {
   copied: boolean;
   /** *Post as a new comment* is offered. */
   canPost: boolean;
+  /** What the editing session says instead of the save status, or null. */
+  sessionNote: string | null;
+  /**
+   * Text typed before the session's begin acknowledgement, kept apart because
+   * the root had changed since it was shown (Insert / Copy); null otherwise.
+   */
+  buffer: string | null;
 }
 
 type Want = "save" | "remove" | null;
@@ -160,6 +168,11 @@ export class CommentBox {
   private requestInFlight: Promise<unknown> | null = null;
   private readonly listeners = new Set<() => void>();
   private state: BoxState;
+  /** The server-held editing session this box writes inside, if any. */
+  private session: CommentSession | null = null;
+  private unsubscribeSession: (() => void) | null = null;
+  private stashed: string | null = null;
+  private renewSession: (() => CommentSession) | null = null;
 
   /**
    * `text` is what the box opens holding: an edit box's comment text, which
@@ -192,10 +205,59 @@ export class CommentBox {
     };
   };
 
+  /** Write inside `session`: the box begins it when opened and finishes it when closed and quiet. */
+  attachSession(session: CommentSession, renew?: () => CommentSession): void {
+    this.session = session;
+    this.renewSession = renew ?? null;
+    this.unsubscribeSession?.();
+    this.unsubscribeSession = session.subscribe(() => this.changed());
+  }
+
+  get editingSession(): CommentSession | null {
+    return this.session;
+  }
+
+  /**
+   * The begin acknowledgement said the root changed since it was shown: show
+   * the server's text, and keep what was typed meanwhile apart.
+   */
+  adoptServerText(serverText: string): void {
+    const typed = this.text;
+    if (typed.trim() !== "" && typed.trim() !== serverText.trim()) {
+      this.stashed = typed;
+    }
+    this.text = serverText;
+    this.saved = serverText.trim();
+    this.created = true;
+    this.firstUnsavedAt = null;
+    this.changed();
+  }
+
+  /** Put the stashed text into the box as an edit of the server text. */
+  insertBuffer(): void {
+    if (this.stashed === null) return;
+    const text = this.stashed;
+    this.stashed = null;
+    this.input(text);
+    this.changed();
+  }
+
+  /** Copy the stashed text, then forget it. */
+  async copyBuffer(): Promise<boolean> {
+    if (this.stashed === null) return false;
+    return copyText(this.stashed);
+  }
+
+  dismissBuffer(): void {
+    this.stashed = null;
+    this.changed();
+  }
+
   /** What was typed: the whole text in the box now. */
   input(text: string): void {
     if (text === this.text) return;
     this.text = text;
+    this.session?.noteTyped(text);
     if (this.want() === "save") {
       const now = Date.now();
       this.lastInputAt = now;
@@ -227,6 +289,11 @@ export class CommentBox {
     if (this.opened || this.retired) return;
     this.opened = true;
     register(this);
+    // A box reopened after its session finished writes inside a new one.
+    if (this.session?.phase === "closed" && this.renewSession !== null) {
+      this.attachSession(this.renewSession(), this.renewSession);
+    }
+    this.session?.begin();
     this.changed();
   }
 
@@ -307,6 +374,21 @@ export class CommentBox {
   /** Whether the box was handed over or retired: it adopts nothing more. */
   get isRetired(): boolean {
     return this.retired;
+  }
+
+  /**
+   * Whether closing this open box would lose or decide something: its
+   * editing session has a typed difference or an earlier text write
+   * (`CommentSession.unchanged`), or, with no session, text the server does
+   * not hold yet; an open reply box with any typed text. Page-level actions that must never save or restore for the
+   * reader (Apply updates) are refused while any open box says so.
+   */
+  get holdsChanges(): boolean {
+    if (!this.opened) return false;
+    // A reply box has no session: any text typed in it, saved or not, is
+    // something closing the box would decide for the reader.
+    if (this.subject.kind === "reply" && this.typed !== "") return true;
+    return this.session !== null ? !this.session.unchanged : this.state.unsaved;
   }
 
   /** Whether the box is open on a surface. */
@@ -450,6 +532,11 @@ export class CommentBox {
    */
   private settle(): void {
     if (this.opened) return;
+    // Closed and quiet: nothing in flight, nothing queued. Only now may the
+    // session finish, so its barrier never closes over a save still on its way.
+    if (this.session !== null && this.status !== "gone") {
+      void this.session.finish();
+    }
     if (this.status === "gone" && !this.copied && this.typed !== "") return;
     unregister(this);
   }
@@ -470,6 +557,8 @@ export class CommentBox {
         (gone && !this.copied && this.typed !== ""),
       copied: this.copied,
       canPost: gone && !!this.ops.asNew && this.typed !== "",
+      sessionNote: this.session?.note ?? null,
+      buffer: this.stashed,
     };
   }
 
@@ -580,7 +669,7 @@ export async function retireBoxesFor(
 
 /** Whether any text typed in any box is not saved yet. */
 export function hasUnsavedText(): boolean {
-  if (pendingDeletions.size > 0) return true;
+  if (pendingDeletions.size > 0 || sessionsNeedGuard()) return true;
   for (const box of boxes) if (box.getState().unsaved) return true;
   return false;
 }
@@ -732,6 +821,9 @@ export function closeHint(): string {
  * a save carries it.
  */
 export function statusText(state: BoxState, now: number): string {
+  if (state.sessionNote && state.status !== "gone") {
+    return state.sessionNote;
+  }
   if (state.status === "gone") return "This comment was deleted";
   if (state.status === "retrying") return "Not saved, retrying";
   if (state.status === "saving") return "Saving…";
@@ -759,4 +851,20 @@ export function resetBoxesForTest(): void {
   boxes.clear();
   pendingDeletions.clear();
   notifyRegistry();
+}
+
+/**
+ * Undo `box`'s editing session (§7) after the reader confirmed: stop the box
+ * sending, wait for what is in flight, then restore the baseline. The session
+ * carries on from the registry whatever becomes of the box's view.
+ */
+export function restoreEditingSession(box: CommentBox): void {
+  const session = box.editingSession;
+  if (session === null) return;
+  const held = box.getState().text;
+  void box.retireAndSettle().then(() => {
+    session.restore(held);
+    // The card reads an emptied box as nothing answered.
+    box.input("");
+  });
 }
