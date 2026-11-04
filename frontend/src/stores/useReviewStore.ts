@@ -26,6 +26,22 @@ import type {
   ReviewData,
 } from "../types";
 
+const beforeModeChange = new Set<() => void>();
+
+/** Register a UI measurement before an explicit mode change mutates layout. */
+export function subscribeBeforeReviewModeChange(
+  capture: () => void,
+): () => void {
+  beforeModeChange.add(capture);
+  return () => {
+    beforeModeChange.delete(capture);
+  };
+}
+
+function captureBeforeModeChange(): void {
+  for (const capture of beforeModeChange) capture();
+}
+
 const getApiBase = (): string | null => {
   const { currentRepo, isMultiRepo } = useRepoStore.getState();
   if (isMultiRepo) {
@@ -819,6 +835,7 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
     // Turning it ON is refused where its writes cannot land; turning it OFF
     // never is, so a session that somehow got in is not trapped there.
     if (!get().isReviewMode && !canEnterReviewMode()) return;
+    captureBeforeModeChange();
     set((s) => {
       const next = !s.isReviewMode;
       if (s.filePath) writeReviewModePref(s.filePath, next);
@@ -1296,6 +1313,9 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
     // Invalidate any write still in flight: its echo would otherwise be
     // adopted after this clear and resurrect the review that was just deleted.
     saveSeq++;
+    // The request can take time; measure the reader's position now, not when
+    // they clicked Exit. They may have scrolled while deletion was in flight.
+    if (get().isReviewMode) captureBeforeModeChange();
     set({
       isReviewMode: false,
       comments: [],
