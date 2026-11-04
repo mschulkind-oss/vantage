@@ -181,9 +181,15 @@ never from a stored verdict:
 | Agent replied, question still open | an unresolved bound comment has an agent reaction and nothing is pending |
 | Ruling recorded                    | the directive is ✅ in the current scan                                  |
 | Unknown                            | reviews not read, or the document's pairing is not coherent              |
+| Compacted                          | the id is in `ledgerIds` and in no directive of the live scan            |
+| Question removed from document     | the id is in no directive, ledger or text of the readable live scan      |
 
-_Compacted_ and _Removed_ name ids with no card, so they are the groups in
-[§4.3](#43-how-the-page-reads-ownership), not card labels. A comment whose
+A card's label is read from the live scan by the card's id (`lifecycleFor`), not from
+the question as the card was painted, so a ruling, a removal, a compaction or an answer
+made elsewhere shows at once in a band of fixed height at the card's top; an id
+declared twice, written outside a directive, or in a document the scan lacks reads
+_Unknown_, never _Removed_. The groups in
+[§4.3](#43-how-the-page-reads-ownership) still hold the comments. A comment whose
 `ownership` is `unknown` shows a cue beside its text on a card — "(anchor moved)"
 for `question_not_at_anchor` (its question id stays proven), "(checker not
 installed)", "(scan refused)", else "(ownership unknown)" —
@@ -291,7 +297,7 @@ These stay in the designs; none is claimed above.
 | Item                                                                                                                                                           | State                                                                                                                                                           | Where it is specified                                           |
 | :------------------------------------------------------------------------------------------------------------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------- | :-------------------------------------------------------------- |
 | "as of <revision>" and "N shown of current M" labels | Not built. The **Newer than shown** chip is built (fingerprint, or the old size heuristic for the block, differs from what the card painted); opening one row, or unfolding one card, that carries the chip (for either cause) repaints that card's body and chip from the live scan, a refresh that lands after the layout (its generation or its filter, roadmap and page size) or that card's live reading moved on is dropped, and Apply updates repaints all. The chip is a mark in the card's top line | question-state [§5](../design/planning-question-state.md#5-user-visible-states), [§6](../design/planning-question-state.md#6-live-data-vs-applied-layout) |
-| Card labels _Compacted_ and _Question removed from document_, the _duplicate id_ chip, the "Removed questions" group by that name, _Restored — …_ card wording | Not built; those cases are the unresolved groups, and the _Done_ mark of the layout is unchanged                                                                | question-state [§4](../design/planning-question-state.md#4-ownership-and-legacy-migration), [§5](../design/planning-question-state.md#5-user-visible-states)                                           |
+| The _duplicate id_ chip, the "Removed questions" group by that name, _Restored — …_ card wording | Not built; a repeated id reads _Unknown_ on the card; the layout's _Done_ mark is unchanged on rows and in the held-update count | question-state [§4](../design/planning-question-state.md#4-ownership-and-legacy-migration), [§5](../design/planning-question-state.md#5-user-visible-states)                                           |
 | Change detection by the unit fingerprint                                                                                                                       | Built as an addition: a differing `unitFingerprint` marks a card; the title/marker/state/length heuristic remains for the block outside the unit                                                                                                      | question-state [§6](../design/planning-question-state.md#6-live-data-vs-applied-layout)                                               |
 | Headline and leaning selections anchoring                                                                                                                      | Headline: built only when the scan holds the block at exactly that line. Leaning: not built (it is the directive's text, no block holds it)                     | review-actions                                                  |
 | Legacy `blockLines` for math, raw HTML, hidden content                                                                                                         | `blockLines` hashes the parsed text, not the rendered `innerText`, so those blocks are never auto-bound; fails toward Unassigned. Not measured on a real corpus | question-state [§4](../design/planning-question-state.md#4-ownership-and-legacy-migration)                                               |
