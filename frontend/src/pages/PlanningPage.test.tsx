@@ -1063,6 +1063,7 @@ function typedOnTitle(
     path: question.path,
     comment: {
       id: `typed-${id}`,
+      question_id: id,
       comment: `My answer to ${id}.`,
       created_at: 0,
       reactions: [],
@@ -3196,6 +3197,7 @@ describe("several roadmaps (§6.8)", () => {
     reviews["plans/unrouted.md"] = [
       {
         id: "other-0001",
+        question_id: "OQ-U1",
         comment: "Ruled on the other roadmap",
         created_at: 0,
         reactions: [],
@@ -3475,7 +3477,9 @@ describe("Copy answers (§6.7)", () => {
         },
       ]),
     );
-    expect(writeText.mock.calls[0][0]).toContain("   _Leaning:_ Yes.");
+    // A bound comment (question_id set by the Take button, seam 4) suppresses
+    // the current-line context and labels the question instead (seam 5).
+    expect(writeText.mock.calls[0][0]).toContain("OQ-U1, originally at line");
   });
 
   it("waits for the quoted lines before it copies", async () => {
@@ -3591,49 +3595,26 @@ describe("Copy answers across pages (planning-index.md §6.7)", () => {
   const pendingAt = (
     id: string,
     comment: string,
-    line: number,
+    question: { id: string | null; line: number },
     hash = "00000000",
   ): ReviewComment => ({
+    question_id: question.id ?? undefined,
     id,
     comment,
     created_at: 0,
     reactions: [],
     anchor: {
-      source_line: line,
+      source_line: question.line,
       block_text_hash: hash,
       selection_offset: 0,
       selection_length: 0,
     },
   });
 
-  /** Show on an answered row: it opens into its card. */
-  async function showRow(id: string): Promise<void> {
-    await act(async () => {
-      fireEvent.click(
-        within(
-          screen.getByRole("group", { name: `${id}: Question ${id}?` }),
-        ).getByRole("button", { name: /^Show/ }),
-      );
-    });
-    await settle();
-  }
-
-  /** A page size chosen on Needs you's end line, from 1, 10 and 20. */
-  async function choose(size: string): Promise<void> {
-    await act(async () => {
-      fireEvent.click(
-        within(screen.getByTestId("needs-you-end")).getByRole("button", {
-          name: size,
-        }),
-      );
-    });
-    await settle();
-  }
-
   const lineOf = (tree: Record<string, string>, id: string) =>
     readyOf(tree)
       .index.documents.flatMap((d) => d.questions)
-      .find((x) => x.id === id)!.line;
+      .find((x) => x.id === id)!;
 
   it("lets the reader find an off-page answer's document without copying it", async () => {
     seed();
@@ -3651,9 +3632,9 @@ describe("Copy answers across pages (planning-index.md §6.7)", () => {
     expect(within(answers).getByText("Ruled on page two")).toBeTruthy();
     expect(
       within(answers).getByRole("menuitem", {
-        name: `Open plans/answered.md at line ${line}`,
+        name: `Open plans/answered.md at line ${line.line}`,
       }),
-    ).toHaveAttribute("href", `/plans/answered.md#L${line}`);
+    ).toHaveAttribute("href", `/plans/answered.md#L${line.line}`);
     expect(writeText).not.toHaveBeenCalled();
   });
 
@@ -3720,75 +3701,47 @@ describe("Copy answers across pages (planning-index.md §6.7)", () => {
     return hash;
   }
 
-  it("takes a rendered card's own scoping over placement", async () => {
+  it("does not place the same comment by its line when the card is on a page not shown", async () => {
     const hash = await noteHash();
     reviews["plans/scoped.md"] = [
-      pendingAt("moved-0001", "On the note", lineOf(SCOPED, "OQ-S1"), hash),
-    ];
-    seed(SCOPED);
-    await renderPage();
-    // Placed by its line before any card read it, the comment made OQ-S1 an
-    // answered row; its card, opened, reads it on the note.
-    expect(pendingCount()).toBe("1");
-    await showRow("OQ-S1");
-    expect(cardFor("OQ-S1")).toBeTruthy();
-    expect(pendingCount()).toBe("0");
-  });
-
-  it("places the same comment by its line when the card is on a page not shown", async () => {
-    const hash = await noteHash();
-    reviews["plans/scoped.md"] = [
-      pendingAt("moved-0001", "On the note", lineOf(SCOPED, "OQ-S1"), hash),
+      pendingAt(
+        "moved-0001",
+        "On the note",
+        { id: null, line: lineOf(SCOPED, "OQ-S1").line },
+        hash,
+      ),
     ];
     // Needs you is OQ-D1, OQ-D3, OQ-S1: at one a page, OQ-S1 has no card.
     pageSize(1);
     seed(SCOPED);
     await renderPage();
     expect(screen.queryByRole("article", { name: /OQ-S1/ })).toBeNull();
+    expect(pendingCount()).toBe("0");
+  });
+
+  it("keeps a comment bound to OQ-S1 on OQ-S1 on a page with its card and on one without", async () => {
+    // Anchored on the note beside the question, but filed under the question's
+    // id: the id decides, so the count holds with the card shown and with it
+    // taken away by a smaller page.
+    const hash = await noteHash();
+    reviews["plans/scoped.md"] = [
+      pendingAt(
+        "bound-0001",
+        "On the note, for OQ-S1",
+        { id: "OQ-S1", line: lineOf(SCOPED, "OQ-S1").line },
+        hash,
+      ),
+    ];
+    seed(SCOPED);
+    await renderPage();
     expect(pendingCount()).toBe("1");
-  });
-
-  // "A card rendered this visit reports its exact scoping": a smaller page
-  // size taking its card away does not make the comment it found on the
-  // note OQ-S1's again, so Copy answers holds the same comments either way.
-  it("keeps a card's own scoping after a new layout takes its card away", async () => {
-    const hash = await noteHash();
-    reviews["plans/scoped.md"] = [
-      pendingAt("moved-0001", "On the note", lineOf(SCOPED, "OQ-S1"), hash),
-    ];
+    cleanup();
+    resetPlanningPageInputs();
+    pageSize(1);
     seed(SCOPED);
     await renderPage();
-    await showRow("OQ-S1");
-    expect(pendingCount()).toBe("0");
-    await choose("1");
     expect(screen.queryByRole("article", { name: /OQ-S1/ })).toBeNull();
-    expect(pendingCount()).toBe("0");
-    await choose("10");
-    expect(cardFor("OQ-S1")).toBeTruthy();
-    expect(pendingCount()).toBe("0");
-  });
-
-  it("places by line again once the document's comments change after its card left", async () => {
-    const hash = await noteHash();
-    reviews["plans/scoped.md"] = [
-      pendingAt("moved-0001", "On the note", lineOf(SCOPED, "OQ-S1"), hash),
-    ];
-    seed(SCOPED);
-    await renderPage();
-    await showRow("OQ-S1");
-    await choose("1");
-    expect(pendingCount()).toBe("0");
-    // Another comment on the document, which the card never saw: what it
-    // read is no longer what the document has, so placement decides.
-    reviews["plans/scoped.md"] = [
-      ...reviews["plans/scoped.md"],
-      pendingAt("added-0002", "On the question", lineOf(SCOPED, "OQ-S1")),
-    ];
-    act(() =>
-      usePlanningStore.getState().noteReviewChanged("", "plans/scoped.md"),
-    );
-    await settle();
-    expect(pendingCount()).toBe("2");
+    expect(pendingCount()).toBe("1");
   });
 });
 
@@ -8553,13 +8506,17 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       screen.getByTestId("pending-answers").textContent;
 
     /** A pending comment on the line `line`. */
-    const pendingOn = (id: string, line: number): ReviewComment => ({
+    const pendingOn = (
+      id: string,
+      question: { id: string | null; line: number; unitLine: number },
+    ): ReviewComment => ({
+      question_id: question.id ?? undefined,
       id,
       comment: `Answer ${id}`,
       created_at: 0,
       reactions: [],
       anchor: {
-        source_line: line,
+        source_line: question.line,
         block_text_hash: "00000000",
         selection_offset: 0,
         selection_length: 0,
@@ -8572,12 +8529,12 @@ describe("the planning filter (planning-index.md §6.11)", () => {
 
     it("copies all answers on kept questions in one document, counts distinct hidden questions, and offers a clear-filter path", async () => {
       reviews["plans/design.md"] = [
-        pendingOn("kept-0001", questionOf(TREE, "OQ-D1").line),
-        pendingOn("kept-0002", questionOf(TREE, "OQ-D3").line),
+        pendingOn("kept-0001", questionOf(TREE, "OQ-D1")),
+        pendingOn("kept-0002", questionOf(TREE, "OQ-D3")),
       ];
       reviews["plans/unrouted.md"] = [
-        pendingOn("left-0001", questionOf(TREE, "OQ-U1").line),
-        pendingOn("left-0002", questionOf(TREE, "OQ-U1").line),
+        pendingOn("left-0001", questionOf(TREE, "OQ-U1")),
+        pendingOn("left-0002", questionOf(TREE, "OQ-U1")),
       ];
       await renderPage("/.vantage/planning?filter=path:plans/design.md");
       expect(pendingCount()).toBe("2");
@@ -8647,7 +8604,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       };
       seed(NEST);
       reviews["plans/nested.md"] = [
-        pendingOn("inner-0001", questionOf(NEST, "OQ-N2").unitLine),
+        pendingOn("inner-0001", questionOf(NEST, "OQ-N2")),
       ];
       await renderPage("/.vantage/planning?filter=is:open");
       expect(cardsIn("Needs you")).toEqual(["OQ-N1: Question OQ-N1?"]);
@@ -8681,7 +8638,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
         seed(ROWS);
         setPlanningLimitsForTests({ pageRows: 2 });
         reviews["plans/design.md"] = [
-          pendingOn("kept-0001", questionOf(TREE, "OQ-D1").line),
+          pendingOn("kept-0001", questionOf(TREE, "OQ-D1")),
         ];
         const real = vi.mocked(axios.post).getMockImplementation()!;
         const asked: string[][] = [];

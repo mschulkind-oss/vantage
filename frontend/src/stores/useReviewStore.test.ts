@@ -2634,5 +2634,61 @@ describe("the planning page's review writes and payload", () => {
       );
       expect(answersPayload([])).toBe(null);
     });
+
+    // Seam 5: a comment bound to a named question (question_id set) must never
+    // quote the current ±2 lines at the original anchor line.  If the question
+    // moved, the current line now holds an unrelated block ("B"), and quoting it
+    // would put B's text in the clipboard as if it were the reviewer's original
+    // context — which is exactly what the fix is preventing.
+    it("does not quote current lines for a bound comment — only the question label", () => {
+      // The document after A moved: line 2 now holds B's text.
+      const docAfterMove = "line one\nB's text at old line\nline three";
+      const linesAfterMove = linesOfText(docAfterMove);
+      const bound: ReviewComment = {
+        ...first,
+        id: "bound-0001",
+        fallback_text: "Choose option A",
+        selected_text: "Choose option A",
+        question_id: "OQ-A",
+        anchor: {
+          source_line: 2,
+          block_text_hash: "oldhash",
+          selection_offset: 0,
+          selection_length: 0,
+        },
+        comment: "My ruling",
+      };
+      const payload = answersPayload([
+        { path: "a.md", comments: [bound], lines: linesAfterMove },
+      ])!;
+      // Must not quote B's text as context.
+      expect(payload).not.toContain("B's text at old line");
+      // Must include the original fallback quote.
+      expect(payload).toContain('"Choose option A"');
+      // Must include the question id and original line.
+      expect(payload).toContain("OQ-A");
+      expect(payload).toContain("originally at line 2");
+    });
+
+    it("still quotes ±2 current lines for unbound comments (no question_id)", () => {
+      const docWithB = "line one\nB's text at line 2\nline three";
+      const linesWithB = linesOfText(docWithB);
+      const unbound: ReviewComment = {
+        ...first,
+        id: "unbound-0001",
+        anchor: {
+          source_line: 2,
+          block_text_hash: "oldhash",
+          selection_offset: 0,
+          selection_length: 0,
+        },
+        comment: "My note",
+      };
+      const payload = answersPayload([
+        { path: "a.md", comments: [unbound], lines: linesWithB },
+      ])!;
+      // Unbound: current lines ARE quoted.
+      expect(payload).toContain("B's text at line 2");
+    });
   });
 });

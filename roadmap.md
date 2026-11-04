@@ -12,7 +12,7 @@ The order is the one thing this file holds that no other document can. Each entr
 
 2. [Measuring the planning index at scale](docs/design/planning-index-measurement.md), ahead of the rest, because 0.8.0 is the first release to carry the index and it has not been measured at scale.
 
-3. [Document evidence for recorded answers](docs/design/answer-publication.md#OQ-AP1), before further planning-page changes, because an agent acknowledgment can currently turn an already-given answer back into work owed by the user.
+3. [Document evidence for recorded answers](docs/design/answer-publication.md#OQ-AP1), before changing how an agent reply affects what the user owes, because an acknowledgment can currently turn an already-given answer back into work owed by the user. Ownership repairs and explicit review actions do not choose that reply-outcome contract.
 
 4. [A semantic-token vocabulary](docs/design/color-themes.md#9-follow-ups), before any component moves, because every PR after the first is a mapping onto its names.
 
@@ -69,8 +69,8 @@ The order is the one thing this file holds that no other document can. Each entr
 
 1. [Large-collection Overview default](docs/brainstorm/overview-at-scale.md#OQ-OAS1) — choose whether a large board starts summary-first or with every active group expanded before proposing a browsing change.
 
-2. [Planning selection comments and answer removal](docs/design/planning-review-actions.md) — pair scoped review and explicit Delete with the session-restoration contract, because cancelling an edit must not delete its existing thread.
+2. [Planning question ownership and lifecycle](docs/design/planning-question-state.md) — finish source validation and explicit update actions before broader refresh changes, because moving source text must not transfer an answer to a different decision.
 
-3. [Grounded agent planning handoffs](docs/design/agent-planning-handoff.md) — correct what agents can hand over and plan the default-on warning for unfiled question candidates.
+3. [Planning edit restoration and selection coverage](docs/design/planning-review-actions.md) — restore editing sessions without deleting existing replies, then extend selection anchoring beyond the body; both depend on preserving the original question's identity.
 
-4. [Planning question ownership and lifecycle](docs/design/planning-question-state.md) — pair with review actions before changing comment placement or refresh, because source movement must not transfer answers and an agent reply is not a recorded document ruling.
+4. [Grounded agent planning handoffs](docs/design/agent-planning-handoff.md) — graduate the accepted handoff contract into the existing reference guides so future instructions have one maintained home.

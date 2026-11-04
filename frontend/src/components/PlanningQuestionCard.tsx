@@ -1146,7 +1146,12 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
       try {
         await onFile(
           question.path,
-          newReviewComment(now.anchor, text(now.host), now.fallbackText),
+          newReviewComment(
+            now.anchor,
+            text(now.host),
+            now.fallbackText,
+            question.id,
+          ),
         );
         setOpen(true);
         onAnswered?.(cardKey, heightOf(articleRef.current));
@@ -1156,7 +1161,7 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
         setBusy(false);
       }
     },
-    [anchorNow, onFile, question.path, onAnswered, cardKey],
+    [anchorNow, onFile, question.path, question.id, onAnswered, cardKey],
   );
 
   const writable = !isStaticMode() && state.found;
@@ -1259,7 +1264,7 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
   ) => {
     const box = newCommentBox(
       target,
-      newReviewComment(anchor, "", fallbackText),
+      newReviewComment(anchor, "", fallbackText, question.id),
       { label: `Answer to ${question.title}`, onSaved: onBoxSaved },
     );
     boxRef.current = box;

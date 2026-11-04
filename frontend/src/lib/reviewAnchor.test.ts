@@ -7,7 +7,9 @@ import {
   canonicalOffsetsFromRange,
   commentCardHost,
   hashBlockText,
+  indexBlocks,
   rangeFromCanonicalOffsets,
+  resolveCommentBlock,
   stripBlockText,
 } from "./reviewAnchor";
 
@@ -260,5 +262,34 @@ describe("commentCardHost", () => {
 
     expect(commentCardHost(p)).toBe(p);
     expect(commentCardHost(table)).toBe(table);
+  });
+});
+
+describe("resolveCommentBlock", () => {
+  const A = "text a";
+  const HA = hashBlockText(A);
+  const block = (line: number, text: string) =>
+    `<p data-source-line="${line}">${text}</p>`;
+  const anchor = (line: number, hash: string) => ({
+    source_line: line,
+    block_text_hash: hash,
+    selection_offset: 0,
+    selection_length: 0,
+  });
+
+  afterEach(() => container.remove());
+
+  it("never resolves a different block at the same line", () => {
+    // A moved to line 14; B now sits where A was.
+    const root = mount(block(10, "text b") + block(14, A));
+    const found = resolveCommentBlock(indexBlocks(root), anchor(10, HA));
+    expect(found?.getAttribute("data-block-hash")).toBe(HA);
+    const gone = mount(block(10, "text b"));
+    expect(resolveCommentBlock(indexBlocks(gone), anchor(10, HA))).toBe(null);
+  });
+
+  it("returns null for an equal hash repeated in range, never a guess", () => {
+    const root = mount(block(10, "text b") + block(12, A) + block(14, A));
+    expect(resolveCommentBlock(indexBlocks(root), anchor(10, HA))).toBe(null);
   });
 });

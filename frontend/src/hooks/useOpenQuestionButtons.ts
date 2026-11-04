@@ -138,6 +138,7 @@ export type TakeLeaning = (
   anchor: CommentAnchor,
   comment: string,
   fallbackText: string,
+  questionId?: string,
 ) => void;
 
 /** Undo a take: delete the comment it created, which re-arms the button. */
@@ -152,6 +153,7 @@ export type AnswerQuestion = (
   anchor: CommentAnchor,
   fallbackText: string,
   rect: DOMRect,
+  questionId?: string,
 ) => void;
 
 function sweep(el: HTMLElement): void {
@@ -274,10 +276,12 @@ export function questionUnitBlocks(
 }
 
 /**
- * Which question each comment is on: the innermost question unit holding the
- * block its anchor resolves to (`resolveCommentBlock`), so a comment in a
- * question nested inside another question's list item is the nested one's. A
- * comment no unit holds is on no question.
+ * Which question each comment is on. A comment filed under a question id is
+ * that question's alone, if exactly one question here has the id. Any other is
+ * on the innermost question unit holding the block its anchor resolves to
+ * (`resolveCommentBlock`), so a comment in a question nested inside another
+ * question's list item is the nested one's. A comment no unit holds is on no
+ * question.
  *
  * `questions` is every question in `root`, in every state: a comment inside a
  * ✅ question nested under an open one is the ✅ one's, though only the open
@@ -301,16 +305,30 @@ export function commentsOnQuestions(
     }
   }
   const blocks = index ?? indexBlocks(root);
+  const give = (question: DocumentQuestion, comment: ReviewComment) => {
+    const list = out.get(question);
+    if (list === undefined) out.set(question, [comment]);
+    else list.push(comment);
+  };
   for (const comment of comments) {
-    const block = resolveCommentBlock(blocks, comment.anchor);
-    for (let n = block; n !== null && n !== root; n = n.parentElement) {
-      const question = byUnit.get(n);
-      if (question === undefined) continue;
-      const list = out.get(question);
-      if (list === undefined) out.set(question, [comment]);
-      else list.push(comment);
-      break;
+    let owner: DocumentQuestion | undefined;
+    if (comment.question_id) {
+      // A comment filed under a question's id is that question's alone, and
+      // only if exactly one question here has the id. Its anchor never gives
+      // it to another question, and an id that is missing or repeated is not
+      // proof of any: it is on none rather than on a guess.
+      const named = questions.filter(
+        (q) => q.stamped.id === comment.question_id,
+      );
+      if (named.length === 1) owner = named[0];
+    } else {
+      const block = resolveCommentBlock(blocks, comment.anchor);
+      for (let n = block; n !== null && n !== root; n = n.parentElement) {
+        owner = byUnit.get(n);
+        if (owner !== undefined) break;
+      }
     }
+    if (owner !== undefined) give(owner, comment);
   }
   return out;
 }
@@ -482,7 +500,7 @@ export function documentQuestions(el: HTMLElement): DocumentQuestion[] {
     // `data-source-line` with its own first paragraph, and the highlighter
     // indexes blocks by line with last-write-wins — so it resolves the inner
     // block. Anchoring on the outer one stores a hash of different text and the
-    // comment renders divergent the moment it is created.
+    // comment renders outdated the moment it is created.
     const block = anchorBlockWithin(stamped);
     if (!block || !OQ_HOST_TAGS.has(block.tagName)) continue;
     // Two directives can resolve to one block (a stamped `li` and a stamped `p`
@@ -666,6 +684,15 @@ export function useOpenQuestionButtons(
     for (const { question, built, text, state } of rows) {
       const row = makeRow(question, el, all);
 
+      // The id of this question in the DOM, when it is unique among all
+      // document questions (never from the index or the old line).  A duplicate
+      // id is treated as no id: the binding is ambiguous.
+      const stampedId = question.stamped.id || null;
+      const questionId =
+        stampedId && all.filter((q) => q.stamped.id === stampedId).length === 1
+          ? stampedId
+          : undefined;
+
       if (state.kind === "answered") {
         // The answer is filed, and its card holds it: no Undo, because a
         // comment the reviewer typed is not this pass's to delete, and no
@@ -744,7 +771,7 @@ export function useOpenQuestionButtons(
           // in one gesture.
           if (btn.disabled) return;
           btn.disabled = true;
-          onTake(built.anchor, text, built.fallbackText);
+          onTake(built.anchor, text, built.fallbackText, questionId);
         });
         row.appendChild(btn);
       }
@@ -764,6 +791,7 @@ export function useOpenQuestionButtons(
             built.anchor,
             built.fallbackText,
             answer.getBoundingClientRect(),
+            questionId,
           );
         });
         row.appendChild(answer);

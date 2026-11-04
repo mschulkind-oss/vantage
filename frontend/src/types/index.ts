@@ -224,6 +224,11 @@ export interface ReviewComment {
   resolved?: boolean;
   anchor?: CommentAnchor | null;
   fallback_text?: string;
+  /**
+   * Directive id of the planning question the comment was filed on, set at
+   * creation and never recaptured on edit. Absent on every older comment.
+   */
+  question_id?: string;
   reactions?: CommentReaction[];
   /**
    * Server-captured text of the anchored block as of the comment's creation

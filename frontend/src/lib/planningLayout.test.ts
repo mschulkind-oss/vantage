@@ -485,16 +485,25 @@ describe("an answered row's answers (§6.4)", () => {
     expect(agentReplies([replied])).toBe(1);
   });
 
-  it("places each comment on the innermost question whose unit holds its line", () => {
+  it("owns a comment by its question id, never by its line", () => {
     const index = indexOf(treeOf(), { stages: STAGES });
     const questions = index.documents.flatMap((d) => d.questions);
     const q3 = questions.find((x) => x.id === "OQ-T3")!;
     const on = commentsByQuestion(questions, {
       "plans/a.md": [
-        comment({ anchor: { source_line: q3.line, selection_length: 0 } }),
+        comment({
+          question_id: "OQ-T3",
+          anchor: { source_line: 1, selection_length: 0 },
+        }),
+        // Same line as OQ-T3 and no id: owned by nothing.
+        comment({
+          id: "c9",
+          anchor: { source_line: q3.line, selection_length: 0 },
+        }),
       ] as ReviewComment[],
     });
     expect([...on.keys()]).toEqual([questionKey(q3)]);
+    expect(on.get(questionKey(q3))!.map((c) => c.id)).toEqual(["c1"]);
   });
 });
 

@@ -977,17 +977,16 @@ describe("useOpenQuestionButtons — drift, and agreeing with the highlighter", 
 
   it("answers the question, but is no longer its take, when the question's own text changes", () => {
     // The hash is the block's identity. Reword the question and the stored
-    // anchor describes text that is no longer there, which the highlighter shows
-    // as a divergent comment — so the leaning on offer is a different leaning,
-    // and the take's chip goes. The comment is still on the question, and
-    // still pending, so the question is still answered.
+    // anchor describes text that is no longer there, so the comment resolves to
+    // no block (it is outdated, never tinted onto the new text) — the leaning on
+    // offer is a different leaning. The question
+    // holds nothing the comment can be verified against, so it is no longer
+    // answered by it.
     const { rerender, created } = take();
     blockAt(7).textContent = "Leaning: front of the queue, actually.";
     rerender({ cs: [created], on: true });
 
-    expect(chipAt(7)).toBeNull();
-    expect(takeAt(7)).toBeNull();
-    expect(answeredAt(7)).not.toBeNull();
+    expect(answeredAt(7)).toBeNull();
 
     // Once the agent has answered it, the question offers the new leaning.
     rerender({ cs: [{ ...created, reactions: [agentAddressed()] }], on: true });
@@ -995,10 +994,10 @@ describe("useOpenQuestionButtons — drift, and agreeing with the highlighter", 
     expect(answeredAt(7)).toBeNull();
   });
 
-  it("keeps two identical leanings on distant blocks independent", () => {
-    // Why the line stays a tolerance rather than being dropped: matching on the
-    // body and the hash alone would let one take retire the button on an
-    // identical question elsewhere in the document.
+  it("retires neither of two identical leanings on distant blocks", () => {
+    // An unbound take on one of two hash-identical questions cannot be told
+    // from a take on the other, so it is on neither: the document-wide hash is
+    // ambiguous, and a guess would retire the wrong button.
     container.innerHTML = `
 <p data-source-line="7" data-vantage-oq="true" data-vantage-leaning="Same leaning">Identical question?</p>
 <p data-source-line="99" data-vantage-oq="true" data-vantage-leaning="Same leaning">Identical question?</p>
@@ -1009,10 +1008,9 @@ describe("useOpenQuestionButtons — drift, and agreeing with the highlighter", 
     fireEvent.click(takeAt(7)!);
     rerender({ cs: [commentFromClick()], on: true });
 
-    expect(chipAt(7)).not.toBeNull();
-    expect(takeAt(7)).toBeNull();
-    // The far one is a different question, hash-identical though it is.
+    expect(takeAt(7)).not.toBeNull();
     expect(takeAt(99)).not.toBeNull();
+    expect(chipAt(7)).toBeNull();
     expect(chipAt(99)).toBeNull();
   });
 });
@@ -1506,6 +1504,65 @@ describe("useOpenQuestionButtons — a comment on a question is its answer", () 
   });
 });
 
+describe("commentsOnQuestions — bound comments", () => {
+  const twoQuestions = async (secondId: string) => {
+    const { html } = await renderMarkdown(
+      [
+        '<!-- vantage: question id=OQ-1 leaning="A." -->',
+        "",
+        "💬 **OQ-1: First?**",
+        "",
+        "Body one.",
+        "",
+        "---",
+        "",
+        `<!-- vantage: question id=${secondId} leaning="B." -->`,
+        "",
+        "💬 **Second?**",
+        "",
+        "Body two.",
+        "",
+      ].join("\n"),
+    );
+    container.innerHTML = html;
+    return documentQuestions(container);
+  };
+  const lineOf = (text: string) =>
+    Number(
+      Array.from(container.querySelectorAll<HTMLElement>("p"))
+        .find((p) => p.textContent?.includes(text))!
+        .getAttribute("data-source-line"),
+    );
+
+  it("never gives a comment bound to one question to another's unit", async () => {
+    const questions = await twoQuestions("OQ-2");
+    const bound = { ...commentAt(lineOf("Body two.")), question_id: "OQ-1" };
+    const on = commentsOnQuestions(container, questions, [bound]);
+    expect(on.get(questions[1]!)).toBeUndefined();
+    expect(on.get(questions[0]!)?.map((c) => c.id)).toEqual([bound.id]);
+  });
+
+  it("owns a bound comment to none when two questions share its id", async () => {
+    const questions = await twoQuestions("OQ-1");
+    const bound = { ...commentAt(lineOf("Body two.")), question_id: "OQ-1" };
+    const on = commentsOnQuestions(container, questions, [bound]);
+    expect(on.size).toBe(0);
+  });
+
+  it("leaves a comment whose block repeats in the document on no question", async () => {
+    const questions = await twoQuestions("OQ-2");
+    const oneLine = lineOf("Body one.");
+    const dup = commentAt(lineOf("Body two."));
+    container.querySelector<HTMLElement>(
+      `p[data-source-line="${oneLine}"]`,
+    )!.textContent = "Body two.";
+    const on = commentsOnQuestions(container, questions, [
+      { ...dup, anchor: { ...dup.anchor!, source_line: oneLine } },
+    ]);
+    expect(on.size).toBe(0);
+  });
+});
+
 describe("useOpenQuestionButtons — Answer…", () => {
   let onAnswer: ReturnType<typeof vi.fn> & AnswerQuestion;
 
@@ -1594,5 +1651,68 @@ describe("useOpenQuestionButtons — the row paints with the document", () => {
       });
     });
     expect(seen[0]).not.toBeNull();
+  });
+});
+
+// Seam 4: the Take button and Answer\ button pass question_id to their
+// callbacks when the question carries a unique id in the document.  A
+// duplicate id (ambiguous) results in no question_id (undefined as 4th arg).
+describe("useOpenQuestionButtons — Take and Answer pass question_id (seam 4)", () => {
+  const UNIQUE_ID_HTML = `
+<p data-source-line="7" data-vantage-question="true" id="OQ-U" data-vantage-leaning="Yes.">A unique question.</p>
+<p data-source-line="11" data-vantage-question="true" id="OQ-OTHER" data-vantage-leaning="No.">Another question.</p>
+`;
+
+  const DUPLICATE_ID_HTML = `
+<p data-source-line="7" data-vantage-question="true" id="OQ-DUP" data-vantage-leaning="Yes.">First.</p>
+<p data-source-line="11" data-vantage-question="true" id="OQ-DUP" data-vantage-leaning="No.">Second (same id).</p>
+`;
+
+  let onAnswer2: ReturnType<typeof vi.fn> & AnswerQuestion;
+
+  beforeEach(() => {
+    onAnswer2 = vi.fn() as ReturnType<typeof vi.fn> & AnswerQuestion;
+  });
+
+  it("passes the question id as 4th arg to onTake for a unique id", () => {
+    container.innerHTML = UNIQUE_ID_HTML;
+    const ref = { current: container };
+    renderHook(() =>
+      useOpenQuestionButtons(ref, [], true, "doc content", onTake, onUndo),
+    );
+    const btn = takeAt(7)!;
+    fireEvent.click(btn);
+    expect(onTake.mock.calls[0][3]).toBe("OQ-U");
+  });
+
+  it("passes undefined as 4th arg to onTake when two questions share the id", () => {
+    container.innerHTML = DUPLICATE_ID_HTML;
+    const ref = { current: container };
+    renderHook(() =>
+      useOpenQuestionButtons(ref, [], true, "doc content", onTake, onUndo),
+    );
+    const btn = takeAt(7)!;
+    fireEvent.click(btn);
+    expect(onTake.mock.calls[0][3]).toBeUndefined();
+  });
+
+  it("passes the question id as 4th arg to onAnswer for a unique id", () => {
+    container.innerHTML = UNIQUE_ID_HTML;
+    const ref = { current: container };
+    renderHook(() =>
+      useOpenQuestionButtons(
+        ref,
+        [],
+        true,
+        "doc content",
+        onTake,
+        onUndo,
+        undefined,
+        onAnswer2,
+      ),
+    );
+    const btn = container.querySelector<HTMLElement>(".review-oq-answer")!;
+    fireEvent.click(btn);
+    expect(onAnswer2.mock.calls[0][3]).toBe("OQ-U");
   });
 });

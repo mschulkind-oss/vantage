@@ -1,3 +1,4 @@
+import type { ReviewComment } from "../types";
 /**
  * The planning page's layout (`docs/reference/planning-index.md` §6.2),
  * laid out from the index alone. Every limit is proven by configuring it down
@@ -23,7 +24,7 @@ import {
   MAINTENANCE_TITLES,
   layoutPlanningPage,
   listedDocuments,
-  placeComment,
+  ownerOfComment,
   listedQuestions,
   planningQuery,
   planningSearch,
@@ -212,22 +213,33 @@ describe("placement (planning-index.md §6.7)", () => {
   );
   const index = indexOf({ ...ROADMAP, "a.md": NESTED }, { stages: STAGES });
   const questions = listedQuestions(index, sectionsOf(index));
-  const outer = questions.find((q) => q.id === "OQ-O1")!;
   const inner = questions.find((q) => q.id === "OQ-I1")!;
 
-  it("puts a comment on the innermost unit that holds its line", () => {
-    expect(inner.unitLine).toBeGreaterThan(outer.unitLine);
-    expect(inner.unitEndLine).toBeLessThan(outer.unitEndLine);
-    expect(placeComment(questions, inner.line)?.id).toBe("OQ-I1");
-    expect(placeComment(questions, inner.unitEndLine)?.id).toBe("OQ-I1");
-    expect(placeComment(questions, outer.line)?.id).toBe("OQ-O1");
-    expect(placeComment(questions, outer.unitEndLine)?.id).toBe("OQ-O1");
+  const comment = (question_id?: string) =>
+    ({ id: "c", comment: "x", created_at: 0, question_id }) as ReviewComment;
+
+  it("owns a comment by the question id it was filed under", () => {
+    expect(ownerOfComment(questions, comment("OQ-I1"))?.id).toBe("OQ-I1");
+    expect(ownerOfComment(questions, comment("OQ-O1"))?.id).toBe("OQ-O1");
   });
 
-  it("puts a comment outside every unit on none", () => {
-    expect(placeComment(questions, outer.unitEndLine + 2)).toBeUndefined();
-    expect(placeComment(questions, 1)).toBeUndefined();
-    expect(placeComment([inner], outer.line)).toBeUndefined();
+  it("owns an unbound, unknown or repeated id to none", () => {
+    expect(ownerOfComment(questions, comment())).toBeUndefined();
+    expect(ownerOfComment(questions, comment("OQ-NOPE"))).toBeUndefined();
+    expect(ownerOfComment([inner, inner], comment("OQ-I1"))).toBeUndefined();
+  });
+
+  // Seam 3: if the same id appears more than once anywhere in the document's
+  // raw question list (passed as `all`), no credit is given to the listed
+  // question even when it is the only listed holder of that id.
+  it("owns none when two questions in the full document share the id", () => {
+    // Simulate: listed has only `inner` (OQ-I1), but `all` has two OQ-I1 entries
+    // (a duplicate in the index).  This must return undefined.
+    expect(
+      ownerOfComment([inner], comment("OQ-I1"), [inner, inner]),
+    ).toBeUndefined();
+    // When `all` is unique, ownership still resolves.
+    expect(ownerOfComment([inner], comment("OQ-I1"), [inner])).toBe(inner);
   });
 });
 

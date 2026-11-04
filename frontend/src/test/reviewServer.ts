@@ -57,6 +57,7 @@ export function installReviewServer(
           comment: b.comment as string,
           anchor: b.anchor as ReviewComment["anchor"],
           fallback_text: b.fallback_text as string,
+          question_id: b.question_id as string | undefined,
           created_at: b.created_at as number,
           reactions: [],
         });

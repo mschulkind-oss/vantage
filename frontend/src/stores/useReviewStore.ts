@@ -271,11 +271,13 @@ export function newReviewComment(
   anchor: CommentAnchor,
   comment: string,
   fallbackText: string,
+  questionId?: string | null,
 ): ReviewComment {
   return {
     id: newReviewId(),
     anchor,
     fallback_text: fallbackText,
+    ...(questionId ? { question_id: questionId } : {}),
     reactions: [],
     comment,
     created_at: Date.now() / 1000,
@@ -293,6 +295,7 @@ function createCommentBody(c: ReviewComment) {
     comment: c.comment,
     anchor: c.anchor,
     fallback_text: c.fallback_text,
+    question_id: c.question_id,
     created_at: c.created_at,
   };
 }
@@ -613,6 +616,7 @@ interface ReviewState {
     anchor: CommentAnchor,
     comment: string,
     fallbackText: string,
+    questionId?: string,
   ) => Promise<void>;
   deleteComment: (id: string) => void;
   editComment: (id: string, newComment: string) => Promise<void>;
@@ -882,8 +886,14 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
     anchor: CommentAnchor,
     comment: string,
     fallbackText: string,
+    questionId?: string,
   ) => {
-    const newComment = newReviewComment(anchor, comment, fallbackText);
+    const newComment = newReviewComment(
+      anchor,
+      comment,
+      fallbackText,
+      questionId,
+    );
     set((s) => ({
       comments: [...s.comments, newComment],
       pendingSelection: null,
@@ -1559,6 +1569,12 @@ function respondingInstructions(
  * Build a quoted/contextualized chunk for the clipboard prompt.  Uses the
  * comment's anchor.source_line when available, falling back to a text
  * search against `selected_text`/`fallback_text` for legacy comments.
+ *
+ * For a comment with a `question_id` (bound to a named directive), the ±2
+ * current-line context is suppressed: the question may have moved, so the
+ * current line may hold an entirely different block.  The original fallback
+ * quote is kept, and a label names the bound question and the original line
+ * instead.
  */
 function quotedFor(
   c: ReviewComment,
@@ -1566,6 +1582,14 @@ function quotedFor(
 ): { text: string; contextBlock: string } {
   const fallback = c.fallback_text || c.selected_text || "";
   const anchorLine = c.anchor?.source_line;
+  if (c.question_id && anchorLine) {
+    // Bound comment: suppress current-line context to avoid quoting an
+    // unrelated block that replaced the original one at the old line.
+    return {
+      text: fallback,
+      contextBlock: `Question: ${c.question_id}, originally at line ${anchorLine}`,
+    };
+  }
   if (anchorLine && lineAt(anchorLine) !== undefined) {
     const CONTEXT = 2;
     const lines: string[] = [];

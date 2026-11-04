@@ -192,6 +192,7 @@ import {
   understoodFilter,
   withFilter,
   withRoadmap,
+  allQuestionsByPath,
   MAINTENANCE_KIND_IDS,
   type MaintenanceKindId,
   type QuestionEntry,
@@ -2010,8 +2011,15 @@ export const PlanningPage: React.FC = () => {
   // visible beside Copy answers, with the clear-filter control to reveal them.
   const { groups: pendingGroups, leftOutQuestions: pendingLeftOutQuestions } =
     useMemo(
-      () => pendingAnswers(listedQuestions, reviews.byPath, scoped, frameKeeps),
-      [scoped, listedQuestions, reviews.byPath, frameKeeps],
+      () =>
+        pendingAnswers(
+          listedQuestions,
+          reviews.byPath,
+          scoped,
+          frameKeeps,
+          index === null ? undefined : allQuestionsByPath(index),
+        ),
+      [scoped, listedQuestions, reviews.byPath, frameKeeps, index],
     );
 
   // The documents whose reviews the page's need-you numbers read (§6.7, §12):
@@ -2258,12 +2266,24 @@ export const PlanningPage: React.FC = () => {
     [liveQuestions],
   );
   const liveComments = useMemo(
-    () => commentsByQuestion(listedQuestions, reviews.byPath),
-    [listedQuestions, reviews.byPath],
+    () =>
+      commentsByQuestion(
+        listedQuestions,
+        reviews.byPath,
+        index === null ? undefined : allQuestionsByPath(index),
+      ),
+    [listedQuestions, reviews.byPath, index],
   );
   const liveAnswered = useMemo(
-    () => pendingAnswers(listedQuestions, reviews.byPath, scoped).answered,
-    [listedQuestions, reviews.byPath, scoped],
+    () =>
+      pendingAnswers(
+        listedQuestions,
+        reviews.byPath,
+        scoped,
+        undefined,
+        index === null ? undefined : allQuestionsByPath(index),
+      ).answered,
+    [listedQuestions, reviews.byPath, scoped, index],
   );
   const [screen, setScreen] = useState<Screen | null>(null);
   let current = screen;
@@ -2283,8 +2303,14 @@ export const PlanningPage: React.FC = () => {
       listedThen,
       reviews.byPath,
       scoped,
+      undefined,
+      allQuestionsByPath(then),
     ).answered;
-    const commentsThen = commentsByQuestion(listedThen, reviews.byPath);
+    const commentsThen = commentsByQuestion(
+      listedThen,
+      reviews.byPath,
+      allQuestionsByPath(then),
+    );
     const repliesSeen = new Map<string, number>();
     const answeredThen = new Set<string>();
     for (const question of listedThen) {
@@ -2773,6 +2799,8 @@ export const PlanningPage: React.FC = () => {
       listedQuestionsOf(frameIndex, frameUnfiltered),
       reviews.byPath,
       scoped,
+      undefined,
+      allQuestionsByPath(frameIndex),
     ).answered;
   }, [frameIndex, frameUnfiltered, reviews.byPath, scoped]);
 
@@ -2803,6 +2831,7 @@ export const PlanningPage: React.FC = () => {
         countedReviews,
         scoped,
         frameKeeps,
+        allQuestionsByPath(frameIndex),
       ).answered,
       frameKeeps,
     );

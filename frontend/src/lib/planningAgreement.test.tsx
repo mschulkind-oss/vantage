@@ -16,7 +16,7 @@
  * to, both of which the planning page uses to find a question inside its card.
  * Over the same render it places a comment on every block both ways — the
  * page's question units (`commentsOnQuestions`), and the index's `unitLine` to
- * `unitEndLine` (`placeComment`) — and asserts the same question for each, which
+ * `unitEndLine` (`ownerOfComment`) — and asserts the same question for each, which
  * is what lets the planning page count a question answered without its card.
  *
  * The corpus is every Markdown file under `docs/`, read from disk so a new
@@ -43,8 +43,10 @@ import {
 import {
   ANCHORABLE_BLOCK_SELECTOR,
   buildWholeBlockAnchor,
+  indexBlocks,
+  resolveCommentBlock,
 } from "./reviewAnchor";
-import { placeComment } from "./planningPages";
+import type { PlanningQuestion } from "vantage-md/planning";
 import type { ReviewComment } from "../types";
 import { readRepoFile, repoPath } from "../test/planning";
 
@@ -113,10 +115,13 @@ function columnOf(
   );
   expect(entries).toHaveLength(hosts.length);
 
-  const ids = new Set<string>();
+  // An id two questions carry names neither of them (§3.3).
+  const counts = new Map<string, number>();
+  for (const entry of entries) {
+    counts.set(entry.id, (counts.get(entry.id) ?? 0) + 1);
+  }
   const seen = entries.map((entry, index) => {
-    const id = entry.id !== "" && !ids.has(entry.id) ? entry.id : null;
-    if (id !== null) ids.add(id);
+    const id = entry.id !== "" && counts.get(entry.id) === 1 ? entry.id : null;
     const status = entry.status ?? "open";
     return {
       id,
@@ -136,7 +141,7 @@ function columnOf(
  * Which question a comment on each block of the rendered page is on, by the
  * question's host line, read two ways: the page's (`commentsOnQuestions`,
  * over the rendered units) and the planning index's placement by line
- * (`placeComment`, over `unitLine` to `unitEndLine`). The planning page
+ * (`ownerOfComment`, over `unitLine` to `unitEndLine`). The planning page
  * counts and copies answers by the second wherever a card has not been
  * rendered, so the two must name the same question for every block. A block
  * in the footnotes section is left out: it renders at the end of the page
@@ -157,9 +162,13 @@ function placements(
   const blocks = Array.from(
     container.querySelectorAll<HTMLElement>(ANCHORABLE_BLOCK_SELECTOR),
   ).filter((block) => block.closest("section[data-footnotes]") === null);
+  const wholeDocument = indexBlocks(container);
   const comments: ReviewComment[] = blocks.flatMap((block, i) => {
     const built = buildWholeBlockAnchor(block);
-    return built === null
+    // A block whose text recurs elsewhere in the document is ambiguous: the
+    // page places no comment on it, so there is no reading to compare.
+    return built === null ||
+      resolveCommentBlock(wholeDocument, built.anchor) === null
       ? []
       : [
           {
@@ -187,9 +196,27 @@ function placements(
   return {
     page: comments.map((c) => owner.get(c.id) ?? null),
     index: comments.map(
-      (c) => placeComment(indexed, c.anchor!.source_line)?.line ?? null,
+      (c) => unitHoldingLine(indexed, c.anchor!.source_line)?.line ?? null,
     ),
   };
+}
+
+/**
+ * The innermost question whose index unit holds `line`. Not how the app owns a
+ * comment (it uses question ids); here it checks the index's unit extents
+ * against the rendered page's.
+ */
+function unitHoldingLine(
+  questions: readonly PlanningQuestion[],
+  line: number,
+): PlanningQuestion | undefined {
+  let best: PlanningQuestion | undefined;
+  for (const question of questions) {
+    if (line < question.unitLine || line > question.unitEndLine) continue;
+    if (best === undefined || question.unitLine > best.unitLine)
+      best = question;
+  }
+  return best;
 }
 
 /** What the planning index holds for the same source. */
@@ -373,7 +400,7 @@ describe("the planning index and the contents column (§3.3)", () => {
       "",
       "\u{1F4AC} **OQ-P1: Written as paragraphs?**",
       "",
-      "Its context.",
+      "Its context 1.",
       "",
       "- **A — One.**",
       "- **B — Two.**",
@@ -388,17 +415,17 @@ describe("the planning index and the contents column (§3.3)", () => {
       "",
       "\u{1F512} **OQ-P2: Up to a rule?**",
       "",
-      "Its context.",
+      "Its context 2.",
       "",
       "---",
       "",
-      "No question's.",
+      "No question's 1.",
       "",
       '<!-- vantage: question id=OQ-P3 leaning="Yes." -->',
       "",
       "### \u{1F4AC} OQ-P3: A heading, to its section's end?",
       "",
-      "Its context.",
+      "Its context 3.",
       "",
       "#### Deeper, and still its own",
       "",
@@ -406,7 +433,7 @@ describe("the planning index and the contents column (§3.3)", () => {
       "",
       "### The next section",
       "",
-      "No question's.",
+      "No question's 2.",
       "",
     ].join("\n"),
     "one id on both names in a run, and on two `oq`s": [

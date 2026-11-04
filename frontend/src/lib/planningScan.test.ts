@@ -770,7 +770,7 @@ describe("a question (§3.3)", () => {
     expect(planning(source).questions.map((q) => [q.title, q.id])).toEqual([
       ["No id.", null],
       ["Malformed.", null],
-      ["First.", "OQ-4"],
+      ["First.", null],
       ["Repeated.", null],
     ]);
   });
@@ -960,9 +960,10 @@ describe("a question (§3.3)", () => {
     }
   });
 
-  it("keeps one namespace of ids across `oq` and `question`", () => {
+  it("keeps one namespace of ids across `oq` and `question`, and gives a repeated id to neither", () => {
     // The anchor is the same attribute, so a `question` that repeats an
-    // `oq`'s id lands nowhere, as a repeated `oq` does.
+    // `oq`'s id lands nowhere, as a repeated `oq` does. Two runs claiming one
+    // id are ambiguous: neither holds it, so a bound comment credits no one.
     const source = [
       "<!-- vantage: oq id=OQ-4 -->",
       "",
@@ -974,8 +975,21 @@ describe("a question (§3.3)", () => {
       "",
     ].join("\n");
     expect(planning(source).questions.map((q) => [q.title, q.id])).toEqual([
-      ["First.", "OQ-4"],
+      ["First.", null],
       ["Repeated.", null],
+    ]);
+  });
+
+  it("leaves a valid id alone beside an ambiguous one", () => {
+    const source = [
+      "<!-- vantage: oq id=OQ-4 -->\n\nA.\n",
+      "<!-- vantage: oq id=OQ-5 -->\n\nB.\n",
+      "<!-- vantage: oq id=OQ-4 -->\n\nC.\n",
+    ].join("\n");
+    expect(planning(source).questions.map((q) => q.id)).toEqual([
+      null,
+      "OQ-5",
+      null,
     ]);
   });
 
