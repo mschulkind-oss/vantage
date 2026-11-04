@@ -639,6 +639,13 @@ export interface InlineReviewEntry {
   settle: (intent: QuestionIntent, outcome: "done" | "changed") => void;
 }
 
+const LOADING_HINT = "Loading this document's review — available in a moment";
+
+function markUnavailable(button: HTMLButtonElement): void {
+  button.disabled = true;
+  button.setAttribute("aria-disabled", "true");
+}
+
 const sameAnchor = (a: CommentAnchor, b: CommentAnchor): boolean =>
   a.source_line === b.source_line &&
   a.block_text_hash === b.block_text_hash &&
@@ -765,9 +772,17 @@ export function useOpenQuestionButtons(
     // asks consent to enter review instead of writing.
     if (isStaticMode()) return;
     const live = enabled;
-    if (!live && !(entry !== undefined && entry.ready)) return;
+    if (!live && entry === undefined) return;
+    // The row's space is reserved from the document's first layout; until the
+    // review's comments are loaded the controls are present and unavailable,
+    // showing the one-button-and-Answer state every row can start in (the
+    // same height as any other state), so the answer to "who owns this
+    // question" arriving moves nothing. Nothing is offered as live on an
+    // ownership the page does not yet know.
+    const unavailable = !live && !entry?.ready;
 
-    for (const { question, built, text, state, questionId } of rows) {
+    for (const { question, built, text, state: known, questionId } of rows) {
+      const state: QuestionOffer = unavailable ? { kind: "take" } : known;
       const row = makeRow(question, el, all);
 
       if (state.kind === "answered") {
@@ -840,7 +855,10 @@ export function useOpenQuestionButtons(
         btn.type = "button";
         btn.className = "review-oq-take";
         btn.textContent = OQ_LABEL;
-        btn.title = "Add a review comment taking the leaning stated here";
+        btn.title = unavailable
+          ? LOADING_HINT
+          : "Add a review comment taking the leaning stated here";
+        if (unavailable) markUnavailable(btn);
         btn.addEventListener("click", (e) => {
           // The container's own click handler opens the comment popover, and
           // this click is not a request for that — the same reason
@@ -850,6 +868,7 @@ export function useOpenQuestionButtons(
           // button with the taken chip. This guard covers only the window
           // before that commit — a physical double-click delivering two clicks
           // in one gesture.
+          if (unavailable) return;
           if (!live) {
             // Not disabled: Cancel must leave the row exactly as it was.
             entry?.request(
@@ -877,10 +896,14 @@ export function useOpenQuestionButtons(
         answer.setAttribute(OQ_BUTTON_ATTR, "answer");
         answer.type = "button";
         answer.className = "review-oq-answer";
-        answer.title = "Write your answer as a review comment on this question";
+        answer.title = unavailable
+          ? LOADING_HINT
+          : "Write your answer as a review comment on this question";
+        if (unavailable) markUnavailable(answer);
         answer.append(answerIcon(), OQ_ANSWER_LABEL);
         answer.addEventListener("click", (e) => {
           claimClick(e);
+          if (unavailable) return;
           if (!live) {
             entry?.request(
               {

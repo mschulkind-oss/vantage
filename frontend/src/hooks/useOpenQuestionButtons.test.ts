@@ -1781,11 +1781,50 @@ describe("useOpenQuestionButtons — rows outside review mode (inline entry)", (
     expect(onAnswer).not.toHaveBeenCalled();
   });
 
-  it("renders nothing outside review mode without an entry, or before the comments are loaded", () => {
+  it("renders nothing outside review mode without an entry", () => {
     renderEntry(undefined);
     expect(container.querySelector("[data-vantage-oq-button]")).toBeNull();
-    renderEntry(entryOf({ ready: false }));
-    expect(container.querySelector("[data-vantage-oq-button]")).toBeNull();
+  });
+
+  it("reserves the same rows before the comments are loaded, unavailable until they are", () => {
+    const { rerender } = renderEntry(entryOf({ ready: false }));
+    const shape = () =>
+      Array.from(container.querySelectorAll<HTMLElement>(".review-oq-row")).map(
+        (row) => row.previousElementSibling,
+      );
+    const before = shape();
+    expect(before).toHaveLength(3);
+    expect(takeButtons()).toHaveLength(3);
+    expect(answerButtons()).toHaveLength(3);
+    for (const b of [...takeButtons(), ...answerButtons()]) {
+      expect(b.disabled).toBe(true);
+      expect(b.getAttribute("aria-disabled")).toBe("true");
+    }
+    // A click on an unavailable control asks for nothing.
+    fireEvent.click(takeButtons()[0]);
+    fireEvent.click(answerButtons()[0]);
+    expect(request).not.toHaveBeenCalled();
+
+    rerender({ cs: [], on: false, entry: entryOf({ ready: true }) });
+
+    // The same rows after the same blocks: only the controls' state changed.
+    expect(shape()).toEqual(before);
+    for (const b of [...takeButtons(), ...answerButtons()]) {
+      expect(b.disabled).toBe(false);
+    }
+    fireEvent.click(takeButtons()[0]);
+    expect(request).toHaveBeenCalledTimes(1);
+  });
+
+  it("never carries out an armed intent before the comments are loaded", () => {
+    const armed: Intent = {
+      kind: "take",
+      path: "doc.md",
+      anchor: buildWholeBlockAnchor(blockAt(11))!.anchor,
+    };
+    renderEntry(entryOf({ armed, ready: false }), true);
+    expect(onTake).not.toHaveBeenCalled();
+    expect(settle).not.toHaveBeenCalled();
   });
 
   it("renders nothing in a static export, entry offered or not", () => {
