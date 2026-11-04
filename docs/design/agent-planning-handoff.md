@@ -2,12 +2,12 @@
 status: accepted
 stage: BUILT
 title: "Grounded agent handoffs: one command, two counts"
-next: "Graduate the implemented contract into the maintained planning and checker references"
+next: "None; graduated into planning-index.md §13.5 and the printed style guide"
 ---
 
 # Grounded agent handoffs — one command, two counts, and what the tool cannot see
 
-**Status:** 2026-11-03. Built: the handoff contract and two-count vocabulary ([§3](#3-two-counts-two-names), [§4](#4-the-agent-handoff-contract-docs-first-shippable-alone)), the filter readout wording ([§5.1](#51-filter-readout-wording-cli-no-new-flag)) and `vantage/question-candidate` ([§5.2](#52-structural-diagnostic-for-unfiled-candidates-checker-warning)). Pre-change evidence was inspected at `01837a0a`; the implementation landed in `f427f2ee` with regression tests. The owner's quoted report is the only specimen of the original handoff failure and its three documents are not in this checkout.
+**Status:** 2026-11-04. **Built and graduated.** The maintained home of the built behavior is [`planning-index.md` §13.5](../reference/planning-index.md#135-handing-the-human-a-filtered-page): the two counts, the filter readout sentence, the exit 2 message and `vantage/question-candidate`. The six-step contract itself lives once, in the printed style guide (`packages/vantage-md/src/styleGuide.ts`), and [§3](#3-two-counts-two-names)–[§5](#5-optional-product-safeguards-not-prerequisites) below are now rationale; the maintained reference and printed guide define the built contract. [OQ-AP1](answer-publication.md#OQ-AP1) stays open and nothing here defines a reply outcome. Earlier implementation (2026-11-03): the handoff contract and two-count vocabulary ([§3](#3-two-counts-two-names), [§4](#4-the-agent-handoff-contract-docs-first-shippable-alone)), the filter readout wording ([§5.1](#51-filter-readout-wording-cli-no-new-flag)) and `vantage/question-candidate` ([§5.2](#52-structural-diagnostic-for-unfiled-candidates-checker-warning)). Pre-change evidence was inspected at `01837a0a`; the implementation landed in `f427f2ee` with regression tests. The owner's quoted report is the only specimen of the original handoff failure and its three documents are not in this checkout.
 
 > **In short.** The quoted handoff's ungrounded claims — about combining paths, table rows, ledger rows and `is:open` — are each answered by documentation the agent did not find or trust, so the fix is first a documentation correction (one canonical instruction, one false loop, one false equivalence) and only second two small optional safeguards; waiting on other writers is ordinary coordination and stays. Nothing here is a prerequisite for anything else.
 

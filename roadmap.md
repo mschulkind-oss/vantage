@@ -1,6 +1,6 @@
 # Roadmap
 
-**Updated:** 2026-11-03
+**Updated:** 2026-11-04
 
 The order is the one thing this file holds that no other document can. Each entry is a link and the reason it sits where it does. What the linked document owns, its status, its stage and its open questions, is not copied here: Vantage shows it in a badge beside the link, and on GitHub it is one click away in that document's frontmatter. Prose beneath an entry holds only what has no other home. What a link here routes, and how `vantage-check index` finds the questions this file misses: [Planning Documents](userguide/guides/planning.md#the-roadmap).
 
@@ -69,8 +69,6 @@ The order is the one thing this file holds that no other document can. Each entr
 
 1. [Large-collection Overview default](docs/brainstorm/overview-at-scale.md#OQ-OAS1) — choose whether a large board starts summary-first or with every active group expanded before proposing a browsing change.
 
-2. [Planning question ownership and lifecycle](docs/design/planning-question-state.md) — finish source validation and explicit update actions before broader refresh changes, because moving source text must not transfer an answer to a different decision.
+2. [Remaining planning reader-state handling](docs/design/planning-question-state.md) — make the remaining source-state and freshness distinctions visible before broader refresh changes, because a reader must know whether the answer and the text on screen concern the same decision.
 
-3. [Planning edit restoration and selection coverage](docs/design/planning-review-actions.md) — restore editing sessions without deleting existing replies, then extend selection anchoring beyond the body; both depend on preserving the original question's identity.
-
-4. [Grounded agent planning handoffs](docs/design/agent-planning-handoff.md) — graduate the accepted handoff contract into the existing reference guides so future instructions have one maintained home.
+3. [Planning selection coverage](docs/design/planning-review-actions.md) — establish a provable source anchor for generated leaning text before offering selection comments on it; an attractive selection target is not evidence of where the text came from.

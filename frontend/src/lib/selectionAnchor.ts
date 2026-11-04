@@ -146,3 +146,131 @@ export function anchorFromRange(
   if (!offsets || offsets.length < MIN_SELECTION_LENGTH) return null;
   return buildCapturedSelection(block, range);
 }
+
+/** The text nodes of `root` outside review UI, in document order. */
+function textNodesOf(root: Element, skip?: (node: Text) => boolean): Text[] {
+  const out: Text[] = [];
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    const text = n as Text;
+    if (skip?.(text)) continue;
+    out.push(text);
+  }
+  return out;
+}
+
+/** Where, in `nodes` read as one string, the boundary `(node, offset)` is; clamped. */
+function rawPosition(nodes: Text[], node: Node, offset: number): number {
+  let at = 0;
+  for (const text of nodes) {
+    if (text === node) return at + Math.min(offset, text.data.length);
+    at += text.data.length;
+  }
+  // A boundary outside the title's own text (its status marker, or the element
+  // itself): before everything if it comes first, else after everything.
+  if (node.nodeType === Node.ELEMENT_NODE) {
+    const child = node.childNodes[offset];
+    for (const text of nodes) {
+      if (child !== undefined && child.contains(text))
+        return rawBefore(nodes, text);
+    }
+  }
+  return nodes.length > 0 &&
+    nodes[0].compareDocumentPosition(node) & Node.DOCUMENT_POSITION_FOLLOWING
+    ? at
+    : 0;
+}
+
+function rawBefore(nodes: Text[], target: Text): number {
+  let at = 0;
+  for (const text of nodes) {
+    if (text === target) return at;
+    at += text.data.length;
+  }
+  return at;
+}
+
+/** The DOM position `raw` characters into `nodes` read as one string. */
+function domPosition(
+  nodes: Text[],
+  raw: number,
+): { node: Text; offset: number } | null {
+  let at = 0;
+  for (const text of nodes) {
+    if (raw <= at + text.data.length) return { node: text, offset: raw - at };
+    at += text.data.length;
+  }
+  return null;
+}
+
+/**
+ * The anchor of a selection made in a planning card's headline. The headline
+ * is the card's own element, not a block of the document; its words are the
+ * question's bold title, which the card keeps, hidden, in the rendered
+ * question (`title`), inside the block `line` of the document. So the
+ * selection is carried onto those words and anchored in that block, and kept
+ * only where the document's scan proves the result: the block starts at
+ * `line` (the question's own line, from the scan) and its text hash is one the
+ * scan holds at exactly that line (`blockLines`). `null` where any of that
+ * does not hold, and the card then offers Open document and no anchor.
+ */
+export function anchorFromHeadline(
+  headline: HTMLElement,
+  body: HTMLElement,
+  title: HTMLElement | null,
+  range: Range,
+  line: number,
+  blockLines: Readonly<Record<string, number>>,
+  marker: string,
+): CapturedSelection | null {
+  if (title === null || range.collapsed) return null;
+  if (
+    !headline.contains(range.startContainer) ||
+    !headline.contains(range.endContainer)
+  ) {
+    return null;
+  }
+  const host = resolveAnchorBlock(body, title);
+  if (host === null || Number(host.getAttribute("data-source-line")) !== line) {
+    return null;
+  }
+  const marked = (text: Text) =>
+    text.parentElement?.closest("[aria-hidden]") != null;
+  const mine = textNodesOf(headline, marked);
+  const theirs = textNodesOf(title);
+  const words = mine.map((t) => t.data).join("");
+  if (words !== theirs.map((t) => t.data).join("")) return null;
+  const from = rawPosition(mine, range.startContainer, range.startOffset);
+  const to = rawPosition(mine, range.endContainer, range.endOffset);
+  if (to <= from) return null;
+  const start = domPosition(theirs, from);
+  const end = domPosition(theirs, to);
+  if (start === null || end === null) return null;
+  const carried = document.createRange();
+  carried.setStart(start.node, start.offset);
+  carried.setEnd(end.node, end.offset);
+  const offsets = canonicalOffsetsFromRange(host, carried);
+  if (!offsets || offsets.length < MIN_SELECTION_LENGTH) return null;
+  const got = buildCapturedSelection(host, carried);
+  if (got === null) return null;
+  const rect = range.getBoundingClientRect();
+  const provenAt = (hash: string) =>
+    Object.hasOwn(blockLines, hash) ? blockLines[hash] : undefined;
+  if (provenAt(got.anchor.block_text_hash) === line) return { ...got, rect };
+  // The card empties the status marker that opens the title's block, so the
+  // block's text lacks it where the document has it: put it back, shifting
+  // the offset by the words it adds, and accept only what the scan holds.
+  const lead = stripBlockText(marker);
+  if (lead === "") return null;
+  const withMarker = hashBlockText(`${marker} ${blockVisibleText(host)}`);
+  if (provenAt(withMarker) !== line) return null;
+  return {
+    ...got,
+    rect,
+    anchor: {
+      ...got.anchor,
+      block_text_hash: withMarker,
+      selection_offset: got.anchor.selection_offset + lead.length + 1,
+    },
+  };
+}

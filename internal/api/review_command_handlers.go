@@ -55,6 +55,14 @@ func (h *Handlers) writeCommandResult(w http.ResponseWriter, repo, path string, 
 		writeError(w, http.StatusNotFound, "No reply found")
 	case errors.Is(err, review.ErrReviewNotFound):
 		writeError(w, http.StatusNotFound, "No review found")
+	case errors.Is(err, review.ErrSessionNotFound):
+		writeError(w, http.StatusNotFound, "No session found")
+	case errors.Is(err, review.ErrSessionConflict):
+		writeConflict(w, "Changed outside this session", "external_text_edit")
+	case errors.Is(err, review.ErrQuestionBound):
+		writeConflict(w, "The comment is already bound to a question", "already_bound")
+	case isPrecondition(err):
+		writeConflict(w, "The evidence is out of date", err.(*review.PreconditionError).Reason)
 	case err != nil:
 		slog.Error("api: review command failed", "path", path, "error", err)
 		writeError(w, http.StatusInternalServerError, "Failed to update review")
@@ -66,6 +74,24 @@ func (h *Handlers) writeCommandResult(w http.ResponseWriter, repo, path string, 
 		// the literal null, matching ReviewGet's absent shape.
 		writeJSON(w, http.StatusOK, data)
 	}
+}
+
+func isPrecondition(err error) bool {
+	var p *review.PreconditionError
+	return errors.As(err, &p)
+}
+
+// writeConflict answers 409 with the {"error":…} envelope plus a machine
+// readable "reason".
+func writeConflict(w http.ResponseWriter, message, reason string) {
+	writeJSON(w, http.StatusConflict, map[string]string{"error": message, "reason": reason})
+}
+
+// documentEvidence reads the document the server holds, observes its content
+// hash (bumping the document generation when it changed) and returns the
+// evidence. An unreadable or binary document has the empty hash.
+func (h *Handlers) documentEvidence(svc RepoServices, path string) review.Evidence {
+	return h.docs.Source(svc, path)().Evidence
 }
 
 // decodeBody decodes the request body into v, reporting false (and writing the
@@ -99,6 +125,11 @@ func (h *Handlers) ReviewCommentCreate(w http.ResponseWriter, r *http.Request) {
 		FallbackText string               `json:"fallback_text"`
 		QuestionID   string               `json:"question_id"`
 		CreatedAt    float64              `json:"created_at"`
+		// SessionID, QuestionEvidence and Preconditions are optional; see
+		// review.CreateOptions.
+		SessionID        string                    `json:"session_id"`
+		QuestionEvidence *model.QuestionEvidence   `json:"question_evidence"`
+		Preconditions    *review.BindPreconditions `json:"preconditions"`
 	}
 	if !decodeBody(w, r, &req) {
 		return
@@ -111,7 +142,9 @@ func (h *Handlers) ReviewCommentCreate(w http.ResponseWriter, r *http.Request) {
 	c.Anchor = req.Anchor
 	c.FallbackText = req.FallbackText
 	c.QuestionID = req.QuestionID
-	data, err := h.deps.Reviews.AddComment(path, svc.Repo, c, currentDocContent(svc, path))
+	c.QuestionEvidence = req.QuestionEvidence
+	opts := review.CreateOptions{SessionID: req.SessionID, Preconditions: req.Preconditions, Doc: h.docs.Source(svc, path)}
+	data, err := h.deps.Reviews.AddCommentWith(path, svc.Repo, c, currentDocContent(svc, path), opts)
 	h.writeCommandResult(w, svc.Repo, path, data, err)
 }
 
@@ -125,8 +158,9 @@ func (h *Handlers) ReviewCommentPatch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		Comment  *string `json:"comment"`
-		Resolved *bool   `json:"resolved"`
+		Comment   *string `json:"comment"`
+		Resolved  *bool   `json:"resolved"`
+		SessionID string  `json:"session_id"`
 	}
 	if !decodeBody(w, r, &req) {
 		return
@@ -143,7 +177,7 @@ func (h *Handlers) ReviewCommentPatch(w http.ResponseWriter, r *http.Request) {
 	if req.Comment != nil {
 		// The document is read before the store lock, exactly as the add and
 		// reply handlers do: editing re-captures the anchored block.
-		data, err = h.deps.Reviews.EditCommentText(path, svc.Repo, id, *req.Comment, currentDocContent(svc, path))
+		data, err = h.deps.Reviews.EditCommentTextFrom(path, svc.Repo, id, *req.Comment, h.docs.Source(svc, path), req.SessionID)
 	} else {
 		data, err = h.deps.Reviews.SetResolved(path, svc.Repo, id, *req.Resolved)
 	}
@@ -182,16 +216,7 @@ func (h *Handlers) replyCommand(w http.ResponseWriter, r *http.Request, reopen b
 		return
 	}
 	id := r.PathValue("id")
-	doc := currentDocContent(svc, path)
-	var (
-		data *model.ReviewData
-		err  error
-	)
-	if reopen {
-		data, err = h.deps.Reviews.ReopenReply(path, svc.Repo, id, req.ID, req.Text, doc)
-	} else {
-		data, err = h.deps.Reviews.Reply(path, svc.Repo, id, req.ID, req.Text, doc)
-	}
+	data, err := h.deps.Reviews.ReplyFrom(path, svc.Repo, id, req.ID, req.Text, h.docs.Source(svc, path), reopen)
 	h.writeCommandResult(w, svc.Repo, path, data, err)
 }
 
@@ -215,7 +240,7 @@ func (h *Handlers) ReviewReplyPatch(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "Reply text is required")
 		return
 	}
-	data, err := h.deps.Reviews.EditReply(path, svc.Repo, r.PathValue("id"), r.PathValue("reply"), req.Text, currentDocContent(svc, path))
+	data, err := h.deps.Reviews.EditReplyFrom(path, svc.Repo, r.PathValue("id"), r.PathValue("reply"), req.Text, h.docs.Source(svc, path))
 	h.writeCommandResult(w, svc.Repo, path, data, err)
 }
 
@@ -313,4 +338,116 @@ func (h *Handlers) ReviewMove(w http.ResponseWriter, r *http.Request) {
 		h.deps.ReviewChanged(svc.Repo, req.To)
 	}
 	writeJSON(w, http.StatusOK, data)
+}
+
+// sessionResponse is what the session commands answer: the session's receipt
+// and the persisted review.
+type sessionResponse struct {
+	Session *review.SessionAck `json:"session"`
+	Review  *model.ReviewData  `json:"review"`
+}
+
+// sessionCommand is the shared body of the three session endpoints. Each takes
+// {"comment_id","session_id"} (begin adds "shown_root_version") and answers
+// {"session":…,"review":…}.
+func (h *Handlers) sessionCommand(w http.ResponseWriter, r *http.Request,
+	run func(path, repo string, commentID, sessionID, shown string) (*model.ReviewData, *review.SessionAck, error)) {
+	svc, path, ok := h.reviewCommandTarget(w, r)
+	if !ok {
+		return
+	}
+	var req struct {
+		CommentID        string `json:"comment_id"`
+		SessionID        string `json:"session_id"`
+		ShownRootVersion string `json:"shown_root_version"`
+	}
+	if !decodeBody(w, r, &req) {
+		return
+	}
+	if req.CommentID == "" || req.SessionID == "" {
+		writeError(w, http.StatusBadRequest, "comment_id and session_id are required")
+		return
+	}
+	data, a, err := run(path, svc.Repo, req.CommentID, req.SessionID, req.ShownRootVersion)
+	if err != nil {
+		h.writeCommandResult(w, svc.Repo, path, nil, err)
+		return
+	}
+	if h.deps.ReviewChanged != nil {
+		h.deps.ReviewChanged(svc.Repo, path)
+	}
+	writeJSON(w, http.StatusOK, sessionResponse{Session: a, Review: data})
+}
+
+// ReviewSessionBegin handles POST /review/begin-comment-session.
+func (h *Handlers) ReviewSessionBegin(w http.ResponseWriter, r *http.Request) {
+	h.sessionCommand(w, r, h.deps.Reviews.BeginSession)
+}
+
+// ReviewSessionFinish handles POST /review/finish-comment-session.
+func (h *Handlers) ReviewSessionFinish(w http.ResponseWriter, r *http.Request) {
+	h.sessionCommand(w, r, func(path, repo, commentID, sessionID, _ string) (*model.ReviewData, *review.SessionAck, error) {
+		return h.deps.Reviews.FinishSession(path, repo, commentID, sessionID)
+	})
+}
+
+// ReviewSessionRestore handles POST /review/restore-comment-session.
+func (h *Handlers) ReviewSessionRestore(w http.ResponseWriter, r *http.Request) {
+	h.sessionCommand(w, r, func(path, repo, commentID, sessionID, _ string) (*model.ReviewData, *review.SessionAck, error) {
+		return h.deps.Reviews.RestoreSession(path, repo, commentID, sessionID)
+	})
+}
+
+// ReviewBindQuestion handles POST /review/bind-comment-question: bind (or, with
+// allow_rebind, attach) a comment to a question id against preconditions on the
+// server's current state. A refused bind is a 409 with a "reason".
+func (h *Handlers) ReviewBindQuestion(w http.ResponseWriter, r *http.Request) {
+	svc, path, ok := h.reviewCommandTarget(w, r)
+	if !ok {
+		return
+	}
+	var req struct {
+		CommentID     string                   `json:"comment_id"`
+		QuestionID    string                   `json:"question_id"`
+		Evidence      *model.QuestionEvidence  `json:"evidence"`
+		Preconditions review.BindPreconditions `json:"preconditions"`
+		AllowRebind   bool                     `json:"allow_rebind"`
+	}
+	if !decodeBody(w, r, &req) {
+		return
+	}
+	if req.CommentID == "" || req.QuestionID == "" {
+		writeError(w, http.StatusBadRequest, "comment_id and question_id are required")
+		return
+	}
+	data, err := h.deps.Reviews.BindQuestion(path, svc.Repo, review.BindRequest{
+		CommentID: req.CommentID, QuestionID: req.QuestionID, Evidence: req.Evidence,
+		Preconditions: req.Preconditions, AllowRebind: req.AllowRebind,
+		Doc: h.docs.Source(svc, path),
+	})
+	h.writeCommandResult(w, svc.Repo, path, data, err)
+}
+
+// reviewEvidenceResponse is GET /review/evidence.
+type reviewEvidenceResponse struct {
+	review.Evidence
+	MutationRevision int64 `json:"mutation_revision"`
+}
+
+// ReviewEvidence handles GET /review/evidence: the server boot id, the
+// document's generation and content hash, and the review's mutation revision
+// (0 when there is no review) — the coherent pair a bind is preconditioned on.
+func (h *Handlers) ReviewEvidence(w http.ResponseWriter, r *http.Request) {
+	svc, path, ok := h.reviewCommandTarget(w, r)
+	if !ok {
+		return
+	}
+	ev, revision, err := h.deps.Reviews.ObserveWithRevision(path, svc.Repo, h.docs.Source(svc, path))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Could not read the review")
+		return
+	}
+	resp := reviewEvidenceResponse{Evidence: ev, MutationRevision: revision}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, resp)
 }

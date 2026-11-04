@@ -24,6 +24,7 @@ import {
   CommentBoxTextarea,
   GoneActions,
 } from "./CommentBoxFields";
+import { SessionReports } from "./CommentSessionViews";
 
 /** A reported box, reopened here: its textarea and foot. */
 const ReopenedBox: React.FC<{ box: CommentBox; onClose: () => void }> = ({
@@ -54,7 +55,14 @@ const ReopenedBox: React.FC<{ box: CommentBox; onClose: () => void }> = ({
   );
 };
 
-export const UnsavedComments: React.FC = () => {
+export const UnsavedComments: React.FC = () => (
+  <>
+    <UnsavedBoxes />
+    <SessionReports />
+  </>
+);
+
+const UnsavedBoxes: React.FC = () => {
   useUnsavedCommentsGuard();
   const reported = useBoxesToReport();
   const [listOpen, setListOpen] = useState(false);

@@ -265,7 +265,58 @@ type CommentReaction struct {
 	Timestamp    float64 `json:"timestamp"`
 	EditedAt     float64 `json:"edited_at,omitempty"`
 	AnswersRound *int    `json:"answers_round,omitempty"`
+	// RootTextVersion is the comment's root_text_version the agent echoed from
+	// the payload it read. It is transport evidence only: it is never filled
+	// in from the comment's current version on receipt, because the agent may
+	// have answered a stale clipboard. Absent means coverage unknown.
+	RootTextVersion string `json:"root_text_version,omitempty"`
 }
+
+// QuestionEvidence is what the client's shared scan knew when it bound a
+// comment to a planning question. The server stores it verbatim; it checks
+// only the preconditions that accompany the bind (BindPreconditions), not
+// these fields.
+type QuestionEvidence struct {
+	DocumentGeneration  int64  `json:"document_generation"`
+	DocumentContentHash string `json:"document_content_hash"`
+	UnitFingerprint     string `json:"unit_fingerprint"`
+	SelectedQuote       string `json:"selected_quote"`
+}
+
+// ReplyCoverage says, for one agent reaction of a comment, which version of the
+// root text it answered, relative to the comment's current RootTextVersion.
+// It is derived on every save from the reactions themselves and is transport
+// for the client's labels ("reply to discarded wording", "coverage unknown");
+// it is not an outcome and is never stored independently of them.
+type ReplyCoverage struct {
+	// ReactionIndex is the position in the comment's Reactions.
+	ReactionIndex int `json:"reaction_index"`
+	// RootTextVersion is the version the reaction echoed ("" when it echoed none).
+	RootTextVersion string `json:"root_text_version,omitempty"`
+	// Covers is "current" (echoed version equals the comment's), "other"
+	// (echoed a different version) or "unknown" (echoed none).
+	Covers string `json:"covers"`
+}
+
+// Ownership states of a comment's captured block (ReviewComment.Ownership).
+const (
+	OwnershipProven  = "proven"
+	OwnershipUnowned = "unowned"
+	OwnershipUnknown = "unknown"
+)
+
+// Reasons an ownership is unknown (ReviewComment.OwnershipReason).
+const (
+	ReasonScannerUnavailable = "scanner_unavailable"
+	// ReasonScanRefused: the checker is installed but refused the scan (over its limit; its JSON says so, whatever the exit code).
+	ReasonScanRefused = "scan_refused"
+	// ReasonScannerFailed: the checker ran and crashed, timed out or answered unreadably.
+	ReasonScannerFailed = "scanner_failed"
+	// ReasonScanRaced: the document changed while the checker scanned it.
+	ReasonScanRaced        = "scan_raced"
+	ReasonQuestionMoved    = "question_not_at_anchor"
+	ReasonAnchorInQuestion = "anchor_in_unbound_question_unit"
+)
 
 // ReviewComment is a single review comment. CreatedAt is epoch seconds
 // (float64). Reactions must marshal as [] rather than null — use
@@ -286,6 +337,24 @@ type ReviewComment struct {
 	// filed on, set once at creation and never recaptured on edit. It lets a
 	// listed question own the comment without its line, which moves.
 	QuestionID string `json:"question_id,omitempty"`
+	// QuestionEvidence is the scan evidence recorded with QuestionID.
+	QuestionEvidence *QuestionEvidence `json:"question_evidence,omitempty"`
+	// Ownership says what the shared scanner proved about who owns the block
+	// this comment captured, the last time the capture was considered:
+	// OwnershipProven (the question it is bound to holds the anchor),
+	// OwnershipUnowned (the anchor lies in no question unit: a plain note) or
+	// OwnershipUnknown. OwnershipReason names why it is unknown. Absent means
+	// not yet considered. An unknown comment keeps its older capture.
+	Ownership       string `json:"ownership,omitempty"`
+	OwnershipReason string `json:"ownership_reason,omitempty"`
+	// RootTextVersion is an opaque string, new for every write of Comment; a
+	// session restore re-adopts the version its baseline held.
+	RootTextVersion string `json:"root_text_version,omitempty"`
+	// MutationCounter counts the writes of Comment (including restores). It
+	// only ever increases.
+	MutationCounter int64 `json:"mutation_counter,omitempty"`
+	// ReplyCoverage is derived from Reactions on every save; see [ReplyCoverage].
+	ReplyCoverage []ReplyCoverage `json:"reply_coverage,omitempty"`
 	// CapturedBlock is the canonicalized text of the anchored block at the
 	// moment the comment was created or last replied-to/reopened — the text the
 	// reviewer was actually looking at. Written server-side only; it becomes an
@@ -317,6 +386,59 @@ type ReviewData struct {
 	// edit still in flight from the browser cannot resurrect or address the
 	// comment after its delete. Ids never expire.
 	DeletedIDs []string `json:"deleted_ids,omitempty"`
+	// MutationRevision increments on every persisted change to this review and
+	// never decreases. With the server boot id and the document's generation it
+	// is the coherent-pair evidence (planning-question-state.md §4).
+	MutationRevision int64 `json:"mutation_revision,omitempty"`
+	// Sessions are the persisted comment-editing sessions (§7), kept without
+	// expiry. A closed session keeps only its id, comment and outcome.
+	Sessions []CommentSession `json:"comment_sessions,omitempty"`
+}
+
+// Comment session states and outcomes.
+const (
+	SessionOpen   = "open"
+	SessionClosed = "closed"
+
+	SessionKept      = "kept"
+	SessionRestored  = "restored"
+	SessionDiscarded = "discarded"
+)
+
+// CommentSession is one server-held editing session of one comment root. The
+// repository and document are the review it lives in.
+type CommentSession struct {
+	ID        string `json:"id"`
+	CommentID string `json:"comment_id"`
+	State     string `json:"state"`
+	// Outcome is set when State is closed.
+	Outcome string `json:"outcome,omitempty"`
+	// ExternalTextEdit marks that the root's text was written by something other
+	// than this session while it was open; a restore is then refused.
+	ExternalTextEdit bool `json:"external_text_edit,omitempty"`
+	// Baseline is dropped when the session closes.
+	Baseline *SessionBaseline `json:"baseline,omitempty"`
+}
+
+// SessionBaseline is the server's snapshot of the root when the session began.
+// The client never supplies it.
+type SessionBaseline struct {
+	// DidNotExist is true for a session that opened a brand-new answer.
+	DidNotExist     bool    `json:"did_not_exist,omitempty"`
+	Text            string  `json:"text,omitempty"`
+	CapturedBlock   string  `json:"captured_block,omitempty"`
+	RootTextVersion string  `json:"root_text_version,omitempty"`
+	EditedAt        float64 `json:"edited_at,omitempty"`
+	// Ownership and OwnershipReason are the verdict that went with Text.
+	Ownership       string `json:"ownership,omitempty"`
+	OwnershipReason string `json:"ownership_reason,omitempty"`
+	// ReplyIDs are the ids of the replies present at open (agent reactions have
+	// none); ReactionCount is how many reactions there were.
+	ReplyIDs      []string `json:"reply_ids,omitempty"`
+	ReactionCount int      `json:"reaction_count,omitempty"`
+	// BaselineVersionReactions are the indexes of reactions that carried the
+	// baseline root_text_version at open.
+	BaselineVersionReactions []int `json:"baseline_version_reactions,omitempty"`
 }
 
 // NewReviewData returns a ReviewData for filePath with Comments initialized

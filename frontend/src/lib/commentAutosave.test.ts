@@ -466,3 +466,33 @@ describe("the text Copy answers copies", () => {
     expect(box.subject.target.path).toBe("b.md");
   });
 });
+
+describe("holdsChanges (the Apply updates guard)", () => {
+  const replyBox = () => {
+    const box = new CommentBox(
+      {
+        kind: "reply",
+        target: { base: "/api", path: "a.md" },
+        commentId: "c1",
+        replyId: "r1",
+        label: "Reply",
+      },
+      ops(),
+    );
+    box.open();
+    return box;
+  };
+
+  it("counts an open reply box with typed text, saved or not, and never an empty one", async () => {
+    const box = replyBox();
+    expect(box.holdsChanges).toBe(false);
+    box.input("my reply");
+    expect(box.holdsChanges).toBe(true);
+    // Autosaved: closing it would still decide something for the reader.
+    await vi.advanceTimersByTimeAsync(SAVE_PAUSE_MS);
+    sent[0]?.resolve();
+    await settle();
+    expect(box.getState().unsaved).toBe(false);
+    expect(box.holdsChanges).toBe(true);
+  });
+});

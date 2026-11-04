@@ -110,6 +110,10 @@ type Deps struct {
 	// The server wires it to the live hub so connected browsers reload the
 	// review; a nil value (tests, static builds) silently skips the push.
 	ReviewChanged func(repo, path string)
+	// QuestionScanner bridges to the shared planning scanner, from which the
+	// server learns which question ids exist, once, in a document. Nil means no
+	// scanner is installed: no comment is ever bound to a question.
+	QuestionScanner QuestionScanner
 	// Starred is the bookmark store for this vantage invocation. It is keyed by
 	// the launch root rather than by repository, which is why the /starred
 	// routes are ScopeGlobal. A nil store — most tests, or a Config with no
@@ -170,11 +174,12 @@ type Deps struct {
 // by [Handlers.Routes].
 type Handlers struct {
 	deps Deps
+	docs *DocumentObserver
 }
 
 // NewHandlers returns a Handlers wired to deps. The returned value is safe for
 // concurrent use: handlers hold no per-request mutable state, reading per-repo
 // services from the request context instead.
 func NewHandlers(deps Deps) *Handlers {
-	return &Handlers{deps: deps}
+	return &Handlers{deps: deps, docs: NewDocumentObserver(deps.Reviews, deps.QuestionScanner)}
 }

@@ -90,6 +90,9 @@ type inboxLine struct {
 	Summary string `json:"summary"`
 	Nonce   string `json:"nonce"`
 	Round   *int   `json:"round"`
+	// RootTextVersion is the comment's root_text_version as the agent read it
+	// in the payload; absent when the agent did not echo one.
+	RootTextVersion string `json:"root_text_version"`
 }
 
 // ConsumeInbox drains every delivery file under root's inbox and returns the
@@ -234,6 +237,8 @@ func (s *Store) consumeInboxFile(root, repo, name string) []string {
 			Summary: l.Summary,
 			Nonce:   deliveryNonce(l.Nonce, l.Path, shortID, l.Summary),
 			Round:   round,
+
+			RootVersion: l.RootTextVersion,
 		})
 	}
 

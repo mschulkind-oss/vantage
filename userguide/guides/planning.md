@@ -613,7 +613,7 @@ edited, a new question. Each one only marks what it concerns, and counts:
 | The agent replied on a question | A **New reply** mark, with a colored bar beside the question; pressing it opens the reply in place | A card again if the question needs you again |
 | You answered a question elsewhere | *Answered elsewhere* on its card | An answered row |
 | A question became ✅, or left its document | *Done* on it, and it stays | Gone from *Needs you*; a ✅ one is under *Maintenance* |
-| A question's text changed | *Changed in the document*; the card keeps the text it showed | The new text |
+| A question's text changed | *Newer than shown*; the card keeps the text it showed | The new text |
 | A new question needs you | Counted only | In roadmap order |
 | The roadmap was reordered | Counted once | The new order |
 | A blocked or maintenance entry came or went | The group's count changes; an opened group marks a gone entry *Done* | Listed, or gone |
@@ -622,15 +622,27 @@ The counts in the headings and on the header's buttons follow at once. The
 header says how many changes are waiting, as **3 updates · Refresh**, with what
 they are in its tooltip, such as *2 new replies, 1 done*; its room is kept, so
 it appearing moves nothing, and a narrow header shows its icon and count.
-**Refresh** first closes a comment box you have open, which saves what you
-typed, then lays the page out again from what is in hand, keeping the first
-entry on screen where it was. Nothing else applies the changes on its own:
+**Refresh** lays the page out again from what is in hand, with no request,
+keeping the first entry on screen where it was. It closes the comment boxes you
+have open that hold nothing new, and it **never saves or undoes an answer for
+you**: while an open answer has text you have typed or has been saved in this
+session of the box, the button is disabled and says _Save or Restore the open
+answer first_. Close the box (which keeps the text) or press Esc and choose
+([below](#leaving-an-answer-box-close-keeps-esc-asks)), and Refresh works again. Nothing else applies the changes on its own:
 choosing a filter, a roadmap or a page size lays the page out too, and so does
 opening it again. After Refresh the focus goes to the entry it kept in place,
 or to *Needs you*'s heading, so pressing it never leaves the focus nowhere. What
 you do yourself is never counted: a card you are answering, while its box saves
 as you type, is not marked *Answered elsewhere*, and your own Undo is no
 update.
+
+**Reload from server**, beside it, is the only button that asks the server again:
+it reads the listed documents' reviews and rescans, and then changes nothing you
+can see, no card, no open box and no painted text; **Refresh** is what lays the
+new data out. If the server cannot be read, the header says _Unknown · last
+successful read 14:02 · last attempt failed 14:09_, and counts that depend on it
+read _Unknown_, never 0. If the document changed while it was read, it says so
+and asks you to Reload again.
 
 ### The contents column
 
@@ -786,6 +798,67 @@ question** and **Open document**. Show question renders the whole card in
 place, and it then offers Take this leaning and Answer… as any card does:
 both need the rendered question to anchor the comment to.
 
+#### Leaving an answer box: Close keeps, Esc asks
+
+An answer box (**Answer…**, an edit of your answer, or a new comment in the
+document) is a session: the server remembers the text it had when you opened it.
+
+- **Close**, **Ctrl+Enter** (⌘+Enter on a Mac), a click outside it and leaving the
+  page **keep** what you typed.
+- **Esc** or the ✕ on a box you changed asks first, with _Keep editing_ selected.
+  For an answer you opened to edit, **Restore** puts back the text it had when you
+  opened it; the thread, its replies and its resolved state are untouched. For a
+  new answer, **Discard** removes it, and the question says how many replies it
+  gathered that go with it. On a box you did not change, Esc simply closes it. Typing
+  the old words back after a save still counts as a change.
+- **If the server cannot be reached** the box says _Restore failed — retrying_ and
+  offers **Retry now** and **Copy text**; it retries until it succeeds. If the answer
+  was changed somewhere else meanwhile, the box says _Changed outside this box_ and
+  shows theirs, yours and the text you opened, with _Keep editing_, _Copy my text_,
+  _Close without saving_ and _Replace with mine_ (which asks you to confirm the
+  comparison). Nothing is overwritten without that.
+- **Reply boxes** are not sessions: Esc keeps what you typed.
+- **Delete** on an answer row removes the whole thread, replies included, after
+  asking. It is separate from Esc, retries until the server confirms, and a late
+  copy of the same answer from another tab cannot bring it back.
+
+If an agent replies to wording you then restored away, the reply is marked _reply
+to earlier wording_; one the agent did not tie to a version says _coverage
+unknown_. Neither is treated as covering your current text.
+
+#### Comment on selection
+
+Select at least three characters inside a question on its card (with the mouse,
+or with Shift and the arrow keys) and **Comment on selection** appears; press it
+to open the answer box anchored to those words. A selection in the title does the
+same where the page can place that title in the document. A selection in the
+_Leaning_ line, or anywhere it cannot place, offers **Open document** instead and
+files nothing.
+
+#### Comments the page cannot place on a question
+
+A comment belongs to a question by the question's `id`, not by where it sits. When
+the page cannot prove that, the comment is not counted as an answer and not copied
+by **Copy answers**. It is listed instead, under _M with unresolved ownership_, in
+groups:
+
+| Group      | Why                                                                                                                   |
+| :--------- | :-------------------------------------------------------------------------------------------------------------------- |
+| Unassigned | It was never tied to a question                                                                                       |
+| Ambiguous  | Its question's `id` is written on more than one question                                                              |
+| Removed    | Its `id` is no longer in the document                                                                                 |
+| Compacted  | Its `id` is now only a row of the document's decision ledger                                                          |
+| Unknown    | The document was not read, was read at a different version than the comments, or its `id` is only written in the text |
+
+_Unknown_ is shown instead of 0 until every listed document has been read. A
+comment shows _(ownership unknown)_ when the server could not prove which question
+holds the text it is anchored to. **Attach to question…** on a listed comment
+shows what you wrote beside the question's current text and ties it only when you
+confirm; **Copy unassigned requests** copies these comments, separately from your
+answers. A card also shows what has happened to its question: _Open_, _Response
+saved, waiting for agent_, _Agent replied, question still open_, _Ruling recorded_
+or _Unknown_. _Agent replied_ is not a ruling: the document is what records one.
+
 ### Review answers
 
 **Review answers**, beside Copy answers in the header (or under **Toolbar
@@ -805,6 +878,25 @@ Opening the panel sends nothing and marks nothing answered or dismissed.
 Document links use the comment's recorded line when available. If the document
 has changed since you commented, the text may have moved; inspect its Review
 panel rather than assuming the recorded line still identifies the question.
+
+### Review answers without the checker
+
+Which question a comment belongs to is decided by `vantage-check`, not by the
+server's own reading of the page. Release archives and Homebrew put it beside
+`vantage`; a server installed alone (`go install`, or the PyPI `vantage-md`
+package) finds it only if it is on `PATH` or named by `VANTAGE_CHECK`. Without
+it the server logs one warning at startup, and:
+
+- a comment is kept and still shown, but its owner reads _Unknown_ with the
+  reason _checker not installed_; it is not moved to another question;
+- the "before" text recorded for an agent's reply is no longer refreshed each
+  round, for any Markdown file, planning or not, so before/after diffs may span
+  more than one round;
+- a new answer filed on a question is stored under _Unassigned_, because the
+  server cannot prove the question's id.
+
+If the checker is installed but refuses the scan because the repository has too
+many candidate documents, the reason reads _scan refused_ instead.
 
 ### Copy answers
 

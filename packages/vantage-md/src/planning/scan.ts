@@ -60,6 +60,7 @@ import {
 } from "../vantageDirectives.js";
 import { isDocStatus, type DocStatus } from "../vantageFrontmatter.js";
 import { cutCardBlocks, outlineOf } from "./cardSource.js";
+import { blockLines, ledgerIds, unitFingerprint } from "./evidence.js";
 import { resolveRepoLink } from "./links.js";
 
 /** A question's state. `answered` is ✅: ruled, awaiting compaction. */
@@ -119,6 +120,19 @@ export interface PlanningQuestion {
    * (`docs/reference/planning-index.md` §6.7).
    */
   unitEndLine: number;
+  /**
+   * The text of the unit as the rendered page reads it (`textOf`: the DOM's
+   * `textContent`, so `**bold**`, `[link](url)` and `` `code` `` contribute
+   * what they show, not their markup). It is what a reviewer's selection is
+   * checked against; whitespace is as written, so compare after collapsing it.
+   */
+  unitText: string;
+  /**
+   * The hash of the unit's source lines (`unitLine`..`unitEndLine`, less any
+   * trailing CR, joined by newlines): the `unit_fingerprint` the server
+   * computes and checks. "" when the lines fall outside the file.
+   */
+  unitFingerprint: string;
   /**
    * The root-level block holding it, in file lines. A root-level directive's
    * block starts at its run's first comment, so the slice keeps the directive.
@@ -242,6 +256,19 @@ export interface PlanningDocument {
    * (§5.2).
    */
   directiveIds: string[];
+  /**
+   * The ids in the first column of the Decision Ledger's tables: what a
+   * compacted question leaves. A scan that finds none reports none, which is
+   * not evidence that nothing was compacted.
+   */
+  ledgerIds: string[];
+  /**
+   * Each anchorable block's comment-anchor hash (`block_text_hash`) against the
+   * file line the block starts on, or 0 where several blocks share the hash.
+   * Computed from the parse, so it can differ from the rendered page's text;
+   * a hash it does not hold proves nothing.
+   */
+  blockLines: Record<string, number>;
 }
 
 /**
@@ -844,6 +871,8 @@ function question(
     line,
     unitLine,
     unitEndLine,
+    unitText: "",
+    unitFingerprint: "",
     block,
   });
   state.rawIds.push(keys.get("id"));
@@ -875,12 +904,27 @@ function unitEnd(
   hosts: ReadonlySet<Nodes>,
   withheld: ReadonlySet<Nodes>,
 ): number {
+  const nodes = unitNodes(target, parent, hosts, withheld);
+  for (let k = nodes.length - 1; k >= 0; k--) {
+    const end = nodes[k]?.position?.end.line;
+    if (end !== undefined) return end;
+  }
+  return 1;
+}
+
+/** The blocks a question outside a list item runs over, `target` first. */
+function unitNodes(
+  target: RootContent,
+  parent: Parents,
+  hosts: ReadonlySet<Nodes>,
+  withheld: ReadonlySet<Nodes>,
+): RootContent[] {
   const holdsHost = (node: Nodes): boolean =>
     hosts.has(node) ||
     ("children" in node && (node.children as Nodes[]).some(holdsHost));
   const children = parent.children as RootContent[];
   const depth = target.type === "heading" ? target.depth : undefined;
-  let end = target.position?.end.line ?? 1;
+  const nodes: RootContent[] = [target];
   for (let k = children.indexOf(target) + 1; k < children.length; k++) {
     const node = children[k];
     if (node === undefined) break;
@@ -896,9 +940,9 @@ function unitEnd(
       break;
     }
     if (node.type === "thematicBreak" || holdsHost(node)) break;
-    end = node.position?.end.line ?? end;
+    nodes.push(node);
   }
-  return end;
+  return nodes;
 }
 
 /**
@@ -1488,12 +1532,24 @@ export function scanPlanningDocument(
   // it.
   const hostBlocks = new Set<Nodes>(state.hosts.map(({ target }) => target));
   state.questions.forEach((question, index) => {
+    const unit = state.hosts[index]?.context.unit;
+    if (unit !== undefined) question.unitText = textOf(unit);
+  });
+  state.questions.forEach((question, index) => {
     const host = state.hosts[index];
     if (host === undefined || host.context.unit !== undefined) return;
     const end =
       unitEnd(host.target, host.context.parent, hostBlocks, state.withheld) +
       state.bodyLineOffset;
     question.unitEndLine = end;
+    question.unitText = unitNodes(
+      host.target,
+      host.context.parent,
+      hostBlocks,
+      state.withheld,
+    )
+      .map(textOf)
+      .join("\n");
     if (host.context.rootChild === undefined) {
       question.block = {
         startLine: question.block.startLine,
@@ -1541,7 +1597,13 @@ export function scanPlanningDocument(
         ? raw
         : null;
     const cardChars = chars.get(`${q.block.startLine}:${q.block.endLine}`) ?? 0;
-    return { path, id, ...q, cardChars };
+    return {
+      path,
+      id,
+      ...q,
+      unitFingerprint: unitFingerprint(source, q.unitLine, q.unitEndLine),
+      cardChars,
+    };
   });
 
   const status = fm["status"];
@@ -1563,6 +1625,8 @@ export function scanPlanningDocument(
       ),
       ids: idsOf(source),
       directiveIds: [...first.keys()],
+      ledgerIds: ledgerIds(root, textOf),
+      blockLines: blockLines(root, parsed.bodyLineOffset, textOf),
     },
     cards,
   };

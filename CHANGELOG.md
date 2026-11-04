@@ -10,6 +10,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+**Planning answers can be restored, deleted, and attached to a question.**
+Escape or × offers to restore an existing answer to its opening text without
+removing replies, or discard a new answer and its replies. Delete remains a
+separate action. You can comment on selections in the question body and on
+headlines whose source can be verified. Comments with no proven question owner
+gather in explicit groups with an **Attach to question…** action. See
+[planning review actions](userguide/guides/planning.md#leaving-an-answer-box-close-keeps-esc-asks).
+
+**Reload reads the server without replacing what you are reading.** The
+planning page has a **Reload from server** button and reports a failed read
+instead of treating it as no work. **Newer than shown** marks an edited
+question; opening its row or unfolding its card refreshes that card alone.
+Applying updates still lays out the page from data already in hand, and is
+blocked while an open answer holds changes. See
+[late changes and Refresh](userguide/guides/planning.md#late-changes-and-refresh).
+
 **A slow recent-files scan can explain its measured work.** The timeout warning
 links to the affected project's scan-analysis page. Opening it reads saved
 evidence only; a deliberate bounded diagnostic ranks current directory reads,
@@ -19,6 +35,23 @@ not attribution of the earlier Git command. See
 [scan analysis](docs/reference/recent-scan-analysis.md).
 
 ### Changed
+
+**Long questions no longer warn by default.** The optional
+`planning/question-length` check stays off, including in strict runs, unless
+you explicitly enable it. Its configurable word threshold remains available;
+substantive setup and options do not need shortening for a folded preview. See
+[the checker configuration](userguide/guides/vantage-check.md#configuration).
+
+**Server-only installs need the checker to refresh comment snapshots.**
+The server now uses `vantage-check` to verify which question owns a comment
+before updating the saved text used for an agent reply's before/after comparison.
+Install it beside `vantage`, put it on `PATH`, or set `VANTAGE_CHECK`; release
+archives and Homebrew already provide both binaries. Without it the server
+warns at startup, preserves existing comments, and reports unverified ownership
+as **Unknown**. Saved snapshots no longer refresh on edits or replies, even
+for ordinary Markdown review. See
+[installing the server](userguide/getting-started.md) and
+[comment snapshots](docs/reference/comment-autosave.md).
 
 **✅ questions are maintenance, never *needs you*.** A question marked ✅ is
 answered: what waits on it is compaction, an agent's request (`compact`), not a
@@ -32,6 +65,11 @@ work than it had. See
 [the planning index](docs/reference/planning-index.md#62-sections-top-to-bottom).
 
 ### Fixed
+
+**A rewritten question no longer inherits an answer from the old source line.**
+Placement, counts, and copied answers use verified question identity rather than
+a stale line; duplicate or unverified identities do not receive another
+question's answer. See [question ownership](docs/reference/planning-ownership.md).
 
 **A project written without a `name` no longer becomes an unopenable blank
 row.** A `[[repos]]` entry that leaves `name` out, or writes it empty, now takes

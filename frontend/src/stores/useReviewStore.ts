@@ -10,6 +10,7 @@ import {
   type PreferenceName,
 } from "../lib/preferences";
 import { isStaticMode } from "../lib/staticMode";
+import type { SessionApi, SessionReply } from "../lib/commentSession";
 import {
   retargetBoxes,
   withTypedText,
@@ -21,6 +22,7 @@ import type {
   CommentAnchor,
   CommentReaction,
   ReviewComment,
+  DocumentEvidence,
   ReviewData,
 } from "../types";
 
@@ -272,12 +274,22 @@ export function newReviewComment(
   comment: string,
   fallbackText: string,
   questionId?: string | null,
+  selectedQuote?: string,
+  unitFingerprint?: string,
 ): ReviewComment {
   return {
     id: newReviewId(),
     anchor,
     fallback_text: fallbackText,
     ...(questionId ? { question_id: questionId } : {}),
+    ...(questionId && selectedQuote
+      ? {
+          question_evidence: {
+            selected_quote: selectedQuote,
+            ...(unitFingerprint ? { unit_fingerprint: unitFingerprint } : {}),
+          },
+        }
+      : {}),
     reactions: [],
     comment,
     created_at: Date.now() / 1000,
@@ -289,8 +301,9 @@ export function newReviewComment(
  * `captured_block`, `reactions` and `resolved`, and captures the anchored
  * block's text itself.
  */
-function createCommentBody(c: ReviewComment) {
+function createCommentBody(c: ReviewComment, sessionId?: string) {
   return {
+    ...(sessionId ? { session_id: sessionId } : {}),
     id: c.id,
     comment: c.comment,
     anchor: c.anchor,
@@ -298,6 +311,67 @@ function createCommentBody(c: ReviewComment) {
     question_id: c.question_id,
     created_at: c.created_at,
   };
+}
+
+/**
+ * The create body for a comment filed on a question: the plain body, plus the
+ * evidence the server proves the binding with. The document's evidence is read
+ * fresh (`GET /review/evidence`) so the preconditions name the reading the
+ * client's question came from; the selected quote is the question's rendered
+ * text from the shared scan. When the evidence cannot be read, the bare id
+ * goes alone and the server stores the comment unbound unless it can prove it
+ * itself (A3). The unit fingerprint is the scanner's (`unitFingerprint`, the
+ * hash of the unit's source lines that the server computes too): a mismatch
+ * means the client's scan is of other text, and the server stores the comment
+ * unbound.
+ */
+function postCreate(
+  base: string,
+  path: string,
+  c: ReviewComment,
+  sessionId?: string,
+): Promise<{ data: ReviewData | null }> {
+  const post = (body: unknown) =>
+    axios.post<ReviewData | null>(`${base}/review/comments`, body, {
+      params: { path },
+    });
+  // A comment on no question has nothing to prove: posted at once, as ever.
+  if (!c.question_id) return post(createCommentBody(c, sessionId));
+  return questionCreateBody(base, path, c, sessionId).then(post);
+}
+
+async function questionCreateBody(
+  base: string,
+  path: string,
+  c: ReviewComment,
+  sessionId?: string,
+) {
+  const body: Record<string, unknown> = createCommentBody(c, sessionId);
+  try {
+    const { data } = await axios.get<DocumentEvidence>(
+      `${base}/review/evidence`,
+      { params: { path } },
+    );
+    body.preconditions = {
+      boot_id: data.boot_id,
+      document_generation: data.document_generation,
+      mutation_revision: data.mutation_revision,
+      content_hash: data.content_hash,
+    };
+    if (c.question_evidence?.selected_quote) {
+      body.question_evidence = {
+        document_generation: data.document_generation,
+        document_content_hash: data.content_hash,
+        selected_quote: c.question_evidence.selected_quote,
+        ...(c.question_evidence.unit_fingerprint
+          ? { unit_fingerprint: c.question_evidence.unit_fingerprint }
+          : {}),
+      };
+    }
+  } catch {
+    // Unproven: the server binds only what its own scan proves.
+  }
+  return body;
 }
 
 /**
@@ -318,12 +392,98 @@ export async function postCommentTo(
   if (isStaticMode()) {
     throw new Error("this is a static export, with no server to save to");
   }
+  const { data } = await postCreate(base, path, comment);
+  return data ?? null;
+}
+
+/** The evidence a bind is preconditioned on: one coherent reading. */
+export interface BindReading {
+  boot_id: string;
+  document_generation: number;
+  content_hash: string;
+  mutation_revision: number;
+}
+
+/** What the scanner proved about the unit a comment is to be bound to. */
+export interface BindTarget {
+  questionId: string;
+  unitFingerprint: string;
+  selectedQuote: string;
+}
+
+/**
+ * Bind the existing comment `commentId` of the document at `path` to a
+ * question (`POST /review/bind-comment-question`), carrying the reading its
+ * proof came from as the server's preconditions. `allowRebind` is the explicit
+ * Attach path. Rejects with the server's 409 `reason` readable through
+ * {@link bindRefusal}; nothing here retries.
+ */
+export async function bindCommentQuestion(
+  path: string,
+  commentId: string,
+  target: BindTarget,
+  reading: BindReading,
+  allowRebind = false,
+): Promise<ReviewData | null> {
+  const base = getApiBase();
+  if (!base) throw new Error("no repository is selected");
+  if (isStaticMode()) {
+    throw new Error("this is a static export, with no server to save to");
+  }
   const { data } = await axios.post<ReviewData | null>(
-    `${base}/review/comments`,
-    createCommentBody(comment),
+    `${base}/review/bind-comment-question`,
+    {
+      comment_id: commentId,
+      question_id: target.questionId,
+      evidence: {
+        document_generation: reading.document_generation,
+        document_content_hash: reading.content_hash,
+        unit_fingerprint: target.unitFingerprint,
+        selected_quote: target.selectedQuote,
+      },
+      preconditions: {
+        boot_id: reading.boot_id,
+        document_generation: reading.document_generation,
+        mutation_revision: reading.mutation_revision,
+        content_hash: reading.content_hash,
+      },
+      allow_rebind: allowRebind,
+    },
     { params: { path } },
   );
   return data ?? null;
+}
+
+const BIND_REFUSALS: Readonly<Record<string, string>> = {
+  boot_id: "the server restarted since this was read",
+  document_generation: "the document changed since this was read",
+  content_hash: "the document changed since this was read",
+  mutation_revision: "the comments changed since this was read",
+  document_unreadable: "the server cannot read the document",
+  scanner_unavailable: "the checker is not installed on the server",
+  scanner_failed: "the checker failed on the server",
+  scan_raced: "the document changed while it was checked",
+  scan_refused: "the checker refused the scan (too many documents)",
+  question_id: "the document no longer has exactly one question with that id",
+  unit_fingerprint: "the question's text is not what was checked",
+  selected_quote: "the quoted text is not in that question",
+  already_bound: "the comment is already attached to a question",
+};
+
+/**
+ * Why a bind was refused, in plain words, or `null` when `e` is not a refusal
+ * (a network failure reads as its own message). A refusal is final for this
+ * reading: the next coherent read maps again, nothing retries on its own.
+ */
+export function bindRefusal(e: unknown): string | null {
+  const response = (
+    e as { response?: { status?: number; data?: { reason?: unknown } } } | null
+  )?.response;
+  if (response?.status !== 409) return null;
+  const reason = response.data?.reason;
+  const words =
+    typeof reason === "string" ? (BIND_REFUSALS[reason] ?? reason) : "refused";
+  return `Not attached: ${words}.`;
 }
 
 /**
@@ -403,13 +563,10 @@ async function boxWrite(
 export function saveNewComment(
   target: ReviewTarget,
   comment: ReviewComment,
+  sessionId?: string,
 ): Promise<ReviewData | null> {
   return boxWrite(target, (base, path) =>
-    axios.post<ReviewData | null>(
-      `${base}/review/comments`,
-      createCommentBody(comment),
-      { params: { path } },
-    ),
+    postCreate(base, path, comment, sessionId),
   );
 }
 
@@ -418,11 +575,12 @@ export function saveCommentText(
   target: ReviewTarget,
   id: string,
   text: string,
+  sessionId?: string,
 ): Promise<ReviewData | null> {
   return boxWrite(target, (base, path) =>
     axios.patch<ReviewData | null>(
       `${base}/review/comments/${encodeURIComponent(id)}`,
-      { comment: text },
+      sessionId ? { comment: text, session_id: sessionId } : { comment: text },
       { params: { path } },
     ),
   );
@@ -900,12 +1058,7 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
     }));
     // The server captures captured_block from the document at the anchor.
     return get().runCommand(
-      (base, path) =>
-        axios.post<ReviewData | null>(
-          `${base}/review/comments`,
-          createCommentBody(newComment),
-          { params: { path } },
-        ),
+      (base, path) => postCreate(base, path, newComment),
       comment,
     );
   },
@@ -1305,7 +1458,12 @@ function commentBlock(
   // on its delivery so a follow-up the reviewer posts while the agent works is
   // not mistaken for something that answer addressed.
   const round = (c.reactions ?? []).length;
-  const idToken = `\`[${shortId}]\` \`round:${round}\``;
+  // Beside the id, the wording's version, so the agent can echo which wording
+  // it read; absent on a root that predates versions.
+  const version = c.root_text_version
+    ? ` \`root_text_version:${c.root_text_version}\``
+    : "";
+  const idToken = `\`[${shortId}]\` \`round:${round}\`${version}`;
   out.push(
     anchorLine !== null
       ? `### [Line ${anchorLine}](${pathPrefix}#L${anchorLine}) ${idToken}`
@@ -1494,7 +1652,10 @@ function respondingInstructions(
     const exampleRound = example ? (example.reactions ?? []).length : 0;
     // JSON.stringify, so a quote or a newline in a path stays inside its
     // string: a raw newline would let a line reading `EOF` end the heredoc.
-    return `{"path":${JSON.stringify(path)},"id":"${exampleId}","round":${exampleRound},"summary":"Reworded the paragraph for clarity","nonce":"${exampleNonce(i)}"}`;
+    const exampleVersion = example?.root_text_version
+      ? `,"root_text_version":"${example.root_text_version}"`
+      : "";
+    return `{"path":${JSON.stringify(path)},"id":"${exampleId}","round":${exampleRound}${exampleVersion},"summary":"Reworded the paragraph for clarity","nonce":"${exampleNonce(i)}"}`;
   });
   const fieldsPath = single ? paths[0] : "<the document's path>";
   return [
@@ -1542,7 +1703,7 @@ function respondingInstructions(
     "One JSON object per line, one line per comment you acted on. The fields:",
     "",
     "```",
-    `{"path":${JSON.stringify(fieldsPath)},"id":"<short-id>","round":<round>,"summary":"<one sentence: what you changed>","nonce":"<fresh random string>"}`,
+    `{"path":${JSON.stringify(fieldsPath)},"id":"<short-id>","round":<round>,"root_text_version":"<the root_text_version shown beside that id; omit when none>","summary":"<one sentence: what you changed>","nonce":"<fresh random string>"}`,
     "```",
     "",
     "The command writes to a `.writing` scratch name, then `mv`s it onto the `.jsonl` name. That rename is the completion signal: Vantage ignores every non-`.jsonl` name, so it never reads the file until the whole delivery is in place. **Do not write directly to the `.jsonl` name** (`cat > x.jsonl`) — that creates the file empty before the write lands, and Vantage can consume the empty file and drop your response. (If your shell has no `$RANDOM`, substitute any unique token for the suffix. Never append line-by-line.)",
@@ -1608,4 +1769,56 @@ function quotedFor(
     return { text: fallback, contextBlock: lines.join("\n") };
   }
   return { text: fallback, contextBlock: "" };
+}
+
+/**
+ * The requests of a server-held editing session on comment `commentId` of the
+ * document `target` names (`lib/commentSession.ts`). Each rejects with the
+ * `axios` error on failure, whose `response.status` the session reads.
+ */
+export function sessionApiFor(
+  target: ReviewTarget,
+  commentId: string,
+): SessionApi {
+  const post = async (route: string, body: Record<string, unknown>) => {
+    if (isStaticMode()) {
+      throw new Error("this is a static export, with no server to save to");
+    }
+    const { data } = await axios.post<{
+      session: SessionReply["session"];
+      review: ReviewData | null;
+    }>(
+      `${target.base}/review/${route}`,
+      { comment_id: commentId, ...body },
+      { params: { path: target.path } },
+    );
+    return { session: data.session, review: data.review ?? null };
+  };
+  return {
+    begin: (sessionId, shownVersion) =>
+      post("begin-comment-session", {
+        session_id: sessionId,
+        shown_root_version: shownVersion,
+      }),
+    finish: (sessionId) =>
+      post("finish-comment-session", { session_id: sessionId }),
+    restore: (sessionId) =>
+      post("restore-comment-session", { session_id: sessionId }),
+    readComment: async () => {
+      const { data } = await axios.get<ReviewData | null>(
+        `${target.base}/review`,
+        { params: { path: target.path } },
+      );
+      return data?.comments?.find((c) => c.id === commentId) ?? null;
+    },
+    writeText: async (sessionId, text) => {
+      const { data } = await axios.patch<ReviewData | null>(
+        `${target.base}/review/comments/${encodeURIComponent(commentId)}`,
+        { comment: text, session_id: sessionId },
+        { params: { path: target.path } },
+      );
+      return data ?? null;
+    },
+    newId: newReviewId,
+  };
 }

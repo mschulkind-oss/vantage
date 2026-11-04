@@ -23,6 +23,7 @@ import (
 	"github.com/mschulkind-oss/vantage/internal/perf"
 	"github.com/mschulkind-oss/vantage/internal/planning"
 	"github.com/mschulkind-oss/vantage/internal/repoconfig"
+	"github.com/mschulkind-oss/vantage/internal/review"
 )
 
 // planningEnv is a testEnv whose requests carry the repository's config, which
@@ -841,4 +842,28 @@ func TestPlanningReviewsRefusesAMalformedBody(t *testing.T) {
 		require.Equal(t, http.StatusBadRequest, w.Code, "body %q", body)
 		require.Contains(t, w.Body.String(), `"detail"`, "body %q", body)
 	}
+}
+
+// Each entry carries the coherent-pair evidence: the boot id, the document's
+// generation and hash, the review's revision, and whether the document changed
+// while the batch was read.
+func TestPlanningReviewsCarryEvidence(t *testing.T) {
+	e := newPlanningEnv(t, map[string]string{"a.md": "# A\n"})
+	e.saveReview(t, "a.md", "a1")
+	var got struct {
+		Reviews []struct {
+			Evidence planningReviewEvidence `json:"evidence"`
+		} `json:"reviews"`
+	}
+	decode(t, e.reviews(`{"paths":["a.md"]}`), &got)
+	first := got.Reviews[0].Evidence
+	require.NotEmpty(t, first.BootID)
+	require.Equal(t, review.ContentHash("# A\n"), first.ContentHash)
+	require.Positive(t, first.MutationRevision)
+	require.False(t, first.SampleChanged)
+
+	writeFile(t, e.dir, "a.md", "# A changed\n")
+	decode(t, e.reviews(`{"paths":["a.md"]}`), &got)
+	require.Greater(t, got.Reviews[0].Evidence.DocumentGeneration, first.DocumentGeneration)
+	require.Equal(t, first.BootID, got.Reviews[0].Evidence.BootID)
 }

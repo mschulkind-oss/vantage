@@ -101,5 +101,10 @@ func (h *Handlers) Routes() []Route {
 		{http.MethodPost, "/review/comments/{id}/reopen-reply", h.ReviewCommentReopenReply, ScopeRepo},
 		{http.MethodPost, "/review/dismissals", h.ReviewDismissals, ScopeRepo},
 		{http.MethodPost, "/review/move", h.ReviewMove, ScopeRepo},
+		{http.MethodGet, "/review/evidence", h.ReviewEvidence, ScopeRepo},
+		{http.MethodPost, "/review/begin-comment-session", h.ReviewSessionBegin, ScopeRepo},
+		{http.MethodPost, "/review/finish-comment-session", h.ReviewSessionFinish, ScopeRepo},
+		{http.MethodPost, "/review/restore-comment-session", h.ReviewSessionRestore, ScopeRepo},
+		{http.MethodPost, "/review/bind-comment-question", h.ReviewBindQuestion, ScopeRepo},
 	}
 }

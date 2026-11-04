@@ -209,6 +209,21 @@ export interface CommentReaction {
    * delivery predating the field, which reads as "answers the newest turn".
    */
   answers_round?: number;
+  /**
+   * The root text version the agent said it read when it answered; echoed from
+   * its delivery, never filled in by the server.
+   */
+  root_text_version?: string;
+}
+
+/**
+ * Whether a reply was written about the root's current wording: derived by the
+ * server on every save. `unknown` is a plain fact, not an outcome.
+ */
+export interface ReplyCoverage {
+  reaction_index: number;
+  root_text_version?: string;
+  covers: "current" | "other" | "unknown";
 }
 
 export interface ReviewComment {
@@ -229,6 +244,16 @@ export interface ReviewComment {
    * creation and never recaptured on edit. Absent on every older comment.
    */
   question_id?: string;
+  /**
+   * What the client's scan knew when it bound the comment: sent at create with
+   * only `selected_quote` set, returned by the server with the proven values.
+   */
+  question_evidence?: {
+    document_generation?: number;
+    document_content_hash?: string;
+    unit_fingerprint?: string;
+    selected_quote?: string;
+  };
   reactions?: CommentReaction[];
   /**
    * Server-captured text of the anchored block as of the comment's creation
@@ -238,6 +263,26 @@ export interface ReviewComment {
   captured_block?: string;
   /** Legacy: pre-anchor schema kept the verbatim selection here. */
   selected_text?: string;
+  /** The wording's version, new on every text write; absent before sessions. */
+  root_text_version?: string;
+  /** Per reply: does it cover the current wording (server-derived). */
+  reply_coverage?: ReplyCoverage[];
+  /**
+   * Whether the server could prove the captured block belongs to this
+   * comment's question when it last captured it (server-derived; absent on
+   * comments that predate it).
+   */
+  ownership?: "proven" | "unowned" | "unknown";
+  /** Why `ownership` is `unknown`, in the server's words (an id, not prose). */
+  ownership_reason?: string;
+}
+
+/** `GET /review/evidence`: the reading a bind or create is checked against. */
+export interface DocumentEvidence {
+  boot_id: string;
+  document_generation: number;
+  content_hash: string;
+  mutation_revision: number;
 }
 
 export interface ReviewData {
@@ -249,6 +294,8 @@ export interface ReviewData {
   nonces?: string[];
   /** Ids of comments the reviewer deleted. Server-side only. */
   deleted_ids?: string[];
+  /** Increments on every persisted change to the review. */
+  mutation_revision?: number;
 }
 
 /**

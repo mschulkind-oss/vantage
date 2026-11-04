@@ -276,6 +276,19 @@ and the server keeps three promises for the boxes:
   found*, and a reply the comment does not hold, or one that is not the reviewer's,
   404 *No reply found*.
 
+**Without `vantage-check` the capture does not refresh.** Each edit or reply
+re-captures the anchored block only when the shared planning scanner proves the
+block is not another question's (`recapture`). A server that finds no checker
+(`$VANTAGE_CHECK`, beside the binary, `PATH`) proves nothing, so every
+comment, planning document or not, keeps its older capture and reads
+`ownership: unknown` with `ownership_reason: scanner_unavailable`; a checker
+that refuses the scan (over `max-candidates`) gives `scan_refused`, one that
+crashes or times out `scanner_failed`, and a document written during the scan
+`scan_raced`. The server
+logs one warning at startup. The cost is factual: the next response's "before"
+text may span earlier rounds. Nothing is guessed from the line instead
+([planning-ownership.md §3](planning-ownership.md)).
+
 **An edit re-queues the thread for the agent.** Editing a comment stamps its
 `edited_at`, and editing a reply stamps the reply's own `edited_at`. A comment is
 pending for the agent when the last reviewer edit anywhere in its thread is later

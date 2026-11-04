@@ -292,11 +292,11 @@ beforeEach(() => {
   vi.mocked(axios.get).mockReset();
   vi.mocked(axios.get).mockRejectedValue(new Error("no reads in this test"));
   vi.mocked(axios.post).mockReset();
-  vi.mocked(axios.post).mockResolvedValue({ data: null });
+  installReviewServer([]);
 });
 
 /** File `question` with the in-page button over its whole document. */
-function fileInPage(question: PlanningQuestion): Filed {
+async function fileInPage(question: PlanningQuestion): Promise<Filed> {
   useReviewStore.setState({ filePath: question.path, comments: [] });
   const { container, unmount } = render(
     <BrowserRouter>
@@ -321,10 +321,15 @@ function fileInPage(question: PlanningQuestion): Filed {
       : last.nextElementSibling;
   const take = row?.querySelector<HTMLElement>(".review-oq-take");
   expect(take, "the in-page button").toBeTruthy();
-  act(() => {
+  // A comment on a question reads the document's evidence first, so the
+  // create is a hop later than a plain note's.
+  await act(async () => {
     fireEvent.click(take!);
   });
-  const body = vi.mocked(axios.post).mock.calls.at(-1)![1] as Filed;
+  const body = vi
+    .mocked(axios.post)
+    .mock.calls.filter(([url]) => String(url).endsWith("/review/comments"))
+    .at(-1)![1] as Filed;
   unmount();
   return {
     anchor: body.anchor,
@@ -376,8 +381,14 @@ async function answerOnCard(typed: string): Promise<Filed> {
   await act(async () => {
     fireEvent.click(screen.getByText("Close"));
   });
-  await waitFor(() => expect(vi.mocked(axios.post)).toHaveBeenCalled());
-  const body = vi.mocked(axios.post).mock.calls.at(-1)![1] as Filed;
+  const filedCreates = () =>
+    vi
+      .mocked(axios.post)
+      .mock.calls.filter(([url]) => String(url).endsWith("/review/comments"));
+  // The create waits for the session's begin ack, so it is one hop later.
+  await waitFor(() => expect(filedCreates().length).toBeGreaterThan(0));
+  const creates = filedCreates();
+  const body = creates.at(-1)![1] as Filed;
   return {
     anchor: body.anchor,
     comment: body.comment,
@@ -391,7 +402,7 @@ describe("an answer from the card is the in-page button's (§6.7)", () => {
   });
 
   it.each(CASES)("takes the leaning on %s", async (_name, question) => {
-    const inPage = fileInPage(question);
+    const inPage = await fileInPage(question);
     const { onFile } = renderCard(question);
 
     // With no leaning, the card offers Take as the in-page row does, and both
@@ -412,7 +423,7 @@ describe("an answer from the card is the in-page button's (§6.7)", () => {
   it.each(CASES)(
     "files Answer… on the same anchor for %s",
     async (_name, question) => {
-      const inPage = fileInPage(question);
+      const inPage = await fileInPage(question);
       renderCard(question);
       const answered = await answerOnCard("Typed on the page.");
       expect(answered).toEqual({ ...inPage, comment: "Typed on the page." });
@@ -638,6 +649,15 @@ describe("the card is laid out to be read", () => {
     const answer = partsIn(filled.container, "answer");
     expect(answer.map((el) => el.tagName)).toEqual(["P", "BLOCKQUOTE"]);
     expect(answer[1]).toHaveTextContent("Yes: one broker per host.");
+  });
+
+  it("tells the page when the reader unfolds it, and not when they fold it again", () => {
+    const onExpand = vi.fn();
+    renderCard(jailById("OQ-J1"), { onExpand, cardKey: "k" });
+    fireEvent.click(foldButton()!);
+    expect(onExpand).toHaveBeenCalledExactlyOnceWith("k");
+    fireEvent.click(foldButton()!);
+    expect(onExpand).toHaveBeenCalledTimes(1);
   });
 
   it("folds the rest of the question behind Show full question, at the cut, which the reader opens and closes", () => {
@@ -1606,6 +1626,45 @@ describe("the comments already filed on a question", () => {
     );
   });
 
+  it("says plainly when ownership is unknown and a legacy reply's coverage is unknown", async () => {
+    const base = await takenOn(byId("OQ-B3"));
+    const unknown: ReviewComment = {
+      ...base,
+      id: "unk",
+      comment: "Legacy words",
+      ownership: "unknown",
+      ownership_reason: "scanner_unavailable",
+      reactions: [
+        {
+          actor: "agent",
+          kind: "addressed",
+          summary: "Did it.",
+          before_text: "",
+          after_text: "",
+          timestamp: Date.now() / 1000 + 10,
+        },
+      ],
+    };
+    const proven: ReviewComment = {
+      ...base,
+      id: "prv",
+      comment: "Proven words",
+      ownership: "proven",
+    };
+    renderCard(byId("OQ-B3"), {
+      comments: [unknown, proven],
+      cardKey: "b3",
+    });
+    const items = Array.from(
+      screen
+        .getByRole("list", { name: "Comments on this question" })
+        .querySelectorAll(":scope > li"),
+    );
+    expect(items[0]).toHaveTextContent("(checker not installed)");
+    expect(items[0]).toHaveTextContent("(coverage unknown)");
+    expect(items[1]).not.toHaveTextContent("ownership unknown");
+  });
+
   it("confirms a whole-thread Delete, defaulting to Keep answer, and counts replies", async () => {
     const base = await takenOn(byId("OQ-B3"));
     const reaction = (summary: string) => ({
@@ -1763,7 +1822,10 @@ describe("the comments already filed on a question", () => {
         fireEvent.click(screen.getByText("Close"));
       });
       await waitFor(() => expect(vi.mocked(axios.post)).toHaveBeenCalled());
-      const body = vi.mocked(axios.post).mock.calls.at(-1)![1] as Filed;
+      const body = vi
+        .mocked(axios.post)
+        .mock.calls.filter(([url]) => String(url).endsWith("/review/comments"))
+        .at(-1)![1] as Filed;
       const anchor = body.anchor!;
 
       // The same selection in the bare viewer, on the card's own markdown,
@@ -1840,6 +1902,207 @@ describe("the comments already filed on a question", () => {
       select(head, 0, head, Math.min(8, head.textContent!.length));
       await settle();
       const el = affordance(container)!;
+      expect(el.querySelector("button")).toBe(null);
+      expect(el.textContent).toContain("Open document");
+    });
+
+    // A headline and a leaning written with bold, a link and code in them, scanned
+    // by the real scanner, whose block lines are the proof of each anchor.
+    const RICH_PATH = "docs/rich.md";
+    const RICH = [
+      "# Rich",
+      "",
+      "1. \u{1F4AC} **OQ-R1: Should `bun` or [node](n.md) run the _checker_?** Background",
+      "   with **bold** words, a [link](n.md) and `code` in the body.",
+      "",
+      '   <!-- vantage: oq id=OQ-R1 leaning="Use bun." -->',
+      "",
+      "   _Leaning:_ Use **bun** because `node` is [slower](n.md).",
+    ].join("\n");
+    const RICH2_PATH = "docs/rich2.md";
+    const RICH2 = [
+      "# Rich two",
+      "",
+      "1. \u{1F4AC} **OQ-R2: Is the leaning written out?** Background text of the second question.",
+      "",
+      '   <!-- vantage: question id=OQ-R2 leaning="Directive only." -->',
+      "",
+      "   More background.",
+      "",
+    ].join("\n");
+    const richQuestion = (id: string) => {
+      const r = scanPlanningDocument(
+        id === "OQ-R2" ? RICH2_PATH : RICH_PATH,
+        id === "OQ-R2" ? RICH2 : RICH,
+        false,
+      );
+      if (r.kind !== "planning") throw new Error("rich");
+      return r.document.questions.find((x) => x.id === id)!;
+    };
+    const seedRich = () =>
+      usePlanningStore.setState({
+        byRepo: {
+          "": {
+            status: "ready",
+            index: buildPlanningIndex(
+              sourcesOf({ [RICH_PATH]: RICH, [RICH2_PATH]: RICH2 }),
+            ),
+            version: 1,
+            rescanning: false,
+            hashes: {},
+          },
+        },
+      });
+    const textIn = (root: Element, from: string): Text => {
+      const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+      for (let n = w.nextNode(); n; n = w.nextNode()) {
+        if ((n as Text).data.includes(from)) return n as Text;
+      }
+      throw new Error(`no text ${from}`);
+    };
+
+    it("anchors a selection in a headline written with bold, a link and code, on the title's block, as the document would", async () => {
+      seedRich();
+      const question = richQuestion("OQ-R1");
+      const { container } = renderCard(question, {
+        card: blockOf(question, RICH),
+        comments: [],
+        cardKey: "r1",
+      });
+      const headline = container.querySelector<HTMLElement>(
+        "[data-planning-card-headline]",
+      )!;
+      const node = textIn(headline, "Should ");
+      const picked = node.data.slice(node.data.indexOf("Should"));
+      select(node, node.data.indexOf("Should"), node, node.data.length);
+      await settle();
+      const button = affordance(container)!.querySelector("button")!;
+      expect(button.textContent).toBe("Comment on selection");
+      vi.mocked(axios.post).mockClear();
+      act(() => {
+        fireEvent.click(button);
+      });
+      fireEvent.change(screen.getByPlaceholderText("Your comment..."), {
+        target: { value: "on the title" },
+      });
+      await act(async () => {
+        fireEvent.click(screen.getByText("Close"));
+      });
+      await waitFor(() => expect(vi.mocked(axios.post)).toHaveBeenCalled());
+      const body = vi
+        .mocked(axios.post)
+        .mock.calls.filter(([url]) => String(url).endsWith("/review/comments"))
+        .at(-1)![1] as Filed;
+      const host = container
+        .querySelector<HTMLElement>(`[${CARD_PART_ATTR}="title"]`)!
+        .closest<HTMLElement>("[data-source-line]")!;
+      const doc = usePlanningStore.getState().byRepo[""];
+      const blockLines =
+        doc?.status === "ready"
+          ? doc.index.documents.find((d) => d.path === RICH_PATH)!.blockLines
+          : {};
+      // The document's block text leads with the marker the card empties.
+      const documentText = `\u{1F4AC} ${blockVisibleText(host)}`;
+      expect(body.anchor).toMatchObject({
+        source_line: question.unitLine,
+        block_text_hash: hashBlockText(documentText),
+      });
+      // The scan proves the block: that hash sits at that line, in the scan.
+      expect(blockLines[body.anchor!.block_text_hash]).toBe(question.unitLine);
+      // And the offsets name the words picked, in the document's own text.
+      expect(
+        stripBlockText(documentText).slice(
+          body.anchor!.selection_offset,
+          body.anchor!.selection_offset + body.anchor!.selection_length,
+        ),
+      ).toBe(picked.toLowerCase().replace(/\s+/g, " ").trim());
+      expect(body.anchor!.selection_length).toBeGreaterThanOrEqual(3);
+    });
+
+    it("anchors a selection that runs across the headline's link and code", async () => {
+      seedRich();
+      const question = richQuestion("OQ-R1");
+      const { container } = renderCard(question, {
+        card: blockOf(question, RICH),
+        comments: [],
+        cardKey: "r1",
+      });
+      const headline = container.querySelector<HTMLElement>(
+        "[data-planning-card-headline]",
+      )!;
+      const first = textIn(headline, "Should ");
+      const last = textIn(headline, "checker");
+      select(first, 0, last, 3);
+      await settle();
+      expect(affordance(container)!.querySelector("button")).not.toBe(null);
+    });
+
+    it("keeps Open document for a headline selection under three characters, or one the scan cannot prove", async () => {
+      seedRich();
+      const question = richQuestion("OQ-R1");
+      const { container } = renderCard(question, {
+        card: blockOf(question, RICH),
+        comments: [],
+        cardKey: "r1",
+      });
+      const headline = container.querySelector<HTMLElement>(
+        "[data-planning-card-headline]",
+      )!;
+      const node = textIn(headline, "Should ");
+      select(node, 0, node, 2);
+      await settle();
+      expect(affordance(container)).toBe(null);
+      // The scan no longer holds the document: nothing proves the anchor.
+      usePlanningStore.setState({ byRepo: {} });
+      cleanup();
+      const again = renderCard(question, {
+        card: blockOf(question, RICH),
+        comments: [],
+        cardKey: "r1",
+      });
+      const head = again.container.querySelector<HTMLElement>(
+        "[data-planning-card-headline]",
+      )!;
+      const n2 = textIn(head, "Should ");
+      select(n2, 0, n2, 10);
+      await settle();
+      const el = affordance(again.container)!;
+      expect(el.querySelector("button")).toBe(null);
+      expect(el.textContent).toContain("Open document");
+    });
+
+    it("anchors a rich selection in the body, and keeps Open document for a leaning only the directive holds", async () => {
+      seedRich();
+      const q1 = richQuestion("OQ-R1");
+      const one = renderCard(q1, {
+        card: blockOf(q1, RICH),
+        comments: [],
+        cardKey: "r1",
+      });
+      // The unit's own leaning block is in the body, link and code included.
+      const leaning = one.container.querySelector(
+        `[${CARD_PART_ATTR}="leaning"]`,
+      )!;
+      const lnode = textIn(leaning, "because");
+      const rnode = textIn(leaning, "slower");
+      select(lnode, 0, rnode, 3);
+      await settle();
+      expect(affordance(one.container)!.querySelector("button")).not.toBe(null);
+      one.unmount();
+
+      const q2 = richQuestion("OQ-R2");
+      const two = renderCard(q2, {
+        card: blockOf(q2, RICH2),
+        comments: [],
+        cardKey: "r2",
+      });
+      const aside = two.container.querySelector(
+        "[data-planning-card-leaning-aside]",
+      )!;
+      const anode = textIn(aside, "Directive");
+      select(anode, 0, anode, 9);
+      await settle();
+      const el = affordance(two.container)!;
       expect(el.querySelector("button")).toBe(null);
       expect(el.textContent).toContain("Open document");
     });
@@ -2336,7 +2599,7 @@ describe("the comments already filed on a question", () => {
 
     // Closed holding text: the card shows the answer, and says it closed.
     await act(async () => {
-      fireEvent.keyDown(box, { key: "Escape" });
+      fireEvent.keyDown(box, { key: "Enter", ctrlKey: true });
     });
     expect(onAnswerClosed).toHaveBeenCalledWith(question.path, filed[0].id);
     expect(screen.getByText("Answered — waiting on the agent")).toBeTruthy();

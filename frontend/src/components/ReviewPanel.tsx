@@ -27,8 +27,11 @@ import {
 import type { CommentReaction, ReviewComment } from "../types";
 import { AnchoredMenu } from "./AnchoredMenu";
 import { CommentBoxFoot, CommentBoxTextarea } from "./CommentBoxFields";
+import { StaleBuffer } from "./CommentSessionViews";
+import { useBoxCancel } from "../hooks/useBoxCancel";
 import type { CommentBox } from "../lib/commentAutosave";
 import { editCommentBox, replyBox } from "../lib/reviewBoxes";
+import { ownershipCue } from "../lib/replyCoverage";
 
 interface ReviewPanelProps {
   isOpen: boolean;
@@ -506,6 +509,15 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
                         }
                       >
                         {c.comment}
+                        {ownershipCue(c) !== null && (
+                          <span
+                            data-testid="ownership-cue"
+                            className="ml-2 text-[11px] no-underline text-slate-500 dark:text-slate-400"
+                            title={c.ownership_reason}
+                          >
+                            ({ownershipCue(c)})
+                          </span>
+                        )}
                       </p>
                     )}
 
@@ -713,16 +725,20 @@ const PanelBox: React.FC<{
     box.close();
     onClose();
   };
+  const { cancel, confirmation } = useBoxCancel(box, close, onClose);
   return (
     <div className="mt-1.5">
       <CommentBoxTextarea
         ref={ref}
         box={box}
         onClose={close}
+        onCancel={cancel}
         rows={rows}
         placeholder={placeholder}
         className="w-full text-sm rounded-md border border-blue-300 dark:border-blue-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 px-2 py-1.5 resize-y min-h-[40px] focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
       />
+      <StaleBuffer box={box} />
+      {confirmation}
       <CommentBoxFoot box={box} onClose={close} />
     </div>
   );

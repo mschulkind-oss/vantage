@@ -126,10 +126,12 @@ func TestReplyAppendsReactionAndRecaptures(t *testing.T) {
 	// The document changed since the comment was created; the follow-up
 	// re-captures because the reviewer is looking at the current text.
 	edited := "# Title\n\nRewritten paragraph.\n\nSecond Paragraph HERE.\n"
-	data, err := s.Reply("a.md", "", "c1", "", "still unclear", edited)
+	// The scanner proves no question unit covers the anchor (a plain note).
+	data, err := s.ReplyFrom("a.md", "", "c1", "", "still unclear", scannedDoc(s, edited, map[string]Unit{}), false)
 	require.NoError(t, err)
 
 	c := data.Comments[0]
+	require.Equal(t, model.OwnershipUnowned, c.Ownership)
 	require.Len(t, c.Reactions, 1)
 	require.Equal(t, "reviewer", c.Reactions[0].Actor)
 	require.Equal(t, "needs_clarification", c.Reactions[0].Kind)
@@ -533,7 +535,7 @@ func TestEditCommentTextRecapturesBlock(t *testing.T) {
 
 	// The reviewer rewords the comment while looking at v2 — the same situation
 	// a reply puts them in, so the same capture point.
-	data, err := s.EditCommentText("a.md", "", "c1", "still too long", v2)
+	data, err := s.EditCommentTextFrom("a.md", "", "c1", "still too long", scannedDoc(s, v2, map[string]Unit{}), "")
 	require.NoError(t, err)
 	require.Equal(t, "version two text.", data.Comments[0].CapturedBlock)
 
