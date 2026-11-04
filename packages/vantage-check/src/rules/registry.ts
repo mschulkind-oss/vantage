@@ -293,8 +293,8 @@ export const RULES: readonly RuleMeta[] = [
   },
   {
     id: "planning/question-length",
-    summary: `A question whose text, leaning and Answer aside, runs past \`max-words\` (${QUESTION_WORDS_DEFAULT}), more than its card on the planning page shows before the clamp`,
-    default: "warning",
+    summary: `A question whose text, leaning and Answer aside, runs past \`max-words\` (${QUESTION_WORDS_DEFAULT}); off by default`,
+    default: "off",
     options: {
       "max-words": {
         summary: "the most words a question's text may run to",

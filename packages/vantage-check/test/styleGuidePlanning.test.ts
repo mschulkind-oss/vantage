@@ -263,9 +263,10 @@ describe("the style guide's planning frontmatter", () => {
 });
 
 describe("the style guide's advice on a question's length", () => {
-  it("states the limit planning/question-length applies by default", () => {
-    // The guide cannot import the checker, so the number is written out, and
-    // this is what keeps the two from drifting apart.
+  it("states that question-length is opt-in and gives its enabled limit", () => {
+    expect(STYLE_GUIDE).toContain(
+      "`planning/question-length` is off by default",
+    );
     expect(STYLE_GUIDE).toContain(
       `runs past ${QUESTION_WORDS_DEFAULT} words (\`planning/question-length\`)`,
     );

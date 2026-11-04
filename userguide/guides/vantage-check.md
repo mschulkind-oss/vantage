@@ -474,7 +474,7 @@ scan, so the gate and the page of one release cannot disagree.
 | `planning/stage-disagrees` | A document whose stage has the `ready` or `built` role while it still has open questions | warning |
 | `planning/blocked-on-disagrees` | A question marker that disagrees with its `blocked-on` referent: a 🔒 with nothing that still waits, or a 💬 whose referent does | error |
 | `planning/unrouted` | An open question no roadmap [links to](planning.md#the-roadmap), directly or through its document | **off** |
-| `planning/question-length` | A question whose text, not counting its leaning and its Answer, runs past 120 words | warning |
+| `planning/question-length` | A question whose text, not counting its leaning and its Answer, runs past 120 words | off |
 
 They run once, after every document in the run has been checked, and each one
 needs only the document it reports on and the roadmaps. A roadmap that
@@ -502,11 +502,10 @@ asked to check.
   whole*. It then says where the question goes is yours to confirm, and points
   at `vantage-check index --request unrouted`, which asks an agent for a
   proposal rather than a placement.
-- **`planning/question-length` keeps a question readable on its card.** The
-  planning page shows each question as a card that leads with its bold title
-  and shows only the first few lines of the text below it, so a question
-  buried in a paragraph of background, history and cross-references is one the
-  reviewer has to dig for. The rule counts the words of the question's text as
+- **`planning/question-length` is an opt-in word-count check.** It is off by
+  default, including with `--strict`: a folded card is not a word budget, and
+  useful context and options should not be cut to fit its preview. When enabled,
+  the rule counts the words of the question's text as
   the page renders it: the list item or footnote that holds the question, or
   the block that hosts it when nothing does, title included, less every
   paragraph that states a leaning and less the `**Answer:**` paragraph and
@@ -537,8 +536,10 @@ asked to check.
   is as dense as one of 132 above it, and the limit is well past what a folded
   card shows, the title and about three lines. A repository whose questions
   run longer will see many warnings — in one measured on the same day, the
-  median question ran to 187 words and 62% passed 120 — and should raise the
-  limit with `max-words`, or turn the rule off:
+  median question ran to 187 words and 62% passed 120. Only enable this rule
+  when a word-count check is useful for your repository; setting `max-words`
+  alone does not enable it. Set an explicit severity to opt in, optionally with
+  a different threshold:
 
   ```toml
   [check.rules]
