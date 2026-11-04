@@ -1543,6 +1543,31 @@ describe("MarkdownViewer — inline review entry", () => {
     expect(posts()).toBe(0);
   });
 
+  it("reserves the row while the review loads: controls unavailable, no dialog, then available in the same place", () => {
+    useReviewStore.setState({ filePath: null, isLoading: true });
+    const { container } = render(<Page content={DOC} />);
+    const rows = () => container.querySelectorAll(".review-oq-row");
+    const row = rows()[0];
+    const before = row.previousElementSibling;
+    expect(rows()).toHaveLength(1);
+    expect(take()).toBeDisabled();
+    expect(answer()).toBeDisabled();
+    fireEvent.click(take()!);
+    fireEvent.click(answer()!);
+    expect(dialog()).toBeNull();
+
+    act(() => {
+      useReviewStore.setState({ filePath: "doc.md", isLoading: false });
+    });
+
+    expect(rows()).toHaveLength(1);
+    expect(rows()[0].previousElementSibling).toBe(before);
+    expect(take()).toBeEnabled();
+    expect(answer()).toBeEnabled();
+    fireEvent.click(take()!);
+    expect(dialog()).not.toBeNull();
+  });
+
   it("asks consent on a click, and Cancel changes nothing", () => {
     render(<Page content={DOC} />);
     fireEvent.click(take()!);

@@ -1848,6 +1848,10 @@ th.review-block-hovered {
   background: rgb(59 130 246 / 0.08);
   border-color: rgb(59 130 246 / 0.6);
 }
+.review-oq-take:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
 .dark .review-oq-take {
   color: rgb(96 165 250);
   border-color: rgb(96 165 250 / 0.4);
