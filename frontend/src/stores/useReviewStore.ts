@@ -28,7 +28,7 @@ import type {
 
 const beforeModeChange = new Set<() => void>();
 
-/** Register a UI measurement before an explicit mode change mutates layout. */
+/** Register a UI measurement before a review-mode change mutates layout. */
 export function subscribeBeforeReviewModeChange(
   capture: () => void,
 ): () => void {
@@ -857,11 +857,13 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
     // back, moving the document twice.
     const switchingFile = get().filePath !== filePath;
     if (switchingFile) {
+      const nextMode = canEnterReviewMode() && readReviewModePref(filePath);
+      if (get().isReviewMode !== nextMode) captureBeforeModeChange();
       set({
         filePath,
         comments: [],
         pendingSelection: null,
-        isReviewMode: canEnterReviewMode() && readReviewModePref(filePath),
+        isReviewMode: nextMode,
         // A command failure belongs to the document it happened on. It is
         // deliberately NOT cleared on a same-file reload: runCommand's error
         // path resyncs through here, and clearing there would erase the
@@ -903,6 +905,8 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
       const persistedOn = canReview && readReviewModePref(filePath);
       if (data) {
         const hasData = data.comments.length > 0;
+        const nextMode = canReview && (hasData || persistedOn);
+        if (get().isReviewMode !== nextMode) captureBeforeModeChange();
         set({
           comments: data.comments,
           filePath: data.file_path,
@@ -911,7 +915,7 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
           // localStorage).  Without the persistence, refreshing a fresh
           // file where review mode was turned on but no comments exist
           // would silently revert to off.
-          isReviewMode: canReview && (hasData || persistedOn),
+          isReviewMode: nextMode,
         });
       } else {
         // Null at 200 means specifically "no review file" — deleting every
@@ -930,12 +934,14 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
         if (persistedOn) {
           // Honor the toggle rather than kicking the reviewer out of review
           // mode mid-session; they land in an empty review instead.
+          if (!get().isReviewMode) captureBeforeModeChange();
           set({ isReviewMode: true });
         }
       }
     } catch {
       // No review data yet — still honor the persisted toggle if present.
       if (!isStale() && canEnterReviewMode() && readReviewModePref(filePath)) {
+        if (!get().isReviewMode) captureBeforeModeChange();
         set({ isReviewMode: true });
       }
     } finally {

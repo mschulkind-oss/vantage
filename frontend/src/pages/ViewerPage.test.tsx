@@ -1807,6 +1807,37 @@ describe("ViewerPage", () => {
       }
     });
 
+    it("preserves position when a same-file server reload automatically enables review", async () => {
+      const { pane, ranges, repoState } = readingPage();
+      const get = vi.spyOn(axios, "get").mockResolvedValue({
+        data: {
+          file_path: "path/to/file.md",
+          comments: [
+            {
+              id: "remote",
+              anchor: null,
+              fallback_text: "some text",
+              reactions: [],
+              comment: "please fix",
+              created_at: 0,
+            },
+          ],
+        },
+      });
+      try {
+        pane.scrollTop = 300;
+        await act(async () =>
+          useReviewStore.getState().loadReview("path/to/file.md"),
+        );
+        expect(useReviewStore.getState().isReviewMode).toBe(true);
+        expect(pane.scrollTop).toBe(500);
+      } finally {
+        get.mockRestore();
+        ranges.mockRestore();
+        repoState.mockRestore();
+      }
+    });
+
     it("survives highlight text-node splitting and the highlighter's delayed layout", async () => {
       const { pane, ranges, repoState, moveDocument } = readingPage();
       try {

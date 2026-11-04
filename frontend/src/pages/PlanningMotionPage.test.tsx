@@ -1,3 +1,4 @@
+import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   act,
@@ -76,12 +77,13 @@ afterEach(() => {
   delete proto.getAnimations;
 });
 
-function open(url = "/.vantage/planning-motion") {
-  return render(
+function open(url = "/.vantage/planning-motion", strict = false) {
+  const view = (
     <MemoryRouter initialEntries={[url]}>
       <PlanningMotionPage />
-    </MemoryRouter>,
+    </MemoryRouter>
   );
+  return render(strict ? <StrictMode>{view}</StrictMode> : view);
 }
 const press = (name: string) =>
   act(() => {
@@ -116,6 +118,32 @@ describe("PlanningMotionPage", () => {
     expect(live().every((a) => a.playState === "paused")).toBe(true);
     expect(made.every((a) => a.currentTime === 0)).toBe(true);
     expect(screen.getAllByTestId("motion-effect")).toHaveLength(3);
+  });
+
+  it("holds exactly the three production effects through StrictMode setup replay and reverse seeking", () => {
+    open("/.vantage/planning-motion", true);
+    press("128 ms");
+    expect(made).toHaveLength(3);
+    expect(live().every((a) => a.playState === "paused")).toBe(true);
+    press("1600 ms");
+    const first = [...made];
+    press("128 ms");
+    const fresh = made.filter((a) => !first.includes(a));
+    expect(fresh).toHaveLength(3);
+    expect(
+      fresh.every((a) => a.playState === "paused" && a.currentTime === 128),
+    ).toBe(true);
+    expect(
+      stage().querySelector<HTMLElement>(
+        '[data-motion-slot="arriving"] article',
+      )?.style.height,
+    ).toBe("0px");
+  });
+
+  it("also holds only three effects when StrictMode opens directly at a paused frame", () => {
+    open("/.vantage/planning-motion?t=128", true);
+    expect(made).toHaveLength(3);
+    expect(live().every((a) => a.playState === "paused")).toBe(true);
   });
 
   it("holds each effect at the time asked and finishes the ones it has passed", () => {
