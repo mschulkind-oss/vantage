@@ -8,100 +8,94 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [0.11.0] - 2026-11-04
+
+Answer planning questions from the document, restore or reattach answers, and
+browse saved document stages in Overview.
+
 ### Added
 
-**Answer an open question without first finding the Review toggle.**
-**Take this leaning** and **Answer…** now appear while you read the document.
-Click either and confirm **Enter review mode** to continue that same action.
-Cancel leaves review mode and comments unchanged. See
-[review mode](userguide/features.md#review-mode).
+**Answer an open question without finding the Review toggle.**
+**Take this leaning** and **Answer…** appear while you read the document.
+Confirm **Enter review mode** to continue that same action; Cancel leaves
+review mode and comments unchanged. See [review mode](userguide/features.md#review-mode).
 
-**Planning cards show when a question was handled elsewhere.** A status band
-at the top distinguishes a saved response, a recorded ruling, a compacted
-question, and a removed question. Unverified evidence reads **Unknown**.
-The status updates without replacing the question text, disturbing an open
-editor, or moving the card. See
+**Overview groups planning documents by their saved stages.** Switch from
+**Questions** to **Overview** to browse stages, next steps, dependencies, and
+recorded stage changes. Filter the tiles or collapse stages you are not reading.
+It shows what documents claim, not verified implementation progress, and never
+writes them. See [the Work overview](docs/reference/work-overview.md).
+
+**Planning cards show when a question was handled elsewhere.** A prominent
+status band distinguishes saved responses, recorded rulings, compacted questions,
+and removed questions. Unverified evidence reads **Unknown**. Status updates do
+not replace question text, disturb editors, or move cards. See
 [late changes and Refresh](userguide/guides/planning.md#late-changes-and-refresh).
 
 **Inspect the planning answer animation frame by frame.** Open
-`/.vantage/planning-motion` to see the initial card-to-row swap, pause the
-animation, seek to an exact time, or step forward and backward. The sample
-questions use the planning page's real cards and animation effects. The
-inspector changes no reviews; the green animation itself is unchanged.
+`/.vantage/planning-motion` to inspect the card-to-row swap, pause, seek to an
+exact time, or step backward and forward. The sample uses real cards and animation
+effects, changes no reviews, and leaves the green animation unchanged.
 
-**Planning answers can be restored, deleted, and attached to a question.**
-Escape or × offers to restore an existing answer to its opening text without
-removing replies, or discard a new answer and its replies. Delete remains a
-separate action. You can comment on selections in the question body and on
-headlines whose source can be verified. Comments with no proven question owner
-gather in explicit groups with an **Attach to question…** action. See
-[planning review actions](userguide/guides/planning.md#leaving-an-answer-box-close-keeps-esc-asks).
+**Restore, delete, or attach planning answers.** Escape or × offers to restore
+an existing answer's opening text while keeping replies, or discard a new answer
+and its replies. Delete is separate. Comment on selections in question bodies
+and verified headlines; comments with no proven owner offer **Attach to question…**.
+See [planning review actions](userguide/guides/planning.md#leaving-an-answer-box-close-keeps-esc-asks).
 
-**Reload reads the server without replacing what you are reading.** The
-planning page has a **Reload from server** button and reports a failed read
-instead of treating it as no work. **Newer than shown** marks an edited
-question; opening its row or unfolding its card refreshes that card alone.
-Applying updates still lays out the page from data already in hand, and is
-blocked while an open answer holds changes. See
-[late changes and Refresh](userguide/guides/planning.md#late-changes-and-refresh).
+**Reload reads the server without replacing what you are reading.**
+**Reload from server** reports failed reads instead of treating them as no work.
+**Newer than shown** marks edited questions; opening a row or unfolding a card
+refreshes that card alone. Applying updates is blocked while an answer box holds
+changes. See [late changes and Refresh](userguide/guides/planning.md#late-changes-and-refresh).
 
-**A slow recent-files scan can explain its measured work.** The timeout warning
-links to the affected project's scan-analysis page. Opening it reads saved
-evidence only; a deliberate bounded diagnostic ranks current directory reads,
-shows partial or unknown comparisons, and offers exclusion examples without
-changing visibility or writing ignore files. Its timings are an approximation,
-not attribution of the earlier Git command. See
+**Investigate a slow recent-files scan.** Its timeout warning links to saved
+scan evidence. A deliberate bounded diagnostic ranks directory reads and offers
+exclusion examples without changing visibility or writing ignore files. Timings
+approximate current work, not the earlier Git command. See
 [scan analysis](docs/reference/recent-scan-analysis.md).
 
 ### Changed
 
-**Long questions no longer warn by default.** The optional
-`planning/question-length` check stays off, including in strict runs, unless
-you explicitly enable it. Its configurable word threshold remains available;
-substantive setup and options do not need shortening for a folded preview. See
-[the checker configuration](userguide/guides/vantage-check.md#configuration).
+**Hide git metadata when you want a document-only header.** Settings →
+**Show git metadata** controls the status, commit, age, and history link.
+See [git integration](userguide/features.md#git-integration).
+
+**The checker warns about questions it cannot index, not their length.**
+Question-looking list items without a directive, and `OQ-` tables with a Leaning
+or Answer column (not decision ledgers), now warn. `planning/question-length`
+stays off, including in strict runs, unless explicitly enabled; its word threshold
+remains configurable. Keep substantive setup and options. See
+[checker configuration](userguide/guides/vantage-check.md#configuration).
 
 **Server-only installs need the checker to refresh comment snapshots.**
-The server now uses `vantage-check` to verify which question owns a comment
-before updating the saved text used for an agent reply's before/after comparison.
-Install it beside `vantage`, put it on `PATH`, or set `VANTAGE_CHECK`; release
-archives and Homebrew already provide both binaries. Without it the server
-warns at startup, preserves existing comments, and reports unverified ownership
-as **Unknown**. Saved snapshots no longer refresh on edits or replies, even
-for ordinary Markdown review. See
-[installing the server](userguide/getting-started.md) and
+Install `vantage-check` beside `vantage`, put it on `PATH`, or set `VANTAGE_CHECK`;
+archives and Homebrew provide both. Without it, the server warns at startup,
+preserves comments, and reports unverified ownership as **Unknown**. Saved text
+for reply comparisons cannot refresh on edits or replies, even for ordinary
+Markdown. See [installation](userguide/getting-started.md) and
 [comment snapshots](docs/reference/comment-autosave.md).
-
-**✅ questions are maintenance, never *needs you*.** A question marked ✅ is
-answered: what waits on it is compaction, an agent's request (`compact`), not a
-ruling of yours. All of them now count nowhere — the roadmap picker, the line
-naming what other roadmaps hold, `vantage-check index`'s roadmap line and its
-JSON `needsYouCount` count open questions only, and a ✅ question is listed
-under *Maintenance* → *To fold into the ledger* alone. Before, the index counted
-open **and** ✅ questions while the page below it counted only open ones, so a
-project carrying a backlog of answered-but-unfolded questions read as far more
-work than it had. See
-[the planning index](docs/reference/planning-index.md#62-sections-top-to-bottom).
 
 ### Fixed
 
-**Entering or leaving review keeps your reading position.** The same text
-stays at the same height in the reader after the sidebar changes line wrapping.
-Scrolling yourself immediately takes over.
+**Review-mode changes preserve your reading position** through sidebar-induced
+line wrapping, in both directions. Scrolling yourself immediately takes over.
 
-**A rewritten question no longer inherits an answer from the old source line.**
-Placement, counts, and copied answers use verified question identity rather than
-a stale line; duplicate or unverified identities do not receive another
-question's answer. See [question ownership](docs/reference/planning-ownership.md).
+**Rewritten questions no longer inherit another question's answer from an old
+source line.** Placement, counts, and copied answers use verified identity;
+duplicate or unverified identities remain unresolved. See
+[question ownership](docs/reference/planning-ownership.md).
 
-**A project written without a `name` no longer becomes an unopenable blank
-row.** A `[[repos]]` entry that leaves `name` out, or writes it empty, now takes
-the directory's own name — the name `source_dirs` discovery would have given it —
-with a numeric suffix when another project already has that name. Before, it was
-served under the empty name, which is single-repo mode's sentinel: every request
-for it answered *Repository not found*, the project list drew a row that led
-nowhere, and nothing reported it. The daemon now also refuses to start on a
-project with an empty name it did not derive. See
+**Answered questions no longer inflate what needs you.** Roadmap counts and
+`vantage-check index` count only open questions; ✅ questions belong solely under
+**Maintenance → To fold into the ledger**. See
+[the planning index](docs/reference/planning-index.md#62-sections-top-to-bottom).
+
+**App pages no longer cache obsolete asset names.** Failed loading offers
+**Reload this page** instead of a blank tab.
+
+**A project with no configured name no longer becomes an unopenable blank row.**
+It takes its directory's name, with a numeric suffix for collisions. See
 [configuration](userguide/reference/configuration.md#example-config).
 
 ## [0.10.0] - 2026-10-09
