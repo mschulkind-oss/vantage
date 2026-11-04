@@ -83,6 +83,8 @@ export interface EffectReadout {
   target: string;
   /** The CSS properties its keyframes set. */
   properties: string[];
+  /** Actual values at every keyframe, in order, including intermediate peaks. */
+  keyframeValues: string[];
   durationMs: number;
   /** `before`, `running` or `finished`: a finished effect is no longer applied. */
   state: "before" | "running" | "finished";
@@ -121,6 +123,10 @@ export function readEffect(animation: Animation, ms: number): EffectReadout {
         : ""
     }`,
     properties,
+    keyframeValues: properties.map(
+      (property) =>
+        `${property}: ${keyframes.map((frame) => String(frame[property])).join(" → ")}`,
+    ),
     durationMs: duration,
     state: ms < 0 ? "before" : ms >= duration ? "finished" : "running",
     progress,

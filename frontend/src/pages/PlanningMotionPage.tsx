@@ -124,6 +124,7 @@ export default function PlanningMotionPage() {
   const timeRef = useRef(0);
   const keyRef = useRef(0);
   const measuring = useRef(0);
+  useEffect(() => () => cancelAnimationFrame(measuring.current), []);
 
   // The stage is inert: nothing in it takes a press, a focus or a keystroke.
   useLayoutEffect(() => {
@@ -502,6 +503,14 @@ export default function PlanningMotionPage() {
                   {e.target} · {e.properties.join(", ")} · {e.durationMs} ms ·{" "}
                   {e.state} · {(e.progress * 100).toFixed(1)}% · keyframes{" "}
                   {e.segment}
+                  {e.keyframeValues.map((value) => (
+                    <div
+                      key={value}
+                      className="break-words font-mono text-[11px]"
+                    >
+                      {value}
+                    </div>
+                  ))}
                 </li>
               ))}
             </ul>

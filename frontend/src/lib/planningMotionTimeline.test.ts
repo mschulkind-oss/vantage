@@ -102,6 +102,7 @@ describe("readEffect", () => {
     ]);
     expect(readEffect(a, 0)).toMatchObject({
       properties: ["boxShadow"],
+      keyframeValues: ["boxShadow: none → x → none"],
       state: "running",
       segment: "0.00 → 0.08",
     });

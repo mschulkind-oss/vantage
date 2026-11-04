@@ -782,9 +782,13 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
   const forcedMotion = useContext(ForcedMotion);
   const [grow] = useState(() => growing);
   const [grown, setGrown] = useState(grow);
+  const growthStarted = useRef(false);
   useLayoutEffect(() => {
     const article = articleRef.current;
-    if (!grow || article === null) return;
+    if (!grow || article === null || growthStarted.current) return;
+    // StrictMode replays layout setup. One mounted card owns one growth
+    // effect, including when the inspector has paused that real effect.
+    growthStarted.current = true;
     growCard(article, () => setGrown(false), forcedMotion);
   }, [grow, forcedMotion]);
   useEffect(() => {
