@@ -10,6 +10,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+**Answer an open question without first finding the Review toggle.**
+**Take this leaning** and **Answer…** now appear while you read the document.
+Click either and confirm **Enter review mode** to continue that same action.
+Cancel leaves review mode and comments unchanged. See
+[review mode](userguide/features.md#review-mode).
+
+**Planning cards show when a question was handled elsewhere.** A status band
+at the top distinguishes a saved response, a recorded ruling, a compacted
+question, and a removed question. Unverified evidence reads **Unknown**.
+The status updates without replacing the question text, disturbing an open
+editor, or moving the card. See
+[late changes and Refresh](userguide/guides/planning.md#late-changes-and-refresh).
+
+**Inspect the planning answer animation frame by frame.** Open
+`/.vantage/planning-motion` to see the initial card-to-row swap, pause the
+animation, seek to an exact time, or step forward and backward. The sample
+questions use the planning page's real cards and animation effects. The
+inspector changes no reviews; the green animation itself is unchanged.
+
 **Planning answers can be restored, deleted, and attached to a question.**
 Escape or × offers to restore an existing answer to its opening text without
 removing replies, or discard a new answer and its replies. Delete remains a
@@ -65,6 +84,10 @@ work than it had. See
 [the planning index](docs/reference/planning-index.md#62-sections-top-to-bottom).
 
 ### Fixed
+
+**Entering or leaving review keeps your reading position.** The same text
+stays at the same height in the reader after the sidebar changes line wrapping.
+Scrolling yourself immediately takes over.
 
 **A rewritten question no longer inherits an answer from the old source line.**
 Placement, counts, and copied answers use verified question identity rather than
