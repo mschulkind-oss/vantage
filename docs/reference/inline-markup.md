@@ -802,9 +802,11 @@ planning page's card is the fourth caller, finding its question's host
 **Outside review mode the row is offered too, behind a consent.** On the live
 viewer's own document (`offerReviewEntry`; never an embedded viewer or a planning
 card, and never in a static export, where nothing can be saved and D4's "a
-control that cannot work must not render" still holds), once its comments have
-loaded, the row shows Take this leaning and Answer… (and the chips, without
-Undo, which deletes). A click opens a dialog, *Enter review mode?*, and does
+control that cannot work must not render" still holds), the row reserves its
+place before the first paint. While the current document's review is loading,
+Take this leaning and Answer… are disabled. When loading settles, the row
+reflects the comments the viewer holds, including the chips without Undo
+(which deletes). A click opens a dialog, *Enter review mode?*, and does
 nothing else: Cancel and Escape leave review mode, the preference and the
 comments as they were. Confirming turns review mode on through the store's
 `toggleReviewMode` (which is what keeps the reader's place) and then carries out

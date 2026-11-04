@@ -1585,6 +1585,17 @@ describe("MarkdownViewer — inline review entry", () => {
     expect(take()).not.toBeNull();
   });
 
+  it("clicking the backdrop cancels without leaving an unfocused modal or changing review", () => {
+    render(<Page content={DOC} />);
+    fireEvent.click(take()!);
+    fireEvent.click(dialog()!.parentElement!);
+    expect(dialog()).toBeNull();
+    expect(useReviewStore.getState().isReviewMode).toBe(false);
+    expect(useReviewStore.getState().comments).toEqual([]);
+    expect(posts()).toBe(0);
+    expect(document.activeElement).toBe(take());
+  });
+
   it("Escape cancels the same way", () => {
     render(<Page content={DOC} />);
     fireEvent.click(answer()!);

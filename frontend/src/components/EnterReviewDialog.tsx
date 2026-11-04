@@ -32,7 +32,12 @@ export function EnterReviewDialog({
 
   const action = kind === "take" ? OQ_LABEL : OQ_ANSWER_LABEL;
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onCancel();
+      }}
+    >
       <div
         ref={box}
         role="alertdialog"

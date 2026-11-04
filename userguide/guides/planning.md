@@ -611,8 +611,11 @@ edited, a new question. Each one only marks what it concerns, and counts:
 | What changed | On the page | After Refresh |
 | :--- | :--- | :--- |
 | The agent replied on a question | A **New reply** mark, with a colored bar beside the question; pressing it opens the reply in place | A card again if the question needs you again |
-| You answered a question elsewhere | *Answered elsewhere* on its card | An answered row |
-| A question became ✅, or left its document | *Done* on it, and it stays | Gone from *Needs you*; a ✅ one is under *Maintenance* |
+| You answered a question elsewhere | *Response saved, waiting for agent* in its status band, with *Answered elsewhere* | An answered row |
+| A question became ✅ | *Ruling recorded* in its status band; the card stays | Gone from *Needs you* and listed under *Maintenance* |
+| A question was folded into the Decision Ledger | *Compacted* in its status band; the card stays | Gone from *Needs you* |
+| A question left its document | *Question removed from document* in its status band; the card stays | Gone from *Needs you* |
+| Its document and reviews cannot be verified together | *Unknown* in its status band, never an inferred removal | Determined only once coherent evidence is available |
 | A question's text changed | *Newer than shown*; the card keeps the text it showed | The new text |
 | A new question needs you | Counted only | In roadmap order |
 | The roadmap was reordered | Counted once | The new order |
@@ -637,9 +640,10 @@ as you type, is not marked *Answered elsewhere*, and your own Undo is no
 update.
 
 **Reload from server**, beside it, is the only button that asks the server again:
-it reads the listed documents' reviews and rescans, and then changes nothing you
-can see, no card, no open box and no painted text; **Refresh** is what lays the
-new data out. If the server cannot be read, the header says _Unknown · last
+it reads the listed documents' reviews and rescans, updating their live status
+bands and marks without replacing card text, comment lists, or open boxes.
+Every card's status band keeps the same height, so a new label moves nothing.
+**Refresh** is what lays the new data out. If the server cannot be read, the header says _Unknown · last
 successful read 14:02 · last attempt failed 14:09_, and counts that depend on it
 read _Unknown_, never 0. If the document changed while it was read, it says so
 and asks you to Reload again.
