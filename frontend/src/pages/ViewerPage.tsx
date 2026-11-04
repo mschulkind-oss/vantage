@@ -54,6 +54,7 @@ import {
   useReviewStore,
 } from "../stores/useReviewStore";
 import { ReviewPanel } from "../components/ReviewPanel";
+import { useReviewReadingPosition } from "../hooks/useReviewReadingPosition";
 import { useLineAnchor } from "../hooks/useLineAnchor";
 import { useHeaderFit } from "../hooks/useHeaderFit";
 import { useFirstPaintHold } from "../hooks/useFirstPaintHold";
@@ -269,6 +270,11 @@ export const ViewerPage: React.FC = () => {
   // --- Review mode ---
   const isReviewMode = useReviewStore((s) => s.isReviewMode);
   const toggleReviewMode = useReviewStore((s) => s.toggleReviewMode);
+  useReviewReadingPosition(
+    contentRef,
+    isReviewMode,
+    `${currentRepo ?? ""}\n${currentPath ?? ""}\n${fileContent?.content ?? ""}`,
+  );
   const loadReview = useReviewStore((s) => s.loadReview);
   const reviewSetLastContent = useReviewStore((s) => s.setLastContent);
   const reviewComments = useReviewStore((s) => s.comments);

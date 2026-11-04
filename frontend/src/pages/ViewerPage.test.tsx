@@ -50,6 +50,7 @@ vi.mock("../components/FileTree", () => ({
 // so the mock has to be able to report one — otherwise every assertion about
 // what the Review toggle says is vacuously true at zero.
 let mockOpenQuestionCount = 0;
+let mockReadingText = "";
 /**
  * Each render of the viewer: the document it drew, and what the planning
  * index was as it did, so the hold's tests can ask what a first paint had.
@@ -68,7 +69,11 @@ vi.mock("../components/MarkdownViewer", () => ({
       path: currentPath,
       planning: usePlanningStore.getState().byRepo[""]?.status,
     });
-    return <div data-testid="markdown-viewer">MarkdownViewer</div>;
+    return (
+      <div data-testid="markdown-viewer" className="prose">
+        <p data-source-line="1">{mockReadingText || "MarkdownViewer"}</p>
+      </div>
+    );
   },
 }));
 vi.mock("../components/DirectoryViewer", () => ({
@@ -167,6 +172,7 @@ describe("ViewerPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockOpenQuestionCount = 0;
+    mockReadingText = "";
 
     // Zustand stores are module singletons — reset review state so seeded
     // comments don't leak between cases.
@@ -1695,6 +1701,227 @@ describe("ViewerPage", () => {
         expect(endReview).toHaveBeenCalledTimes(1);
       } finally {
         endReview.mockRestore();
+      }
+    });
+  });
+
+  describe("review-mode reading position", () => {
+    function readingPage(on = false) {
+      mockReadingText =
+        "Read this paragraph without losing your place. ".repeat(40);
+      const repoStore = useRepoStore as unknown as ReturnType<typeof vi.fn>;
+      repoStore.mockReturnValue({
+        ...repoStore(),
+        currentDirectory: null,
+        fileContent: { content: mockReadingText, encoding: "utf-8" },
+      });
+      const repoState = vi
+        .spyOn(useRepoStore, "getState")
+        .mockReturnValue(repoStore());
+      useReviewStore.setState({
+        filePath: "path/to/file.md",
+        isReviewMode: on,
+        comments: [],
+      });
+      const page = renderPage();
+      const pane = page.container.querySelector<HTMLElement>(
+        "[data-content-scroll]",
+      )!;
+      Object.defineProperties(pane, {
+        clientHeight: { configurable: true, value: 600 },
+        scrollHeight: { configurable: true, value: 6000 },
+      });
+      vi.spyOn(pane, "getBoundingClientRect").mockReturnValue(
+        new DOMRect(0, 100, 800, 600),
+      );
+      const createRange = document.createRange.bind(document);
+      let documentTop = 200;
+      const geometry = (range: Range) => {
+        const columns = useReviewStore.getState().isReviewMode ? 10 : 20;
+        const prefix = createRange();
+        prefix.selectNodeContents(pane.querySelector(".prose p")!);
+        prefix.setEnd(range.startContainer, range.startOffset);
+        const start = prefix.toString().length;
+        const first = Math.floor(start / columns);
+        const last = Math.floor(
+          Math.max(start, start + range.toString().length - 1) / columns,
+        );
+        return Array.from(
+          { length: last - first + 1 },
+          (_, i) =>
+            new DOMRect(
+              100,
+              documentTop + (first + i) * 20 - pane.scrollTop,
+              100,
+              20,
+            ),
+        );
+      };
+      const ranges = vi
+        .spyOn(document, "createRange")
+        .mockImplementation(() => {
+          const range = createRange();
+          range.getClientRects = () =>
+            geometry(range) as unknown as DOMRectList;
+          range.getBoundingClientRect = () => {
+            const lines = geometry(range);
+            return new DOMRect(100, lines[0].top, 100, lines.length * 20);
+          };
+          return range;
+        });
+      return {
+        pane,
+        ranges,
+        repoState,
+        page,
+        moveDocument: (top: number) => {
+          documentTop = top;
+        },
+      };
+    }
+
+    it("keeps the top text when entering review narrows and rewraps the paragraph", () => {
+      const { pane, ranges, repoState } = readingPage();
+      try {
+        pane.scrollTop = 300;
+        fireEvent.click(screen.getByRole("button", { name: "Review" }));
+        expect(useReviewStore.getState().isReviewMode).toBe(true);
+        // Offset 200 was at y=100. Narrowing puts it 200px lower unless
+        // the pane follows the text, not its old numeric scroll offset.
+        expect(pane.scrollTop).toBe(500);
+      } finally {
+        ranges.mockRestore();
+        repoState.mockRestore();
+      }
+    });
+
+    it("also preserves position when another entry point toggles the store directly", () => {
+      const { pane, ranges, repoState } = readingPage();
+      try {
+        pane.scrollTop = 300;
+        act(() => useReviewStore.getState().toggleReviewMode());
+        expect(pane.scrollTop).toBe(500);
+      } finally {
+        ranges.mockRestore();
+        repoState.mockRestore();
+      }
+    });
+
+    it("survives highlight text-node splitting and the highlighter's delayed layout", async () => {
+      const { pane, ranges, repoState, moveDocument } = readingPage();
+      try {
+        pane.scrollTop = 300;
+        fireEvent.click(screen.getByRole("button", { name: "Review" }));
+        const paragraph = pane.querySelector(".prose p")!;
+        paragraph.replaceChildren(
+          document.createTextNode(mockReadingText.slice(0, 200)),
+          Object.assign(document.createElement("mark"), {
+            textContent: mockReadingText.slice(200),
+          }),
+        );
+        const badge = document.createElement("span");
+        badge.setAttribute("data-review-inline-comment", "fixture");
+        badge.textContent = "Injected review text is not the document";
+        paragraph.append(badge);
+        moveDocument(280);
+        await act(async () => {
+          await new Promise<void>((resolve) =>
+            requestAnimationFrame(() => resolve()),
+          );
+        });
+        expect(pane.scrollTop).toBe(580);
+        paragraph.normalize();
+      } finally {
+        ranges.mockRestore();
+        repoState.mockRestore();
+      }
+    });
+
+    it("does not undo a wheel scroll during the two settling frames", async () => {
+      const { pane, ranges, repoState } = readingPage();
+      try {
+        pane.scrollTop = 300;
+        fireEvent.click(screen.getByRole("button", { name: "Review" }));
+        fireEvent.wheel(pane, { deltaY: 200 });
+        pane.scrollTop = 700;
+        await act(async () => {
+          await new Promise<void>((resolve) =>
+            requestAnimationFrame(() => resolve()),
+          );
+          await new Promise<void>((resolve) =>
+            requestAnimationFrame(() => resolve()),
+          );
+        });
+        expect(pane.scrollTop).toBe(700);
+        expect(pane.style.overflowAnchor).toBe("");
+        expect(pane.style.scrollBehavior).toBe("");
+      } finally {
+        ranges.mockRestore();
+        repoState.mockRestore();
+      }
+    });
+
+    it("abandons the captured point if the document text changes during settling", async () => {
+      const { pane, ranges, repoState } = readingPage();
+      try {
+        pane.scrollTop = 300;
+        fireEvent.click(screen.getByRole("button", { name: "Review" }));
+        pane.querySelector(".prose p")!.textContent =
+          "A different document, not the captured paragraph.";
+        pane.scrollTop = 650;
+        await act(async () => {
+          await new Promise<void>((resolve) =>
+            requestAnimationFrame(() => resolve()),
+          );
+        });
+        expect(pane.scrollTop).toBe(650);
+        expect(pane.style.overflowAnchor).toBe("");
+      } finally {
+        ranges.mockRestore();
+        repoState.mockRestore();
+      }
+    });
+
+    it("releases the transient scroll styles on unmount", () => {
+      const { pane, ranges, repoState, page } = readingPage();
+      try {
+        pane.scrollTop = 300;
+        pane.style.scrollBehavior = "smooth";
+        pane.style.overflowAnchor = "auto";
+        fireEvent.click(screen.getByRole("button", { name: "Review" }));
+        expect(pane.style.scrollBehavior).toBe("auto");
+        expect(pane.style.overflowAnchor).toBe("none");
+        page.unmount();
+        expect(pane.style.scrollBehavior).toBe("smooth");
+        expect(pane.style.overflowAnchor).toBe("auto");
+      } finally {
+        ranges.mockRestore();
+        repoState.mockRestore();
+      }
+    });
+
+    it("takes the current reading position after an asynchronous exit finishes", async () => {
+      const { pane, ranges, repoState } = readingPage(true);
+      let release!: (value: never) => void;
+      const remove = vi.spyOn(axios, "delete").mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            release = resolve;
+          }),
+      );
+      try {
+        pane.scrollTop = 500;
+        fireEvent.click(screen.getByRole("button", { name: "Review" }));
+        // The reader moves while DELETE is in flight. Capturing only at
+        // the click would put them back at an obsolete reading position.
+        pane.scrollTop = 700;
+        await act(async () => release({ data: null } as never));
+        expect(useReviewStore.getState().isReviewMode).toBe(false);
+        expect(pane.scrollTop).toBe(400);
+      } finally {
+        remove.mockRestore();
+        ranges.mockRestore();
+        repoState.mockRestore();
       }
     });
   });
