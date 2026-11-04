@@ -84,6 +84,22 @@ func TestReviewCommentCreateCapturesBlockAndBroadcasts(t *testing.T) {
 	require.Equal(t, []string{"|a.md"}, e.changed)
 }
 
+func TestReviewCommentCreateKeepsQuestionIDThroughEdit(t *testing.T) {
+	e := newCmdEnv(t)
+	writeFile(t, e.dir, "a.md", cmdDoc)
+	body := `{"id":"c1","comment":"x","question_id":"OQ-7","created_at":1}`
+	w := e.do(e.h.ReviewCommentCreate, http.MethodPost, "/review/comments?path=a.md", body, true)
+	require.Equal(t, http.StatusOK, w.Code)
+	// A retried create is an edit; it must not recapture the question.
+	body = `{"id":"c1","comment":"y","question_id":"OQ-8","created_at":1}`
+	w = e.do(e.h.ReviewCommentCreate, http.MethodPost, "/review/comments?path=a.md", body, true)
+	require.Equal(t, http.StatusOK, w.Code)
+	stored, err := e.h.deps.Reviews.Get("a.md", "")
+	require.NoError(t, err)
+	require.Equal(t, "OQ-7", stored.Comments[0].QuestionID)
+	require.Equal(t, "y", stored.Comments[0].Comment)
+}
+
 func TestReviewCommentCreateMissingDocTolerated(t *testing.T) {
 	e := newCmdEnv(t)
 	// No a.md on disk: capture degrades to "" but the command succeeds.

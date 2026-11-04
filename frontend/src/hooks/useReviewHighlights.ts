@@ -2,10 +2,8 @@ import { useEffect, type RefObject } from "react";
 import type { ReviewComment } from "../types";
 import { renderCommentMarkdown } from "../lib/commentMarkdown";
 import {
-  NEIGHBOR_RADIUS,
-  blockAtLine,
+  resolveCommentBlock,
   commentCardHost,
-  findHashNeighbor,
   indexBlocks,
   rangeFromCanonicalOffsets,
 } from "../lib/reviewAnchor";
@@ -24,6 +22,11 @@ import {
   latestAgentReaction,
   useReviewStore,
 } from "../stores/useReviewStore";
+import {
+  documentQuestions,
+  questionUnitBlocks,
+  type DocumentQuestion,
+} from "./useOpenQuestionButtons";
 
 const MARK_ATTR = "data-review-comment-id";
 /** Marks a thread entry with the id of the reviewer's reply it shows. */
@@ -255,6 +258,10 @@ function rebuildLayer(
     // can do synchronous lookups.  Skips containers we never anchor on.
     const blocks = indexBlocks(el);
 
+    // Lazily built on the first bound comment (question_id). Null until then.
+    let boundQuestionsByUnit: Map<HTMLElement, DocumentQuestion> | null = null;
+    let boundAllQuestions: DocumentQuestion[] | null = null;
+
     for (const comment of active) {
       const anchor = comment.anchor;
       if (!anchor) {
@@ -271,51 +278,11 @@ function rebuildLayer(
         continue;
       }
 
-      let block = blockAtLine(
-        blocks,
-        anchor.source_line,
-        anchor.block_text_hash,
-      );
-      let divergent = false;
-      let matchedByHash = false;
-
-      if (block) {
-        const currentHash = block.getAttribute("data-block-hash") || "";
-        if (currentHash === anchor.block_text_hash) {
-          matchedByHash = true;
-        } else {
-          divergent = true;
-          console.warn(
-            "[review] comment %s: hash mismatch at line %d. anchor=%s current=%s",
-            comment.id.slice(0, 8),
-            anchor.source_line,
-            anchor.block_text_hash,
-            currentHash,
-          );
-        }
-      } else {
-        console.warn(
-          "[review] comment %s: no block found at source_line=%d (blocksByLine has %d lines)",
-          comment.id.slice(0, 8),
-          anchor.source_line,
-          blocks.byLine.size,
-        );
-      }
-
-      if (!block || (divergent && !matchedByHash)) {
-        // Hash didn't match at the recorded line — try neighbor walk.
-        const neighbor = findHashNeighbor(
-          blocks,
-          anchor.block_text_hash,
-          anchor.source_line,
-          NEIGHBOR_RADIUS,
-        );
-        if (neighbor) {
-          block = neighbor;
-          divergent = false;
-          matchedByHash = true;
-        }
-      }
+      // Only a block whose hash agrees is the comment's block: a different
+      // block at the same line is other text, and tinting it would put the
+      // comment on words it was never about. Unmatched comments take the
+      // outdated path below.
+      const block = resolveCommentBlock(blocks, anchor);
 
       if (!block) {
         // No block at line, no hash neighbor — outdated. The commented text is
@@ -336,7 +303,61 @@ function rebuildLayer(
         continue;
       }
 
-      if (matchedByHash && anchor.selection_length > 0) {
+      // Seam 2: a bound comment (question_id) must only be painted on a block
+      // inside the one question in the DOM with that id.  If the hash matched a
+      // block in another question's unit (e.g., B moved to A's old line), the
+      // comment is outdated rather than credited to the wrong question.
+      if (comment.question_id) {
+        // Lazily built on the first bound comment we encounter.
+        if (boundQuestionsByUnit === null) {
+          boundQuestionsByUnit = new Map<HTMLElement, DocumentQuestion>();
+          const allQ = documentQuestions(el);
+          for (const q of allQ) {
+            for (const b of questionUnitBlocks(q.stamped, el, allQ)) {
+              if (!boundQuestionsByUnit.has(b)) boundQuestionsByUnit.set(b, q);
+            }
+          }
+          boundAllQuestions = allQ;
+        }
+        // Find the unique question in the DOM with this id.
+        const named = (boundAllQuestions ?? []).filter(
+          (q) => q.stamped.id === comment.question_id,
+        );
+        if (named.length !== 1) {
+          // id absent or duplicated in DOM — outdated, not credited to any
+          // question.
+          drifted.add(comment.id);
+          insertOutdatedComment(
+            el,
+            comment,
+            actions,
+            findClosestPriorBlock(blocks.byLine, anchor.source_line),
+          );
+          continue;
+        }
+        // Walk up from the resolved block to find which question's unit owns it.
+        let ownerQ: DocumentQuestion | undefined;
+        for (
+          let n: HTMLElement | null = block;
+          n !== null && n !== el;
+          n = n.parentElement as HTMLElement | null
+        ) {
+          ownerQ = boundQuestionsByUnit.get(n);
+          if (ownerQ !== undefined) break;
+        }
+        if (ownerQ !== named[0]) {
+          // Resolved block is in a different question's unit (or no unit).
+          drifted.add(comment.id);
+          insertOutdatedComment(
+            el,
+            comment,
+            actions,
+            findClosestPriorBlock(blocks.byLine, anchor.source_line),
+          );
+          continue;
+        }
+      }
+      if (anchor.selection_length > 0) {
         const range = rangeFromCanonicalOffsets(
           block,
           anchor.selection_offset,
@@ -358,18 +379,9 @@ function rebuildLayer(
         } else {
           block.classList.add("review-highlight-block");
         }
-      } else if (matchedByHash) {
+      } else {
         // Whole-block anchor (no substring).
         block.classList.add("review-highlight-block");
-      } else if (divergent) {
-        // Same line, different content (Q8: faint, no substring re-find). The
-        // text the reviewer commented on has been rewritten in place — drift.
-        //
-        // Note the neighbor walk above clears `divergent` when it finds the
-        // original text a few lines away: a block that only *moved* still says
-        // what the comment is about, so that is not drift.
-        drifted.add(comment.id);
-        block.classList.add("review-highlight-block-divergent");
       }
 
       // An unresolved comment inside a collapsed section opens it. The card is
@@ -384,7 +396,7 @@ function rebuildLayer(
       // not survive the next store write, which re-runs this pass: an open
       // section is the recoverable state, an invisible comment is not.
       revealCollapsedBlock(block);
-      insertInlineCommentAfter(block, comment, actions, divergent);
+      insertInlineCommentAfter(block, comment, actions);
     }
 
     reportDrift();
@@ -433,9 +445,8 @@ function insertInlineCommentAfter(
   blockEl: HTMLElement,
   comment: ReviewComment,
   actions: InlineReviewActions,
-  divergent: boolean,
 ) {
-  const wrapper = createCommentBlock(comment, actions, divergent);
+  const wrapper = createCommentBlock(comment, actions);
   const host = commentCardHost(blockEl);
   joinToneRun(host, wrapper);
   if (host.nextSibling) {
@@ -548,13 +559,10 @@ function statusBadgeHtml(comment: ReviewComment): string {
 function createCommentBlock(
   comment: ReviewComment,
   actions: InlineReviewActions,
-  divergent: boolean,
 ): HTMLElement {
   const wrapper = document.createElement("div");
   wrapper.setAttribute(INLINE_COMMENT_ATTR, comment.id);
-  wrapper.className = divergent
-    ? "review-inline-comment review-inline-comment--divergent"
-    : "review-inline-comment";
+  wrapper.className = "review-inline-comment";
 
   wrapper.innerHTML = `
     <div class="review-inline-comment-body">
@@ -617,7 +625,11 @@ function createOutdatedBlock(
   `;
   const quoteEl = wrapper.querySelector(".review-outdated-quote");
   if (quoteEl)
-    quoteEl.textContent = comment.fallback_text || comment.selected_text || "";
+    quoteEl.textContent =
+      comment.fallback_text ||
+      comment.selected_text ||
+      comment.captured_block ||
+      "";
   const textEl = wrapper.querySelector(".review-inline-comment-text");
   if (textEl) textEl.innerHTML = renderCommentMarkdown(comment.comment);
 
@@ -844,7 +856,7 @@ function insertResolvedSection(
   list.className = "review-resolved-list";
   if (!resolvedSectionOpen) list.style.display = "none";
   for (const comment of resolved) {
-    const block = createCommentBlock(comment, actions, false);
+    const block = createCommentBlock(comment, actions);
     block.classList.add("review-inline-comment--resolved");
     list.appendChild(block);
   }

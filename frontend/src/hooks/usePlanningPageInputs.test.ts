@@ -192,6 +192,7 @@ describe("one set of inputs", () => {
               comments: [
                 {
                   id: "c1",
+                  question_id: a1.id,
                   comment: "Yes.",
                   created_at: 0,
                   reactions: [],

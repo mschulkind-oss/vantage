@@ -1,13 +1,13 @@
 ---
 title: "Always-on review for planning questions — and a way to actually delete an answer"
 status: in-review
-stage: DESIGN
+stage: DECIDED
 next: "Map the card headline and leaning to source blocks (plan S4) so their selections anchor; build Escape/× Restore/Discard per planning-question-state §7"
 ---
 
 # Always-on review for planning questions — and a way to actually delete an answer
 
-**Status:** 2026-11-03. Partially built: D2 ships (the deletion record on the server, and an explicit whole-thread Delete on the card's answer rows), and D1 ships for the question's body: a settled selection, made with the mouse or the keyboard, offers **Comment on selection**. A selection in the headline or the leaning aside only offers **Open document**, because the card's headline element is not the document's block and no anchor is fabricated for it. Escape/× Restore/Discard ([`OQ-PRA1`](#decision-ledger)) is not built: it needs the session-restoration protocol. Code evidence verified against `b93e0dc0` on 2026-11-03; the planning card, popover, autosave controller, store and backend delete command are cited as shipped behavior. The three owner directions are the ledger rows; every other decision here is a recommendation awaiting the owner's review.
+**Status:** 2026-11-03. Partially built: D2 ships (the deletion record on the server, and an explicit whole-thread Delete on the card's answer rows), and D1 ships for the question's body: a settled selection, made with the mouse or the keyboard, offers **Comment on selection**. A selection in the headline or the leaning aside only offers **Open document**, because the card's headline element is not the document's block and no anchor is fabricated for it. Escape/× Restore/Discard ([`OQ-PRA1`](#decision-ledger)) is not built: it needs the session-restoration protocol. Comments filed from a card carry the optional `question_id` of the question's directive (whole answer, Take and body selection alike), and the in-page Take and Answer… send it when the painted document proves exactly one question with that id; a generic selection stays unbound. A bound comment is painted, counted and quoted only on its own question (see [`planning-question-state.md`](planning-question-state.md)); Copy answers omits the current-line context of a bound comment rather than quote text that may have moved. Still unbuilt: the server validation bridge, migration or manual reattach of older comments, an unplaced-comments surface, Apply versus Reload, lifecycle label refinements, and session restore; recapturing a block for a still-valid owner is backlog, not part of this change. The pre-change behavior was inspected at `b93e0dc0`; permanent regression tests now cover the implemented selection, deletion and ownership changes. The owner's cancellation direction is settled in the ledger; its safe server-held implementation remains work for the agent.
 
 > **In short.** The planning card gets a *scoped* selection-to-comment capability (reusing the viewer's anchor algorithm, not its review mode), and an answer gets a real **Delete**. Escape and × offer to undo the editing session: delete a new answer or restore an existing answer to its opening text; every other way of leaving keeps the text — and keeping is never a trap, because every kept answer can be deleted afterwards.
 
@@ -17,7 +17,7 @@ next: "Map the card headline and leaning to source blocks (plan S4) so their sel
 
 **Start at [Actions](#actions-what-each-way-of-leaving-does)** — the behavior table; [Ordering, failure and recovery](#ordering-failure-and-recovery) makes explicit deletion safe, and [session restoration](planning-question-state.md#7-restoring-an-editing-session) governs cancellation.
 
-**Needs your ruling:** None filed; the linked restoration contract is a recommendation awaiting review, not implemented behavior.
+**Needs your ruling:** None. Cancellation behavior is settled; implementing its server-held restoration contract remains agent work.
 
 **Reads with:** [Planning question state](planning-question-state.md) (question ownership, factual lifecycle labels, update actions and the governing session-restoration contract), [`comment-autosave.md`](../reference/comment-autosave.md) (shipped keep/flush semantics this builds on), [`planning-index.md`](../reference/planning-index.md) (cards and stable paint), [`planning.md`](../../userguide/guides/planning.md) ("a comment on a question is your answer"), [`answer-publication.md`](answer-publication.md) (independent proposal; not a prerequisite and not assumed).
 

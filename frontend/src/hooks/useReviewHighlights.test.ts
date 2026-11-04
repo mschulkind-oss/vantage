@@ -236,6 +236,62 @@ describe("useReviewHighlights — inline Copy", () => {
 });
 
 describe("useReviewHighlights — outdated comments", () => {
+  it("shows a comment whose block was replaced as outdated, tinting the new text of that line nowhere", () => {
+    // Line 5 now holds other text than the hash the comment was filed on.
+    renderInline([
+      baseComment({
+        anchor: {
+          source_line: 5,
+          block_text_hash: "deadbeef",
+          selection_offset: 0,
+          selection_length: 0,
+        },
+      }),
+    ]);
+
+    expect(
+      blockFor("c1")!.classList.contains("review-inline-comment--outdated"),
+    ).toBe(true);
+    expect(container.querySelector(".review-highlight-block")).toBeNull();
+    expect(
+      container.querySelector(".review-highlight-block-divergent"),
+    ).toBeNull();
+    expect(useReviewStore.getState().commentsDrifted).toBe(true);
+  });
+
+  it("shows a comment as outdated, with its original quote, when its text now repeats", () => {
+    // The hash agrees at the old line and at another: an identical block may
+    // have taken the commented one's place, so nothing is tinted and the card
+    // keeps the quote the comment was written on.
+    container.innerHTML = `
+      <p data-source-line="1">Choose option A</p>
+      <p data-source-line="35">Choose option A</p>
+    `;
+    const hash = hashBlockText(blockVisibleText(container.querySelector("p")!));
+    renderInline([
+      baseComment({
+        fallback_text: undefined,
+        captured_block: "choose option a",
+        anchor: {
+          source_line: 1,
+          block_text_hash: hash,
+          selection_offset: 0,
+          selection_length: 0,
+        },
+      }),
+    ]);
+
+    const card = blockFor("c1")!;
+    expect(card.classList.contains("review-inline-comment--outdated")).toBe(
+      true,
+    );
+    expect(container.querySelector(".review-highlight-block")).toBeNull();
+    expect(card.querySelector(".review-outdated-quote")!.textContent).toBe(
+      "choose option a",
+    );
+    expect(card.textContent).toContain("please change this");
+  });
+
   it("offers Edit and Delete on a comment whose block is gone", () => {
     const comment = baseComment({ anchor: orphanAnchor });
     renderInline([comment]);
@@ -1007,9 +1063,9 @@ describe("useReviewHighlights — a comment card inside a toned section", () => 
 
 describe("useReviewHighlights — comments on table cells", () => {
   /**
-   * Two rows whose cells share their row's line, and a duplicate ("120ms" twice
-   * in one column, on different rows) so the hash lookup has to pick between
-   * candidates rather than merely find one.
+   * Two rows whose cells share their row's line. Their cells differ ("120ms"
+   * and "95ms" in one column), so each cell's hash picks exactly one candidate
+   * rather than merely finding one; a repeated hash is rejected, not guessed.
    */
   const TABLE_DOC = `
     <p data-source-line="1">Before the table.</p>
@@ -1022,7 +1078,7 @@ describe("useReviewHighlights — comments on table cells", () => {
           <td data-source-line="5">whisper.cpp</td><td data-source-line="5">120ms</td>
         </tr>
         <tr data-source-line="6">
-          <td data-source-line="6">faster-whisper</td><td data-source-line="6">120ms</td>
+          <td data-source-line="6">faster-whisper</td><td data-source-line="6">95ms</td>
         </tr>
       </tbody>
     </table>
@@ -1175,5 +1231,101 @@ describe("useReviewHighlights — a selection spanning a link", () => {
     );
     expect(hashBlockText(blockVisibleText(block))).toBe(anchor.block_text_hash);
     expect(container.querySelector("mark a")).not.toBeNull();
+  });
+});
+
+// Seam 2: a comment bound to a named question (question_id) must only be
+// painted on a block inside that question's DOM unit. If the hash matches a
+// block in a different question's unit (because A moved away and B now holds
+// A's old text at A's old line), the comment must be outdated — not painted
+// on B.
+describe("useReviewHighlights — bound comment question_id scope", () => {
+  /**
+   * A document after A moved to line 35 and changed its text; B (OQ-B) now
+   * sits at line 10 holding the same text A had when the comment was filed.
+   */
+  const AFTER_DOC = `
+    <p data-source-line="10" data-vantage-question="true" id="OQ-B">Choose option A</p>
+    <p data-source-line="20">Some body text.</p>
+    <p data-source-line="35" data-vantage-question="true" id="OQ-A">Choose option C</p>
+  `;
+
+  /** Anchor as it was created before A moved: hash of "Choose option A" at line 10. */
+  const anchorOldA = (): CommentAnchor => {
+    const p = document.createElement("p");
+    p.textContent = "Choose option A";
+    return {
+      source_line: 10,
+      block_text_hash: hashBlockText(blockVisibleText(p)),
+      selection_offset: 0,
+      selection_length: 0,
+    };
+  };
+
+  beforeEach(() => {
+    container.innerHTML = AFTER_DOC;
+  });
+
+  it("does not paint B when a bound comment's hash matches B's current text", () => {
+    // Without the seam-2 fix, resolveCommentBlock would return B's block
+    // (its hash matches the anchor) and the comment would highlight B.
+    const comment = baseComment({ anchor: anchorOldA(), question_id: "OQ-A" });
+    renderInline([comment]);
+
+    const bBlock = container.querySelector<HTMLElement>(
+      'p[data-source-line="10"]',
+    )!;
+    expect(bBlock.classList.contains("review-highlight-block")).toBe(false);
+    expect(
+      blockFor("c1")!.classList.contains("review-inline-comment--outdated"),
+    ).toBe(true);
+  });
+
+  it("paints the comment normally when the resolved block IS inside its question's unit", () => {
+    // A comment filed on OQ-B (line 10) should still paint on B's block.
+    const comment = baseComment({ anchor: anchorOldA(), question_id: "OQ-B" });
+    renderInline([comment]);
+
+    const bBlock = container.querySelector<HTMLElement>(
+      'p[data-source-line="10"]',
+    )!;
+    expect(bBlock.classList.contains("review-highlight-block")).toBe(true);
+    expect(
+      blockFor("c1")!.classList.contains("review-inline-comment--outdated"),
+    ).toBe(false);
+  });
+
+  it("is outdated when the question_id is not present in the DOM", () => {
+    const comment = baseComment({
+      anchor: anchorOldA(),
+      question_id: "OQ-MISSING",
+    });
+    renderInline([comment]);
+
+    const bBlock = container.querySelector<HTMLElement>(
+      'p[data-source-line="10"]',
+    )!;
+    expect(bBlock.classList.contains("review-highlight-block")).toBe(false);
+    expect(
+      blockFor("c1")!.classList.contains("review-inline-comment--outdated"),
+    ).toBe(true);
+  });
+
+  it("is outdated when two DOM questions share the same id (duplicate)", () => {
+    // Both questions carry OQ-A: no unique owner.
+    container.innerHTML = `
+      <p data-source-line="10" data-vantage-question="true" id="OQ-A">Choose option A</p>
+      <p data-source-line="35" data-vantage-question="true" id="OQ-A">Choose option C</p>
+    `;
+    const comment = baseComment({ anchor: anchorOldA(), question_id: "OQ-A" });
+    renderInline([comment]);
+
+    const bBlock = container.querySelector<HTMLElement>(
+      'p[data-source-line="10"]',
+    )!;
+    expect(bBlock.classList.contains("review-highlight-block")).toBe(false);
+    expect(
+      blockFor("c1")!.classList.contains("review-inline-comment--outdated"),
+    ).toBe(true);
   });
 });

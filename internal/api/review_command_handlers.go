@@ -97,6 +97,7 @@ func (h *Handlers) ReviewCommentCreate(w http.ResponseWriter, r *http.Request) {
 		Comment      string               `json:"comment"`
 		Anchor       *model.CommentAnchor `json:"anchor"`
 		FallbackText string               `json:"fallback_text"`
+		QuestionID   string               `json:"question_id"`
 		CreatedAt    float64              `json:"created_at"`
 	}
 	if !decodeBody(w, r, &req) {
@@ -109,6 +110,7 @@ func (h *Handlers) ReviewCommentCreate(w http.ResponseWriter, r *http.Request) {
 	c := model.NewReviewComment(req.ID, req.Comment, req.CreatedAt)
 	c.Anchor = req.Anchor
 	c.FallbackText = req.FallbackText
+	c.QuestionID = req.QuestionID
 	data, err := h.deps.Reviews.AddComment(path, svc.Repo, c, currentDocContent(svc, path))
 	h.writeCommandResult(w, svc.Repo, path, data, err)
 }

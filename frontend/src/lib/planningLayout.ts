@@ -29,7 +29,7 @@ import type { ReviewComment } from "../types";
 import { planningCardId } from "./planningCardId";
 import { questionKey } from "./planningAnswers";
 import {
-  placeComment,
+  ownerOfComment,
   type MaintenanceKind,
   type PlanningLayout,
   type QuestionEntry,
@@ -202,13 +202,14 @@ export function viewNeedsYou(
 }
 
 /**
- * Every comment of `byPath` on one of `questions`, by `questionKey`, placed by
- * its anchor's line as Copy answers places a comment with no card's report
- * (`placeComment`, the innermost unit winning).
+ * Every comment of `byPath` on one of `questions`, by `questionKey`, owned as
+ * Copy answers owns a comment with no card's report (`ownerOfComment`); a
+ * comment with no owner is in none.
  */
 export function commentsByQuestion(
   questions: readonly PlanningQuestion[],
   byPath: Readonly<Record<string, readonly ReviewComment[]>>,
+  allByPath?: Readonly<Record<string, readonly PlanningQuestion[]>>,
 ): Map<string, ReviewComment[]> {
   const byDocument = new Map<string, PlanningQuestion[]>();
   for (const question of questions) {
@@ -219,8 +220,7 @@ export function commentsByQuestion(
   const out = new Map<string, ReviewComment[]>();
   for (const [path, listed] of byDocument) {
     for (const comment of byPath[path] ?? []) {
-      const line = comment.anchor?.source_line;
-      const placed = line ? placeComment(listed, line) : undefined;
+      const placed = ownerOfComment(listed, comment, allByPath?.[path]);
       if (placed === undefined) continue;
       const key = questionKey(placed);
       const list = out.get(key);

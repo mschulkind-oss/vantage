@@ -282,6 +282,10 @@ type ReviewComment struct {
 	// Anchor is omitted while a legacy comment has not yet acquired one.
 	Anchor       *CommentAnchor `json:"anchor,omitempty"`
 	FallbackText string         `json:"fallback_text,omitempty"`
+	// QuestionID is the directive id of the planning question the comment was
+	// filed on, set once at creation and never recaptured on edit. It lets a
+	// listed question own the comment without its line, which moves.
+	QuestionID string `json:"question_id,omitempty"`
 	// CapturedBlock is the canonicalized text of the anchored block at the
 	// moment the comment was created or last replied-to/reopened — the text the
 	// reviewer was actually looking at. Written server-side only; it becomes an

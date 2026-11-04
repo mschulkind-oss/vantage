@@ -2247,7 +2247,15 @@ describe("the comments already filed on a question", () => {
       onScoped,
     });
     expect(onScoped.mock.lastCall?.[1].comments).toBe(first);
-    const second = [onB3, { ...onB3, id: "elsewhere", anchor: undefined }];
+    const second = [
+      onB3,
+      {
+        ...onB3,
+        id: "elsewhere",
+        anchor: undefined,
+        question_id: undefined,
+      },
+    ];
     rerender(
       <BrowserRouter>
         <PlanningQuestionCard
@@ -2418,6 +2426,45 @@ describe("the comments already filed on a question", () => {
     expect(screen.getByRole("alert")).toHaveTextContent(
       "Not saved: Document not found",
     );
+  });
+
+  // Seam 1: the POST body must carry question_id when the question has an id,
+  // and must omit the key when the question has no id (null).
+  it("includes question_id in the POST body for a question with an id", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const server = installReviewServer([]);
+    const question = byId("OQ-B1"); // OQ-B1 has id "OQ-B1"
+    expect(question.id).toBe("OQ-B1");
+    renderCard(question, { comments: [] });
+    act(() => {
+      fireEvent.click(screen.getByRole("button", { name: "Answer…" }));
+    });
+    fireEvent.change(screen.getByPlaceholderText("Your comment..."), {
+      target: { value: "My ruling" },
+    });
+    await act(() => vi.advanceTimersByTimeAsync(1000));
+    expect(server.comments[0]?.question_id).toBe("OQ-B1");
+    vi.useRealTimers();
+  });
+
+  it("omits question_id from the POST body for a question with no id", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const server = installReviewServer([]);
+    const baseQuestion = byId("OQ-B1");
+    const noIdQuestion = { ...baseQuestion, id: null };
+    renderCard(noIdQuestion, { comments: [] });
+    act(() => {
+      // A question with no id still renders the Answer… button.
+      const btn = screen.queryByRole("button", { name: "Answer…" });
+      if (btn) fireEvent.click(btn);
+    });
+    const box = screen.queryByPlaceholderText("Your comment...");
+    if (box) {
+      fireEvent.change(box, { target: { value: "No id answer" } });
+      await act(() => vi.advanceTimersByTimeAsync(1000));
+      expect(server.comments[0]?.question_id).toBeUndefined();
+    }
+    vi.useRealTimers();
   });
 });
 

@@ -60,6 +60,7 @@ import { mermaidFences, prerenderMermaid } from "vantage-md/react";
 import {
   chooseRoadmap,
   layoutPlanningPage,
+  allQuestionsByPath,
   listedQuestions,
   readPageSize,
   readRememberedRoadmap,
@@ -354,6 +355,8 @@ async function gather(
     listedQuestions(ready.index, sectionsOf(ready.index, layout.roadmap)),
     planningReviewsOf(repo),
     {},
+    undefined,
+    allQuestionsByPath(ready.index),
   ).answered;
   for (;;) {
     const needing = entries

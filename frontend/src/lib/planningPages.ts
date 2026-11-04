@@ -27,6 +27,7 @@
  * Pure functions of the index and the limits module, so the page, its inputs
  * and the viewer's prefetch lay a page out identically.
  */
+import type { ReviewComment } from "../types";
 import {
   PLANNING_FILTER_PARAM,
   PLANNING_ROADMAP_PARAM,
@@ -723,27 +724,47 @@ export function listedDocuments(
 }
 
 /**
- * The listed question a comment anchored on file line `line` sits on, for a
- * card that has not been rendered (`planning-index.md` §6.7,
- * *placement*): the innermost of `questions` whose unit, `unitLine` to
- * `unitEndLine`, holds the line, or `undefined` when none does. Exact unless
- * the comment's block has moved since it was filed.
+ * Every question each document of `index` declares, by path, listed or not:
+ * the universe a repeated directive id is judged against
+ * (`ownerOfComment`), so a duplicate whose twin is filtered out or unlisted
+ * still credits neither.
  */
-export function placeComment(
+export function allQuestionsByPath(
+  index: PlanningIndex,
+): Record<string, readonly PlanningQuestion[]> {
+  const out: Record<string, readonly PlanningQuestion[]> = {};
+  for (const doc of index.documents) out[doc.path] = doc.questions;
+  return out;
+}
+
+/**
+ * The listed question that owns an unrendered comment: the one whose directive
+ * id the comment was filed under (`question_id`), provided exactly one of
+ * `questions` — one document's — has it. `undefined` for a comment filed
+ * without an id, or whose id is missing or repeated. A line never decides this:
+ * a question's text can be replaced or reordered, and the line then names
+ * whatever now sits there.
+ *
+ * @param all - Optional: every raw question in the document (from the planning
+ *   index). When provided, uniqueness is checked there too: if two questions
+ *   anywhere in the document share the id, no credit is given even if only one
+ *   is listed. A guard: the index scanner currently resolves a repeated id to
+ *   its first occurrence (design §3.3), so it does not yet change page counts.
+ */
+export function ownerOfComment(
   questions: readonly PlanningQuestion[],
-  line: number,
+  comment: ReviewComment,
+  all?: readonly PlanningQuestion[],
 ): PlanningQuestion | undefined {
-  let best: PlanningQuestion | undefined;
-  for (const question of questions) {
-    if (line < question.unitLine || line > question.unitEndLine) continue;
-    if (
-      best === undefined ||
-      question.unitLine > best.unitLine ||
-      (question.unitLine === best.unitLine &&
-        question.unitEndLine < best.unitEndLine)
-    ) {
-      best = question;
-    }
+  const id = comment.question_id;
+  if (!id) return undefined;
+  // If the full document question list is provided, check uniqueness there
+  // first. A repeated id anywhere in the document means the binding is
+  // ambiguous, even if only one of the holders is listed.
+  if (all !== undefined) {
+    const allNamed = all.filter((q) => q.id === id);
+    if (allNamed.length !== 1) return undefined;
   }
-  return best;
+  const named = questions.filter((question) => question.id === id);
+  return named.length === 1 ? named[0] : undefined;
 }

@@ -1515,6 +1515,16 @@ export function scanPlanningDocument(
   );
 
   const first = firstOqIds(root);
+  // An id claimed by more than one distinct question run is ambiguous: no run
+  // holds it, rather than the first (§3.3). Runs are told apart by their
+  // comments, so a `question` and the `oq` beside it count once.
+  const claims = new Map<string, Set<string>>();
+  state.rawIds.forEach((raw, index) => {
+    if (raw === undefined) return;
+    const runs = claims.get(raw) ?? new Set<string>();
+    runs.add((state.runKeys[index] ?? []).join("|") || `#${index}`);
+    claims.set(raw, runs);
+  });
   const questions: PlanningQuestion[] = state.questions.map((q, index) => {
     const raw = state.rawIds[index];
     const key = state.idKeys[index];
@@ -1526,6 +1536,7 @@ export function scanPlanningDocument(
       raw !== undefined &&
       key !== undefined &&
       declaredBy !== undefined &&
+      (claims.get(raw)?.size ?? 0) <= 1 &&
       (state.runKeys[index] ?? []).includes(declaredBy)
         ? raw
         : null;

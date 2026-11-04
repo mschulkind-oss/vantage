@@ -15,7 +15,12 @@ import {
   questionKey,
 } from "./planningAnswers";
 import { needYouDocuments } from "../hooks/usePlanningPageInputs";
-import { listedQuestions, sectionsOf, understoodFilter } from "./planningPages";
+import {
+  allQuestionsByPath,
+  listedQuestions,
+  sectionsOf,
+  understoodFilter,
+} from "./planningPages";
 import { filterFormsIndex, indexOf, questionDirective } from "../test/planning";
 import type { ReviewComment } from "../types";
 
@@ -54,12 +59,19 @@ const byId = (id: string): PlanningQuestion =>
 
 let ids = 0;
 /** A comment on the line `line` of `question`'s document. */
-function on(line: number, patch: Partial<ReviewComment> = {}): ReviewComment {
+function on(
+  target: number | PlanningQuestion,
+  patch: Partial<ReviewComment> = {},
+): ReviewComment {
+  const line = typeof target === "number" ? target : target.unitLine;
   return {
     id: `c${++ids}`,
     comment: "An answer.",
     created_at: 0,
     reactions: [],
+    ...(typeof target === "number"
+      ? {}
+      : { question_id: target.id ?? undefined }),
     anchor: {
       source_line: line,
       block_text_hash: "00000000",
@@ -82,8 +94,8 @@ const agentReply = {
 describe("pendingAnswers", () => {
   it("answers the question whose unit holds a pending comment's line, from its title down", () => {
     const a1 = byId("OQ-A1");
-    const title = on(a1.unitLine);
-    const leaning = on(a1.line);
+    const title = on(a1);
+    const leaning = on(a1);
     const { groups, answered } = pendingAnswers(
       listed,
       { "a.md": [title, leaning] },
@@ -99,8 +111,8 @@ describe("pendingAnswers", () => {
       listed,
       {
         "a.md": [
-          on(a1.unitLine, { reactions: [agentReply] }),
-          on(a1.unitLine, { resolved: true }),
+          on(a1, { reactions: [agentReply] }),
+          on(a1, { resolved: true }),
         ],
       },
       {},
@@ -114,10 +126,96 @@ describe("pendingAnswers", () => {
     expect(answered.size).toBe(0);
   });
 
+  it("owns a stale-line comment to no question, and counts it unplaced", () => {
+    const a1 = byId("OQ-A1");
+    const stale = on(a1.unitLine);
+    const { groups, answered, unplaced } = pendingAnswers(
+      listed,
+      { "a.md": [stale] },
+      {},
+    );
+    expect(groups).toEqual([]);
+    expect(answered.size).toBe(0);
+    expect(unplaced).toBe(1);
+  });
+
+  // Seam 3: when `allByPath` supplies the full document question list and two
+  // questions share an id, no comment bound to that id is credited even when
+  // only one of the duplicates is listed.  The comment is counted `unplaced`
+  // and preserved, never silently lost.
+  it("counts a bound comment unplaced when two questions share its id in the document", () => {
+    const a1 = byId("OQ-A1");
+    const comment = on(a1);
+    const byPath = { "a.md": [comment] };
+    // Simulate a document index that has two OQ-A1 questions (a duplicate id).
+    // `listed` still has exactly one, so without `allByPath` it would be credited.
+    const dupA1 = { ...a1 };
+    const allByPath = { "a.md": [a1, dupA1] as typeof listed };
+    const result = pendingAnswers(listed, byPath, {}, undefined, allByPath);
+    expect(result.unplaced).toBe(1);
+    expect([...result.answered]).toEqual([]);
+    // Without allByPath the same comment IS credited (demonstrating the regression).
+    const withoutAll = pendingAnswers(listed, byPath, {});
+    expect([...withoutAll.answered]).toContain(questionKey(a1));
+  });
+
+  // The pages build the universe with `allQuestionsByPath(index)` and pass it
+  // to every pendingAnswers / commentsByQuestion call, so a duplicate id in the
+  // index whose twin is not listed credits no card.
+  it("allQuestionsByPath lists every raw question of each indexed document", () => {
+    const index = filterFormsIndex();
+    const all = allQuestionsByPath(index);
+    for (const doc of index.documents) {
+      expect(all[doc.path]).toBe(doc.questions);
+    }
+    const a1 = byId("OQ-A1");
+    const dup = { ...a1, line: a1.line + 500, unitLine: a1.unitLine + 500 };
+    const dupAll = { [a1.path]: [a1, dup] };
+    const result = pendingAnswers(
+      listed,
+      { "a.md": [on(a1)] },
+      {},
+      undefined,
+      dupAll,
+    );
+    expect(result.answered.size).toBe(0);
+    expect(result.unplaced).toBe(1);
+  });
+
+  // The real scanner, not a hand-built duplicate: two question runs declaring
+  // one id are both unassigned, so the guard sees them and nobody is credited.
+  it("credits no question for a comment bound to an id two real runs declare", () => {
+    const dupIndex = indexOf(
+      {
+        "roadmap.md": "# Roadmap\n\n1. [D](d.md)\n",
+        "d.md": doc(q("OQ-A1"), q("OQ-A1")),
+      },
+      STAGES,
+    );
+    const dupDoc = dupIndex.documents.find((d) => d.path === "d.md")!;
+    expect(dupDoc.questions.map((x) => x.id)).toEqual([null, null]);
+    const dupListed = listedQuestions(
+      dupIndex,
+      sectionsOf(dupIndex, "roadmap.md"),
+    );
+    expect(dupListed).toHaveLength(2);
+    const comment = on(dupDoc.questions[0]!, { question_id: "OQ-A1" });
+    const result = pendingAnswers(
+      dupListed,
+      { "d.md": [comment] },
+      {},
+      undefined,
+      allQuestionsByPath(dupIndex),
+    );
+    expect(result.answered.size).toBe(0);
+    expect(result.groups).toEqual([]);
+    expect(result.unplaced).toBe(1);
+  });
+
   it("takes a rendered card's report over placement, for that question alone", () => {
     const a1 = byId("OQ-A1");
     const a2 = byId("OQ-A2");
-    const comments = [on(a1.unitLine)];
+    const comments = [on(a1)];
     const byPath = { "a.md": comments };
     // The card read the comment as OQ-A2's, from its rendered block.
     const reported = pendingAnswers(listed, byPath, {
@@ -214,8 +312,8 @@ describe("under a planning filter (planning-index.md §6.7)", () => {
     const a1 = byId("OQ-A1");
     const c1 = byId("OQ-C1");
     const byPath = {
-      "a.md": [on(a1.unitLine)],
-      "c.md": [on(c1.unitLine), on(c1.line)],
+      "a.md": [on(a1)],
+      "c.md": [on(c1), on(c1)],
     };
     const { groups, answered, leftOutQuestions } = pendingAnswers(
       listed,
@@ -240,19 +338,20 @@ describe("under a planning filter (planning-index.md §6.7)", () => {
     // take the comment for A3's.
     expect(a4.unitLine).toBeGreaterThan(a3.unitLine);
     expect(a4.unitEndLine).toBeLessThanOrEqual(a3.unitEndLine);
-    const comment = on(a4.unitLine);
+    const comment = on(a4);
     const byPath = { "docs/design/a.md": [comment] };
     const filtered = pendingAnswers(all, byPath, {}, keepsOf("is:open"));
     expect(filtered).toEqual({
       groups: [],
       answered: new Set(),
       leftOutQuestions: 1,
+      unplaced: 0,
     });
-    // Over the kept questions alone, it would have been credited to A3.
+    // Over the kept questions alone no question has its id: unowned, never A3's.
     const kept = all.filter(keepsOf("is:open"));
-    expect([...pendingAnswers(kept, byPath, {}).answered]).toEqual([
-      questionKey(a3),
-    ]);
+    const keptAnswers = pendingAnswers(kept, byPath, {});
+    expect([...keptAnswers.answered]).toEqual([]);
+    expect(keptAnswers.unplaced).toBe(1);
     // Unfiltered, it is A4's.
     expect([...pendingAnswers(all, byPath, {}).answered]).toEqual([
       questionKey(a4),

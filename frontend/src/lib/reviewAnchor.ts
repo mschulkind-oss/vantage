@@ -148,7 +148,7 @@ export function blockVisibleText(block: HTMLElement): string {
  * and its first `<p>`) gives both the SAME `data-source-line` — so the block it
  * resolves for that line is the LAST candidate in document order, the inner
  * one. Anchoring on any other candidate stores a hash of different text than
- * the highlighter will compute, and the comment renders divergent (and trips
+ * the highlighter will compute, and the comment renders outdated (and trips
  * `commentsDrifted`) the instant it is created.
  */
 export function anchorBlockWithin(scope: HTMLElement): HTMLElement | null {
@@ -226,10 +226,9 @@ export function indexBlocks(root: HTMLElement): BlockIndex {
  * - Two cells in one row holding the *same* text are indistinguishable, and a
  *   comment on the first renders on the last. They read identically, so the
  *   misplacement is invisible in every way but position.
- * - Once a commented cell is *rewritten*, its hash is gone from the row, and the
- *   fallback tints whichever cell came last rather than the one that changed.
- *   The comment is still correctly reported as drifted; only which cell of the
- *   row wears the faint tint is arbitrary.
+ *  - Once a commented cell is *rewritten*, its hash is gone from the row;
+ *   `resolveCommentBlock` then discards this function's hash-mismatched
+ *   fallback, so the comment is shown outdated and no cell is tinted.
  *
  * Closing either means putting a column index in the anchor — a schema change
  * shared with the Go side and the stored comments, for a cosmetic gain.
@@ -257,47 +256,62 @@ export function findHashNeighbor(
   const candidates = index.byHash.get(targetHash);
   if (!candidates) return null;
   let best: HTMLElement | null = null;
-  let bestDist = Infinity;
+  let found = 0;
   for (const cand of candidates) {
     const lineAttr = cand.getAttribute("data-source-line");
     if (!lineAttr) continue;
     const line = Number.parseInt(lineAttr, 10);
     if (!Number.isFinite(line)) continue;
-    const dist = Math.abs(line - centerLine);
-    if (dist > radius) continue;
-    if (dist < bestDist) {
-      bestDist = dist;
-      best = cand;
-    }
+    if (Math.abs(line - centerLine) > radius) continue;
+    found++;
+    best = cand;
   }
-  return best;
+  // Several equal blocks in range cannot be told apart: ambiguous, never guessed.
+  return found === 1 ? best : null;
+}
+
+/**
+ * Whether blocks at more than one source line carry `hash`. Blocks sharing a
+ * line — a container and its first child, cells of one row — are one place, so
+ * a `<li>` and its only `<p>` do not make their own text ambiguous.
+ */
+function hashOccursAtSeveralLines(index: BlockIndex, hash: string): boolean {
+  const lines = new Set<number>();
+  for (const block of index.byHash.get(hash) ?? []) lines.add(lineOf(block));
+  return lines.size > 1;
 }
 
 /**
  * The block an anchor resolves to, as the highlighter resolves it: the block
- * at its line when the hash agrees, else a block with its hash within
- * `NEIGHBOR_RADIUS` lines, else the block at its line anyway. `null` without
- * an anchor, or with no block at its line and none near it with its hash.
+ * at its line when the hash agrees, else the one block with its hash within
+ * `NEIGHBOR_RADIUS` lines — and only when that hash occurs once in the whole
+ * document. A hash that occurs elsewhere too is no proof of the block at the
+ * old line: an identical block may have taken the place of the commented one,
+ * so the anchor is ambiguous. `null` without an anchor, on a mismatch, or when
+ * the match is ambiguous; never a block whose hash differs.
+ *
+ * A comment bound to a question (`question_id`) does not rely on this: the
+ * ownership layer gives it to that question alone (`commentsOnQuestions`).
  *
  * Shared by the two passes that ask which Open Question a comment is on — the
- * in-page row and the planning card — so they place a comment alike.
+ * in-page row and the planning card — and by the highlighter, so they place a
+ * comment alike.
  */
 export function resolveCommentBlock(
   index: BlockIndex,
   anchor: CommentAnchor | null | undefined,
 ): HTMLElement | null {
   if (!anchor) return null;
+  if (hashOccursAtSeveralLines(index, anchor.block_text_hash)) return null;
   const atLine = blockAtLine(index, anchor.source_line, anchor.block_text_hash);
   if (atLine?.getAttribute("data-block-hash") === anchor.block_text_hash) {
     return atLine;
   }
-  return (
-    findHashNeighbor(
-      index,
-      anchor.block_text_hash,
-      anchor.source_line,
-      NEIGHBOR_RADIUS,
-    ) ?? atLine
+  return findHashNeighbor(
+    index,
+    anchor.block_text_hash,
+    anchor.source_line,
+    NEIGHBOR_RADIUS,
   );
 }
 

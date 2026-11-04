@@ -36,7 +36,7 @@ import {
 } from "vantage-md/planning";
 import { isPendingForAgent } from "../stores/useReviewStore";
 import type { ReviewComment } from "../types";
-import { listedQuestions, placeComment } from "./planningPages";
+import { listedQuestions, ownerOfComment } from "./planningPages";
 
 /** A question's key on the page: its document and its host block's line. */
 export const questionKey = (ref: { path: string; line: number }): string =>
@@ -69,6 +69,12 @@ export interface PendingAnswers {
    * out. Multiple comments on one question count once. `0` with no filter.
    */
   leftOutQuestions: number;
+  /**
+   * Pending comments no listed question owns — filed without a question id, or
+   * under one that is missing or repeated — and no card's report claims. They
+   * are in no group and answer nothing; nothing shows this count yet.
+   */
+  unplaced: number;
 }
 
 /** Whether a question is kept: by a planning filter, or by none, every one. */
@@ -83,8 +89,8 @@ export type KeepsQuestion = (question: PlanningQuestion) => boolean;
  * question (§6.7): a card rendered this visit reports its exact scoping, from
  * its rendered block (`reports`, by `questionKey`), which holds while the
  * question and its document's comments are the ones it read; every other
- * question takes the comments its unit holds by line (`placeComment`, the
- * innermost unit winning).
+ * question takes the comments filed under its directive id
+ * (`ownerOfComment`); a comment with no owner is counted in `unplaced`.
  *
  * `keeps` narrows the result to the questions a planning filter keeps, once
  * every comment is placed over all of `questions` (§6.7): a comment on a
@@ -96,6 +102,7 @@ export function pendingAnswers(
   byPath: Readonly<Record<string, readonly ReviewComment[]>>,
   reports: Readonly<Record<string, QuestionReport>>,
   keeps?: KeepsQuestion,
+  allByPath?: Readonly<Record<string, readonly PlanningQuestion[]>>,
 ): PendingAnswers {
   const byDocument = new Map<string, PlanningQuestion[]>();
   for (const question of questions) {
@@ -111,6 +118,7 @@ export function pendingAnswers(
     kept.set(questionKey(question), keeps?.(question) ?? true);
   }
   const leftOutQuestions = new Set<string>();
+  let unplaced = 0;
   for (const path of [...byDocument.keys()].sort()) {
     const listed = byDocument.get(path) ?? [];
     const comments = byPath[path];
@@ -139,13 +147,15 @@ export function pendingAnswers(
       if (!isPendingForAgent(comment)) continue;
       let key = owner.get(comment.id);
       if (key === undefined) {
-        const line = comment.anchor?.source_line;
-        const placed = line ? placeComment(listed, line) : undefined;
+        const placed = ownerOfComment(listed, comment, allByPath?.[path]);
         if (placed !== undefined && !reported.has(questionKey(placed))) {
           key = questionKey(placed);
         }
       }
-      if (key === undefined) continue;
+      if (key === undefined) {
+        unplaced++;
+        continue;
+      }
       if (kept.get(key) === false) {
         leftOutQuestions.add(key);
         continue;
@@ -155,7 +165,12 @@ export function pendingAnswers(
     }
     if (pending.length > 0) groups.push({ path, comments: pending });
   }
-  return { groups, answered, leftOutQuestions: leftOutQuestions.size };
+  return {
+    groups,
+    answered,
+    leftOutQuestions: leftOutQuestions.size,
+    unplaced,
+  };
 }
 
 /** What the page says needs the human, less what they have answered. */
