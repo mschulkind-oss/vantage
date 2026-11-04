@@ -316,13 +316,15 @@ export type Lifecycle =
   | "Response saved, waiting for agent"
   | "Agent replied, question still open"
   | "Ruling recorded"
+  | "Compacted"
+  | "Question removed from document"
   | "Unknown";
 
 /**
  * The label for `question` from its bound comments and the scan. `readable`
  * false (reviews not read, scan limit) is Unknown, never Open. "Compacted" and
- * "Removed" are about ids the scan no longer holds, so they belong to the
- * groups (`classifyComment`), not to a question that is still here.
+ * "Question removed from document" are about ids the scan no longer holds, so
+ * `lifecycleFor` says them, not this, which is for a question that is still here.
  */
 export function lifecycleOf(
   question: PlanningQuestion,
@@ -395,21 +397,40 @@ export function questionQuote(question: PlanningQuestion): string {
 }
 
 /**
- * The label a card draws for `question`: from the comments bound to it and the
- * scan. `null` for a question with no id, which owns no comments. Unknown when
- * the document's reviews have not been read, or were not read as one reading
- * with the scan.
+ * The label a card draws for `painted`, read from the **live** scan: the card's
+ * id looked up in the document `index` holds now (the same scan `map` was made
+ * from), never the question as the card was painted, so a ruling, a removal or
+ * a compaction made elsewhere shows at once. `null` for a question with no id,
+ * which owns no comments. Unknown, never Open, Removed or Compacted, when the
+ * evidence cannot say: the reviews not read or not one reading with the scan,
+ * the document absent from the scan, an id declared twice or written outside a
+ * directive.
  */
 export function lifecycleFor(
   map: OwnershipMap,
-  question: PlanningQuestion,
+  index: PlanningIndex | null,
+  painted: PlanningQuestion,
   reviewsRead: boolean,
 ): Lifecycle | null {
-  if (!question.id) return null;
-  const readable = reviewsRead && !map.unpaired.has(question.path);
-  return lifecycleOf(
-    question,
-    map.boundBy.get(`${question.path}\n${question.id}`) ?? [],
-    readable,
-  );
+  const id = painted.id;
+  if (!id) return null;
+  const document = index?.documents.find((d) => d.path === painted.path);
+  if (
+    !reviewsRead ||
+    map.unpaired.has(painted.path) ||
+    document === undefined
+  ) {
+    return "Unknown";
+  }
+  const named = document.questions.filter((q) => q.id === id);
+  if (named.length === 1) {
+    return lifecycleOf(
+      named[0],
+      map.boundBy.get(`${painted.path}\n${id}`) ?? [],
+    );
+  }
+  if (named.length > 1 || document.directiveIds.includes(id)) return "Unknown";
+  if (document.ledgerIds.includes(id)) return "Compacted";
+  if (document.ids.includes(id)) return "Unknown";
+  return "Question removed from document";
 }

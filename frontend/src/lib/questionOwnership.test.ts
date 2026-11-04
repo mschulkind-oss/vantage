@@ -5,6 +5,7 @@
 import { describe, expect, it } from "vitest";
 import { indexOf, questionDirective } from "../test/planning";
 import {
+  lifecycleFor,
   lifecycleOf,
   ownershipMap,
   questionQuote,
@@ -346,5 +347,82 @@ describe("Compacted", () => {
       "unknown",
       "removed",
     ]);
+  });
+});
+
+describe("lifecycleFor", () => {
+  const ledgerOf = (id: string) =>
+    [
+      "",
+      "## Decision Ledger",
+      "",
+      "| ID | Decision |",
+      "| --- | --- |",
+      `| ${id} | Ruled |`,
+      "",
+    ].join("\n");
+  const painted = indexOf(
+    { "a.md": doc(own("OQ-A1"), "", own("OQ-B1")) },
+    STAGES,
+  ).documents[0].questions[0];
+  /** The status the card painted from `painted` reads in the live scan. */
+  const statusIn = (
+    live: Record<string, string>,
+    comments: ReviewComment[] = [],
+    reviewsRead = true,
+  ) => {
+    const index = indexOf(live, STAGES);
+    return lifecycleFor(
+      ownershipMap(index, { "a.md": comments }),
+      index,
+      painted,
+      reviewsRead,
+    );
+  };
+  const here = (extra = "") => doc(own("OQ-A1"), "", own("OQ-B1"), extra);
+
+  it("reads the live question, not the one the card painted", () => {
+    expect(statusIn({ "a.md": here() })).toBe("Open");
+    expect(
+      statusIn({ "a.md": doc(q("OQ-A1", "\u2705"), "", own("OQ-B1")) }),
+    ).toBe("Ruling recorded");
+  });
+
+  it("shows a response saved elsewhere as waiting for the agent", () => {
+    expect(
+      statusIn({ "a.md": here() }, [comment({ question_id: "OQ-A1" })]),
+    ).toBe("Response saved, waiting for agent");
+  });
+
+  it("reads a removed directive as removed, a ledger id as compacted", () => {
+    expect(statusIn({ "a.md": doc(own("OQ-B1")) })).toBe(
+      "Question removed from document",
+    );
+    expect(statusIn({ "a.md": doc(own("OQ-B1"), ledgerOf("OQ-A1")) })).toBe(
+      "Compacted",
+    );
+  });
+
+  it("reads absent or unreadable evidence as Unknown, never Removed or Open", () => {
+    expect(statusIn({ "a.md": doc(q("OQ-A1"), "", q("OQ-A1")) })).toBe(
+      "Unknown",
+    );
+    expect(statusIn({ "a.md": doc(own("OQ-B1"), "", "See OQ-A1 here.") })).toBe(
+      "Unknown",
+    );
+    expect(statusIn({ "other.md": doc(own("OQ-B1")) })).toBe("Unknown");
+    expect(statusIn({ "a.md": here() }, [], false)).toBe("Unknown");
+  });
+
+  it("is null for a question with no id", () => {
+    const index = indexOf({ "a.md": here() }, STAGES);
+    expect(
+      lifecycleFor(
+        ownershipMap(index, {}),
+        index,
+        { ...painted, id: null },
+        true,
+      ),
+    ).toBeNull();
   });
 });

@@ -3356,6 +3356,21 @@ export const PlanningPage: React.FC = () => {
       (item.entry.preview ||
         shown?.inputs.previews.has(at) === true ||
         block === undefined);
+    const cardLifecycle = lifecycleFor(
+      ownership,
+      index,
+      question,
+      reviews.byPath[question.path] !== undefined,
+    );
+    // The card's status band says what became of the question exactly, so the
+    // generic *Done* mark is not drawn beside it saying less (and, for a
+    // question gone from the scan, something it cannot know).
+    const cardMarks =
+      cardLifecycle === null || !marks.includes("done")
+        ? marks.length === 0
+          ? NO_MARKS
+          : marks
+        : marks.filter((m) => m !== "done");
     return (
       <PlanningQuestionCard
         key={key}
@@ -3367,11 +3382,7 @@ export const PlanningPage: React.FC = () => {
         badge={shownIndex === null ? null : badgeOf(shownIndex, question.path)}
         notOnRoadmap={item.entry.notOnRoadmap === true}
         comments={reviews.byPath[question.path]}
-        lifecycle={lifecycleFor(
-          ownership,
-          question,
-          reviews.byPath[question.path] !== undefined,
-        )}
+        lifecycle={cardLifecycle}
         listComments={
           current?.inPlace.opened.has(item.key)
             ? undefined
@@ -3387,7 +3398,7 @@ export const PlanningPage: React.FC = () => {
         onScoped={reportScoped}
         unfoldedByDefault={cardsExpanded}
         folds={folds}
-        marks={marks.length === 0 ? NO_MARKS : marks}
+        marks={cardMarks}
         newReply={newReply}
         onNewReply={seeCardReply}
         onAnswered={answeredHere}

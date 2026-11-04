@@ -10,7 +10,13 @@
  * which only the reader's own actions change: the numbers here change live,
  * in slots kept for them, and nothing else does (§6.4).
  */
-import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
+import React, {
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { ChevronDown, Pencil, Undo2 } from "lucide-react";
 import type { PlanningQuestion } from "vantage-md/planning";
 import { OQ_UNDO_LABEL, takeUndoable } from "../hooks/useOpenQuestionButtons";
@@ -26,6 +32,7 @@ import { editCommentBox, type OnSaved } from "../lib/reviewBoxes";
 import { isStaticMode } from "../lib/staticMode";
 import { planningCardId } from "../lib/planningCardId";
 import { planningLimits } from "../planningScan/limits";
+import { ForcedMotion } from "../lib/forcedMotion";
 import { reducedMotion } from "../lib/reducedMotion";
 import { holdScrollRoom } from "../lib/scrollRoom";
 import { isPendingForAgent, reviewTarget } from "../stores/useReviewStore";
@@ -235,11 +242,12 @@ export const AnsweredRow: React.FC<{
   onShrunk,
 }) => {
   const rowRef = useRef<HTMLDivElement>(null);
+  const forcedMotion = useContext(ForcedMotion);
   // Only as it mounts: a card that became this row just now.
   const [shrink] = useState(() =>
     shrinkFrom === undefined
       ? null
-      : { from: shrinkFrom, move: !reducedMotion() },
+      : { from: shrinkFrom, move: forcedMotion || !reducedMotion() },
   );
   // Drawn at the card's height until the shrink has taken over from it.
   const [tall, setTall] = useState(shrink !== null);

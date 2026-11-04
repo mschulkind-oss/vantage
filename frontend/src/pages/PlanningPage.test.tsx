@@ -2213,7 +2213,11 @@ describe("what arrives late (planning-index.md §6.4)", () => {
     setLoad(readyOf(after));
     await settle();
     expect(cardIds()).toEqual(["OQ-T1", "OQ-T2"]);
-    expect(within(cardFor("OQ-T1")).getByText("Done")).toBeTruthy();
+    // The card says what became of it exactly, not the generic Done.
+    expect(within(cardFor("OQ-T1")).getByTestId("lifecycle")).toHaveTextContent(
+      "Ruling recorded",
+    );
+    expect(within(cardFor("OQ-T1")).queryByText("Done")).toBeNull();
     expect(updatesButton()).toHaveAttribute(
       "data-tip",
       expect.stringContaining("1 done"),
@@ -2230,6 +2234,132 @@ describe("what arrives late (planning-index.md §6.4)", () => {
     expect(listedIn("To fold into the ledger")).toEqual([
       "OQ-T1: Question OQ-T1?",
     ]);
+  });
+
+  describe("the status band of a card the layout painted", () => {
+    const LEDGER = (id: string) =>
+      [
+        "",
+        "## Decision Ledger",
+        "",
+        "| ID | Decision |",
+        "| --- | --- |",
+        `| ${id} | Ruled |`,
+        "",
+      ].join("\n");
+    const statusOf = (id: string) =>
+      within(cardFor(id)).getByTestId("lifecycle").textContent;
+    const bodyOf = (id: string) =>
+      cardFor(id).querySelector(".planning-card-body")!.textContent;
+
+    /** The page with a card painted, then `change` made to it elsewhere. */
+    async function changedElsewhere(
+      change: (tree: Record<string, string>) => Record<string, string>,
+    ) {
+      pageSize(3);
+      const tree = todoTree(3);
+      seed(tree);
+      await renderPage();
+      const card = cardFor("OQ-T1");
+      const before = { body: bodyOf("OQ-T1"), ids: cardIds() };
+      expect(statusOf("OQ-T1")).toBe("Open");
+      const after = change(tree);
+      serveTree(after);
+      setLoad(readyOf(after, { stages: STAGES }));
+      await settle();
+      // Nothing moved, was replaced or was repainted: the card is the same
+      // element, with the same body, in the same place.
+      expect(cardFor("OQ-T1")).toBe(card);
+      expect(bodyOf("OQ-T1")).toBe(before.body);
+      expect(cardIds()).toEqual(before.ids);
+    }
+
+    it("says a response saved elsewhere is waiting, on the same card", async () => {
+      pageSize(3);
+      const tree = todoTree(3);
+      seed(tree);
+      await renderPage();
+      const card = cardFor("OQ-T1");
+      const body = bodyOf("OQ-T1");
+      answer(tree, "OQ-T1");
+      await reviewPushed("plans/todo.md");
+      expect(cardFor("OQ-T1")).toBe(card);
+      expect(bodyOf("OQ-T1")).toBe(body);
+      expect(statusOf("OQ-T1")).toBe("Response saved, waiting for agent");
+      expect(statusOf("OQ-T2")).toBe("Open");
+    });
+
+    it("reads Open again when the answer is deleted elsewhere", async () => {
+      pageSize(3);
+      const tree = todoTree(3);
+      seed(tree);
+      await renderPage();
+      answer(tree, "OQ-T1");
+      await reviewPushed("plans/todo.md");
+      expect(statusOf("OQ-T1")).toBe("Response saved, waiting for agent");
+      reviews["plans/todo.md"] = [];
+      await reviewPushed("plans/todo.md");
+      expect(statusOf("OQ-T1")).toBe("Open");
+    });
+
+    it("says a ruling is recorded for a question that became ✅, and drops the generic Done beside it", async () => {
+      await changedElsewhere((tree) => ({
+        ...tree,
+        "plans/todo.md": doc(
+          "stage: DESIGN",
+          q("OQ-T1", ANSWERED),
+          q("OQ-T2", OPEN),
+          q("OQ-T3", OPEN),
+        ),
+      }));
+      expect(statusOf("OQ-T1")).toBe("Ruling recorded");
+      expect(within(cardFor("OQ-T1")).queryByText("Done")).toBeNull();
+    });
+
+    it("says the question was removed when its directive is gone, not Done", async () => {
+      await changedElsewhere((tree) => ({
+        ...tree,
+        "plans/todo.md": doc(
+          "stage: DESIGN",
+          q("OQ-T2", OPEN),
+          q("OQ-T3", OPEN),
+        ),
+      }));
+      expect(statusOf("OQ-T1")).toBe("Question removed from document");
+      expect(within(cardFor("OQ-T1")).queryByText("Done")).toBeNull();
+    });
+
+    it("says compacted when only the ledger holds the id", async () => {
+      await changedElsewhere((tree) => ({
+        ...tree,
+        "plans/todo.md": doc(
+          "stage: DESIGN",
+          q("OQ-T2", OPEN),
+          q("OQ-T3", OPEN),
+          LEDGER("OQ-T1"),
+        ),
+      }));
+      expect(statusOf("OQ-T1")).toBe("Compacted");
+    });
+
+    it("says Unknown, not Open or Removed, when the id is declared twice", async () => {
+      await changedElsewhere((tree) => ({
+        ...tree,
+        "plans/todo.md": doc(
+          "stage: DESIGN",
+          q("OQ-T1", OPEN),
+          q("OQ-T1", OPEN),
+          q("OQ-T3", OPEN),
+        ),
+      }));
+      expect(statusOf("OQ-T1")).toBe("Unknown");
+    });
+
+    it("reserves one height for the band whatever it says", async () => {
+      await changedElsewhere((tree) => tree);
+      const band = within(cardFor("OQ-T1")).getByTestId("lifecycle");
+      expect(band).toHaveClass("h-9");
+    });
   });
 
   it("keeps a changed question's card as it painted it, marked, until the next layout", async () => {

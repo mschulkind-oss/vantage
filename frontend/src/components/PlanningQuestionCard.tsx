@@ -81,6 +81,7 @@ import { questionQuote, type Lifecycle } from "../lib/questionOwnership";
 import { ownershipCue, replyCoverageLabel } from "../lib/replyCoverage";
 import React, {
   useCallback,
+  useContext,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -89,6 +90,7 @@ import React, {
 } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown, ChevronUp, Eye } from "lucide-react";
+import { PlanningLifecycleBanner } from "./PlanningLifecycleBanner";
 import type {
   CardBlock,
   PlanningBadge,
@@ -144,6 +146,7 @@ import {
 } from "../lib/planningCardParts";
 import { focusIsIdle } from "../hooks/useShellPage";
 import { planningCardId } from "../lib/planningCardId";
+import { ForcedMotion } from "../lib/forcedMotion";
 import { reducedMotion } from "../lib/reducedMotion";
 import { planningLimits } from "../planningScan/limits";
 import {
@@ -226,9 +229,9 @@ interface PlanningQuestionCardProps {
   /** The document's review comments, or `undefined` until they load. */
   comments: readonly ReviewComment[] | undefined;
   /**
-   * The question's factual lifecycle (`lifecycleFor`), drawn in a slot that is
-   * always there so a label that arrives late moves nothing; `null` for a
-   * question with no id, which owns no comments.
+   * The question's factual lifecycle (`lifecycleFor`), drawn in a band at the
+   * card's top of one fixed height so a status that changes moves nothing;
+   * `null` for a question with no id, which owns no comments.
    */
   lifecycle?: Lifecycle | null;
   /**
@@ -395,12 +398,19 @@ const CARD_GROW_MS = 320;
  * who asked for less motion gets it at that height at once, which moves
  * nothing that a shrink did not move anyway.
  */
-function growCard(article: HTMLElement, done: () => void): void {
+function growCard(
+  article: HTMLElement,
+  done: () => void,
+  forcedMotion: boolean,
+): void {
   const from = article.style.height;
   article.style.height = "auto";
   const to = article.getBoundingClientRect().height;
   article.style.height = from;
-  if (typeof article.animate !== "function" || reducedMotion()) {
+  if (
+    typeof article.animate !== "function" ||
+    (reducedMotion() && !forcedMotion)
+  ) {
     done();
     return;
   }
@@ -769,13 +779,14 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
   // at all and grown to its own on the first paint, so what is below it moves
   // once rather than appearing at its height in one frame. Read at mount, and
   // the page told as that happens so it stops asking (`onGrown`).
+  const forcedMotion = useContext(ForcedMotion);
   const [grow] = useState(() => growing);
   const [grown, setGrown] = useState(grow);
   useLayoutEffect(() => {
     const article = articleRef.current;
     if (!grow || article === null) return;
-    growCard(article, () => setGrown(false));
-  }, [grow]);
+    growCard(article, () => setGrown(false), forcedMotion);
+  }, [grow, forcedMotion]);
   useEffect(() => {
     if (growing) onGrown?.(cardKey);
   }, [cardKey, growing, onGrown]);
@@ -1418,6 +1429,10 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
         />
       </div>
 
+      {lifecycle !== undefined && lifecycle !== null && (
+        <PlanningLifecycleBanner status={lifecycle} />
+      )}
+
       {headed && <Headline question={question} id={headlineId} />}
 
       <div
@@ -1655,15 +1670,6 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
             className="text-[11px] text-red-600 dark:text-red-400"
           >
             Could not load the question.
-          </span>
-        )}
-        {lifecycle !== undefined && (
-          <span
-            data-testid="lifecycle"
-            data-planning-lifecycle
-            className="inline-block min-w-[16rem] text-[11px] text-slate-500 dark:text-slate-400"
-          >
-            {lifecycle}
           </span>
         )}
         {/* Always there, at a fixed width, so a count that arrives late
