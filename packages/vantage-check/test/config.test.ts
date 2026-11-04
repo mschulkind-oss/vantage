@@ -392,7 +392,7 @@ describe("a rule written as a table", () => {
   it("leaves the severity to the family, `*` and the default without one", () => {
     expect(
       parseConfig(rules("{ max-words = 150 }")).settings.setting(RULE),
-    ).toBe("warning");
+    ).toBe("off");
     const family = parseConfig(
       `[check.rules]\n"planning/*" = "error"\n"${RULE}" = { max-words = 150 }\n`,
     ).settings;

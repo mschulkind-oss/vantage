@@ -73,8 +73,9 @@ paragraphs; its options, as a list; `_Leaning:_` as a paragraph of its own; and
 `**Answer:**` as a paragraph of its own — never one run-together paragraph.
 Every question carries a `question` directive, in every state.
 `vantage-check` warns when a leaning shares a paragraph with other text
-(`vantage/question-layout`), and when a question's text runs long
-(`planning/question-length`); both quote the shape.
+(`vantage/question-layout`). The optional `planning/question-length` rule is
+**off by default**, including in strict runs; enable it only when a word-count
+check is useful. A folded preview is not a word budget for the question.
 
 ## Planning documents
 

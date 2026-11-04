@@ -13,7 +13,8 @@ import { LEANING_MARKER } from "../../../vantage-md/src/planning/leaning.js";
  * author to put the question in the title and keep the body to what a ruling
  * needs.
  *
- * **The default limit is 120 words**, calibrated on 2026-09-30 against every
+ * **The opt-in rule's default limit is 120 words**; the rule is off by default.
+ * The threshold was calibrated on 2026-09-30 against every
  * question this repository has written to the Open Questions convention: a
  * list item whose first paragraph holds a bold `OQ-…` title, 54 of them in 9
  * documents, the newest version of each in the history of `docs/`, the
@@ -33,8 +34,8 @@ import { LEANING_MARKER } from "../../../vantage-md/src/planning/leaning.js";
  * measure rather than every question the card cuts short. A repository whose
  * questions run longer will see many warnings — the one the card's layout
  * was first asked for runs to a median of 187 words, and 62% of its questions
- * pass 120 — and should raise `max-words` or turn the rule off
- * (`[check.rules]`).
+ * pass 120. Enable the rule only when this measure is useful, with an explicit
+ * severity and, optionally, a different `max-words` (`[check.rules]`).
  */
 export const QUESTION_WORDS_DEFAULT = 120;
 

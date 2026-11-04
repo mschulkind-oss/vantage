@@ -74,7 +74,7 @@ describe("the registry", () => {
       ["planning/stage-disagrees", "warning"],
       ["planning/blocked-on-disagrees", "error"],
       ["planning/unrouted", "off"],
-      ["planning/question-length", "warning"],
+      ["planning/question-length", "off"],
     ]);
     expect(RULES.filter((r) => r.id.startsWith("planning/"))).toHaveLength(6);
   });
@@ -106,7 +106,7 @@ describe("the registry", () => {
     }
     expect(guide).toMatch(
       new RegExp(
-        `^\\| \`planning/question-length\` \\| .*${QUESTION_WORDS_DEFAULT} words \\| warning \\|$`,
+        `^\\| \`planning/question-length\` \\| .*${QUESTION_WORDS_DEFAULT} words \\| off \\|$`,
         "m",
       ),
     );
@@ -721,13 +721,28 @@ describe("planning/question-length", () => {
       "",
     ].join("\n");
 
-  const tree = (body: string, header = "status: draft", toml = "") =>
+  const enabled = '[check.rules]\n"planning/question-length" = "warning"\n';
+  const tree = (body: string, header = "status: draft", toml = enabled) =>
     repo({
       ".vantage.toml": `${STAGES_TOML}\n${toml}`,
       "a.md": doc(header, body),
     });
 
-  it("warns on a question past 120 words, at its item", async () => {
+  it.each([[], ["--strict"], ["--no-config"], ["--no-config", "--strict"]])(
+    "leaves long questions alone by default with args %j",
+    async (...args: string[]) => {
+      const { code, payload } = await check(
+        tree(question("OQ-L1", 400), "status: draft", ""),
+        ...args,
+        "a.md",
+      );
+      expect(code).toBe(EXIT_OK);
+      expect(payload.findings).toEqual([]);
+      expect(payload.failures).toEqual([]);
+    },
+  );
+
+  it("warns on an explicitly enabled question past 120 words, at its item", async () => {
     const root = tree(question("OQ-L1", 121));
 
     expect(await planning(root, "a.md")).toEqual([
@@ -736,6 +751,18 @@ describe("planning/question-length", () => {
     const { code, payload } = await check(root, "a.md");
     expect(code).toBe(EXIT_OK);
     expect(payload.findings[0]?.severity).toBe("warning");
+  });
+
+  it("strict mode still fails explicitly enabled length warnings", async () => {
+    const { code, payload } = await check(
+      tree(question("OQ-L1", 121)),
+      "--strict",
+      "a.md",
+    );
+    expect(code).toBe(EXIT_FINDINGS);
+    expect(payload.findings.map((f) => [f.rule, f.severity])).toEqual([
+      ["planning/question-length", "warning"],
+    ]);
   });
 
   it("says how long the question is and what the limit is", async () => {
@@ -809,9 +836,9 @@ describe("planning/question-length", () => {
 
   it("takes its limit from max-words", async () => {
     const lower =
-      '[check.rules]\n"planning/question-length" = { max-words = 20 }\n';
+      '[check.rules]\n"planning/question-length" = { severity = "warning", max-words = 20 }\n';
     const higher =
-      '[check.rules]\n"planning/question-length" = { max-words = 500 }\n';
+      '[check.rules]\n"planning/question-length" = { severity = "warning", max-words = 500 }\n';
 
     expect(
       await planning(
@@ -874,10 +901,11 @@ describe("planning/question-length", () => {
 
   it("measures a question with no project root", async () => {
     const root = makeTree({
+      ".vantage.toml": enabled,
       "a.md": doc("status: draft", question("OQ-L1", 121)),
     });
 
-    expect(await planning(root, "a.md")).toEqual([
+    expect(await planning(root, "--config", ".vantage.toml", "a.md")).toEqual([
       "a.md:7 planning/question-length",
     ]);
   });
