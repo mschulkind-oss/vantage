@@ -47,9 +47,9 @@ describe("the 60 fps clock", () => {
     expect(stepFrame(1600, 1, 1600)).toBe(1600);
   });
 
-  it("steps from between frames to the next boundary, and to the end as the last frame", () => {
+  it("changes the displayed frame even between boundaries, and includes a partial last frame", () => {
     expect(stepFrame(128, 1, 1600)).toBeCloseTo(8 * FRAME_MS);
-    expect(stepFrame(128, -1, 1600)).toBeCloseTo(7 * FRAME_MS);
+    expect(stepFrame(128, -1, 1600)).toBeCloseTo(6 * FRAME_MS);
     expect(stepFrame(1595, 1, 1600)).toBe(1600);
     expect(stepFrame(1600, -1, 1600)).toBeCloseTo(95 * FRAME_MS);
   });

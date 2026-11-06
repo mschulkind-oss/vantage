@@ -33,9 +33,11 @@ not replace question text, disturb editors, or move cards. See
 [late changes and Refresh](userguide/guides/planning.md#late-changes-and-refresh).
 
 **Inspect the planning answer animation frame by frame.** Open
-`/.vantage/planning-motion` to inspect the card-to-row swap, pause, seek to an
-exact time, or step backward and forward. The sample uses real cards and animation
-effects, changes no reviews, and leaves the green animation unchanged.
+`/.vantage/planning-motion` and press **Play from start** as often as you like,
+or use **First / Previous / Next / Last frame** to pause and step through it.
+Frame 0 is the original question. Exact timing and animation details are optional.
+The sample uses real cards and effects, changes no reviews, and leaves the green
+animation unchanged.
 
 **Restore, delete, or attach planning answers.** Escape or × offers to restore
 an existing answer's opening text while keeping replies, or discard a new answer
