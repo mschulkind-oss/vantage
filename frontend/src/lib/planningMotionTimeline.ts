@@ -24,18 +24,12 @@ export const frameStart = (index: number, end: number): number =>
 
 /**
  * The time one frame after (`direction` 1) or before (-1) `ms`: the next
- * frame boundary, and the timeline's end as the last frame when it falls
- * between boundaries.
+ * displayed frame, and the timeline's end as the last frame when it falls
+ * between boundaries. Previous always changes the frame number, even when
+ * an exact-time seek left the clock partway through a frame.
  */
 export function stepFrame(ms: number, direction: 1 | -1, end: number): number {
-  const at = ms / FRAME_MS;
-  const boundary = Math.abs(at - Math.round(at)) < 1e-9;
-  const index = boundary
-    ? Math.round(at) + direction
-    : direction > 0
-      ? Math.ceil(at)
-      : Math.floor(at);
-  return frameStart(index, end);
+  return frameStart(frameIndex(ms) + direction, end);
 }
 
 /** The animations of `stage` that production code made: not CSS ones. */
