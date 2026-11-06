@@ -36,8 +36,9 @@ not replace question text, disturb editors, or move cards. See
 `/.vantage/planning-motion` and press **Play from start** as often as you like,
 or use **First / Previous / Next / Last frame** to pause and step through it.
 Frame 0 is the original question. Exact timing and animation details are optional.
-The sample uses real cards and effects, changes no reviews, and leaves the green
-animation unchanged.
+The sample uses real cards and effects and changes no reviews. Answering now keeps
+the question text visible while the card collapses, then reveals the compact row
+at the end, instead of removing the text before the roll-up starts.
 
 **Restore, delete, or attach planning answers.** Escape or × offers to restore
 an existing answer's opening text while keeping replies, or discard a new answer

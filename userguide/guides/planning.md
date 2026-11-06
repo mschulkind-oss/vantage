@@ -575,8 +575,10 @@ route.
 
 **Answering moves only what you answered.** When a card's comment box closes
 holding your answer, or you take its leaning, the card shrinks to an answered
-row where it stands, and the next question that needs you joins the end of the
-cards; nothing above it moves, and nothing is reordered. **Undo** on a take
+row where it stands: the question text stays visible while the bottom edge
+closes up, and the compact row appears at the end. The next question that needs
+you joins the end of the cards; nothing above it moves, and nothing is reordered.
+With reduced motion, the row appears immediately. **Undo** on a take
 opens the row back into its card, and the card that joined stays. The next
 layout, on **Refresh**, a filter, a roadmap or a page size, gathers the answered
 rows at the top. A row you opened with Show or Undo and answer again shrinks

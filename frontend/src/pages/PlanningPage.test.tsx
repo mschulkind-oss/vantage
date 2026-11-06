@@ -1350,6 +1350,7 @@ describe("your own actions (planning-index.md §6.4)", () => {
     expect(endLine()).toHaveTextContent(/^1 more needs you/);
     // An action of your own is no held update.
     expect(updatesButton()).toHaveAttribute("aria-hidden", "true");
+    expect(document.querySelector("[data-planning-departing-card]")).toBeNull();
   });
 
   /**
@@ -1363,6 +1364,7 @@ describe("your own actions (planning-index.md §6.4)", () => {
       ms: number;
       /** The row's own height in the DOM as the animation began. */
       height: string;
+      animation: Animation;
     }[] = [];
     const rect = vi
       .spyOn(Element.prototype, "getBoundingClientRect")
@@ -1390,13 +1392,18 @@ describe("your own actions (planning-index.md §6.4)", () => {
       keyframes: Keyframe[],
       options: KeyframeAnimationOptions,
     ) {
+      const animation = {
+        onfinish: null,
+        oncancel: null,
+      } as unknown as Animation;
       played.push({
         el: this,
         keyframes,
         ms: Number(options.duration),
         height: (this as HTMLElement).style.height,
+        animation,
       });
-      return { onfinish: null, oncancel: null } as unknown as Animation;
+      return animation;
     };
     Object.defineProperty(Element.prototype, "animate", {
       value: animate,
@@ -1461,6 +1468,140 @@ describe("your own actions (planning-index.md §6.4)", () => {
     expect(played[1]!.ms).toBeGreaterThan(played[0]!.ms);
   });
 
+  it("retains the painted question while collapsing, then reveals and focuses the answered row", async () => {
+    pageSize(2);
+    seed(todoTree(3));
+    const played = watchShrinks();
+    await renderPage();
+    const card = cardFor("OQ-T1");
+    const body = card.querySelector(".planning-card-body")!.textContent;
+    const take = within(card).getByRole("button", {
+      name: "Take this leaning",
+    });
+    take.focus();
+    await act(async () => fireEvent.click(take));
+    await settle();
+    const row = screen.getByRole("group", { name: "OQ-T1: Question OQ-T1?" });
+    const copy = row.querySelector("[data-planning-departing-card]");
+    expect(copy).not.toBeNull();
+    expect(copy!.querySelector(".planning-card-body")!.textContent).toBe(body);
+    expect(row.querySelector("[data-planning-row-content]")).toHaveStyle({
+      visibility: "hidden",
+    });
+    expect(document.activeElement).toBe(document.body);
+    const collapse = played.find(
+      (p) => p.keyframes[0]?.height !== undefined && p.el === row,
+    )!;
+    expect(collapse.animation.onfinish).toBeTypeOf("function");
+    act(() =>
+      collapse.animation.onfinish?.call(
+        collapse.animation,
+        new Event("finish") as AnimationPlaybackEvent,
+      ),
+    );
+    expect(row.querySelector("[data-planning-departing-card]")).toBeNull();
+    expect(document.activeElement).toBe(
+      within(row).getByRole("button", { name: /^Show/ }),
+    );
+    expect(cardIds()).toEqual(["OQ-T2", "OQ-T3"]);
+  });
+
+  it("does not replay a departing card after an explicit Refresh interrupts its collapse", async () => {
+    pageSize(2);
+    seed(todoTree(3));
+    const played = watchShrinks();
+    await renderPage();
+    await act(async () =>
+      fireEvent.click(
+        within(cardFor("OQ-T2")).getByRole("button", {
+          name: "Take this leaning",
+        }),
+      ),
+    );
+    await settle();
+    const oldCollapse = played.find(
+      (p) =>
+        p.el.matches("[data-planning-row]") &&
+        p.keyframes[0]?.height !== undefined,
+    )!;
+    await refresh();
+    expect(document.querySelector("[data-planning-departing-card]")).toBeNull();
+    expect(oldCollapse.animation.onfinish).toBeNull();
+  });
+
+  it("does not steal focus moved to another card while the departure is clipping", async () => {
+    pageSize(2);
+    seed(todoTree(3));
+    const played = watchShrinks();
+    await renderPage();
+    const take = within(cardFor("OQ-T1")).getByRole("button", {
+      name: "Take this leaning",
+    });
+    take.focus();
+    await act(async () => fireEvent.click(take));
+    await settle();
+    const other = within(cardFor("OQ-T2")).getByRole("button", {
+      name: "Answer…",
+    });
+    other.focus();
+    const collapse = played.find(
+      (p) =>
+        p.el.matches("[data-planning-row]") &&
+        p.keyframes[0]?.height !== undefined,
+    )!;
+    act(() =>
+      collapse.animation.onfinish?.call(
+        collapse.animation,
+        new Event("finish") as AnimationPlaybackEvent,
+      ),
+    );
+    expect(document.activeElement).toBe(other);
+  });
+
+  it("clips the painted question after a nonempty Answer box closes, not while typing", async () => {
+    pageSize(2);
+    seed(todoTree(3));
+    const played = watchShrinks();
+    await renderPage();
+    const body = cardFor("OQ-T1").querySelector(
+      ".planning-card-body",
+    )!.textContent;
+    await act(async () =>
+      fireEvent.click(
+        within(cardFor("OQ-T1")).getByRole("button", { name: "Answer…" }),
+      ),
+    );
+    fireEvent.change(await screen.findByPlaceholderText(/comment/i), {
+      target: { value: "The second way." },
+    });
+    expect(document.querySelector("[data-planning-departing-card]")).toBeNull();
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+    });
+    await act(async () =>
+      fireEvent.click(screen.getAllByRole("button", { name: "Close" }).at(-1)!),
+    );
+    await settle();
+    const row = screen.getByRole("group", { name: "OQ-T1: Question OQ-T1?" });
+    expect(
+      row.querySelector("[data-planning-departing-card] .planning-card-body")!
+        .textContent,
+    ).toBe(body);
+    const collapse = played.find(
+      (p) => p.el === row && p.keyframes[0]?.height !== undefined,
+    )!;
+    act(() =>
+      collapse.animation.onfinish?.call(
+        collapse.animation,
+        new Event("finish") as AnimationPlaybackEvent,
+      ),
+    );
+    expect(row.querySelector("[data-planning-departing-card]")).toBeNull();
+    expect(
+      within(row).getByRole("list", { name: "Answers on this question" }),
+    ).toHaveTextContent("The second way.");
+  });
+
   it("only fades the row from green for a reader who asked for less motion", async () => {
     pageSize(2);
     seed(todoTree(3));
@@ -1475,6 +1616,7 @@ describe("your own actions (planning-index.md §6.4)", () => {
     });
     await settle();
     expect(played).toHaveLength(1);
+    expect(document.querySelector("[data-planning-departing-card]")).toBeNull();
     expect(played[0]!.keyframes[0]).not.toHaveProperty("height");
     // Drawn tall for its first layout all the same, so it pulls no scroll.
     expect(played[0]!.height).toBe("240px");
