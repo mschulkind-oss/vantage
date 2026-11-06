@@ -2700,11 +2700,17 @@ export const PlanningPage: React.FC = () => {
   // layout under it, after the commit that does (§6.4): an action that took
   // away the control it was pressed with leaves the focus nowhere.
   const focusRef = useRef<FocusAfter | null>(null);
-  // The heights of cards answered here, by item key, each read by the row it
-  // shrinks to as that row mounts (`AnsweredRow`), which then has it dropped.
-  const [shrinking, setShrinking] = useState<ReadonlyMap<string, number>>(
-    () => new Map(),
-  );
+  // Keep the painted card until its row's height effect finishes, then release it.
+  const [shrinking, setShrinking] = useState<
+    ReadonlyMap<string, { height: number; paintedCard: HTMLElement | null }>
+  >(() => new Map());
+  const [shrinkingFrame, setShrinkingFrame] = useState(current?.needsYou);
+  if (shrinkingFrame !== current?.needsYou) {
+    // An explicit layout replaces this frame. Its rows must not inherit old
+    // departures, even when they have the same keys or are mounted anew.
+    setShrinkingFrame(current?.needsYou);
+    setShrinking(new Map());
+  }
   const shrunk = useCallback((key: string) => {
     setShrinking((prev) => {
       if (!prev.has(key)) return prev;
@@ -2737,7 +2743,7 @@ export const PlanningPage: React.FC = () => {
     joiningRef.current = current?.needsYou.more[current.inPlace.joined];
   }, [current]);
   const answeredHere = useCallback(
-    (cardKey: string, height: number) => {
+    (cardKey: string, height: number, paintedCard: HTMLElement | null) => {
       const key = shownByRef.get(cardKey);
       if (key !== undefined) {
         const joining = joiningRef.current;
@@ -2745,7 +2751,7 @@ export const PlanningPage: React.FC = () => {
           const joined = itemKey(joining.question);
           setGrowing((prev) => new Set(prev).add(joined));
         }
-        setShrinking((prev) => new Map(prev).set(key, height));
+        setShrinking((prev) => new Map(prev).set(key, { height, paintedCard }));
         focusRef.current = { key, on: "row", onlyIfLost: true };
         changeInPlace((s) => shrinkCard(s.inPlace, s.needsYou, key));
         // The reader's own answer, take or comment alike: its row shows the
@@ -2928,13 +2934,15 @@ export const PlanningPage: React.FC = () => {
     if (after === null || current === null) return;
     // Refresh's waits for its own layout.
     if (after.on === "kept" && placeRef.current !== null) return;
+    if (after.on === "row" && after.key !== null && shrinking.has(after.key))
+      return;
     focusRef.current = null;
     const active = document.activeElement;
     const lost =
       active === null || active === document.body || !active.isConnected;
     if (after.onlyIfLost && !lost) return;
     focusItem(after.key, after.on);
-  }, [current]);
+  }, [current, shrinking]);
 
   // The folded groups' open state, remembered per group and read once per
   // visit (§6.2).
@@ -3330,7 +3338,8 @@ export const PlanningPage: React.FC = () => {
             void openItem(item.key, item.entry);
           }}
           onOpenHere={saveScroll}
-          shrinkFrom={shrinking.get(item.key)}
+          shrinkFrom={shrinking.get(item.key)?.height}
+          cardBeforeShrink={shrinking.get(item.key)?.paintedCard}
           onShrunk={() => shrunk(item.key)}
         />
       );

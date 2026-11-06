@@ -146,6 +146,7 @@ import {
 } from "../lib/planningCardParts";
 import { focusIsIdle } from "../hooks/useShellPage";
 import { planningCardId } from "../lib/planningCardId";
+import { copyCardForCollapse } from "../lib/copyCardForCollapse";
 import { ForcedMotion } from "../lib/forcedMotion";
 import { reducedMotion } from "../lib/reducedMotion";
 import { planningLimits } from "../planningScan/limits";
@@ -305,7 +306,11 @@ interface PlanningQuestionCardProps {
    * leaning taken: the page shrinks the card to a row (§6.4), from `height`,
    * the card's own as it was answered.
    */
-  onAnswered?: (key: string, height: number) => void;
+  onAnswered?: (
+    key: string,
+    height: number,
+    paintedCard: HTMLElement | null,
+  ) => void;
   /**
    * A question that joined the end of the cards when the reader answered
    * another: this card grows from no height at all to its own, so what is
@@ -1223,7 +1228,11 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
           ),
         );
         setOpen(true);
-        onAnswered?.(cardKey, heightOf(articleRef.current));
+        onAnswered?.(
+          cardKey,
+          heightOf(articleRef.current),
+          copyCardForCollapse(articleRef.current),
+        );
       } catch (e) {
         setError(commandErrorMessage(e, "Could not save the comment"));
       } finally {
@@ -1357,7 +1366,11 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
     if (box.typed !== "") {
       setOpen(true);
       onAnswerClosed?.(question.path, box.subject.commentId);
-      onAnswered?.(cardKey, heightOf(articleRef.current));
+      onAnswered?.(
+        cardKey,
+        heightOf(articleRef.current),
+        copyCardForCollapse(articleRef.current),
+      );
     }
   };
   // A box closed from outside the popover, as Refresh closes every open box

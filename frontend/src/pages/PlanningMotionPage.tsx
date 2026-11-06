@@ -33,6 +33,7 @@ import { AnsweredRow } from "../components/PlanningNeedsYou";
 import { PlanningQuestionCard } from "../components/PlanningQuestionCard";
 import { OQ_DEFAULT_LEANING } from "../hooks/useOpenQuestionButtons";
 import { ForcedMotion } from "../lib/forcedMotion";
+import { copyCardForCollapse } from "../lib/copyCardForCollapse";
 import { rowAnswers } from "../lib/planningLayout";
 import {
   motionFixture,
@@ -106,7 +107,11 @@ export default function PlanningMotionPage() {
     typeof Element.prototype.animate === "function" &&
     typeof Element.prototype.getAnimations === "function";
   const asked = params.get("t");
-  const [swap, setSwap] = useState<{ key: number; from: number } | null>(null);
+  const [swap, setSwap] = useState<{
+    key: number;
+    from: number;
+    paintedCard: HTMLElement | null;
+  } | null>(null);
   const [time, setTime] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [playRun, setPlayRun] = useState(0);
@@ -177,9 +182,16 @@ export default function PlanningMotionPage() {
   /** Frame zero is the question; frame one begins the production effects. */
   const mountSwap = useCallback(
     (ms: number, from: number) => {
+      const paintedCard =
+        swapRef.current?.paintedCard ??
+        copyCardForCollapse(
+          stageRef.current?.querySelector<HTMLElement>(
+            '[data-motion-slot="answered"] > article',
+          ) ?? null,
+        );
       clearAnimations();
       wanted.current = ms;
-      const next = { key: ++keyRef.current, from };
+      const next = { key: ++keyRef.current, from, paintedCard };
       swapRef.current = next;
       setSwap(next);
     },
@@ -335,6 +347,7 @@ export default function PlanningMotionPage() {
                 onShow={noop}
                 onNewReply={noop}
                 shrinkFrom={swap.from}
+                cardBeforeShrink={swap.paintedCard}
               />
             )}
           </div>

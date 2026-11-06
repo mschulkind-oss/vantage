@@ -184,6 +184,45 @@ describe("PlanningMotionPage", () => {
     expect(readout()).toMatch(/Frame 1 of 97/);
   });
 
+  it("keeps the original question text through the collapse and reveals the compact row at its end", () => {
+    open();
+    const answered = () =>
+      stage().querySelector<HTMLElement>('[data-motion-slot="answered"]')!;
+    const originalText = answered().querySelector(
+      ".planning-card-body",
+    )?.textContent;
+    expect(originalText).toBeTruthy();
+    press("Next frame");
+    const copy = answered().querySelector<HTMLElement>(
+      "[data-planning-departing-card]",
+    );
+    expect(copy).not.toBeNull();
+    expect(copy!.querySelector(".planning-card-body")?.textContent).toBe(
+      originalText,
+    );
+    expect(copy).toHaveAttribute("inert");
+    expect(copy).toHaveAttribute("aria-hidden", "true");
+    const compact = answered().querySelector<HTMLElement>(
+      "[data-planning-row-content]",
+    );
+    expect(compact).not.toBeNull();
+    expect(compact).toHaveStyle({ visibility: "hidden" });
+    seekEffect(300);
+    expect(
+      answered().querySelector("[data-planning-departing-card]"),
+    ).not.toBeNull();
+    seekEffect(320);
+    expect(
+      answered().querySelector("[data-planning-departing-card]"),
+    ).toBeNull();
+    expect(compact).not.toHaveStyle({ visibility: "hidden" });
+    press("First frame");
+    press("Next frame");
+    expect(
+      answered().querySelector("[data-planning-departing-card]"),
+    ).not.toBeNull();
+  });
+
   it("holds exactly three real effects through StrictMode replay and reverse seeking", () => {
     open("/.vantage/planning-motion", true);
     seekEffect(128);

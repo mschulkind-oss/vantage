@@ -1210,13 +1210,24 @@ does reorders _Needs you_: the next layout gathers the answered rows at the top.
 The shrink is shown, not cut: answered in place, the card would otherwise be
 replaced in one frame by its row and the next question, and the reader would see a
 new question where they were reading with nothing to say the old one had gone. So
-the row starts at the card's height, with its content where the card's top was,
-and its bottom edge sweeps up to the row's own height in about a third of a
-second, carrying what is below up with it, while the row's top and everything
-above it stay where they are on screen. The row then fades from green over about
-a second and a half.
+the carrier starts at the card's height and keeps its original text visible,
+clipped as its bottom edge sweeps up to the row's own height in about a third of a
+second. The compact row appears only when that collapse finishes. What is below
+moves up with it, while its top and everything above it stay where they are on
+screen. The green arrives during the collapse and fades over about a second and
+a half.
+
+A noninteractive copy of the already-painted card carries the text during the
+collapse; it is hidden from assistive navigation and owns no review handlers or
+state. Each element keeps its painted font metrics so the smaller row's styles
+cannot move the text or controls before the collapse. Descendant IDs remain for
+SVG references, but the copy has no navigable item identity. The copy is released
+at the handoff; removing the row cancels its effects, and an explicit new layout
+cannot replay an old departure. Focus waits for the visible **Show** control and
+never takes it back from a reader who focused another control meanwhile.
 For a reader whose system asks for reduced motion the row takes its height at once
-and only the green fades, since a change of color moves nothing. Only a card
+and only the green fades, since a change of color moves nothing. Without browser
+animation support, the compact row appears immediately. Only a card
 answered here plays it, never a row a layout lists (`shrinkToRow` in
 [`PlanningNeedsYou.tsx`](../../frontend/src/components/PlanningNeedsYou.tsx)).
 

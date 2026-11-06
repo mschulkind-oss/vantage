@@ -141,10 +141,10 @@ function rowHeight(row: HTMLElement): number {
 /**
  * A card answered here becoming its row (§6.4), so the reader sees it go
  * rather than finding the next question where it was: the row is drawn at
- * the card's height, with its one line where the card's top was, and its
- * bottom edge sweeps up to the line, carrying what is below up with it; then
- * the row fades from green. Its top stays where it is on screen, and so
- * does everything above it. For a reader who asked for less motion the
+ * the card's height, with the painted card clipped inside it while its bottom
+ * edge sweeps up. Only the height effect's finish reveals the compact content.
+ * What is below moves with it; its top and everything above stay in place.
+ * For a reader who asked for less motion the
  * row is at its height at once, and only the green fades: a change of color
  * moves nothing.
  *
@@ -160,33 +160,49 @@ function shrinkToRow(
   from: number,
   to: number,
   move: boolean,
-): void {
+  onCollapsed: () => void,
+): Animation[] {
   const pane = row.closest<HTMLElement>("[data-content-scroll]");
   if (pane !== null) holdScrollRoom(pane, from - to);
-  if (typeof row.animate !== "function") return;
+  if (typeof row.animate !== "function") {
+    onCollapsed();
+    return [];
+  }
+  const animations: Animation[] = [];
   if (move) {
-    row.animate([{ height: `${from}px` }, { height: `${to}px` }], {
-      duration: ROW_SHRINK_MS,
-      easing: "cubic-bezier(0.2, 0, 0, 1)",
-    });
+    const collapse = row.animate(
+      [{ height: `${from}px` }, { height: `${to}px` }],
+      {
+        duration: ROW_SHRINK_MS,
+        easing: "cubic-bezier(0.2, 0, 0, 1)",
+      },
+    );
+    collapse.onfinish = onCollapsed;
+    collapse.oncancel = onCollapsed;
+    animations.push(collapse);
+  } else {
+    onCollapsed();
   }
   // The tint arrives with the shrink rather than at the swap: painted at full
   // strength from the first frame, before the box had moved at all, the green
   // was the loudest thing in the transition — a card's worth of it changing
   // color in one frame. It reaches full at `ROW_FLASH_IN` and fades from
   // there, so the reader sees the green land as the box starts to close.
-  row.animate(
-    [
-      { boxShadow: "none", offset: 0, easing: "ease-out" },
-      {
-        boxShadow: ROW_FLASH,
-        offset: ROW_FLASH_IN,
-        easing: "ease-in",
-      },
-      { boxShadow: "none", offset: 1 },
-    ],
-    { duration: ROW_FLASH_MS },
+  animations.push(
+    row.animate(
+      [
+        { boxShadow: "none", offset: 0, easing: "ease-out" },
+        {
+          boxShadow: ROW_FLASH,
+          offset: ROW_FLASH_IN,
+          easing: "ease-in",
+        },
+        { boxShadow: "none", offset: 1 },
+      ],
+      { duration: ROW_FLASH_MS },
+    ),
   );
+  return animations;
 }
 
 /**
@@ -222,7 +238,9 @@ export const AnsweredRow: React.FC<{
    * the row mounts; `undefined` for any other row.
    */
   shrinkFrom?: number;
-  /** `shrinkFrom` has been read, so the page can forget it. */
+  /** Inert copy of the painted card, clipped until the height effect finishes. */
+  cardBeforeShrink?: HTMLElement | null;
+  /** The compact row is visible now, so the page can forget the departure. */
   onShrunk?: () => void;
 }> = ({
   question,
@@ -239,6 +257,7 @@ export const AnsweredRow: React.FC<{
   onNewReply,
   onOpenHere,
   shrinkFrom,
+  cardBeforeShrink,
   onShrunk,
 }) => {
   const rowRef = useRef<HTMLDivElement>(null);
@@ -251,21 +270,75 @@ export const AnsweredRow: React.FC<{
   );
   // Drawn at the card's height until the shrink has taken over from it.
   const [tall, setTall] = useState(shrink !== null);
-  const played = useRef(false);
-  useLayoutEffect(() => {
-    const row = rowRef.current;
-    if (shrink === null || row === null || played.current) return;
-    played.current = true;
-    shrinkToRow(row, shrink.from, rowHeight(row), shrink.move);
-    setTall(false);
-  }, [shrink]);
+  const [collapsing, setCollapsing] = useState(
+    () =>
+      shrink !== null &&
+      shrink.move &&
+      cardBeforeShrink != null &&
+      typeof Element.prototype.animate === "function",
+  );
+  const copyRef = useRef<HTMLDivElement>(null);
+  const animationsRef = useRef<Animation[]>([]);
+  const completeRef = useRef<(() => void) | null>(null);
   const onShrunkRef = useRef(onShrunk);
   useLayoutEffect(() => {
     onShrunkRef.current = onShrunk;
   });
+  const played = useRef(false);
+  useLayoutEffect(() => {
+    const row = rowRef.current;
+    if (played.current && cardBeforeShrink == null && collapsing) {
+      // Apply updates can keep this keyed row while retiring the old frame.
+      // Reveal it now; an obsolete native callback must not finish later.
+      completeRef.current?.();
+      for (const animation of animationsRef.current) {
+        animation.onfinish = null;
+        animation.oncancel = null;
+        animation.cancel?.();
+      }
+      return;
+    }
+    if (shrink === null || row === null || played.current) return;
+    played.current = true;
+    if (copyRef.current !== null && cardBeforeShrink != null) {
+      copyRef.current.appendChild(cardBeforeShrink.cloneNode(true));
+    }
+    let completed = false;
+    const complete = () => {
+      if (completed || rowRef.current === null) return;
+      completed = true;
+      completeRef.current = null;
+      for (const animation of animationsRef.current) {
+        animation.onfinish = null;
+        animation.oncancel = null;
+      }
+      copyRef.current?.replaceChildren();
+      setCollapsing(false);
+      onShrunkRef.current?.();
+    };
+    completeRef.current = complete;
+    animationsRef.current = shrinkToRow(
+      row,
+      shrink.from,
+      rowHeight(row),
+      collapsing,
+      complete,
+    );
+    setTall(false);
+  }, [shrink, cardBeforeShrink, collapsing]);
   useEffect(() => {
-    if (shrinkFrom !== undefined) onShrunkRef.current?.();
-  }, [shrinkFrom]);
+    const row = rowRef.current;
+    return () => {
+      // StrictMode may detach the ref during its rehearsal, but keeps the DOM
+      // connected. Only a real removal may cancel these production effects.
+      if (row?.isConnected) return;
+      for (const animation of animationsRef.current) {
+        animation.onfinish = null;
+        animation.oncancel = null;
+        animation.cancel?.();
+      }
+    };
+  }, []);
   const leaning = answers?.leaning ?? null;
   // Undo while the take is still the whole thread, whether or not the agent
   // has replied, as a card offers it.
@@ -293,126 +366,140 @@ export const AnsweredRow: React.FC<{
       aria-label={question.title}
       data-planning-row
       data-planning-item={itemKey}
-      style={tall && shrink !== null ? tallRow(shrink.from) : undefined}
+      style={{
+        ...(tall && shrink !== null ? tallRow(shrink.from) : {}),
+        ...(collapsing ? { overflow: "hidden", borderRadius: "0.75rem" } : {}),
+      }}
       className="relative flex min-w-0 flex-col rounded-lg border border-slate-200 bg-white px-4 py-1 text-sm dark:border-slate-700 dark:bg-slate-800"
     >
-      {newReply && <NewReplyBar />}
-      <div className="flex min-w-0 items-center gap-2 whitespace-nowrap">
-        <span
-          aria-hidden="true"
-          className="shrink-0 text-green-600 dark:text-green-400"
-        >
-          ✓
-        </span>
-        <AppLink
-          to={href}
-          onBeforeNavigate={() => onOpenHere?.()}
-          className="shrink-0 font-medium text-blue-600 no-underline hover:underline dark:text-blue-400"
-        >
-          {question.id ?? question.path}
-        </AppLink>
-        <span className="min-w-0 flex-1 truncate text-slate-700 dark:text-slate-200">
-          {question.title}
-        </span>
-        {/* Every slot after the title keeps its room whatever it holds, so a
-            late change of a mark moves nothing in the row (§12.1). */}
-        <span className="flex w-20 shrink-0 justify-end">
-          <ItemMarks
-            marks={marks}
-            newReply={newReply}
-            onNewReply={onNewReply}
-          />
-        </span>
-        <button
-          type="button"
-          data-planning-row-show
-          aria-label={`Show ${question.title}`}
-          aria-disabled={opening ? "true" : undefined}
-          onClick={() => {
-            if (!opening) onShow();
-          }}
-          className="shrink-0 rounded px-1.5 py-0.5 text-[11px] font-medium text-slate-600 transition-colors hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700"
-        >
-          Show
-        </button>
-      </div>
-      {answers !== null &&
-        (leaning !== null || answers.comments.length > 0) && (
-          <ul
-            aria-label="Answers on this question"
-            className="mt-0.5 space-y-0.5 border-t border-slate-100 pt-1 text-[12px] dark:border-slate-700"
+      {collapsing && (
+        <div
+          ref={copyRef}
+          className="pointer-events-none absolute -inset-x-px -top-px"
+        />
+      )}
+      <div
+        data-planning-row-content
+        style={collapsing ? { visibility: "hidden" } : undefined}
+      >
+        {newReply && <NewReplyBar />}
+        <div className="flex min-w-0 items-center gap-2 whitespace-nowrap">
+          <span
+            aria-hidden="true"
+            className="shrink-0 text-green-600 dark:text-green-400"
           >
-            {leaning !== null && (
-              <li
-                data-planning-answer="leaning"
-                className="flex min-w-0 items-center gap-1.5"
-              >
-                <span className="shrink-0 text-slate-500 dark:text-slate-400">
-                  <em>Leaning:</em>{" "}
-                </span>
-                <span
-                  className={cn(
-                    "min-w-0 flex-1 truncate italic",
-                    leaning.pending
-                      ? "text-slate-600 dark:text-slate-300"
-                      : "text-slate-500 dark:text-slate-400",
-                  )}
-                  title={leaning.comment.comment}
+            ✓
+          </span>
+          <AppLink
+            to={href}
+            onBeforeNavigate={() => onOpenHere?.()}
+            className="shrink-0 font-medium text-blue-600 no-underline hover:underline dark:text-blue-400"
+          >
+            {question.id ?? question.path}
+          </AppLink>
+          <span className="min-w-0 flex-1 truncate text-slate-700 dark:text-slate-200">
+            {question.title}
+          </span>
+          {/* Every slot after the title keeps its room whatever it holds, so a
+            late change of a mark moves nothing in the row (§12.1). */}
+          <span className="flex w-20 shrink-0 justify-end">
+            <ItemMarks
+              marks={marks}
+              newReply={newReply}
+              onNewReply={onNewReply}
+            />
+          </span>
+          <button
+            type="button"
+            data-planning-row-show
+            aria-label={`Show ${question.title}`}
+            aria-disabled={opening ? "true" : undefined}
+            onClick={() => {
+              if (!opening) onShow();
+            }}
+            className="shrink-0 rounded px-1.5 py-0.5 text-[11px] font-medium text-slate-600 transition-colors hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700"
+          >
+            Show
+          </button>
+        </div>
+        {answers !== null &&
+          (leaning !== null || answers.comments.length > 0) && (
+            <ul
+              aria-label="Answers on this question"
+              className="mt-0.5 space-y-0.5 border-t border-slate-100 pt-1 text-[12px] dark:border-slate-700"
+            >
+              {leaning !== null && (
+                <li
+                  data-planning-answer="leaning"
+                  className="flex min-w-0 items-center gap-1.5"
                 >
-                  {answerText(leaning.comment.comment)}
-                </span>
-                {undoable && (
-                  <button
-                    type="button"
-                    className="review-oq-undo shrink-0"
-                    title="Delete the review comment the take filed"
-                    aria-disabled={opening ? "true" : undefined}
-                    onClick={() => {
-                      if (!opening) onUndo?.(leaning.comment);
-                    }}
+                  <span className="shrink-0 text-slate-500 dark:text-slate-400">
+                    <em>Leaning:</em>{" "}
+                  </span>
+                  <span
+                    className={cn(
+                      "min-w-0 flex-1 truncate italic",
+                      leaning.pending
+                        ? "text-slate-600 dark:text-slate-300"
+                        : "text-slate-500 dark:text-slate-400",
+                    )}
+                    title={leaning.comment.comment}
                   >
-                    <Undo2
-                      size={12}
-                      aria-hidden="true"
-                      className="mr-0.5 inline"
-                    />
-                    {OQ_UNDO_LABEL}
-                  </button>
-                )}
-              </li>
-            )}
-            {answers.comments.map((c) => (
-              <li
-                key={c.id}
-                data-planning-answer="comment"
-                className={cn(
-                  "flex min-w-0 items-center gap-1.5 text-slate-700 dark:text-slate-300",
-                  c.resolved && "text-slate-500 dark:text-slate-400",
-                )}
-              >
-                <span className="min-w-0 flex-1 truncate" title={c.comment}>
-                  {answerText(c.comment)}
-                </span>
-                {isPendingForAgent(c) && writable && (
-                  <button
-                    type="button"
-                    data-planning-comment-edit
-                    className="review-oq-edit shrink-0"
-                    title="Edit comment"
-                    onClick={(e) => openEdit(e, c)}
-                  >
-                    <Pencil
-                      size={12}
-                      aria-hidden="true"
-                      className="mr-0.5 inline"
-                    />
-                    Edit
-                  </button>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
+                    {answerText(leaning.comment.comment)}
+                  </span>
+                  {undoable && (
+                    <button
+                      type="button"
+                      className="review-oq-undo shrink-0"
+                      title="Delete the review comment the take filed"
+                      aria-disabled={opening ? "true" : undefined}
+                      onClick={() => {
+                        if (!opening) onUndo?.(leaning.comment);
+                      }}
+                    >
+                      <Undo2
+                        size={12}
+                        aria-hidden="true"
+                        className="mr-0.5 inline"
+                      />
+                      {OQ_UNDO_LABEL}
+                    </button>
+                  )}
+                </li>
+              )}
+              {answers.comments.map((c) => (
+                <li
+                  key={c.id}
+                  data-planning-answer="comment"
+                  className={cn(
+                    "flex min-w-0 items-center gap-1.5 text-slate-700 dark:text-slate-300",
+                    c.resolved && "text-slate-500 dark:text-slate-400",
+                  )}
+                >
+                  <span className="min-w-0 flex-1 truncate" title={c.comment}>
+                    {answerText(c.comment)}
+                  </span>
+                  {isPendingForAgent(c) && writable && (
+                    <button
+                      type="button"
+                      data-planning-comment-edit
+                      className="review-oq-edit shrink-0"
+                      title="Edit comment"
+                      onClick={(e) => openEdit(e, c)}
+                    >
+                      <Pencil
+                        size={12}
+                        aria-hidden="true"
+                        className="mr-0.5 inline"
+                      />
+                      Edit
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+      </div>
       {editing !== null && (
         <ReviewCommentPopover
           label="Edit Comment"
