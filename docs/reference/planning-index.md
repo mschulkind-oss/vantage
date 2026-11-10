@@ -1210,12 +1210,15 @@ does reorders _Needs you_: the next layout gathers the answered rows at the top.
 The shrink is shown, not cut: answered in place, the card would otherwise be
 replaced in one frame by its row and the next question, and the reader would see a
 new question where they were reading with nothing to say the old one had gone. So
-the carrier starts at the card's height and keeps its original text visible,
-clipped as its bottom edge sweeps up to the row's own height in about a third of a
-second. The compact row appears only when that collapse finishes. What is below
-moves up with it, while its top and everything above it stay where they are on
-screen. The green arrives during the collapse and fades over about a second and
-a half.
+the carrier starts at the card's height, with a noninteractive copy of its
+painted content. Its bottom edge sweeps up to the row's height while its title
+moves toward the compact row's position and size and the rest dissolves. The
+compact row takes over when the text handoff finishes. What is below moves up
+with it, while its top and everything above it stay where they are on screen.
+The green grows to a soft tint and stays; it never peaks and fades back.
+Answered rows retain the same tint when a layout lists or remounts them.
+The main app has this one fixed transition, with no user setting or URL override.
+The read-only animation inspector can compare alternatives without changing it.
 
 A noninteractive copy of the already-painted card carries the text during the
 collapse; it is hidden from assistive navigation and owns no review handlers or
@@ -1225,10 +1228,9 @@ SVG references, but the copy has no navigable item identity. The copy is release
 at the handoff; removing the row cancels its effects, and an explicit new layout
 cannot replay an old departure. Focus waits for the visible **Show** control and
 never takes it back from a reader who focused another control meanwhile.
-For a reader whose system asks for reduced motion the row takes its height at once
-and only the green fades, since a change of color moves nothing. Without browser
-animation support, the compact row appears immediately. Only a card
-answered here plays it, never a row a layout lists (`shrinkToRow` in
+For a reader whose system asks for reduced motion, or without browser animation
+support, the final row and steady tint appear immediately. Only a card
+answered here plays the transition, never a row a layout lists (`AnsweredRow` in
 [`PlanningNeedsYou.tsx`](../../frontend/src/components/PlanningNeedsYou.tsx)).
 
 Near the end of the list the page is shorter by the card once it has shrunk, and a

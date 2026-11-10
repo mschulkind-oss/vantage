@@ -6,11 +6,12 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
 } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import PlanningMotionPage from "./PlanningMotionPage";
 import { FRAME_MS } from "../lib/planningMotionTimeline";
-import { answerPreviews } from "../lib/planningAnswerPreview";
+import { answerPreviews } from "../lib/planningAnswerMotion";
 
 vi.mock("axios");
 
@@ -90,6 +91,31 @@ beforeEach(() => {
         this.contains(a.target) && !["finished", "idle"].includes(a.playState),
     );
   };
+  vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(
+    function (this: Element) {
+      const heading =
+        this.matches("[data-planning-card-headline]") ||
+        (this.tagName === "STRONG" &&
+          this.closest(
+            '[data-planning-card-part="title"], [data-planning-card-part="lede"]',
+          ) === null);
+      const title = this.matches("[data-planning-row-title]");
+      const top = heading ? 100 : 0;
+      const width = heading ? 480 : title ? 300 : 0;
+      const height = heading ? 24 : title ? 20 : 0;
+      return {
+        x: 0,
+        y: top,
+        left: 0,
+        top,
+        width,
+        height,
+        right: width,
+        bottom: top + height,
+        toJSON: () => ({}),
+      } as DOMRect;
+    },
+  );
   vi.stubGlobal("matchMedia", ((query: string) => ({
     matches: reduce && query.includes("reduce"),
     media: query,
@@ -163,16 +189,16 @@ describe("PlanningMotionPage", () => {
     ).toBeNull();
   });
 
-  it("offers five experimental handoffs plus the unchanged production baseline", () => {
+  it("offers the chosen production title glide and four read-only alternatives", () => {
     open();
     const select = screen.getByRole("combobox", { name: "Text handoff" });
-    expect(select).toHaveValue("current");
-    expect(screen.getAllByRole("option")).toHaveLength(6);
+    expect(select).toHaveValue("title-glide");
+    expect(screen.getAllByRole("option")).toHaveLength(5);
     expect(
-      screen.getByRole("option", { name: "Title glide" }),
+      screen.getByRole("option", { name: "Title glide (production)" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/experimental.*not used on the planning page/i),
+      screen.getByText(/four.*read-only alternatives/i),
     ).toBeInTheDocument();
   });
 
@@ -238,8 +264,9 @@ describe("PlanningMotionPage", () => {
     expect(stage().querySelector("[data-planning-departing-card]")).toBeNull();
   });
 
-  it("links retain the chosen preview and open paused, with invalid effects falling back to production", () => {
+  it("links retain the chosen preview and open paused, with invalid effects falling back to production", async () => {
     open("/.vantage/planning-motion?effect=slide-up&t=128");
+    await waitFor(() => expect(readout()).toMatch(/128.00 ms.*paused/));
     expect(screen.getByRole("combobox", { name: "Text handoff" })).toHaveValue(
       "slide-up",
     );
@@ -250,35 +277,50 @@ describe("PlanningMotionPage", () => {
     cleanup();
     open("/.vantage/planning-motion?effect=not-real");
     expect(screen.getByRole("combobox", { name: "Text handoff" })).toHaveValue(
-      "current",
+      "title-glide",
     );
     press("Next frame");
-    expect(live()).toHaveLength(3);
+    expect(live()).toHaveLength(7);
+  });
+
+  it("returning to frame zero cancels a cold paused link's pending capture", async () => {
+    open("/.vantage/planning-motion?t=128");
+    press("First frame");
+    await waitFor(() =>
+      expect(
+        stage().querySelector(
+          '[data-motion-slot="answered"] [data-planning-card-headline]',
+        ),
+      ).not.toBeNull(),
+    );
+    expect(stage().querySelector("[data-planning-row]")).toBeNull();
+    expect(made).toEqual([]);
+    expect(readout()).toMatch(/Frame 0.*paused/);
   });
 
   it("starts stepping immediately; first always returns to the initial question", () => {
     open();
     expect(screen.getByRole("button", { name: "Next frame" })).toBeEnabled();
     press("Next frame");
-    expect(readout()).toMatch(/Frame 1 of 97 · 16\.67 ms · paused/);
+    expect(readout()).toMatch(/Frame 1 of 25 · 16\.67 ms · paused/);
     expect(stage().querySelector("[data-planning-row]")).not.toBeNull();
     expect(made.map((a) => a.duration).sort((a, b) => a - b)).toEqual([
-      320, 320, 1600,
+      128, 320, 320, 320, 400, 400, 400,
     ]);
     expect(
       live().every((a) => a.playState === "paused" && a.currentTime === 0),
     ).toBe(true);
-    expect(screen.getAllByTestId("motion-effect")).toHaveLength(3);
+    expect(screen.getAllByTestId("motion-effect")).toHaveLength(7);
     press("First frame");
-    expect(readout()).toMatch(/Frame 0 of 97 · 0\.00 ms · paused/);
+    expect(readout()).toMatch(/Frame 0 of 25 · 0\.00 ms · paused/);
     expect(stage().querySelector("[data-planning-row]")).toBeNull();
     expect(live()).toEqual([]);
     press("First frame");
     press("Next frame");
-    expect(readout()).toMatch(/Frame 1 of 97/);
+    expect(readout()).toMatch(/Frame 1 of 25/);
   });
 
-  it("keeps the original question text through the collapse and reveals the compact row at its end", () => {
+  it("keeps the painted copy during the glide and reveals the compact row at the text handoff's end", () => {
     open();
     const answered = () =>
       stage().querySelector<HTMLElement>('[data-motion-slot="answered"]')!;
@@ -300,12 +342,15 @@ describe("PlanningMotionPage", () => {
       "[data-planning-row-content]",
     );
     expect(compact).not.toBeNull();
-    expect(compact).toHaveStyle({ visibility: "hidden" });
-    seekEffect(300);
+    expect(compact).not.toHaveStyle({ visibility: "hidden" });
+    expect(
+      answered().querySelector("[data-planning-gliding-title]"),
+    ).not.toBeNull();
+    seekEffect(320);
     expect(
       answered().querySelector("[data-planning-departing-card]"),
     ).not.toBeNull();
-    seekEffect(320);
+    seekEffect(400);
     expect(
       answered().querySelector("[data-planning-departing-card]"),
     ).toBeNull();
@@ -317,17 +362,21 @@ describe("PlanningMotionPage", () => {
     ).not.toBeNull();
   });
 
-  it("holds exactly three real effects through StrictMode replay and reverse seeking", () => {
+  it("holds exactly seven real effects through StrictMode replay and reverse seeking", () => {
     open("/.vantage/planning-motion", true);
     seekEffect(128);
-    expect(made).toHaveLength(3);
+    expect(made).toHaveLength(7);
     expect(live().every((a) => a.playState === "paused")).toBe(true);
     press("Last frame");
     const first = [...made];
     seekEffect(128);
     const fresh = made.filter((a) => !first.includes(a));
-    expect(fresh).toHaveLength(3);
-    expect(fresh.every((a) => a.playState === "paused")).toBe(true);
+    expect(fresh).toHaveLength(7);
+    expect(
+      fresh.every(
+        (a) => a.playState === (a.duration <= 128 ? "finished" : "paused"),
+      ),
+    ).toBe(true);
     fresh.forEach((a) => expect(a.currentTime).toBeCloseTo(128));
     expect(
       stage().querySelector<HTMLElement>(
@@ -336,11 +385,11 @@ describe("PlanningMotionPage", () => {
     ).toBe("0px");
   });
 
-  it("holds only three effects when StrictMode opens directly at a paused time", () => {
+  it("holds seven effects when StrictMode opens directly at a paused time", async () => {
     open("/.vantage/planning-motion?t=128", true);
-    expect(made).toHaveLength(3);
+    await waitFor(() => expect(made).toHaveLength(7));
     expect(live().every((a) => a.playState === "paused")).toBe(true);
-    expect(readout()).toMatch(/Frame 7 of 97 · 128\.00 ms/);
+    expect(readout()).toMatch(/Frame 7 of 25 · 128\.00 ms/);
   });
 
   it("finishes each effect at its own end, including the production finish callbacks", () => {
@@ -353,17 +402,18 @@ describe("PlanningMotionPage", () => {
         .filter((a) => a.duration === 320)
         .every((a) => a.playState === "finished"),
     ).toBe(true);
-    expect(made.find((a) => a.duration === 1600)?.currentTime).toBeCloseTo(320);
+    expect(made.find((a) => a.duration === 400)?.currentTime).toBeCloseTo(320);
+    expect(made.find((a) => a.duration === 128)?.playState).toBe("finished");
     press("Last frame");
     expect(made.every((a) => a.playState === "finished")).toBe(true);
-    expect(readout()).toMatch(/Frame 97 of 97 · 1616\.67 ms · paused/);
+    expect(readout()).toMatch(/Frame 25 of 25 · 416\.67 ms · paused/);
   });
 
-  it("previous always changes the displayed frame after an exact-time seek", () => {
+  it("previous always changes the displayed frame after an exact-time seek", async () => {
     open("/.vantage/planning-motion?t=128");
-    expect(readout()).toMatch(/Frame 7 /);
+    await waitFor(() => expect(readout()).toMatch(/Frame 7 /));
     press("Previous frame");
-    expect(readout()).toMatch(/Frame 6 of 97 · 100\.00 ms/);
+    expect(readout()).toMatch(/Frame 6 of 25 · 100\.00 ms/);
     press("Next frame");
     expect(readout()).toMatch(/Frame 7 /);
     press("First frame");
@@ -373,23 +423,23 @@ describe("PlanningMotionPage", () => {
     press("Last frame");
     expect(screen.getByRole("button", { name: "Next frame" })).toBeDisabled();
     press("Previous frame");
-    expect(readout()).toMatch(/Frame 96 /);
+    expect(readout()).toMatch(/Frame 24 /);
   });
 
   it("can go directly from the initial question to the last frame", () => {
     open();
     press("Last frame");
-    expect(readout()).toMatch(/Frame 97 of 97/);
+    expect(readout()).toMatch(/Frame 25 of 25/);
     press("First frame");
-    expect(readout()).toMatch(/Frame 0 of 97/);
+    expect(readout()).toMatch(/Frame 0 of 25/);
   });
 
   it("clamps exact times and preserves old initial-view links", () => {
     open();
     seekTime(9000);
-    expect(readout()).toMatch(/1616\.67 ms/);
+    expect(readout()).toMatch(/416\.67 ms/);
     seekTime(-4);
-    expect(readout()).toMatch(/Frame 0 of 97 · 0\.00 ms/);
+    expect(readout()).toMatch(/Frame 0 of 25 · 0\.00 ms/);
     cleanup();
     made = [];
     open("/.vantage/planning-motion?t=before");
@@ -411,7 +461,7 @@ describe("PlanningMotionPage", () => {
     tick(1217);
     expect(made.map((a) => a.pauseCount)).toEqual(pauses);
     tick(3017);
-    expect(readout()).toMatch(/Frame 97 of 97 · 1616\.67 ms · paused/);
+    expect(readout()).toMatch(/Frame 25 of 25 · 416\.67 ms · paused/);
   });
 
   it("a forward frame step pauses playback and cannot be overwritten by a pending tick", () => {
@@ -422,7 +472,7 @@ describe("PlanningMotionPage", () => {
     tick(1017);
     tick(1117);
     press("Next frame");
-    expect(readout()).toMatch(/Frame 8 of 97 · 133\.33 ms · paused/);
+    expect(readout()).toMatch(/Frame 8 of 25 · 133\.33 ms · paused/);
     const held = readout();
     tick(2000);
     expect(readout()).toBe(held);
@@ -440,7 +490,7 @@ describe("PlanningMotionPage", () => {
     press("Play from start");
     expect(first.every((a) => a.playState === "idle")).toBe(true);
     tick(2000);
-    expect(readout()).toMatch(/Frame 0 of 97 · 0\.00 ms · playing/);
+    expect(readout()).toMatch(/Frame 0 of 25 · 0\.00 ms · playing/);
     tick(2017);
     tick(2117);
     expect(readout()).toMatch(/116\.67 ms · playing/);
@@ -469,7 +519,7 @@ describe("PlanningMotionPage", () => {
     expect(readout()).toMatch(/216\.67 ms · playing/);
     press("First frame");
     tick(3000);
-    expect(readout()).toMatch(/Frame 0 of 97 · 0\.00 ms · paused/);
+    expect(readout()).toMatch(/Frame 0 of 25 · 0\.00 ms · paused/);
     expect(stage().querySelector("[data-planning-row]")).toBeNull();
   });
 
@@ -485,7 +535,7 @@ describe("PlanningMotionPage", () => {
     tick(1000);
     tick(1017);
     expect(made.map((a) => a.duration).sort((a, b) => a - b)).toEqual([
-      320, 320, 1600,
+      128, 320, 320, 320, 400, 400, 400,
     ]);
     expect(window.matchMedia("(prefers-reduced-motion: reduce)").matches).toBe(
       true,

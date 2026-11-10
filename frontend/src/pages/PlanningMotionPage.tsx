@@ -39,8 +39,10 @@ import {
   PlanningAnswerPreview,
   answerPreviewOf,
   answerPreviews,
+  PRODUCTION_ANSWER_MOTION,
+  ANSWER_HANDOFF_MS,
   type AnswerPreview,
-} from "../lib/planningAnswerPreview";
+} from "../lib/planningAnswerMotion";
 import { copyCardForCollapse } from "../lib/copyCardForCollapse";
 import { rowAnswers } from "../lib/planningLayout";
 import {
@@ -131,6 +133,9 @@ export default function PlanningMotionPage() {
   const [measured, setMeasured] = useState<Measured | null>(null);
   const [end, setEnd] = useState(0);
   const stageRef = useRef<HTMLDivElement>(null);
+  const pendingSwap = useRef<MutationObserver | null>(null);
+  const pendingTime = useRef(0);
+  const opened = useRef(false);
   const animations = useRef<Animation[]>([]);
   const wanted = useRef(0);
   const timeRef = useRef(0);
@@ -142,6 +147,12 @@ export default function PlanningMotionPage() {
   useEffect(
     () => () => {
       cancelAnimationFrame(measuring.current);
+      if (pendingSwap.current !== null) {
+        pendingSwap.current.disconnect();
+        pendingSwap.current = null;
+        // StrictMode rehearses cleanup before a cold card has rendered.
+        opened.current = false;
+      }
       animations.current.forEach((animation) => {
         if (animation.playState === "running") animation.pause();
       });
@@ -153,10 +164,13 @@ export default function PlanningMotionPage() {
     stageRef.current?.setAttribute("inert", "");
   }, []);
 
-  const heightOfCard = (): number =>
-    stageRef.current
-      ?.querySelector<HTMLElement>('[data-motion-slot="answered"] > *')
-      ?.getBoundingClientRect().height ?? 0;
+  const heightOfCard = useCallback(
+    (): number =>
+      stageRef.current
+        ?.querySelector<HTMLElement>('[data-motion-slot="answered"] > *')
+        ?.getBoundingClientRect().height ?? 0,
+    [],
+  );
 
   const publish = useCallback((ms: number) => {
     timeRef.current = ms;
@@ -176,6 +190,8 @@ export default function PlanningMotionPage() {
   }, []);
 
   const clearAnimations = useCallback(() => {
+    pendingSwap.current?.disconnect();
+    pendingSwap.current = null;
     animations.current.forEach((animation) => animation.cancel());
     animations.current = [];
   }, []);
@@ -193,7 +209,36 @@ export default function PlanningMotionPage() {
 
   /** Frame zero is the question; frame one begins the production effects. */
   const mountSwap = useCallback(
-    (ms: number, from: number) => {
+    function mountAt(ms: number, from: number) {
+      const stage = stageRef.current;
+      if (
+        swapRef.current === null &&
+        stage !== null &&
+        !stage.querySelector(
+          '[data-motion-slot="answered"] > article [data-planning-card-headline]',
+        )
+      ) {
+        // The fixture's real Markdown card renders asynchronously. Capturing
+        // its loading shell would lose the production title motion on cold
+        // links or an immediate Play. Queue the latest request until painted.
+        pendingTime.current = ms;
+        if (pendingSwap.current !== null) return;
+        const observer = new MutationObserver(() => {
+          if (pendingSwap.current !== observer) return;
+          if (
+            !stage.querySelector(
+              '[data-motion-slot="answered"] > article [data-planning-card-headline]',
+            )
+          )
+            return;
+          observer.disconnect();
+          pendingSwap.current = null;
+          mountAt(pendingTime.current, heightOfCard());
+        });
+        pendingSwap.current = observer;
+        observer.observe(stage, { childList: true, subtree: true });
+        return;
+      }
       const paintedCard =
         swapRef.current?.paintedCard ??
         copyCardForCollapse(
@@ -207,7 +252,7 @@ export default function PlanningMotionPage() {
       swapRef.current = next;
       setSwap(next);
     },
-    [clearAnimations],
+    [clearAnimations, heightOfCard],
   );
 
   useLayoutEffect(() => {
@@ -248,7 +293,7 @@ export default function PlanningMotionPage() {
         publish(to);
       }
     },
-    [mountSwap, publish, reset],
+    [mountSwap, publish, reset, heightOfCard],
   );
 
   const start = () => {
@@ -294,15 +339,13 @@ export default function PlanningMotionPage() {
         if (a.playState === "running") a.pause();
       });
     };
-  }, [playing, playRun, mountSwap, publish]);
+  }, [playing, playRun, mountSwap, publish, heightOfCard]);
 
-  const opened = useRef(false);
   useEffect(() => {
     if (opened.current || !supported) return;
     opened.current = true;
     if (asked === null || asked === "before") return;
     const ms = Number(asked);
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (Number.isFinite(ms)) seek(ms);
   }, [asked, supported, seek]);
 
@@ -393,9 +436,9 @@ export default function PlanningMotionPage() {
         <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
           Play the whole answer animation as often as you like, or pause and
           step through it at 60 frames per second. The cards and roll-up are the
-          planning page&apos;s real components. The five alternative text
-          handoffs are experimental previews, not used on the planning page.
-          Sample cards are display-only; no reviews are changed.
+          planning page&apos;s real components. The menu includes the production
+          title glide and four read-only alternatives. Sample cards are
+          display-only; no reviews are changed.
         </p>
         {!supported && (
           <p
@@ -422,13 +465,12 @@ export default function PlanningMotionPage() {
             Text handoff
             <select
               className="min-w-0 max-w-full rounded border bg-white px-2 py-1 dark:bg-slate-800"
-              value={textPreview ?? "current"}
+              value={textPreview ?? PRODUCTION_ANSWER_MOTION}
               onChange={(event) => {
                 seek(0);
                 setTextPreview(answerPreviewOf(event.target.value));
               }}
             >
-              <option value="current">Current production handoff</option>
               {answerPreviews.map((preview) => (
                 <option key={preview.value} value={preview.value}>
                   {preview.label}
@@ -437,9 +479,12 @@ export default function PlanningMotionPage() {
             </select>
           </label>
           <p className="min-h-10 text-xs text-slate-600 dark:text-slate-300">
-            {answerPreviews.find((preview) => preview.value === textPreview)
-              ?.description ??
-              "Keep the question visible while it collapses, then show the compact row. This is the current planning-page behavior."}{" "}
+            {
+              answerPreviews.find(
+                (preview) =>
+                  preview.value === (textPreview ?? PRODUCTION_ANSWER_MOTION),
+              )?.description
+            }{" "}
             Choose an effect, then press Play from start. Changing the effect
             pauses and returns to frame 0.
           </p>
@@ -531,7 +576,7 @@ export default function PlanningMotionPage() {
                   type="range"
                   aria-label="Time in milliseconds"
                   min={0}
-                  max={end || 1600 + FRAME_MS}
+                  max={end || ANSWER_HANDOFF_MS + FRAME_MS}
                   step={FRAME_MS}
                   value={time}
                   disabled={!supported}
@@ -544,7 +589,7 @@ export default function PlanningMotionPage() {
                   aria-label="Time (ms)"
                   className="w-24 rounded border px-1 tabular-nums dark:bg-slate-900"
                   min={0}
-                  max={end || 1600 + FRAME_MS}
+                  max={end || ANSWER_HANDOFF_MS + FRAME_MS}
                   step="any"
                   disabled={!supported}
                   value={Number(time.toFixed(3))}
