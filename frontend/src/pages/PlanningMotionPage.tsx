@@ -10,7 +10,9 @@
  * paint, and held with `pause()` and `currentTime` when stepping. Playback
  * runs those same effects normally. It reads nothing and writes nothing
  * outside the page: the stage is
- * `inert`, every callback is a no-op, and no review is filed.
+ * `inert`, every callback is a no-op, and no review is filed. A dropdown can
+ * add five experimental text handoffs over the unchanged production collapse;
+ * those effects are preview-only and run on the same captured native clock.
  *
  * The frames are a *simulation* at 60 fps: a virtual clock stepped by 1/60 s
  * and applied to the real effects. They are not a recording of the GPU's
@@ -33,6 +35,12 @@ import { AnsweredRow } from "../components/PlanningNeedsYou";
 import { PlanningQuestionCard } from "../components/PlanningQuestionCard";
 import { OQ_DEFAULT_LEANING } from "../hooks/useOpenQuestionButtons";
 import { ForcedMotion } from "../lib/forcedMotion";
+import {
+  PlanningAnswerPreview,
+  answerPreviewOf,
+  answerPreviews,
+  type AnswerPreview,
+} from "../lib/planningAnswerPreview";
 import { copyCardForCollapse } from "../lib/copyCardForCollapse";
 import { rowAnswers } from "../lib/planningLayout";
 import {
@@ -98,7 +106,8 @@ function measure(stage: HTMLElement): Measured {
 }
 
 /** Links open paused; the old `?t=before` link still opens frame zero. */
-const linkFor = (ms: number) => `?t=${Math.round(ms * 1000) / 1000}`;
+const linkFor = (ms: number, preview: AnswerPreview | null) =>
+  `?${preview === null ? "" : `effect=${preview}&`}t=${Math.round(ms * 1000) / 1000}`;
 
 export default function PlanningMotionPage() {
   const fixture = useMemo(() => motionFixture(), []);
@@ -107,6 +116,9 @@ export default function PlanningMotionPage() {
     typeof Element.prototype.animate === "function" &&
     typeof Element.prototype.getAnimations === "function";
   const asked = params.get("t");
+  const [textPreview, setTextPreview] = useState(() =>
+    answerPreviewOf(params.get("effect")),
+  );
   const [swap, setSwap] = useState<{
     key: number;
     from: number;
@@ -316,61 +328,63 @@ export default function PlanningMotionPage() {
     );
     return (
       <ForcedMotion.Provider value={true}>
-        <div
-          ref={stageRef}
-          data-testid="motion-stage"
-          className="mt-4 space-y-3"
-        >
-          {card("above", fixture.above)}
-          <div data-motion-slot="answered">
-            {swap === null ? (
-              <PlanningQuestionCard
-                question={fixture.answered.question}
-                card={fixture.answered.card}
-                badge={null}
-                comments={[]}
-                lifecycle="Open"
-                href={`/${fixture.answered.question.path}`}
-                onFile={noopAsync}
-                cardKey="answered"
-              />
-            ) : (
-              <AnsweredRow
-                key={swap.key}
-                question={fixture.answered.question}
-                itemKey="answered"
-                href={`/${fixture.answered.question.path}`}
-                answers={rowAnswers([FIXTURE_ANSWER], OQ_DEFAULT_LEANING)}
-                marks={[]}
-                newReply={false}
-                opening={false}
-                onShow={noop}
-                onNewReply={noop}
-                shrinkFrom={swap.from}
-                cardBeforeShrink={swap.paintedCard}
-              />
+        <PlanningAnswerPreview.Provider value={textPreview}>
+          <div
+            ref={stageRef}
+            data-testid="motion-stage"
+            className="mt-4 space-y-3"
+          >
+            {card("above", fixture.above)}
+            <div data-motion-slot="answered">
+              {swap === null ? (
+                <PlanningQuestionCard
+                  question={fixture.answered.question}
+                  card={fixture.answered.card}
+                  badge={null}
+                  comments={[]}
+                  lifecycle="Open"
+                  href={`/${fixture.answered.question.path}`}
+                  onFile={noopAsync}
+                  cardKey="answered"
+                />
+              ) : (
+                <AnsweredRow
+                  key={swap.key}
+                  question={fixture.answered.question}
+                  itemKey="answered"
+                  href={`/${fixture.answered.question.path}`}
+                  answers={rowAnswers([FIXTURE_ANSWER], OQ_DEFAULT_LEANING)}
+                  marks={[]}
+                  newReply={false}
+                  opening={false}
+                  onShow={noop}
+                  onNewReply={noop}
+                  shrinkFrom={swap.from}
+                  cardBeforeShrink={swap.paintedCard}
+                />
+              )}
+            </div>
+            {card("below", fixture.below)}
+            {swap !== null && (
+              <div data-motion-slot="arriving" key={swap.key}>
+                <PlanningQuestionCard
+                  question={fixture.arriving.question}
+                  card={fixture.arriving.card}
+                  badge={null}
+                  comments={[]}
+                  lifecycle="Open"
+                  href={`/${fixture.arriving.question.path}`}
+                  onFile={noopAsync}
+                  cardKey="arriving"
+                  growing
+                />
+              </div>
             )}
           </div>
-          {card("below", fixture.below)}
-          {swap !== null && (
-            <div data-motion-slot="arriving" key={swap.key}>
-              <PlanningQuestionCard
-                question={fixture.arriving.question}
-                card={fixture.arriving.card}
-                badge={null}
-                comments={[]}
-                lifecycle="Open"
-                href={`/${fixture.arriving.question.path}`}
-                onFile={noopAsync}
-                cardKey="arriving"
-                growing
-              />
-            </div>
-          )}
-        </div>
+        </PlanningAnswerPreview.Provider>
       </ForcedMotion.Provider>
     );
-  }, [fixture, swap]);
+  }, [fixture, swap, textPreview]);
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-900 dark:text-slate-100">
@@ -378,9 +392,10 @@ export default function PlanningMotionPage() {
         <h1 className="text-lg font-semibold">Planning answer animation</h1>
         <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
           Play the whole answer animation as often as you like, or pause and
-          step through it at 60 frames per second. These are the planning
-          page&apos;s real cards and effects. Sample cards are display-only; no
-          reviews are changed.
+          step through it at 60 frames per second. The cards and roll-up are the
+          planning page&apos;s real components. The five alternative text
+          handoffs are experimental previews, not used on the planning page.
+          Sample cards are display-only; no reviews are changed.
         </p>
         {!supported && (
           <p
@@ -403,6 +418,31 @@ export default function PlanningMotionPage() {
           aria-label="Player controls"
           className="sticky top-0 z-10 mt-4 space-y-2 rounded border border-slate-300 bg-white p-3 text-sm dark:border-slate-600 dark:bg-slate-800"
         >
+          <label className="flex flex-wrap items-center gap-2">
+            Text handoff
+            <select
+              className="min-w-0 max-w-full rounded border bg-white px-2 py-1 dark:bg-slate-800"
+              value={textPreview ?? "current"}
+              onChange={(event) => {
+                seek(0);
+                setTextPreview(answerPreviewOf(event.target.value));
+              }}
+            >
+              <option value="current">Current production handoff</option>
+              {answerPreviews.map((preview) => (
+                <option key={preview.value} value={preview.value}>
+                  {preview.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <p className="min-h-10 text-xs text-slate-600 dark:text-slate-300">
+            {answerPreviews.find((preview) => preview.value === textPreview)
+              ?.description ??
+              "Keep the question visible while it collapses, then show the compact row. This is the current planning-page behavior."}{" "}
+            Choose an effect, then press Play from start. Changing the effect
+            pauses and returns to frame 0.
+          </p>
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
@@ -518,8 +558,8 @@ export default function PlanningMotionPage() {
             </div>
             <p className="mt-2 text-xs">
               Link to this frame:{" "}
-              <a className="underline" href={linkFor(time)}>
-                {linkFor(time)}
+              <a className="underline" href={linkFor(time, textPreview)}>
+                {linkFor(time, textPreview)}
               </a>
             </p>
             <p className="text-xs">
@@ -546,7 +586,7 @@ export default function PlanningMotionPage() {
             <summary className="cursor-pointer">Animation details</summary>
             <section aria-label="Effects">
               <h2 className="mt-2 font-semibold">
-                Production effects captured: {effects.length}
+                Captured effects: {effects.length}
               </h2>
               <ul className="mt-1 space-y-1">
                 {effects.map((e, i) => (

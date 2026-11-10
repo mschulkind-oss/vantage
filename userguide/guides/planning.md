@@ -587,6 +587,15 @@ takes away the control you pressed, the focus goes where you are: to the row's
 **Show** after a card shrinks, to the card's heading after Show, and to the
 first row *… N more answered* brought in.
 
+To compare ways the text could change, open `/.vantage/planning-motion`.
+The **Text handoff** menu keeps the current transition as a baseline and adds
+five previews: fading during or after the roll-up, sliding while fading,
+moving the title toward the compact row's position and size, and shrinking
+while fading. Choosing one pauses playback and returns to the original card;
+press **Play from start** or step through its frames. A paused-time link keeps
+the selected preview. The inspector uses sample cards, makes no review writes,
+and does not change the production transition.
+
 There are no pages. An address from before, carrying a page such as
 `?needs-you=3`, shows the page as it is now, and the page drops that part of
 the address in place.

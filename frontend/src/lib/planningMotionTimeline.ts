@@ -1,10 +1,10 @@
 /**
  * The time arithmetic and the animation handling of the planning motion
  * inspector (`pages/PlanningMotionPage.tsx`): which of the page's animations
- * are the production effects of an answer, where a virtual 60 fps frame falls
- * on them, and what each is doing there. Nothing here knows what an effect
- * looks like: the keyframes, durations and easings are read back from the
- * `Animation` objects `AnsweredRow` and `PlanningQuestionCard` made.
+ * are the native effects of an answer, including inspector-only text previews,
+ * where a virtual 60 fps frame falls on them, and what each is doing there.
+ * Nothing here knows what an effect looks like: keyframes, durations and
+ * easings are read back from the actual `Animation` objects.
  */
 
 /** One frame of the 60 fps clock the inspector steps by, in milliseconds. */
@@ -32,7 +32,7 @@ export function stepFrame(ms: number, direction: 1 | -1, end: number): number {
   return frameStart(frameIndex(ms) + direction, end);
 }
 
-/** The animations of `stage` that production code made: not CSS ones. */
+/** The stage's native animations, including previews, but not CSS ones. */
 export function productionAnimations(stage: Element): Animation[] {
   return stage.getAnimations({ subtree: true }).filter((a) => {
     const css =
@@ -53,7 +53,9 @@ export function productionAnimations(stage: Element): Animation[] {
 export function seekAll(animations: readonly Animation[], ms: number): void {
   for (const animation of animations) {
     const duration = Number(animation.effect?.getComputedTiming().endTime ?? 0);
-    if (ms >= duration) {
+    // The 1/60s frame can leave an exact boundary a few floating-point bits
+    // short after subtraction; use the same tolerance as frameIndex.
+    if (ms + 1e-9 >= duration) {
       if (animation.playState !== "finished") animation.finish();
     } else {
       animation.pause();
@@ -80,7 +82,7 @@ export interface EffectReadout {
   /** Actual values at every keyframe, in order, including intermediate peaks. */
   keyframeValues: string[];
   durationMs: number;
-  /** `before`, `running` or `finished`: a finished effect is no longer applied. */
+  /** `before`, `running` or `finished`; filling effects can keep a finished pose. */
   state: "before" | "running" | "finished";
   /** The share of the effect elapsed, 0..1, before easing. */
   progress: number;
@@ -122,7 +124,7 @@ export function readEffect(animation: Animation, ms: number): EffectReadout {
         `${property}: ${keyframes.map((frame) => String(frame[property])).join(" → ")}`,
     ),
     durationMs: duration,
-    state: ms < 0 ? "before" : ms >= duration ? "finished" : "running",
+    state: ms < 0 ? "before" : ms + 1e-9 >= duration ? "finished" : "running",
     progress,
     segment:
       offsets.length < 2
