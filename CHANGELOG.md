@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Added
+
+**Compare five text transitions when a question rolls up.** In the planning
+animation inspector, the **Text handoff** menu offers fading during or after
+the collapse, sliding and fading, moving the question title toward the compact
+row, and shrinking and fading. Play or step through each with the same card
+roll-up. These are read-only previews; choosing one does not change the live
+planning page's transition.
+
 ## [0.11.0] - 2026-11-04
 
 Answer planning questions from the document, restore or reattach answers, and

@@ -82,6 +82,17 @@ describe("seekAll", () => {
     expect(a.pause).not.toHaveBeenCalled();
   });
 
+  it("finishes an exact boundary after subtracting the original-card frame", () => {
+    const a = fake(500);
+    const boundary = 500 + FRAME_MS - FRAME_MS;
+    seekAll([a], boundary);
+    expect(a.finish).toHaveBeenCalledTimes(1);
+    expect(readEffect(a, boundary).state).toBe("finished");
+    const before = fake(500);
+    seekAll([before], 499.999);
+    expect(before.finish).not.toHaveBeenCalled();
+  });
+
   it("moves each animation by its own duration", () => {
     const short = fake(320);
     const long = fake(1600);

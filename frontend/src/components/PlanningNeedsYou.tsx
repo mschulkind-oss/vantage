@@ -33,6 +33,10 @@ import { isStaticMode } from "../lib/staticMode";
 import { planningCardId } from "../lib/planningCardId";
 import { planningLimits } from "../planningScan/limits";
 import { ForcedMotion } from "../lib/forcedMotion";
+import {
+  PlanningAnswerPreview,
+  previewAnswerText,
+} from "../lib/planningAnswerPreview";
 import { reducedMotion } from "../lib/reducedMotion";
 import { holdScrollRoom } from "../lib/scrollRoom";
 import { isPendingForAgent, reviewTarget } from "../stores/useReviewStore";
@@ -262,6 +266,7 @@ export const AnsweredRow: React.FC<{
 }) => {
   const rowRef = useRef<HTMLDivElement>(null);
   const forcedMotion = useContext(ForcedMotion);
+  const textPreview = useContext(PlanningAnswerPreview);
   // Only as it mounts: a card that became this row just now.
   const [shrink] = useState(() =>
     shrinkFrom === undefined
@@ -317,15 +322,25 @@ export const AnsweredRow: React.FC<{
       onShrunkRef.current?.();
     };
     completeRef.current = complete;
+    const compact = row.querySelector<HTMLElement>(
+      "[data-planning-row-content]",
+    );
+    const copy = copyRef.current?.firstElementChild as HTMLElement | null;
+    const previewing = textPreview !== null && copy != null && compact !== null;
     animationsRef.current = shrinkToRow(
       row,
       shrink.from,
       rowHeight(row),
       collapsing,
-      complete,
+      previewing ? () => {} : complete,
     );
+    if (previewing) {
+      animationsRef.current.push(
+        ...previewAnswerText(textPreview, copy, compact, complete),
+      );
+    }
     setTall(false);
-  }, [shrink, cardBeforeShrink, collapsing]);
+  }, [shrink, cardBeforeShrink, collapsing, textPreview]);
   useEffect(() => {
     const row = rowRef.current;
     return () => {
@@ -380,7 +395,11 @@ export const AnsweredRow: React.FC<{
       )}
       <div
         data-planning-row-content
-        style={collapsing ? { visibility: "hidden" } : undefined}
+        style={
+          collapsing && textPreview === null
+            ? { visibility: "hidden" }
+            : undefined
+        }
       >
         {newReply && <NewReplyBar />}
         <div className="flex min-w-0 items-center gap-2 whitespace-nowrap">
@@ -397,7 +416,10 @@ export const AnsweredRow: React.FC<{
           >
             {question.id ?? question.path}
           </AppLink>
-          <span className="min-w-0 flex-1 truncate text-slate-700 dark:text-slate-200">
+          <span
+            data-planning-row-title
+            className="min-w-0 flex-1 truncate text-slate-700 dark:text-slate-200"
+          >
             {question.title}
           </span>
           {/* Every slot after the title keeps its room whatever it holds, so a

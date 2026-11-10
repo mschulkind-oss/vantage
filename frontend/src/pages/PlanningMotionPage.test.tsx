@@ -10,6 +10,7 @@ import {
 import { MemoryRouter } from "react-router-dom";
 import PlanningMotionPage from "./PlanningMotionPage";
 import { FRAME_MS } from "../lib/planningMotionTimeline";
+import { answerPreviews } from "../lib/planningAnswerPreview";
 
 vi.mock("axios");
 
@@ -160,6 +161,99 @@ describe("PlanningMotionPage", () => {
     expect(
       screen.queryByLabelText("Preview full motion on this page only"),
     ).toBeNull();
+  });
+
+  it("offers five experimental handoffs plus the unchanged production baseline", () => {
+    open();
+    const select = screen.getByRole("combobox", { name: "Text handoff" });
+    expect(select).toHaveValue("current");
+    expect(screen.getAllByRole("option")).toHaveLength(6);
+    expect(
+      screen.getByRole("option", { name: "Title glide" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/experimental.*not used on the planning page/i),
+    ).toBeInTheDocument();
+  });
+
+  it.each([
+    "crossfade-roll",
+    "crossfade-after",
+    "slide-up",
+    "title-glide",
+    "shrink-dissolve",
+  ])(
+    "plays, finishes, and reverse-seeks the %s preview using the real card and row",
+    (effect) => {
+      open();
+      fireEvent.change(screen.getByRole("combobox", { name: "Text handoff" }), {
+        target: { value: effect },
+      });
+      expect(readout()).toMatch(/Frame 0.*paused/);
+      press("Next frame");
+      expect(live().length).toBeGreaterThan(3);
+      expect(live().every((a) => a.playState === "paused")).toBe(true);
+      expect(
+        stage().querySelector("[data-planning-departing-card]"),
+      ).not.toBeNull();
+      const compact = stage().querySelector<HTMLElement>(
+        "[data-planning-row-content]",
+      )!;
+      expect(compact).not.toHaveStyle({ visibility: "hidden" });
+      expect(made.some((a) => a.target === compact)).toBe(true);
+      press("Last frame");
+      expect(
+        stage().querySelector("[data-planning-departing-card]"),
+      ).toBeNull();
+      seekEffect(128);
+      expect(
+        stage().querySelector("[data-planning-departing-card]"),
+      ).not.toBeNull();
+      expect(live().every((a) => a.playState === "paused")).toBe(true);
+    },
+  );
+
+  it("changing the handoff during playback pauses and resets to the original question", () => {
+    const tick = playbackClock();
+    open();
+    press("Play from start");
+    tick(0);
+    tick(20);
+    tick(120);
+    const old = [...made];
+    fireEvent.change(screen.getByRole("combobox", { name: "Text handoff" }), {
+      target: { value: "crossfade-after" },
+    });
+    expect(readout()).toMatch(/Frame 0.*paused/);
+    expect(stage().querySelector("[data-planning-row]")).toBeNull();
+    expect(old.every((a) => a.playState === "idle")).toBe(true);
+    tick(1000);
+    expect(readout()).toMatch(/Frame 0.*paused/);
+    press("Next frame");
+    seekEffect(320);
+    expect(
+      stage().querySelector("[data-planning-departing-card]"),
+    ).not.toBeNull();
+    seekEffect(500);
+    expect(stage().querySelector("[data-planning-departing-card]")).toBeNull();
+  });
+
+  it("links retain the chosen preview and open paused, with invalid effects falling back to production", () => {
+    open("/.vantage/planning-motion?effect=slide-up&t=128");
+    expect(screen.getByRole("combobox", { name: "Text handoff" })).toHaveValue(
+      "slide-up",
+    );
+    expect(readout()).toMatch(/128.00 ms.*paused/);
+    expect(
+      screen.getByRole("link", { name: "?effect=slide-up&t=128" }),
+    ).toHaveAttribute("href", "?effect=slide-up&t=128");
+    cleanup();
+    open("/.vantage/planning-motion?effect=not-real");
+    expect(screen.getByRole("combobox", { name: "Text handoff" })).toHaveValue(
+      "current",
+    );
+    press("Next frame");
+    expect(live()).toHaveLength(3);
   });
 
   it("starts stepping immediately; first always returns to the initial question", () => {
@@ -406,6 +500,26 @@ describe("PlanningMotionPage", () => {
     expect(axios.post).not.toHaveBeenCalled();
     expect(axios.put).not.toHaveBeenCalled();
   });
+
+  it.each(answerPreviews)(
+    "$label falls back safely if native animation support disappears",
+    ({ value }) => {
+      open();
+      fireEvent.change(screen.getByRole("combobox", { name: "Text handoff" }), {
+        target: { value },
+      });
+      delete proto.animate;
+      expect(() => press("Next frame")).not.toThrow();
+      expect(
+        stage().querySelector("[data-planning-departing-card]"),
+      ).toBeNull();
+      expect(
+        screen
+          .getAllByRole("alert")
+          .some((a) => a.textContent?.includes("Chrome, Firefox, or Safari")),
+      ).toBe(true);
+    },
+  );
 
   it("unsupported browsers get an actionable explanation and disabled controls", () => {
     delete proto.animate;
