@@ -1424,7 +1424,7 @@ describe("your own actions (planning-index.md §6.4)", () => {
     return played;
   }
 
-  it("shows the card answered here shrinking to its row, then the row fading from green", async () => {
+  it("shows the answered card's collapse, steady green ramp and shared text handoff", async () => {
     pageSize(2);
     const tree = todoTree(4);
     seed(tree);
@@ -1443,13 +1443,12 @@ describe("your own actions (planning-index.md §6.4)", () => {
     });
     await settle();
     const row = screen.getByRole("group", { name: "OQ-T1: Question OQ-T1?" });
-    // The row's two — its height, then the tint — and, last, the question that
-    // joined the end of the cards growing from nothing to its own height, so
-    // what is below the shrink moves once rather than appearing at its height
-    // in a frame (docs/reference/planning-index.md §6.4).
+    // Height and tint retain the production row's own targets; text-layer
+    // effects run beside them. The joining card grows at the same time.
     const joined = cardFor("OQ-T3");
-    expect(played.map((p) => p.el)).toEqual([row, row, joined]);
-    expect(played[2]!.keyframes).toEqual([
+    const geometry = played.filter((p) => p.el === row || p.el === joined);
+    expect(geometry.map((p) => p.el)).toEqual([row, row, joined]);
+    expect(geometry[2]!.keyframes).toEqual([
       { height: "0px" },
       { height: "240px" },
     ]);
@@ -1463,9 +1462,14 @@ describe("your own actions (planning-index.md §6.4)", () => {
     // shorter: one near the end of the list would have pulled the pane's
     // scroll back, moving everything down before the shrink began.
     expect(played[0]!.height).toBe("240px");
-    expect(played[1]!.keyframes[0]!.boxShadow).toBe("none");
-    expect(played[1]!.keyframes[1]!.boxShadow).toMatch(/rgb\(34 197 94/);
-    expect(played[1]!.ms).toBeGreaterThan(played[0]!.ms);
+    expect(played[1]!.keyframes).toEqual([
+      { boxShadow: "none" },
+      { boxShadow: "inset 0 0 0 100vmax rgb(34 197 94 / 0.14)" },
+    ]);
+    expect(played[1]!.ms).toBe(128);
+    expect(row.style.boxShadow).toBe(
+      "inset 0 0 0 100vmax rgb(34 197 94 / 0.14)",
+    );
   });
 
   it("retains the painted question while collapsing, then reveals and focuses the answered row", async () => {
@@ -1485,9 +1489,9 @@ describe("your own actions (planning-index.md §6.4)", () => {
     const copy = row.querySelector("[data-planning-departing-card]");
     expect(copy).not.toBeNull();
     expect(copy!.querySelector(".planning-card-body")!.textContent).toBe(body);
-    expect(row.querySelector("[data-planning-row-content]")).toHaveStyle({
-      visibility: "hidden",
-    });
+    expect(row.querySelector("[data-planning-row-content]")).toHaveAttribute(
+      "inert",
+    );
     expect(document.activeElement).toBe(document.body);
     const collapse = played.find(
       (p) => p.keyframes[0]?.height !== undefined && p.el === row,
@@ -1499,7 +1503,22 @@ describe("your own actions (planning-index.md §6.4)", () => {
         new Event("finish") as AnimationPlaybackEvent,
       ),
     );
+    expect(row.querySelector("[data-planning-departing-card]")).not.toBeNull();
+    const text = played.find(
+      (p) =>
+        p.el.matches("[data-planning-departing-card]") &&
+        p.keyframes[0]?.opacity === 1,
+    )!;
+    act(() =>
+      text.animation.onfinish?.call(
+        text.animation,
+        new Event("finish") as AnimationPlaybackEvent,
+      ),
+    );
     expect(row.querySelector("[data-planning-departing-card]")).toBeNull();
+    expect(
+      row.querySelector("[data-planning-row-content]"),
+    ).not.toHaveAttribute("inert");
     expect(document.activeElement).toBe(
       within(row).getByRole("button", { name: /^Show/ }),
     );
@@ -1555,6 +1574,17 @@ describe("your own actions (planning-index.md §6.4)", () => {
         new Event("finish") as AnimationPlaybackEvent,
       ),
     );
+    const text = played.find(
+      (p) =>
+        p.el.matches("[data-planning-departing-card]") &&
+        p.keyframes[0]?.opacity === 1,
+    )!;
+    act(() =>
+      text.animation.onfinish?.call(
+        text.animation,
+        new Event("finish") as AnimationPlaybackEvent,
+      ),
+    );
     expect(document.activeElement).toBe(other);
   });
 
@@ -1596,13 +1626,24 @@ describe("your own actions (planning-index.md §6.4)", () => {
         new Event("finish") as AnimationPlaybackEvent,
       ),
     );
+    const text = played.find(
+      (p) =>
+        p.el.matches("[data-planning-departing-card]") &&
+        p.keyframes[0]?.opacity === 1,
+    )!;
+    act(() =>
+      text.animation.onfinish?.call(
+        text.animation,
+        new Event("finish") as AnimationPlaybackEvent,
+      ),
+    );
     expect(row.querySelector("[data-planning-departing-card]")).toBeNull();
     expect(
       within(row).getByRole("list", { name: "Answers on this question" }),
     ).toHaveTextContent("The second way.");
   });
 
-  it("only fades the row from green for a reader who asked for less motion", async () => {
+  it("shows steady green immediately without motion for a reader who asked for less motion", async () => {
     pageSize(2);
     seed(todoTree(3));
     const played = watchShrinks(true);
@@ -1615,13 +1656,12 @@ describe("your own actions (planning-index.md §6.4)", () => {
       );
     });
     await settle();
-    expect(played).toHaveLength(1);
+    expect(played).toHaveLength(0);
     expect(document.querySelector("[data-planning-departing-card]")).toBeNull();
-    expect(played[0]!.keyframes[0]).not.toHaveProperty("height");
-    // Drawn tall for its first layout all the same, so it pulls no scroll.
-    expect(played[0]!.height).toBe("240px");
-    expect(played[0]!.keyframes[0]!.boxShadow).toBe("none");
-    expect(played[0]!.keyframes[1]!.boxShadow).toMatch(/rgb\(34 197 94/);
+    expect(
+      screen.getByRole("group", { name: "OQ-T1: Question OQ-T1?" }).style
+        .boxShadow,
+    ).toBe("inset 0 0 0 100vmax rgb(34 197 94 / 0.14)");
   });
 
   it("shrinks a card when its Answer… box closes holding text, never as it is typed in", async () => {

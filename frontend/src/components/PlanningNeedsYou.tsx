@@ -35,8 +35,9 @@ import { planningLimits } from "../planningScan/limits";
 import { ForcedMotion } from "../lib/forcedMotion";
 import {
   PlanningAnswerPreview,
-  previewAnswerText,
-} from "../lib/planningAnswerPreview";
+  animateAnswerText,
+  PRODUCTION_ANSWER_MOTION,
+} from "../lib/planningAnswerMotion";
 import { reducedMotion } from "../lib/reducedMotion";
 import { holdScrollRoom } from "../lib/scrollRoom";
 import { isPendingForAgent, reviewTarget } from "../stores/useReviewStore";
@@ -106,15 +107,10 @@ export const NewReplyBar: React.FC = () => (
 
 /** How long a card answered here takes to shrink to its row. */
 const ROW_SHRINK_MS = 320;
-/** How long the row it shrank to stays tinted green after. */
-const ROW_FLASH_MS = 1600;
-/**
- * How much of that the tint takes to arrive, as a fraction of it: about an
- * eighth of a second, so the green lands with the shrink rather than before it.
- */
-const ROW_FLASH_IN = 0.08;
-/** The green the row starts from, painted over its own background. */
-const ROW_FLASH = "inset 0 0 0 100vmax rgb(34 197 94 / 0.22)";
+/** The tint ramps in with the collapse and then remains on the answered row. */
+const ROW_TINT_IN_MS = 128;
+/** Softer than the former 22% flash; the steady style also survives remounts. */
+const ROW_TINT = "inset 0 0 0 100vmax rgb(34 197 94 / 0.14)";
 /**
  * A one-line answered row's height in rem: the fallback when the row's own
  * height cannot be measured, as under jsdom.
@@ -146,11 +142,10 @@ function rowHeight(row: HTMLElement): number {
  * A card answered here becoming its row (§6.4), so the reader sees it go
  * rather than finding the next question where it was: the row is drawn at
  * the card's height, with the painted card clipped inside it while its bottom
- * edge sweeps up. Only the height effect's finish reveals the compact content.
+ * edge sweeps up. The title glides toward its compact position while the rest
+ * dissolves; the text handoff's finish reveals the final compact content.
  * What is below moves with it; its top and everything above stay in place.
- * For a reader who asked for less motion the
- * row is at its height at once, and only the green fades: a change of color
- * moves nothing.
+ * Reduced motion shows the final row and steady tint immediately.
  *
  * Near the end of the list the page getting shorter by the card would have
  * the browser pull the pane's scroll back, sliding everything on screen down
@@ -168,43 +163,28 @@ function shrinkToRow(
 ): Animation[] {
   const pane = row.closest<HTMLElement>("[data-content-scroll]");
   if (pane !== null) holdScrollRoom(pane, from - to);
-  if (typeof row.animate !== "function") {
+  if (typeof row.animate !== "function" || !move) {
     onCollapsed();
     return [];
   }
   const animations: Animation[] = [];
-  if (move) {
-    const collapse = row.animate(
-      [{ height: `${from}px` }, { height: `${to}px` }],
-      {
-        duration: ROW_SHRINK_MS,
-        easing: "cubic-bezier(0.2, 0, 0, 1)",
-      },
-    );
-    collapse.onfinish = onCollapsed;
-    collapse.oncancel = onCollapsed;
-    animations.push(collapse);
-  } else {
-    onCollapsed();
-  }
-  // The tint arrives with the shrink rather than at the swap: painted at full
-  // strength from the first frame, before the box had moved at all, the green
-  // was the loudest thing in the transition — a card's worth of it changing
-  // color in one frame. It reaches full at `ROW_FLASH_IN` and fades from
-  // there, so the reader sees the green land as the box starts to close.
+  const collapse = row.animate(
+    [{ height: `${from}px` }, { height: `${to}px` }],
+    {
+      duration: ROW_SHRINK_MS,
+      easing: "cubic-bezier(0.2, 0, 0, 1)",
+    },
+  );
+  collapse.onfinish = onCollapsed;
+  collapse.oncancel = onCollapsed;
+  animations.push(collapse);
+  // Start uncolored, ramp once, and end at the row's own steady tint. No fill
+  // is needed: finishing the native effect exposes the identical base style.
   animations.push(
-    row.animate(
-      [
-        { boxShadow: "none", offset: 0, easing: "ease-out" },
-        {
-          boxShadow: ROW_FLASH,
-          offset: ROW_FLASH_IN,
-          easing: "ease-in",
-        },
-        { boxShadow: "none", offset: 1 },
-      ],
-      { duration: ROW_FLASH_MS },
-    ),
+    row.animate([{ boxShadow: "none" }, { boxShadow: ROW_TINT }], {
+      duration: ROW_TINT_IN_MS,
+      easing: "ease-out",
+    }),
   );
   return animations;
 }
@@ -242,7 +222,7 @@ export const AnsweredRow: React.FC<{
    * the row mounts; `undefined` for any other row.
    */
   shrinkFrom?: number;
-  /** Inert copy of the painted card, clipped until the height effect finishes. */
+  /** Inert painted copy retained until the text handoff completes. */
   cardBeforeShrink?: HTMLElement | null;
   /** The compact row is visible now, so the page can forget the departure. */
   onShrunk?: () => void;
@@ -266,7 +246,8 @@ export const AnsweredRow: React.FC<{
 }) => {
   const rowRef = useRef<HTMLDivElement>(null);
   const forcedMotion = useContext(ForcedMotion);
-  const textPreview = useContext(PlanningAnswerPreview);
+  const textMotion =
+    useContext(PlanningAnswerPreview) ?? PRODUCTION_ANSWER_MOTION;
   // Only as it mounts: a card that became this row just now.
   const [shrink] = useState(() =>
     shrinkFrom === undefined
@@ -326,21 +307,25 @@ export const AnsweredRow: React.FC<{
       "[data-planning-row-content]",
     );
     const copy = copyRef.current?.firstElementChild as HTMLElement | null;
-    const previewing = textPreview !== null && copy != null && compact !== null;
+    const blending = copy != null && compact !== null && collapsing;
     animationsRef.current = shrinkToRow(
       row,
       shrink.from,
       rowHeight(row),
       collapsing,
-      previewing ? () => {} : complete,
+      blending ? () => {} : complete,
     );
-    if (previewing) {
+    if (animationsRef.current.length === 0) {
+      // Support can disappear after the first render. The blended handoff's
+      // height callback is intentionally inert, so reveal the final row here.
+      complete();
+    } else if (blending) {
       animationsRef.current.push(
-        ...previewAnswerText(textPreview, copy, compact, complete),
+        ...animateAnswerText(textMotion, copy, compact, complete),
       );
     }
     setTall(false);
-  }, [shrink, cardBeforeShrink, collapsing, textPreview]);
+  }, [shrink, cardBeforeShrink, collapsing, textMotion]);
   useEffect(() => {
     const row = rowRef.current;
     return () => {
@@ -382,6 +367,7 @@ export const AnsweredRow: React.FC<{
       data-planning-row
       data-planning-item={itemKey}
       style={{
+        boxShadow: ROW_TINT,
         ...(tall && shrink !== null ? tallRow(shrink.from) : {}),
         ...(collapsing ? { overflow: "hidden", borderRadius: "0.75rem" } : {}),
       }}
@@ -393,14 +379,7 @@ export const AnsweredRow: React.FC<{
           className="pointer-events-none absolute -inset-x-px -top-px"
         />
       )}
-      <div
-        data-planning-row-content
-        style={
-          collapsing && textPreview === null
-            ? { visibility: "hidden" }
-            : undefined
-        }
-      >
+      <div data-planning-row-content inert={collapsing}>
         {newReply && <NewReplyBar />}
         <div className="flex min-w-0 items-center gap-2 whitespace-nowrap">
           <span

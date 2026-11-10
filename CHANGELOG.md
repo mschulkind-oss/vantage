@@ -11,11 +11,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 **Compare five text transitions when a question rolls up.** In the planning
-animation inspector, the **Text handoff** menu offers fading during or after
-the collapse, sliding and fading, moving the question title toward the compact
-row, and shrinking and fading. Play or step through each with the same card
-roll-up. These are read-only previews; choosing one does not change the live
-planning page's transition.
+animation inspector, the **Text handoff** menu starts on the production title
+glide and offers four alternatives: fading during or after the collapse,
+sliding and fading, and shrinking and fading. Play or step through each with
+the same card roll-up. These comparisons are read-only; choosing one does not
+change the live planning page's transition.
+
+### Changed
+
+**Answered cards glide their title into the compact row.** The rest of the card
+fades away as it rolls up. Green grows to a softer tint and stays afterward,
+rather than flashing brighter and fading back. The main app has one fixed
+transition, with no animation setting. With reduced motion, you see the finished
+row and green immediately.
 
 ## [0.11.0] - 2026-11-04
 

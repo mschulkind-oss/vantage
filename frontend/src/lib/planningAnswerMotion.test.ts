@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  previewAnswerText,
+  animateAnswerText as previewAnswerText,
   answerPreviewOf,
   answerPreviews,
-} from "./planningAnswerPreview";
+} from "./planningAnswerMotion";
 
 afterEach(() => {
   document.body.replaceChildren();
@@ -11,7 +11,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("inspector text previews", () => {
+describe("shared answered-card text motion", () => {
   it("moves the visible title, not a hidden duplicate left by question folding", () => {
     const parent = document.createElement("div");
     parent.innerHTML =

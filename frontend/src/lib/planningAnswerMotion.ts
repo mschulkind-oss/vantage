@@ -1,12 +1,14 @@
 import { createContext } from "react";
 
-/** Inspector-only experiments. A null provider is the production handoff. */
+/** Shared text handoffs; a null inspector override uses the production choice. */
 export type AnswerPreview =
   | "crossfade-roll"
   | "crossfade-after"
   | "slide-up"
   | "title-glide"
   | "shrink-dissolve";
+export const PRODUCTION_ANSWER_MOTION: AnswerPreview = "title-glide";
+export const ANSWER_HANDOFF_MS = 400;
 export const PlanningAnswerPreview = createContext<AnswerPreview | null>(null);
 
 export const answerPreviews: readonly {
@@ -34,7 +36,7 @@ export const answerPreviews: readonly {
   },
   {
     value: "title-glide",
-    label: "Title glide",
+    label: "Title glide (production)",
     description:
       "The question title moves toward its compact-row position and size while the rest dissolves.",
   },
@@ -53,12 +55,13 @@ export function answerPreviewOf(value: string | null): AnswerPreview | null {
 }
 
 /**
- * Experimental text layers over the real production height/tint effects.
+ * Shared native text motion over the production height/tint effects. Title
+ * glide is used by production; the other choices are inspector-only overrides.
  * All times are on that same native animation clock. Offsets hold the initial
  * appearance until the blend starts; fill keeps a finished layer from flashing
  * back before the row completes its handoff. No copied animation or timer.
  */
-export function previewAnswerText(
+export function animateAnswerText(
   kind: AnswerPreview,
   copy: HTMLElement,
   compact: HTMLElement,
@@ -73,7 +76,7 @@ export function previewAnswerText(
         ? 320
         : kind === "shrink-dissolve"
           ? 360
-          : 400;
+          : ANSWER_HANDOFF_MS;
   const animate = (
     element: HTMLElement,
     keyframes: Keyframe[],

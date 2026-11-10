@@ -575,10 +575,13 @@ route.
 
 **Answering moves only what you answered.** When a card's comment box closes
 holding your answer, or you take its leaning, the card shrinks to an answered
-row where it stands: the question text stays visible while the bottom edge
-closes up, and the compact row appears at the end. The next question that needs
-you joins the end of the cards; nothing above it moves, and nothing is reordered.
-With reduced motion, the row appears immediately. **Undo** on a take
+row where it stands: its title moves toward the compact row while the rest
+fades away. A soft green background arrives during roll-up and stays afterward,
+even when a later layout lists the row again. The main app always uses this
+transition; there is no animation setting.
+The next question that needs you joins the end of the cards; nothing above it
+moves, and nothing is reordered. With reduced motion, the finished row and green
+appear immediately. **Undo** on a take
 opens the row back into its card, and the card that joined stays. The next
 layout, on **Refresh**, a filter, a roadmap or a page size, gathers the answered
 rows at the top. A row you opened with Show or Undo and answer again shrinks
@@ -588,10 +591,10 @@ takes away the control you pressed, the focus goes where you are: to the row's
 first row *… N more answered* brought in.
 
 To compare ways the text could change, open `/.vantage/planning-motion`.
-The **Text handoff** menu keeps the current transition as a baseline and adds
-five previews: fading during or after the roll-up, sliding while fading,
-moving the title toward the compact row's position and size, and shrinking
-while fading. Choosing one pauses playback and returns to the original card;
+The **Text handoff** menu starts on **Title glide (production)** and also offers
+four read-only alternatives: fading during or after the roll-up, sliding while
+fading, and shrinking while fading. Choosing one pauses playback and returns to
+the original card;
 press **Play from start** or step through its frames. A paused-time link keeps
 the selected preview. The inspector uses sample cards, makes no review writes,
 and does not change the production transition.
