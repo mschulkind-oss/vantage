@@ -1828,8 +1828,18 @@ export function sessionApiFor(
       }),
     finish: (sessionId) =>
       post("finish-comment-session", { session_id: sessionId }),
-    restore: (sessionId) =>
-      post("restore-comment-session", { session_id: sessionId }),
+    restore: async (sessionId) => {
+      let reply!: SessionReply;
+      // Restore changes root text (or deletes a new root). Adopt its echo
+      // with the same file/repo/write-order guards as an ordinary box save.
+      await boxWrite(target, async () => {
+        reply = await post("restore-comment-session", {
+          session_id: sessionId,
+        });
+        return { data: reply.review };
+      });
+      return reply;
+    },
     readComment: async () => {
       const { data } = await axios.get<ReviewData | null>(
         `${target.base}/review`,

@@ -25,6 +25,24 @@ rather than flashing brighter and fading back. The main app has one fixed
 transition, with no animation setting. With reduced motion, you see the finished
 row and green immediately.
 
+### Fixed
+
+**Reopening a comment editor no longer closes its editing session.** An editor
+reopened while its session is starting keeps saving instead of reporting that
+the comment was deleted. Confirming Discard also removes a new comment from
+the document immediately.
+
+**Questions toolbar controls stay put while ownership loads.** Resolving the
+last unattached comment no longer shifts adjacent controls. On narrow screens,
+**Reload from server** joins **Toolbar actions** instead of overlapping the
+repository picker.
+
+**Bound question comments highlight their own text even when another question
+uses the same words.** A unique question id limits the search to that question.
+Repeated matching blocks within it still remain unanchored rather than being
+guessed from an old line. Compact rows also retain answers typed on question
+bodies when you apply updates.
+
 ## [0.11.0] - 2026-11-04
 
 Answer planning questions from the document, restore or reattach answers, and

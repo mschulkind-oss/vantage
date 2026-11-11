@@ -684,6 +684,22 @@ describe("MarkdownViewer — inline review actions wiring", () => {
     vi.clearAllMocks();
   });
 
+  it("keeps inline comments when late repository metadata rebuilds the Markdown presentation", () => {
+    renderWithComment(baseComment({}));
+    const selector = '[data-review-inline-comment="c1"]';
+    expect(document.querySelector(selector)).not.toBeNull();
+    act(() => {
+      useRepoStore.setState({
+        currentRepo: "",
+        clones: { ...useRepoStore.getState().clones },
+      });
+    });
+    expect(document.querySelector(selector)).not.toBeNull();
+    expect(document.querySelector(selector)).toHaveTextContent(
+      "please change this",
+    );
+  });
+
   it("wires the inline × to deleteComment, on the second click", () => {
     renderWithComment(baseComment({}));
 

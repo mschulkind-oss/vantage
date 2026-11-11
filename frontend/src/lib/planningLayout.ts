@@ -27,9 +27,12 @@ import type { PlanningQuestion } from "vantage-md/planning";
 import { isPendingForAgent } from "../stores/useReviewStore";
 import type { ReviewComment } from "../types";
 import { planningCardId } from "./planningCardId";
-import { questionKey } from "./planningAnswers";
 import {
-  ownerOfComment,
+  questionKey,
+  commentQuestionKeys,
+  type QuestionReport,
+} from "./planningAnswers";
+import {
   type MaintenanceKind,
   type PlanningLayout,
   type QuestionEntry,
@@ -203,13 +206,14 @@ export function viewNeedsYou(
 
 /**
  * Every comment of `byPath` on one of `questions`, by `questionKey`, owned as
- * Copy answers owns a comment with no card's report (`ownerOfComment`); a
- * comment with no owner is in none.
+ * Copy answers owns it: a fresh exact card report first, otherwise its bound
+ * question id. Stale reports and comments without an owner claim nothing.
  */
 export function commentsByQuestion(
   questions: readonly PlanningQuestion[],
   byPath: Readonly<Record<string, readonly ReviewComment[]>>,
   allByPath?: Readonly<Record<string, readonly PlanningQuestion[]>>,
+  reports: Readonly<Record<string, QuestionReport>> = {},
 ): Map<string, ReviewComment[]> {
   const byDocument = new Map<string, PlanningQuestion[]>();
   for (const question of questions) {
@@ -219,10 +223,16 @@ export function commentsByQuestion(
   }
   const out = new Map<string, ReviewComment[]>();
   for (const [path, listed] of byDocument) {
-    for (const comment of byPath[path] ?? []) {
-      const placed = ownerOfComment(listed, comment, allByPath?.[path]);
-      if (placed === undefined) continue;
-      const key = questionKey(placed);
+    const comments = byPath[path] ?? [];
+    const owners = commentQuestionKeys(
+      listed,
+      comments,
+      reports,
+      allByPath?.[path],
+    );
+    for (const comment of comments) {
+      const key = owners.get(comment.id);
+      if (key === undefined) continue;
       const list = out.get(key);
       if (list === undefined) out.set(key, [comment]);
       else list.push(comment);

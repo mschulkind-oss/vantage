@@ -276,9 +276,16 @@ test.describe("question and fallback directives", () => {
       page.getByRole("article", { name: new RegExp(`^${id}:`) });
     const rowOf = (id: string) =>
       page.getByRole("group", { name: new RegExp(`^${id}:`) });
-    // Answered, it is a row of Needs you showing the answer this reader
-    // filed, not a chip (docs/reference/planning-index.md §6.4); Show opens
-    // its card.
+    // A review arriving after the card painted updates its facts, not its
+    // layout. Apply those held changes explicitly before asking for a row.
+    await expect(
+      rowOf("OQ-4").or(card("OQ-4").filter({ hasText: ANSWERED })),
+    ).toBeVisible();
+    if (await card("OQ-4").count()) {
+      await expect(card("OQ-4")).toContainText("Answered elsewhere");
+      await page.getByRole("button", { name: /^Apply updates:/ }).click();
+    }
+    // The compact row still shows the answer; Show opens its card.
     await expect(
       rowOf("OQ-4").getByText("The first way, after all."),
     ).toBeVisible();
@@ -389,6 +396,11 @@ test.describe("a question written as paragraphs", () => {
     // filed (the row's chip is gone: docs/reference/planning-index.md §6.4);
     // Show opens the card.
     const row = page.getByRole("group", { name: /^OQ-P1:/ });
+    await expect(row.or(card("OQ-P1"))).toBeVisible();
+    if (await card("OQ-P1").count()) {
+      await expect(card("OQ-P1").getByText("Answered elsewhere", { exact: true })).toBeVisible();
+      await page.getByRole("button", { name: /^Apply updates:/ }).click();
+    }
     await expect(row.getByText("The first way, as leaned.")).toBeVisible();
     await row.getByRole("button", { name: /^Show/ }).click();
     await expect(card("OQ-P1").getByText(ANSWERED)).toBeVisible();

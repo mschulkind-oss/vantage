@@ -80,6 +80,37 @@ export interface PendingAnswers {
 /** Whether a question is kept: by a planning filter, or by none, every one. */
 export type KeepsQuestion = (question: PlanningQuestion) => boolean;
 
+/** The same exact question scoping for counts and saved row contents (§6.7). */
+export function commentQuestionKeys(
+  listed: readonly PlanningQuestion[],
+  comments: readonly ReviewComment[],
+  reports: Readonly<Record<string, QuestionReport>>,
+  allQuestions?: readonly PlanningQuestion[],
+): Map<string, string> {
+  const reported = new Set<string>();
+  const owner = new Map<string, string>();
+  for (const question of listed) {
+    const key = questionKey(question);
+    const report = reports[key];
+    if (
+      report === undefined ||
+      report.question !== question ||
+      report.comments !== comments
+    )
+      continue;
+    reported.add(key);
+    for (const id of report.ids) if (!owner.has(id)) owner.set(id, key);
+  }
+  for (const comment of comments) {
+    if (owner.has(comment.id)) continue;
+    const placed = ownerOfComment(listed, comment, allQuestions);
+    if (placed !== undefined && !reported.has(questionKey(placed))) {
+      owner.set(comment.id, questionKey(placed));
+    }
+  }
+  return owner;
+}
+
 /**
  * Every comment still pending for the agent on a listed question, grouped by
  * document — built from the reviews, never from the cards, so a comment two
@@ -123,35 +154,16 @@ export function pendingAnswers(
     const listed = byDocument.get(path) ?? [];
     const comments = byPath[path];
     if (comments === undefined) continue;
-    /** The questions whose own report decides for them. */
-    const reported = new Set<string>();
-    /** A reported comment's question. */
-    const owner = new Map<string, string>();
-    for (const question of listed) {
-      const key = questionKey(question);
-      const report = reports[key];
-      // A report read from another version of the question, or before its
-      // document's comments last changed, says nothing of them now.
-      if (
-        report === undefined ||
-        report.question !== question ||
-        report.comments !== comments
-      ) {
-        continue;
-      }
-      reported.add(key);
-      for (const id of report.ids) if (!owner.has(id)) owner.set(id, key);
-    }
+    const owner = commentQuestionKeys(
+      listed,
+      comments,
+      reports,
+      allByPath?.[path],
+    );
     const pending: ReviewComment[] = [];
     for (const comment of comments) {
       if (!isPendingForAgent(comment)) continue;
-      let key = owner.get(comment.id);
-      if (key === undefined) {
-        const placed = ownerOfComment(listed, comment, allByPath?.[path]);
-        if (placed !== undefined && !reported.has(questionKey(placed))) {
-          key = questionKey(placed);
-        }
-      }
+      const key = owner.get(comment.id);
       if (key === undefined) {
         unplaced++;
         continue;

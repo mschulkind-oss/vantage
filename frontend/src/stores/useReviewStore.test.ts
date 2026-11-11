@@ -18,6 +18,7 @@ import {
   saveNewComment,
   saveNewReply,
   saveReplyText,
+  sessionApiFor,
   useReviewStore,
 } from "./useReviewStore";
 import { useRepoStore } from "./useRepoStore";
@@ -54,6 +55,66 @@ const resetStores = () => {
     isMultiRepo: false,
   });
 };
+
+describe("editing-session restore echoes", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetStores();
+    useReviewStore.setState({
+      filePath: "a.md",
+      comments: [
+        { id: "c1", comment: "Discard me", created_at: 1, reactions: [] },
+      ],
+    });
+  });
+
+  it("removes the discarded root from the open document immediately", async () => {
+    mockedAxios.post.mockResolvedValueOnce({
+      data: {
+        session: {
+          session_id: "s1",
+          comment_id: "c1",
+          state: "closed",
+          outcome: "discarded",
+        },
+        review: { file_path: "a.md", comments: [] },
+      },
+    });
+    await sessionApiFor({ base: "/api", path: "a.md" }, "c1").restore("s1");
+    expect(useReviewStore.getState().comments).toEqual([]);
+  });
+
+  it("does not apply a late restore to a different open document", async () => {
+    let release!: () => void;
+    mockedAxios.post.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = () =>
+            resolve({
+              data: {
+                session: {
+                  session_id: "s1",
+                  comment_id: "c1",
+                  state: "closed",
+                  outcome: "discarded",
+                },
+                review: { file_path: "a.md", comments: [] },
+              },
+            });
+        }),
+    );
+    const pending = sessionApiFor({ base: "/api", path: "a.md" }, "c1").restore(
+      "s1",
+    );
+    const other = [
+      { id: "other", comment: "Keep me", created_at: 1, reactions: [] },
+    ];
+    useReviewStore.setState({ filePath: "b.md", comments: other });
+    release();
+    await pending;
+    expect(useReviewStore.getState().comments).toBe(other);
+  });
+});
 
 const mkReaction = (
   actor: ReactionActor,

@@ -27,6 +27,10 @@ test.describe("A folder renamed under the reader", () => {
   // Every test puts the folder back, and so does the next one, in case a run
   // was stopped halfway: a local run never leaves the tree changed.
   const restore = () => {
+    for (const file of fs.readdirSync(moving)) {
+      if (file.startsWith("rename-sync-") && file.endsWith(".md"))
+        fs.unlinkSync(path.join(moving, file));
+    }
     for (const from of [after, outside]) {
       if (fs.existsSync(from) && !fs.existsSync(before)) {
         fs.renameSync(from, before);
@@ -34,7 +38,12 @@ test.describe("A folder renamed under the reader", () => {
     }
   };
   test.beforeEach(restore);
-  test.afterEach(restore);
+  // Stop the reader before restoring its folder: otherwise it follows the
+  // cleanup rename and moves reviews back after the cleanup DELETEs.
+  test.afterEach(async ({ page }) => {
+    await page.close();
+    restore();
+  });
   // The review test files comments in this run's review store, under whichever
   // address the document had; none may be left for the next test or run.
   test.afterEach(async ({ request }) => {
@@ -60,18 +69,39 @@ test.describe("A folder renamed under the reader", () => {
    * first connection does not reload the document it finds.
    */
   const open = async (page: Page, url: string) => {
+    const syncPath = `moving/rename-sync-${test.info().testId}-${test.info().repeatEachIndex}.md`;
+    const syncFile = path.join(path.dirname(moving), syncPath);
+    let syncSeen = false;
     const socketUp = new Promise<void>((resolve) => {
       page.on("websocket", (socket) => {
         if (!socket.url().endsWith("/api/ws")) return;
         socket.on("framereceived", ({ payload }) => {
-          if (typeof payload === "string" && payload.includes('"hello"')) {
-            resolve();
-          }
+          if (typeof payload !== "string") return;
+          if (payload.includes('"hello"')) resolve();
+          const message = JSON.parse(payload) as {
+            type: string;
+            paths?: string[];
+          };
+          if (
+            message.type === "files_changed" &&
+            message.paths?.includes(syncPath)
+          )
+            syncSeen = true;
         });
       });
     });
     await page.goto(url);
     await socketUp;
+    // Restoring the previous test's folder is itself a rename. Drain that
+    // coalesced watcher batch before the next rename, rather than combining
+    // two test histories into removed_dirs: [before, after]. A real pushed
+    // fixture file is the acknowledgment; no arbitrary delay or retry.
+    try {
+      fs.writeFileSync(syncFile, "# Rename test synchronization\n");
+      await expect.poll(() => syncSeen).toBe(true);
+    } finally {
+      if (fs.existsSync(syncFile)) fs.unlinkSync(syncFile);
+    }
   };
 
   test("follows the open document to the folder's new name, where the reader was in it", async ({
@@ -208,9 +238,34 @@ test.describe("A folder renamed under the reader", () => {
     await expect(cards.filter({ hasText: "half written" })).toBeVisible();
     await page.reload();
     await expect(heading(page)).toContainText("Moving book");
-    await expect(
-      cards.filter({ hasText: "filed before the rename" }),
-    ).toBeVisible();
+    try {
+      await expect(
+        cards.filter({ hasText: "filed before the rename" }),
+      ).toBeVisible();
+    } catch (error) {
+      await test.info().attach("reload-review-dom", {
+        body: Buffer.from(await content(page).evaluate((el) => el.outerHTML)),
+        contentType: "text/html",
+      });
+      await test.info().attach("reload-review-requests", {
+        body: Buffer.from(
+          JSON.stringify(
+            await page.evaluate(() =>
+              performance
+                .getEntriesByType("resource")
+                .filter((entry) => entry.name.includes("/api/"))
+                .map((entry) => ({
+                  name: entry.name,
+                  start: entry.startTime,
+                  duration: entry.duration,
+                })),
+            ),
+          ),
+        ),
+        contentType: "application/json",
+      });
+      throw error;
+    }
     await expect(cards.filter({ hasText: "half written" })).toBeVisible();
   });
 

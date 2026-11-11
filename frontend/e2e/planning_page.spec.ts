@@ -214,8 +214,12 @@ test.describe("the planning page", () => {
     // Answered here, the card is a row where it stood
     // (planning-index.md §6.4).
     const answered = row(page, LAST);
-    // The row shows the leaning it filed, not a chip (planning-index.md §6.4).
-    await expect(answered.getByText("The plain way.")).toBeVisible();
+    // Query the live answer, not the inert departing card inside the row.
+    await expect(
+      answered
+        .getByRole("list", { name: "Answers on this question" })
+        .getByText("The plain way.", { exact: true }),
+    ).toBeVisible();
     await expect(page.getByTestId("pending-answers")).toHaveText("1");
     // Shown again, the card lists what it filed.
     await answered.getByRole("button", { name: /^Show/ }).click();
@@ -472,7 +476,11 @@ test.describe("the planning page", () => {
     // question joins the end of the cards.
     await third.getByRole("button", { name: "Take this leaning" }).click();
     const answered = row(page, "OQ-P1: Which way for part 1?");
-    await expect(answered.getByText("The plain way.")).toBeVisible();
+    await expect(
+      answered
+        .getByRole("list", { name: "Answers on this question" })
+        .getByText("The plain way.", { exact: true }),
+    ).toBeVisible();
     await expect(card(page, "OQ-P9: Which way for part 9?")).toBeVisible();
     await expect(needsYou.getByRole("article")).toHaveCount(10);
     // Nothing above it moved.
@@ -630,7 +638,7 @@ test.describe("the planning page", () => {
     });
     await expect(maintenanceCopy).toBeVisible();
     await expect(
-      maintenanceCopy.locator('.hdr-label:not([data-reserve])'),
+      maintenanceCopy.locator(".hdr-label:not([data-reserve])"),
     ).toHaveText("Copy answers + maintenance");
     // An answer waiting on the agent, so Copy answers has one to copy.
     await card(page, LAST)
@@ -641,7 +649,7 @@ test.describe("the planning page", () => {
 
     await expect(page.getByTestId("planning-header")).not.toHaveAttribute(
       "data-yield",
-      /\blabels\b/,
+      /(?:^|\s)labels(?:\s|$)/,
     );
 
     await openGroup(page, "Maintenance");

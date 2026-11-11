@@ -108,9 +108,9 @@ check: format
 # (see frontend/playwright.config.ts). First run downloads chromium:
 # `npx playwright install` from frontend/. CI runs this on every push to main
 # and every pull request against it.
-e2e:
+e2e: cli
     sh scripts/e2e-fixture.sh
-    cd frontend && npx playwright test
+    cd frontend && VANTAGE_CHECK="${VANTAGE_CHECK:-$(pwd)/../packages/vantage-check/dist/vantage-check}" npx playwright test
 
 # The planning index's scale targets (docs/reference/planning-index.md §18), on
 # the production bundle in headless Chromium: the scale fixture at 15, 30, 45 and

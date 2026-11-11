@@ -535,7 +535,8 @@ export class CommentBox {
     // Closed and quiet: nothing in flight, nothing queued. Only now may the
     // session finish, so its barrier never closes over a save still on its way.
     if (this.session !== null && this.status !== "gone") {
-      void this.session.finish();
+      const session = this.session;
+      void session.finish(() => !this.opened && this.session === session);
     }
     if (this.status === "gone" && !this.copied && this.typed !== "") return;
     unregister(this);

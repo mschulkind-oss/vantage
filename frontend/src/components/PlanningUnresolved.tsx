@@ -1,4 +1,6 @@
 import { useRef, useState } from "react";
+import { Link2 } from "lucide-react";
+import { ReservedLabel } from "./ReservedLabel";
 import type { PlanningQuestion } from "vantage-md/planning";
 import { AnchoredMenu } from "./AnchoredMenu";
 import {
@@ -67,28 +69,43 @@ export function PlanningUnresolved({
   const anchor = useRef<HTMLElement | null>(null);
   const total = KINDS.reduce((n, k) => n + groups[k].length, 0);
   const refused = Object.entries(refusals);
-  if (known && total === 0 && refused.length === 0) return null;
+  // Keep the same toolbar room through Unknown -> known, including zero.
+  // Removing the control let header labels expand and moved painted buttons.
+  const shown = !known || total > 0 || refused.length > 0;
+  const label =
+    total === 0 && known
+      ? `${refused.length} not attached`
+      : `${known ? total : "Unknown"} with unresolved ownership`;
   return (
     <>
       <button
         ref={anchorRef}
         type="button"
         data-testid="unresolved-ownership"
+        aria-label={label}
         aria-haspopup="menu"
         aria-expanded={open}
-        disabled={!known}
+        aria-hidden={shown ? undefined : true}
+        tabIndex={shown ? undefined : -1}
+        disabled={!known || !shown}
         onClick={() => {
           anchor.current = anchorRef.current;
           setOpen((v) => !v);
         }}
-        className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 disabled:opacity-40 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700"
+        className={
+          "inline-flex items-center gap-1.5 rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 disabled:opacity-40 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700" +
+          (shown ? "" : " invisible")
+        }
       >
-        {total === 0 && known
-          ? `${refused.length} not attached`
-          : `${known ? total : "Unknown"} with unresolved ownership`}
+        <ReservedLabel
+          icon={<Link2 size={14} aria-hidden="true" />}
+          label={label}
+          reserve={["Unknown with unresolved ownership", "9999 not attached"]}
+          labelClassName="hdr-label hdr-label-minor"
+        />
       </button>
       <AnchoredMenu
-        open={open}
+        open={open && shown}
         onClose={() => setOpen(false)}
         anchorRef={anchor}
         width={440}
