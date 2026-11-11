@@ -9469,7 +9469,11 @@ describe("ownership under a filter (planning-question-state.md §4)", () => {
     await renderPage("/.vantage/planning?filter=OQ-D3");
     expect(screen.getByRole("article", { name: /OQ-D3/ })).toBeTruthy();
     expect(screen.queryByRole("article", { name: /OQ-D1/ })).toBeNull();
-    expect(screen.queryByTestId("unresolved-ownership")).toBeNull();
+    expect(
+      screen.queryByRole("button", {
+        name: /with unresolved ownership|not attached/,
+      }),
+    ).toBeNull();
   });
 
   // Filters narrow what is drawn, never what a comment belongs to. Copy answers
@@ -9496,7 +9500,11 @@ describe("ownership under a filter (planning-question-state.md §4)", () => {
 
       await renderPage(`/.vantage/planning?filter=${filter}`);
       expect(screen.queryByRole("article", { name: /OQ-D1/ })).toBeNull();
-      expect(screen.queryByTestId("unresolved-ownership")).toBeNull();
+      expect(
+        screen.queryByRole("button", {
+          name: /with unresolved ownership|not attached/,
+        }),
+      ).toBeNull();
       cleanup();
       writeText.mockClear();
 
@@ -9522,7 +9530,11 @@ describe("ownership under a filter (planning-question-state.md §4)", () => {
     });
     await settle();
     expect(screen.queryByRole("article", { name: /OQ-D1/ })).toBeNull();
-    expect(screen.queryByTestId("unresolved-ownership")).toBeNull();
+    expect(
+      screen.queryByRole("button", {
+        name: /with unresolved ownership|not attached/,
+      }),
+    ).toBeNull();
   });
 });
 
@@ -9568,8 +9580,12 @@ describe("legacy comments: automatic bind and Attach to question…", () => {
       evidence: { unit_fingerprint: unitOf().unitFingerprint },
       preconditions: { boot_id: "boot-1", document_generation: 1 },
     });
-    // It is the question's now: no unresolved group holds it.
-    expect(screen.queryByTestId("unresolved-ownership")).toBeNull();
+    // It is the question's now: no accessible unresolved control holds it.
+    expect(
+      screen.queryByRole("button", {
+        name: /with unresolved ownership|not attached/,
+      }),
+    ).toBeNull();
   });
 
   it("does not bind a comment whose block text is not found once in the document", async () => {

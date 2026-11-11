@@ -2386,8 +2386,9 @@ export const PlanningPage: React.FC = () => {
         listedQuestions,
         reviews.byPath,
         index === null ? undefined : allQuestionsByPath(index),
+        scoped,
       ),
-    [listedQuestions, reviews.byPath, index],
+    [listedQuestions, reviews.byPath, index, scoped],
   );
   const liveAnswered = useMemo(
     () =>
@@ -2425,6 +2426,7 @@ export const PlanningPage: React.FC = () => {
       listedThen,
       reviews.byPath,
       allQuestionsByPath(then),
+      scoped,
     );
     const repliesSeen = new Map<string, number>();
     const answeredThen = new Set<string>();
@@ -3886,7 +3888,6 @@ export const PlanningPage: React.FC = () => {
       }
       tools={
         <>
-          <PlanningReload status={reloadStatus} onReload={reloadFromServer} />
           <PlanningUpdates
             count={updateCount}
             title={updatesTitle(updates)}
@@ -3907,6 +3908,7 @@ export const PlanningPage: React.FC = () => {
               </>
             }
           >
+            <PlanningReload status={reloadStatus} onReload={reloadFromServer} />
             <PlanningUnresolved
               groups={unresolved}
               known={countKnown}

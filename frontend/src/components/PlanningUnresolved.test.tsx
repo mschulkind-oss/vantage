@@ -77,11 +77,26 @@ function open(onAttach = vi.fn().mockResolvedValue(null), refusals = {}) {
 }
 
 describe("PlanningUnresolved", () => {
-  it("draws nothing when every comment is owned and nothing was refused", () => {
-    const { container } = render(
-      <PlanningUnresolved groups={groupsOf([])} known />,
+  it("keeps an inert reserved slot when ownership finishes loading with no unresolved comments", () => {
+    const { rerender } = render(
+      <PlanningUnresolved groups={groupsOf([])} known={false} />,
     );
-    expect(container).toBeEmptyDOMElement();
+    const slot = screen.getByTestId("unresolved-ownership");
+    expect(slot).toBeDisabled();
+    rerender(<PlanningUnresolved groups={groupsOf([])} known />);
+    expect(screen.getByTestId("unresolved-ownership")).toBe(slot);
+    expect(slot).toHaveAttribute("aria-hidden", "true");
+    expect(slot).toHaveAttribute("tabindex", "-1");
+    expect(slot).toHaveClass("invisible");
+    expect(slot).toBeDisabled();
+    expect(screen.queryByRole("button")).not.toBeInTheDocument();
+  });
+
+  it("keeps an accessible name when the header hides its visible label", () => {
+    render(<PlanningUnresolved groups={groupsOf([legacy])} known />);
+    const control = screen.getByTestId("unresolved-ownership");
+    (control.querySelector(".hdr-label") as HTMLElement).style.display = "none";
+    expect(control).toHaveAccessibleName("1 with unresolved ownership");
   });
 
   it("counts the unresolved comments and says Unknown while the reviews are not all read", () => {

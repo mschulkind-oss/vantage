@@ -5,7 +5,8 @@ import { serveFixture } from "./ownServer";
 
 // Comment autosave (docs/reference/comment-autosave.md, done-when 6), in
 // a real browser against the real server: a comment box saves as it is typed
-// in, every way of leaving it keeps the text, and a save that fails says so
+// in, explicit close keeps the text, Escape confirms discarding a new root,
+// and a save that fails says so
 // and lands once the server answers again. The fixture is
 // `fixtures/comment_autosave/notes.md`, which no other spec reads.
 
@@ -36,7 +37,7 @@ test.describe("comment autosave", () => {
   test.describe.configure({ mode: "serial" });
   serveFixture(path.join(here, "fixtures/comment_autosave"));
 
-  test("saves as it is typed, and Esc keeps the text", async ({ page }) => {
+  test("saves as it is typed, and explicit close keeps the text", async ({ page }) => {
     await openInReview(page);
     await prose(page).getByText("A paragraph to comment on.").click();
     await popover(page).fill("Saved while typing.");
@@ -57,6 +58,11 @@ test.describe("comment autosave", () => {
       cards(page).filter({ hasText: "Saved while typing." }),
     ).toHaveCount(0);
     await popover(page).press("Escape");
+    const confirmation = page.getByRole("alertdialog", { name: "Discard new answer" });
+    await expect(confirmation).toBeVisible();
+    await confirmation.getByRole("button", { name: "Keep editing" }).click();
+    await expect(popover(page)).toHaveValue("Saved while typing. And more.");
+    await popover(page).press("Control+Enter");
     await expect(popover(page)).toHaveCount(0);
     // Closed, the comment the box filed is drawn in the document.
     await expect(
@@ -69,6 +75,23 @@ test.describe("comment autosave", () => {
     await clearReview(page);
   });
 
+  test("Escape discards a new root only after confirmation, including its saved text", async ({ page }) => {
+    await openInReview(page);
+    await prose(page).getByText("A paragraph to comment on.").click();
+    await popover(page).fill("Discard this saved draft.");
+    await expect(page.getByText("Saved just now")).toBeVisible();
+    await popover(page).press("Escape");
+    const confirmation = page.getByRole("alertdialog", { name: "Discard new answer" });
+    await expect(confirmation).toBeVisible();
+    await expect(popover(page)).toHaveValue("Discard this saved draft.");
+    await confirmation.getByRole("button", { name: "Discard", exact: true }).click();
+    await expect(popover(page)).toHaveCount(0);
+    await expect(cards(page)).toHaveCount(0);
+    await page.reload();
+    await expect(cards(page)).toHaveCount(0);
+    await clearReview(page);
+  });
+
   test("says Not saved, retrying, while the server is away, and saves once it is back", async ({
     page,
   }) => {
@@ -78,7 +101,7 @@ test.describe("comment autosave", () => {
     await popover(page).fill("Typed while the server was away.");
     await expect(page.getByText("Not saved, retrying").first()).toBeVisible();
     // Closing it keeps the text, which the app shell now holds.
-    await popover(page).press("Escape");
+    await popover(page).press("Control+Enter");
     await expect(page.getByText("1 comment not saved, retrying")).toBeVisible();
 
     await page.unroute("**/api/review/comments**");

@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  CommentBox,
+  resetBoxesForTest,
+  SAVE_PAUSE_MS,
+} from "./commentAutosave";
+import {
   CommentSession,
   resetSessionsForTest,
   sessionsNeedGuard,
@@ -82,9 +87,58 @@ beforeEach(() => {
   vi.useFakeTimers();
   resetSessionsForTest();
 });
-afterEach(() => vi.useRealTimers());
+afterEach(() => {
+  resetBoxesForTest();
+  vi.useRealTimers();
+});
 
 describe("CommentSession", () => {
+  it("does not finish a pending begin when its box reopens during StrictMode cleanup", async () => {
+    const { api, calls, script } = fakeApi();
+    let release!: () => void;
+    const beginning = new Promise<SessionReply>((resolve) => {
+      release = () => resolve(ack());
+    });
+    script.begin.push(
+      () => beginning,
+      () => beginning,
+    );
+    const session = make(api, { isNew: true, openingText: "" });
+    const box = new CommentBox(
+      {
+        kind: "comment",
+        target: { base: "/api", path: "a.md" },
+        commentId: "c1",
+        draft: { id: "c1", comment: "", created_at: 1, reactions: [] },
+        label: "New comment",
+      },
+      {
+        create: (text) => session.write((id) => api.writeText(id, text)),
+        update: (text) => session.write((id) => api.writeText(id, text)),
+        remove: () => Promise.resolve(),
+      },
+    );
+    box.attachSession(session);
+    box.open();
+    box.close();
+    box.open();
+    release();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(calls.filter((call) => call.startsWith("finish"))).toEqual([]);
+    expect(session.phase).toBe("open");
+    box.input("Saved after reopening");
+    await vi.advanceTimersByTimeAsync(SAVE_PAUSE_MS);
+    expect(box.getState().status).toBe("saved");
+    expect(calls).toContain("write s1 Saved after reopening");
+    // An actual close still finishes the same session after its last save.
+    box.close();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(session.phase).toBe("closed");
+    expect(calls.filter((call) => call.startsWith("finish"))).toEqual([
+      "finish s1",
+    ]);
+  });
+
   it("sends no write before the begin ack, then writes with the session id", async () => {
     const { api, calls, script } = fakeApi();
     let release!: () => void;

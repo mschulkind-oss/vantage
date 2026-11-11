@@ -284,7 +284,49 @@ function rebuildLayer(
       // block at the same line is other text, and tinting it would put the
       // comment on words it was never about. Unmatched comments take the
       // outdated path below.
-      const block = resolveCommentBlock(blocks, anchor);
+      // A bound question supplies the scope; identical words in another
+      // question are not ambiguity inside this uniquely named unit. Keep the
+      // shared hash resolver (including its same-unit ambiguity refusal).
+      let resolutionBlocks = blocks;
+      if (comment.question_id) {
+        if (boundQuestionsByUnit === null) {
+          boundQuestionsByUnit = new Map<HTMLElement, DocumentQuestion>();
+          const allQ = documentQuestions(el);
+          for (const q of allQ) {
+            for (const b of questionUnitBlocks(q.stamped, el, allQ)) {
+              if (!boundQuestionsByUnit.has(b)) boundQuestionsByUnit.set(b, q);
+            }
+          }
+          boundAllQuestions = allQ;
+        }
+        const named = (boundAllQuestions ?? []).filter(
+          (q) => q.stamped.id === comment.question_id,
+        );
+        if (named.length === 1) {
+          const owned = (block: HTMLElement) => {
+            for (
+              let n: HTMLElement | null = block;
+              n && n !== el;
+              n = n.parentElement
+            ) {
+              const owner = boundQuestionsByUnit!.get(n);
+              if (owner) return owner === named[0];
+            }
+            return false;
+          };
+          const onlyOwned = <K>(entries: Map<K, HTMLElement[]>) =>
+            new Map(
+              [...entries]
+                .map(([key, nodes]) => [key, nodes.filter(owned)] as const)
+                .filter(([, nodes]) => nodes.length > 0),
+            );
+          resolutionBlocks = {
+            byLine: onlyOwned(blocks.byLine),
+            byHash: onlyOwned(blocks.byHash),
+          };
+        }
+      }
+      const block = resolveCommentBlock(resolutionBlocks, anchor);
 
       if (!block) {
         // No block at line, no hash neighbor — outdated. The commented text is
@@ -310,17 +352,6 @@ function rebuildLayer(
       // block in another question's unit (e.g., B moved to A's old line), the
       // comment is outdated rather than credited to the wrong question.
       if (comment.question_id) {
-        // Lazily built on the first bound comment we encounter.
-        if (boundQuestionsByUnit === null) {
-          boundQuestionsByUnit = new Map<HTMLElement, DocumentQuestion>();
-          const allQ = documentQuestions(el);
-          for (const q of allQ) {
-            for (const b of questionUnitBlocks(q.stamped, el, allQ)) {
-              if (!boundQuestionsByUnit.has(b)) boundQuestionsByUnit.set(b, q);
-            }
-          }
-          boundAllQuestions = allQ;
-        }
         // Find the unique question in the DOM with this id.
         const named = (boundAllQuestions ?? []).filter(
           (q) => q.stamped.id === comment.question_id,
@@ -344,7 +375,7 @@ function rebuildLayer(
           n !== null && n !== el;
           n = n.parentElement as HTMLElement | null
         ) {
-          ownerQ = boundQuestionsByUnit.get(n);
+          ownerQ = boundQuestionsByUnit?.get(n);
           if (ownerQ !== undefined) break;
         }
         if (ownerQ !== named[0]) {

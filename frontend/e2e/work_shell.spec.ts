@@ -602,6 +602,9 @@ test.describe("Work in the shared shell", () => {
         .outputPath("questions-narrow-settled-repository-menu-390x844.png"),
     });
     await page.keyboard.press("Escape");
+    await header.getByRole("button", { name: "Toolbar actions" }).click();
+    await expect(header.getByRole("button", { name: "Reload from server" })).toBeVisible();
+    await page.keyboard.press("Escape");
     await header.getByRole("link", { name: "Overview" }).click();
     await expect(page).toHaveURL(new RegExp(`\\.vantage/work/${repoSegment}$`));
     await expect(page.locator("[data-work-document]").first()).toBeVisible();

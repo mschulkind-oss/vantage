@@ -300,15 +300,16 @@ export class CommentSession {
   /**
    * Close the session keeping what it wrote. The caller has quiesced the box
    * first. Retried without end on transient failure; a 404 means there is
-   * nothing left to close.
+   * nothing left to close. Recheck the caller after a pending begin: its
+   * box may have reopened while the acknowledgment was in flight.
    */
-  async finish(): Promise<void> {
+  async finish(stillClosed: () => boolean = () => true): Promise<void> {
     if (this.phaseValue === "beginning") {
       await new Promise<void>((resolve) =>
         this.waiting.push({ resolve, reject: () => resolve() }),
       );
     }
-    if (this.phaseValue !== "open") return;
+    if (this.phaseValue !== "open" || !stillClosed()) return;
     this.set("finishing");
     for (let failures = 0; ; failures += 1) {
       try {

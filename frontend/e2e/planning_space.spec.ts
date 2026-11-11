@@ -256,6 +256,10 @@ test.describe("a planning link naming a space, in daemon mode", () => {
           HOME: home,
           USERPROFILE: home,
           XDG_CONFIG_HOME: path.join(home, ".config"),
+          // TMPDIR may live inside the checkout. These clones must not be
+          // mistaken for the enclosing repository by upward Git discovery.
+          GIT_CEILING_DIRECTORIES: [scratch, process.env.GIT_CEILING_DIRECTORIES]
+            .filter(Boolean).join(path.delimiter),
           VANTAGE_NO_TIPS: "1",
         },
         stdio: "ignore",

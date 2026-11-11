@@ -1,3 +1,4 @@
+import { blockTextHash } from "../../packages/vantage-md/src/planning/evidence";
 import { test, expect, type Page } from "@playwright/test";
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -585,6 +586,12 @@ test.describe("several roadmaps", () => {
   const fileOnTitle = async (doc: string, id: string) => {
     const lines = readFileSync(path.join(FIXTURE, doc), "utf8").split("\n");
     const line = lines.findIndex((l) => l.includes(`**${id}:`)) + 1;
+    // This controlled fixture has bold titles in ordered list paragraphs.
+    // File a real anchor, not an invented hash that ownership must refuse.
+    const title = lines[line - 1]
+      .trim()
+      .replace(/^\d+\.\s+/u, "")
+      .replaceAll("**", "");
     const response = await fetch(
       `${backend}/api/review/comments?path=${encodeURIComponent(doc)}`,
       {
@@ -593,11 +600,11 @@ test.describe("several roadmaps", () => {
         body: JSON.stringify({
           id: `typed-${id}`,
           comment: `My answer to ${id}.`,
-          fallback_text: "",
+          fallback_text: title,
           created_at: 0,
           anchor: {
             source_line: line,
-            block_text_hash: "00000000",
+            block_text_hash: blockTextHash(title),
             selection_offset: 0,
             selection_length: 0,
           },
@@ -652,6 +659,14 @@ test.describe("several roadmaps", () => {
       await page.goto(`/.vantage/planning?roadmap=roadmap.md`);
       // An answered row of Needs you, first (planning-index.md §6.4).
       const a1 = page.getByRole("group", { name: /^OQ-A1:/ });
+      const painted = page.getByRole("article", { name: /^OQ-A1:/ });
+      await expect(a1.or(painted)).toBeVisible();
+      if (await painted.count()) {
+        await expect(
+          painted.getByText("Answered elsewhere", { exact: true }),
+        ).toBeVisible();
+        await page.getByRole("button", { name: /^Apply updates:/ }).click();
+      }
       await expect(
         a1.getByText("My answer to OQ-A1.", { exact: true }),
       ).toBeVisible();
@@ -704,8 +719,8 @@ test.describe("several roadmaps", () => {
   });
 
   // A cold visit: every answer filed before the page was ever opened, on
-  // questions of both roadmaps and of none. Each need-you number is right from
-  // the first paint, under either roadmap, with nothing picked in between.
+  // questions of both roadmaps and of none. Counts update as their proof loads;
+  // late answers rearrange the painted cards only after Apply updates.
   for (const chosen of ["roadmap.md", NESTED]) {
     test(`counts every answer on a cold visit to ${chosen}`, async ({
       page,
@@ -731,6 +746,8 @@ test.describe("several roadmaps", () => {
         await expect(page.getByTestId("other-roadmaps")).toHaveText(
           "No more questions need you on other roadmaps.",
         );
+        const apply = page.getByRole("button", { name: /^Apply updates:/ });
+        if (await apply.count()) await apply.click();
         // Needs you's last line says so, under its answered rows.
         await expect(page.getByTestId("needs-you-end")).toHaveText(
           "Nothing needs you",

@@ -496,6 +496,38 @@ describe("an answered row's answers (§6.4)", () => {
     expect(agentReplies([replied])).toBe(1);
   });
 
+  it("snapshots the same freshly scoped body answer that the pending count credits", () => {
+    const index = indexOf(treeOf(), { stages: STAGES });
+    const questions = index.documents.flatMap((d) => d.questions);
+    const q3 = questions.find((x) => x.id === "OQ-T3")!;
+    const comments = [
+      comment({ id: "body", question_id: undefined }),
+    ] as ReviewComment[];
+    const byPath = { [q3.path]: comments };
+    const reports = {
+      [questionKey(q3)]: { question: q3, comments, ids: ["body"] },
+    };
+    expect(
+      commentsByQuestion(questions, byPath, undefined, reports).get(
+        questionKey(q3),
+      ),
+    ).toEqual(comments);
+    // A different question version or a newer comments read invalidates it.
+    expect(
+      commentsByQuestion(questions, byPath, undefined, {
+        [questionKey(q3)]: { ...reports[questionKey(q3)], question: { ...q3 } },
+      }).size,
+    ).toBe(0);
+    expect(
+      commentsByQuestion(
+        questions,
+        { [q3.path]: [...comments] },
+        undefined,
+        reports,
+      ).size,
+    ).toBe(0);
+  });
+
   it("owns a comment by its question id, never by its line", () => {
     const index = indexOf(treeOf(), { stages: STAGES });
     const questions = index.documents.flatMap((d) => d.questions);

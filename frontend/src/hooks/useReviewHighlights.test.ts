@@ -1281,6 +1281,34 @@ describe("useReviewHighlights — bound comment question_id scope", () => {
     ).toBe(true);
   });
 
+  it("resolves repeated text only inside the uniquely named question, never the old line in another unit", () => {
+    container.innerHTML = `
+      <p data-source-line="10" data-vantage-question="true" id="OQ-B">Choose option A</p>
+      <p data-source-line="20" data-vantage-question="true" id="OQ-A">Choose option A</p>
+    `;
+    // A moved; B took its old line with the identical words.
+    renderInline([baseComment({ anchor: anchorOldA(), question_id: "OQ-A" })]);
+    expect(container.querySelector('p[data-source-line="10"]')).not.toHaveClass(
+      "review-highlight-block",
+    );
+    expect(container.querySelector('p[data-source-line="20"]')).toHaveClass(
+      "review-highlight-block",
+    );
+    expect(blockFor("c1")).not.toHaveClass("review-inline-comment--outdated");
+  });
+
+  it("still refuses repeated matching blocks inside the same named question", () => {
+    container.innerHTML = `
+      <p data-source-line="10" data-vantage-question="true" id="OQ-A">Choose option A</p>
+      <p data-source-line="20">Choose option A</p>
+    `;
+    renderInline([baseComment({ anchor: anchorOldA(), question_id: "OQ-A" })]);
+    expect(container.querySelectorAll(".review-highlight-block")).toHaveLength(
+      0,
+    );
+    expect(blockFor("c1")).toHaveClass("review-inline-comment--outdated");
+  });
+
   it("paints the comment normally when the resolved block IS inside its question's unit", () => {
     // A comment filed on OQ-B (line 10) should still paint on B's block.
     const comment = baseComment({ anchor: anchorOldA(), question_id: "OQ-B" });
