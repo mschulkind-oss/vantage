@@ -249,8 +249,12 @@ func TestCheckerDiscoveryOrder(t *testing.T) {
 	require.Equal(t, []string{"/usr/bin/vantage-check"}, command(NewCLIQuestionScannerFromEnv(none, onPath, exe)))
 	// An executable neighbour beats PATH.
 	require.NoError(t, os.Chmod(neighbour, 0o755))
-	require.Equal(t, []string{neighbour}, command(NewCLIQuestionScannerFromEnv(none, onPath, exe)))
-	require.Equal(t, []string{neighbour}, command(NewCLIQuestionScannerFromEnv(none, notOnPath, exe)))
+	// Discovery resolves the server executable before finding its neighbour.
+	// A temp root can itself be a symlink (macOS /var -> /private/var).
+	resolvedNeighbour, err := filepath.EvalSymlinks(neighbour)
+	require.NoError(t, err)
+	require.Equal(t, []string{resolvedNeighbour}, command(NewCLIQuestionScannerFromEnv(none, onPath, exe)))
+	require.Equal(t, []string{resolvedNeighbour}, command(NewCLIQuestionScannerFromEnv(none, notOnPath, exe)))
 	// The explicit variable beats both.
 	explicit := func(k string) string {
 		if k == "VANTAGE_CHECK" {
