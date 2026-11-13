@@ -455,6 +455,7 @@ _published-package:
     npm run build --workspace vantage-md >/dev/null
     npm run typecheck:published --workspace vantage-md
     node packages/vantage-md/scripts/check-published-css.mjs
+    node packages/vantage-md/scripts/check-published-entry.mjs
 
 # Point git at the tracked hooks dir. Idempotent.
 [private]

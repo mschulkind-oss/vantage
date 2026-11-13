@@ -31,6 +31,16 @@ export interface MarkdownViewerProps {
   className?: string;
   /** Callback when an internal link is clicked */
   onNavigate?: (path: string) => void;
+  /**
+   * Omit the frontmatter card, for a panel embedding the prose of a document
+   * that is already titled by its own chrome.
+   *
+   * The card is the only thing this drops: the render chain, link and image
+   * resolution, mermaid handling and line-anchor hook are unchanged, so an
+   * embedded viewer is the page viewer minus the card rather than a second
+   * implementation of the chain. Default `false`.
+   */
+  hideFrontmatter?: boolean;
 }
 
 const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
@@ -41,6 +51,7 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
   imageApiBase,
   className,
   onNavigate,
+  hideFrontmatter = false,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -226,7 +237,7 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
       ref={containerRef}
       className={className ? `${proseClasses} ${className}` : proseClasses}
     >
-      <FrontmatterDisplay frontmatter={frontmatter} />
+      {!hideFrontmatter && <FrontmatterDisplay frontmatter={frontmatter} />}
       <ReactMarkdown
         remarkPlugins={remarkPlugins}
         rehypePlugins={rehypePlugins}
@@ -239,11 +250,19 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
   );
 };
 
+// Every prop is compared, not the four that used to be here: a panel that
+// changed `baseUrl`, `imageApiBase`, `onNavigate` or `hideFrontmatter` kept the
+// previous render, because a comparator that omits a prop says that prop can
+// never change. Callers memoize their callbacks; this must not assume it.
 export const MarkdownViewer = memo(
   MarkdownViewerInner,
   (prevProps, nextProps) =>
     prevProps.content === nextProps.content &&
     prevProps.currentPath === nextProps.currentPath &&
     prevProps.hash === nextProps.hash &&
-    prevProps.className === nextProps.className,
+    prevProps.baseUrl === nextProps.baseUrl &&
+    prevProps.imageApiBase === nextProps.imageApiBase &&
+    prevProps.className === nextProps.className &&
+    prevProps.onNavigate === nextProps.onNavigate &&
+    prevProps.hideFrontmatter === nextProps.hideFrontmatter,
 );
