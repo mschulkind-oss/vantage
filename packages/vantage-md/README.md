@@ -71,7 +71,7 @@ function Docs({ content, path }) {
 }
 ```
 
-The React component includes mermaid diagram rendering (lazy-loaded), frontmatter display, and syntax highlighting out of the box.
+The React component includes mermaid diagram rendering (lazy-loaded), frontmatter display, and syntax highlighting out of the box. A panel that already titles its document can pass `hideFrontmatter` to drop the frontmatter card; nothing else changes, because the card is the only thing the prop removes.
 
 ### Frontmatter card
 
@@ -139,6 +139,30 @@ if all you want is `data-source-line`.
 
 {@html html}
 ```
+
+## Directives
+
+Vantage's own markup is carried in an **HTML comment with a `vantage:` sentinel**, which GitHub and every other Markdown renderer drop:
+
+```markdown
+<!-- vantage: section tone=warning -->
+
+## A warning section
+```
+
+The comment compiles into `data-vantage-*` attributes on the block that follows it — `data-vantage-tone="warning"` on the section's heading here — which is what [`vantage-md/styles`](#exports) styles. The names are a closed set:
+
+| Name | Applies to | What it does |
+| :--- | :--- | :--- |
+| `section` | the heading and everything under it | stamps the section's extent |
+| `block` | the one block after it | stamps one block |
+| `question` | one Open Question, in any state | gives it its `#OQ-…` anchor and its planning state |
+| `fallback` | the one block after it | withholds a block written for renderers that cannot show what Vantage shows |
+| `oq` | the deprecated spelling of `question` | still read, never written |
+
+A directive is **not** a fenced form. `:::question` renders as literal text; the notation is the HTML comment above. The `question` directive is what makes a question a question: `<!-- vantage: question id=OQ-… -->` above the question's `_Leaning:_` paragraph stamps `data-vantage-question="true"` on the block it lands on and gives that block the question's id, which review mode anchors and the planning index counts.
+
+The grammar, the keys each name takes, and the full `data-vantage-*` vocabulary are in [`docs/reference/inline-markup.md`](../../docs/reference/inline-markup.md).
 
 ## Exports
 

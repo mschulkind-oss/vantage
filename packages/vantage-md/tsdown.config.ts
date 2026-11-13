@@ -17,9 +17,16 @@ import { defineConfig } from "tsdown";
  * tsup's last release was 2025-11-12 and its peer range still claims
  * `typescript: >=4.5.0`. tsdown is the maintained successor on the same
  * lineage; its peer range names 7.x explicitly.
+ *
+ * ESM only, since 2026-11-13. The package's renderers are ESM-only too —
+ * `unified`, `remark-parse`, the `rehype-*` plugins and `react-markdown` — and
+ * a CommonJS bundle can only reach them through `require()`, whose interop
+ * hands `.use()` the namespace instead of the plugin (the "empty preset"
+ * throw). The old CJS build never imported, so nothing working is lost; see
+ * docs/design/vantage-md-consumer-requests.md §2.
  */
 const shared = {
-  format: ["esm", "cjs"] as const,
+  format: ["esm"] as const,
   dts: true,
   sourcemap: true,
   treeshake: true,

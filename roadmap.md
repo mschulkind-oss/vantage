@@ -72,3 +72,5 @@ The order is the one thing this file holds that no other document can. Each entr
 2. [Remaining planning reader-state handling](docs/design/planning-question-state.md) — make the remaining source-state and freshness distinctions visible before broader refresh changes, because a reader must know whether the answer and the text on screen concern the same decision.
 
 3. [Planning selection coverage](docs/design/planning-review-actions.md) — establish a provable source anchor for generated leaning text before offering selection comments on it; an attractive selection target is not evidence of where the text came from.
+
+4. [vantage-md's consumer surface](docs/design/vantage-md-consumer-requests.md) — settle whether the planning index becomes a published subpath, because the change ships before the next release restates what the package exports.

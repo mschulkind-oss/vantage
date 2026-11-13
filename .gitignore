@@ -67,6 +67,12 @@ Thumbs.db
 # Vantage's own per-repo state (review delivery inbox)
 .vantage/
 
+# Agent scratch space. The agent's global git exclude names /scratch/ too, but
+# that file does not travel with a clone, so a fresh checkout reported the tree
+# as untracked and `git add -A` swept it in.
+/scratch/
+/scratch-*
+
 # The e2e fixture repository is built at run time (scripts/e2e-fixture.sh);
 # a nested .git cannot be committed, so it lives only on the machine running it.
 frontend/e2e/fixtures/test_repo/.git/
