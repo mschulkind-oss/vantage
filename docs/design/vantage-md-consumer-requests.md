@@ -1,18 +1,18 @@
 ---
 title: "vantage-md's consumer surface: a working entry point, an embedded viewer, and a written directive dialect"
 date: 2026-11-13
-status: in-review
-stage: DESIGN
-next: "Rule on [OQ-VM1](#OQ-VM1) (publish the planning index as a subpath), then the CommonJS removal and the embedded-viewer prop ship together"
+status: accepted
+stage: BUILT
+next: "Graduate into a reference once the release ships; the release note must say the CommonJS entry was withdrawn and the planning subpath is new"
 tags: [vantage-md, packaging, npm, esm, cjs, directives, consumers, planning]
-summary: "A QA lane filed four requests against the published vantage-md package and several against other projects. Triaged: the CommonJS entry is broken and the package should ship ESM only; the viewer gains a hideFrontmatter prop; the directive dialect gets its own README section; and publishing the planning index stays open because the package documents it as deliberately internal."
+summary: "A QA lane filed four requests against the published vantage-md package and several against other projects. Triaged and built: the CommonJS entry is withdrawn and the package ships ESM only; the viewer gains a hideFrontmatter prop; the directive dialect gets its own README section; and the planning index is published as the vantage-md/planning subpath."
 ---
 
 # vantage-md's consumer surface
 
-**Status:** 2026-11-13. The CommonJS removal, the `hideFrontmatter` prop, the README directive section and the `scratch/` ignore rule are built in this change. [OQ-VM1](#6-open-questions) is open and is the only thing keeping the document out of `accepted`.
+**Status:** 2026-11-13. The CommonJS removal, the `hideFrontmatter` prop, the README directive section, the `scratch/` ignore rule and the `vantage-md/planning` subpath are built in this change. No question is open.
 
-**Needs your ruling:** [OQ-VM1](#6-open-questions).
+**Needs your ruling:** None.
 
 **Reads with:** [`inline-markup.md`](../reference/inline-markup.md) (the directive vocabulary the README now summarizes), [`pypi-distribution.md`](../reference/pypi-distribution.md) (how the package is published from a tag), and the request file this triages, which is a scratch record and lives in `swarf/docs/`, not in this repository.
 
@@ -65,30 +65,21 @@ The README gains a **Directives** section: the carrier (an HTML comment with a `
 
 `scratch/` was ignored only by the agent's global `~/.config/git/ignore`. A fresh checkout on another machine has no such file, so an agent's scratch tree becomes untracked files that `git status` reports and `git add -A` sweeps into a commit. The repository's own `.gitignore` now names `/scratch/` and `/scratch-*`, so the rule travels with the clone.
 
-## 6. Open Questions
+## 6. The planning index is published as `vantage-md/planning`
 
-1. 💬 **OQ-VM1: Should the planning index become a published `vantage-md/planning` subpath?**
+The request asked for the planning model to be reachable from outside the package, and the ruling is yes: `vantage-md/planning` is a published subpath, built from `src/planning/index.ts` beside the main entry so the two share a chunk rather than duplicating the directive grammar and the frontmatter reader.
 
-   The request asks the package to publish `src/planning/` — 18 files, about 7,400 lines, with `questionFor`, `questionState`, `routeQuestions`, `questionNeedsYou`, `answeredQuestions`, `filterKeepsQuestion`, `cardSource`, `evidence` and `leaning` — because the question card Vantage's own UI draws cannot be used by anyone else. Today `planning/index.ts` says in its own header that it is deliberately internal: nothing in it is exported from the published entry, so it is not semver API, and the viewer reaches it through the frontend's source alias.
+The module is the model behind the planning page. `scanPlanningDocument` reads one document into a `PlanningDocument` with its questions, links, ids and card blocks; `buildPlanningIndex` folds a batch into a `PlanningIndex`; `derivePlanningSections` turns that into the sections an operator acts on (`needsYou`, `waiting`, `ready`, `graduate`, `disagrees`); and `routeQuestions`, `questionFor`, `questionState`, `referencedBy`, `badgeFor`, `planningAgentRequest`, `parsePlanningFilter`/`applyPlanningFilter` and `cardBlockFor` are the rest of the page. It is a pure function of the files it is given: no React, no server, no filesystem, which is what makes it publishable at all.
 
-   That is a reversal of a written decision, not an oversight, so it is the owner's to make.
+The cost is real and is why this was a question rather than a mechanical change: the module is about 7,400 lines, and every one of those exports is now semver API. The header that said "internal, and deliberately so (P4, Plan Q19)" now says what it is. The frontend's `vantage-md/planning` alias stays, because it keeps the app's dev and test builds on the source; it is no longer the only way in.
 
-   - **A — Publish it and take on the API surface.** Add the `exports` entry and a build entry; the module is self-contained (`mdast`, `remark-parse`, `smol-toml`, `unified`, `yaml`), so it is mechanically a packaging change.
-   - **B — Keep it internal and publish nothing.** A consumer rebuilds the card from `parseVantageDirective`, as it does today.
-   - **C — Publish a smaller, purpose-built surface.** Name the handful of functions a card needs and export those, leaving the rest internal.
-
-   <!-- vantage: question id=OQ-VM1 leaning="B, for now: the module's header says the exclusion is deliberate, and the request names no consumer beyond 'anyone else', so publishing the whole 7,400 lines commits the package to semver on an API nobody has asked to consume yet." -->
-
-   _Leaning:_ B, for now. The module's header says the exclusion is deliberate, and the request names no consumer beyond "anyone else", so publishing the whole 7,400 lines commits the package to semver on an API nobody has asked to consume yet. C is the better shape if a real consumer appears.
-
-   **Answer:**
-
-   > _(empty — fill in when decided)_
+**What done looks like:** `dist/planning.js` and `dist/planning.d.ts` are built; `check-published-entry.mjs` imports the entry and scans a question; `typetest/consumer.ts` imports `vantage-md/planning` under both supported compilers; and the README's Exports table names the subpath.
 
 ## Decision Ledger
 
 | ID | Ruling | Why |
 | :--- | :--- | :--- |
+| OQ-VM1 | The planning index is published as `vantage-md/planning`. | The owner ruled to expose it: the model is what a consumer builds a question card or a planning board from, and the package is now the one place it lives. The 7,400-line surface is the cost, accepted. |
 | OQ-VM2 | The package ships ESM only; the CommonJS entry is withdrawn, not fixed. | Every renderer dependency is ESM-only, so a working CJS build means bundling a second copy of the graph; the published CJS entry has never imported, so no working use is broken. |
 | OQ-VM3 | `hideFrontmatter` is a prop on the existing viewer, not a second component. | Two components over `buildPipeline` is two places for the chain to drift, which is the failure the shared pipeline exists to prevent. |
 | OQ-VM4 | The directive dialect is documented in the package README and linked to `inline-markup.md`, not restated there. | One statement of the grammar; the reference already owns it. |

@@ -38,10 +38,16 @@ const shared = {
 };
 
 export default defineConfig([
-  // Main entry — framework-agnostic.
+  // Main entry — framework-agnostic — and the planning index, which shares
+  // most of its modules with the main entry (the directive grammar, the
+  // frontmatter reader, the remark half) and is built beside it so rolldown
+  // emits one shared chunk instead of a second copy in `planning.js`.
   {
     ...shared,
-    entry: { index: "src/index.ts" },
+    entry: {
+      index: "src/index.ts",
+      planning: "src/planning/index.ts",
+    },
     clean: true,
     deps: {
       neverBundle: ["react", "react-dom", "mermaid", "yaml", "smol-toml"],

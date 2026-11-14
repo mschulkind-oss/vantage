@@ -164,12 +164,39 @@ A directive is **not** a fenced form. `:::question` renders as literal text; the
 
 The grammar, the keys each name takes, and the full `data-vantage-*` vocabulary are in [`docs/reference/inline-markup.md`](../../docs/reference/inline-markup.md).
 
+## Planning model
+
+`vantage-md/planning` is the model behind Vantage's planning page. It reads a repository's planning documents — `status`/`stage`/`next` frontmatter, `<!-- vantage: question -->` directives, `roadmap.md` routing — and answers what needs a ruling, what is blocked on what, what is ready to build, and what each link points at.
+
+```ts
+import {
+  DEFAULT_PLANNING_CONFIG,
+  buildPlanningIndex,
+  derivePlanningSections,
+} from "vantage-md/planning";
+
+const index = buildPlanningIndex({
+  config: DEFAULT_PLANNING_CONFIG,
+  candidateCount: files.length,
+  refused: false,
+  files, // { path, content }[]
+  skipped: [],
+  unreadable: [],
+});
+
+const sections = derivePlanningSections(index, { roadmap: "roadmap.md" });
+// sections.needsYou, sections.waiting, sections.ready, sections.graduate, …
+```
+
+It is a pure function of the files you give it: no React, no server, no filesystem. `scanPlanningDocument` is the single-document step, and `cardBlockFor` returns the exact Markdown a question card renders.
+
 ## Exports
 
 | Entry point | Description |
 |-------------|-------------|
 | `vantage-md` | `renderMarkdown`, `buildPipeline`, `buildRemarkPlugins`, `rehypeSourceLines`, `scrollToLineAnchor`, `parseLineAnchor`, `parseFrontmatter`, `readVantageFrontmatter`, `sanitizeSchema`, `COLOR_THEME_ATTRIBUTE`, `COLOR_THEME_SOURCE_ATTRIBUTE`, `currentColorTheme` |
 | `vantage-md/react` | `MarkdownViewer`, `useLineAnchor`, `MermaidDiagram`, `FrontmatterDisplay`, `DocumentStatusChip` + all core exports |
+| `vantage-md/planning` | The planning model: `scanPlanningDocument`, `buildPlanningIndex`, `derivePlanningSections`, `routeQuestions`, `questionFor`, `questionState`, `referencedBy`, `badgeFor`, `planningAgentRequest`, `parsePlanningFilter`, `applyPlanningFilter`, `cardBlockFor` |
 | `vantage-md/styles` | Line-anchor highlight CSS, plus the theme layer for the `data-vantage-*` directive attributes and the chrome chips (light + dark mode) |
 
 ## Features

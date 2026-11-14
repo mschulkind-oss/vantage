@@ -87,6 +87,46 @@ await importsAndWorks("react.js", async (mod) => {
   }
 });
 
+// The planning entry is the third published entry point, and the one a
+// consumer builds a question card or a planning board from. A throw or a
+// missing export there is a broken package too.
+await importsAndWorks("planning.js", async (mod) => {
+  for (const name of [
+    "scanPlanningDocument",
+    "buildPlanningIndex",
+    "derivePlanningSections",
+  ]) {
+    if (typeof mod[name] !== "function") {
+      fail(`dist/planning.js does not export ${name}`);
+    }
+  }
+  const result = mod.scanPlanningDocument(
+    "docs/design/example.md",
+    [
+      "---",
+      "status: in-review",
+      "---",
+      "",
+      "## Open Questions",
+      "",
+      "1. \u{1F4AC} **OQ-1: Ship it?**",
+      "",
+      "   <!-- vantage: question id=OQ-1 -->",
+      "",
+      "   _Leaning:_ yes.",
+      "",
+    ].join("\n"),
+    false,
+  );
+  if (result.kind !== "planning") {
+    fail(`scanPlanningDocument returned ${result.kind}`);
+    return;
+  }
+  if (result.document.questions.length !== 1) {
+    fail("scanPlanningDocument did not find the question");
+  }
+});
+
 if (failed) {
   console.error("\nThe published entry point does not work.");
   process.exit(1);
