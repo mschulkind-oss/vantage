@@ -97,9 +97,9 @@ export default defineConfig(({ mode }) => {
       // the package is picked up instantly with HMR and no separate build
       // step. dist/ is only produced at `npm publish` time (prepublishOnly).
       alias: [
-        // The planning index, which is internal to vantage-md: it is not in the
-        // package's exports and never reaches its dist/, so this alias is the only
-        // way in (docs/reference/planning-index.md, P4).
+        // The planning index is published as `vantage-md/planning`; the alias
+        // keeps the app's dev build on the source, so a change to the model is
+        // visible without a package build.
         {
           find: /^vantage-md\/planning$/,
           replacement: path.resolve(

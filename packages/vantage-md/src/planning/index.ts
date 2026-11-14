@@ -5,13 +5,16 @@
  * scan result, in the browser under the file's content hash, and it never uses
  * one without a matching hash (`docs/reference/planning-index.md` §11.1).
  *
- * Internal to vantage-md, and deliberately so (P4, Plan Q19): nothing here is
- * exported from the published entry `src/index.ts`, so it is not semver API.
- * The viewer reaches it as `vantage-md/planning` through the frontend's source
- * alias, and `vantage-check` imports it by relative path, as both already
- * consume the rest of this package. One scan, and every surface — link badges,
- * the planning page, Referenced by, the file tree, `vantage-check index` and its
- * rules — is a view of it.
+ * Published as `vantage-md/planning` since 2026-11-13, and semver API from
+ * here on (`docs/design/vantage-md-consumer-requests.md`, OQ-VM1): the
+ * planning model is the package's now, so a consumer can draw a question
+ * card, a planning board, or a lint rule against the same documents the viewer
+ * renders. The old "internal, and deliberately so" ruling (P4, Plan Q19) is
+ * what this replaces. The viewer still reaches it through the frontend's
+ * source alias, and `vantage-check` imports it by relative path, as both
+ * already consume the rest of this package. One scan, and every surface — link
+ * badges, the planning page, Referenced by, the file tree, `vantage-check
+ * index` and its rules — is a view of it.
  *
  * Everything is a pure function of JSON-serializable data: no `Map`, no `Set`,
  * no class instance crosses this boundary, so a result can be posted between

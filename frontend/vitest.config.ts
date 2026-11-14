@@ -9,9 +9,9 @@ export default defineConfig({
     // Match vite.config.ts: resolve vantage-md to package source so tests run
     // against the same code the app builds, with no dependency on dist/.
     alias: [
-      // The planning index, which is internal to vantage-md: it is not in the
-      // package's exports and never reaches its dist/, so this alias is the only
-      // way in (docs/reference/planning-index.md, P4).
+      // The planning index is published as `vantage-md/planning`; the alias
+      // keeps tests on the source, so a change to the model is visible without a
+      // package build.
       {
         find: /^vantage-md\/planning$/,
         replacement: path.resolve(

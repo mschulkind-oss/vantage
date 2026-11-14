@@ -27,6 +27,16 @@ import type {
   RenderOptions,
   RenderResult,
 } from "vantage-md";
+import {
+  DEFAULT_PLANNING_CONFIG,
+  buildPlanningIndex,
+  derivePlanningSections,
+  scanPlanningDocument,
+} from "vantage-md/planning";
+import type {
+  PlanningDocument,
+  PlanningSections,
+} from "vantage-md/planning";
 
 export async function render(md: string): Promise<string> {
   const options: RenderOptions = {};
@@ -53,4 +63,25 @@ export function misc(md: string): unknown {
     schema: sanitizeSchema,
     guide: STYLE_GUIDE.length,
   };
+}
+
+/** The planning entry, consumed the way an npm user would: from `dist/`. */
+export function scanPlan(md: string): PlanningDocument | null {
+  const result = scanPlanningDocument("docs/design/example.md", md, false);
+  return result.kind === "planning" ? result.document : null;
+}
+
+export function planSections(
+  files: { path: string; content: string }[],
+): PlanningSections {
+  return derivePlanningSections(
+    buildPlanningIndex({
+      config: DEFAULT_PLANNING_CONFIG,
+      candidateCount: files.length,
+      refused: false,
+      files,
+      skipped: [],
+      unreadable: [],
+    }),
+  );
 }
