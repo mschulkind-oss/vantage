@@ -317,6 +317,12 @@ export const WorkPage: React.FC = () => {
             <span className="font-medium">Stage:</span>{" "}
             {document.stage ?? "No saved stage"}
           </p>
+          {document.planningActions === "none" && (
+            <p className="mt-2 break-words">
+              Planning actions: none — not offered as ready to build, ready to
+              graduate or to fold into the ledger.
+            </p>
+          )}
           {document.next !== null && (
             <p className="mt-2 break-words">
               <span className="font-medium">Next:</span>{" "}
