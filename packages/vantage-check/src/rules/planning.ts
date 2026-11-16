@@ -8,6 +8,7 @@ import {
   findDocument,
   hasRoadmapName,
   idsOf,
+  isRoadmapPath,
   planningIndexBuilder,
   questionFor,
   questionState,
@@ -438,9 +439,12 @@ class PlanningPass {
    * A `planning-actions` the scan cannot honor: a value other than `all` or
    * `none`, which is read as `all`, or the key on a roadmap, where it does
    * nothing. The document stays listed either way, so this is a warning, and
-   * it never changes what the document is.
+   * it never changes what the document is. A key on a done-role document is
+   * inert and says nothing (design §2.4), so it is silent there, unless the
+   * document is a roadmap, whose key is reported whatever its stage.
    */
   private actionsValue(doc: PlanningDocument, report: Report): void {
+    if (this.isDone(doc) && !isRoadmapPath(this.config, doc.path)) return;
     for (const problem of doc.headerProblems) {
       if (problem.key === "planning-actions") {
         report("planning/actions-value", problem.line, problem.message);

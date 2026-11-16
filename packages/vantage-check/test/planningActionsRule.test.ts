@@ -78,9 +78,33 @@ describe("planning/actions-value", () => {
     );
   });
 
+  it("does not warn about invalid action values on configured done-role documents", async () => {
+    const root = repo({
+      "retired-invalid.md": doc("stage: RETIRED\nplanning-actions: maybe"),
+      "retired-boolean.md": doc("stage: RETIRED\nplanning-actions: true"),
+    });
+    const { code, findings } = await check(
+      root,
+      "--strict",
+      "retired-invalid.md",
+      "retired-boolean.md",
+    );
+    expect(findings).toEqual([]);
+    expect(code).toBe(EXIT_OK);
+  });
+
   it("reports the key on the roadmap, where it does nothing", async () => {
     const root = repo({
       "roadmap.md": `---\nstage: DECIDED\n${NONE}\n---\n\n# Roadmap\n`,
+    });
+    const { findings } = await check(root, "roadmap.md");
+    expect(findings.map((f) => [f.file, f.line])).toEqual([["roadmap.md", 3]]);
+    expect(findings[0]?.message).toContain("roadmap");
+  });
+
+  it("still diagnoses the key on a configured roadmap with a done-role stage", async () => {
+    const root = repo({
+      "roadmap.md": doc(`stage: RETIRED\n${NONE}`),
     });
     const { findings } = await check(root, "roadmap.md");
     expect(findings.map((f) => [f.file, f.line])).toEqual([["roadmap.md", 3]]);
