@@ -12,6 +12,7 @@ import {
   hasVantageSentinel,
   isQuestionDirective,
   parseVantageDirective,
+  VANTAGE_OQ_ID,
   VANTAGE_OQ_HOST_TARGETS,
   VANTAGE_OQ_STATUS,
   VANTAGE_FALLBACK_TARGETS,
@@ -1394,7 +1395,9 @@ export function checkOpenQuestionIds(collector: Collector): void {
  * below as an open question: every Vantage offers to answer it in one click.
  * So when the block the directive lands on carries no title and the block just
  * above it carries one marked otherwise, the finding is the placement, an
- * error under `vantage/question-name`.
+ * error under `vantage/question-name`. A directive below its own open heading
+ * is checked as placement too, and an `ID:` title disagreeing with
+ * the directive's ID is reported without changing forward attachment.
  */
 export function checkQuestionNames(collector: Collector): void {
   const naming = collector.enabled("vantage/question-name");
@@ -1491,6 +1494,38 @@ export function checkQuestionNames(collector: Collector): void {
       targetLine === undefined ? undefined : questionAt.get(targetLine);
 
     if (question !== undefined && targetLine !== undefined && naming) {
+      const titleId = titleQuestionId(question.title);
+      if (
+        question.id !== null &&
+        titleId !== undefined &&
+        titleId !== question.id
+      ) {
+        if (misplaced.has(targetLine)) continue;
+        misplaced.add(targetLine);
+        collector.report(
+          "vantage/question-name",
+          at,
+          `This directive declares \`${question.id}\`, but the question title names \`${titleId}\` on line ${targetLine}. Directives attach forward, so answers and links would belong to the wrong question. Put the directive above its matching title, or indent it inside its matching list item. Keep the question's existing ID unless the question itself was intentionally renamed.`,
+        );
+        continue;
+      }
+      // An open heading can be misplaced too: its id belongs to the heading
+      // above, not to the context block the directive actually stamps.
+      if (
+        above?.kind === "heading" &&
+        above.id !== undefined &&
+        above.id === question.id &&
+        above.state === "open"
+      ) {
+        if (misplaced.has(targetLine)) continue;
+        misplaced.add(targetLine);
+        collector.report(
+          "vantage/question-name",
+          at,
+          `The question heading on line ${above.line} names \`${above.id}\`, but the directive lands on line ${targetLine}, the block after that heading. Directives attach forward, so the heading is not part of the declared question. Put the directive above the heading, or write the question as a list item with the directive indented inside it.`,
+        );
+        continue;
+      }
       // The title is outside the question, and marks it 🔒 or ✅.
       if (
         above !== undefined &&
@@ -1537,8 +1572,18 @@ const OQ_TITLE_TEXT = /^OQ-[A-Za-z0-9]*\d/;
 /** A question's title in the block just above its directive. */
 interface TitleAbove {
   state: QuestionState;
+  kind: "paragraph" | "heading";
+  id: string | undefined;
   /** The file line of the block holding the title. */
   line: number;
+}
+
+/** A title's initial `ID:` declaration, not a prose reference to another ID. */
+function titleQuestionId(title: string): string | undefined {
+  const token = /^(OQ-[A-Za-z0-9_-]+)\s*:/.exec(
+    title.replace(/^[^\p{L}\p{N}]*/u, ""),
+  )?.[1];
+  return token !== undefined && VANTAGE_OQ_ID.test(token) ? token : undefined;
 }
 
 /**
@@ -1583,6 +1628,8 @@ function titleAbove(
   }
   const status = vantageOqStatus(marker) ?? vantageOqStatus(title);
   return {
+    kind: block.type,
+    id: titleQuestionId(title),
     state:
       status === "settled"
         ? "answered"

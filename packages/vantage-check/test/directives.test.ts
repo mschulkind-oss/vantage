@@ -1681,6 +1681,96 @@ describe("vantage/question-name", () => {
     });
   });
 
+  it.each([
+    ["a bold heading", "## 💬 **OQ-3: Should the gate run on push?**"],
+    ["a plain heading", "## 💬 OQ-3: Should the gate run on push?"],
+  ])(
+    "reports a directive below %s even while the question is open",
+    async (_kind, heading) => {
+      const report = await one(
+        [
+          heading,
+          "",
+          '<!-- vantage: question id=OQ-3 leaning="On push." -->',
+          "",
+          "Context for the question.",
+          "",
+        ].join("\n"),
+      );
+      const naming = report.findings.filter(
+        (finding) => finding.rule === "vantage/question-name",
+      );
+      expect(naming).toHaveLength(1);
+      expect(naming[0]?.message).toContain("heading on line 1");
+      expect(naming[0]?.message).toContain("lands on line 5");
+      expect(naming[0]?.message).toContain(
+        "Put the directive above the heading",
+      );
+    },
+  );
+
+  it.each([
+    [
+      "heading",
+      "<!-- vantage: question id=OQ-A1 -->\n\n## 💬 **OQ-B1: Another question?**\n",
+    ],
+    [
+      "plain heading",
+      "<!-- vantage: question id=OQ-A1 -->\n\n## 💬 OQ-B1: Another question?\n",
+    ],
+    [
+      "list item",
+      "1. 💬 **OQ-B1: Another question?**\n\n   <!-- vantage: question id=OQ-A1 -->\n\n   Context for the question.\n",
+    ],
+    [
+      "below another heading",
+      "## 💬 **OQ-A1: First question?**\n\n<!-- vantage: question id=OQ-A1 -->\n\n## 💬 **OQ-B1: Another question?**\n",
+    ],
+  ])(
+    "reports a directive ID disagreeing with its actual %s title",
+    async (_kind, source) => {
+      const report = await one(source);
+      const naming = report.findings.filter(
+        (finding) => finding.rule === "vantage/question-name",
+      );
+      expect(naming).toHaveLength(1);
+      expect(naming[0]?.message).toContain("declares `OQ-A1`");
+      expect(naming[0]?.message).toContain("title names `OQ-B1`");
+      expect(naming[0]?.message).toContain("matching title");
+    },
+  );
+
+  it("does not call a prose reference at the start of a question an identity mismatch", async () => {
+    const report = await one(
+      [
+        "<!-- vantage: question id=OQ-B1 -->",
+        "",
+        "[OQ-A1](#OQ-A1) motivates the choice here.",
+        "",
+        "<!-- vantage: question id=OQ-A1 -->",
+        "",
+        "💬 **OQ-A1: Prior question?**",
+        "",
+      ].join("\n"),
+    );
+    expect(ruleIds(report)).toEqual([]);
+  });
+
+  it("does not mistake a correctly placed next question's directive for the preceding heading's", async () => {
+    expect(
+      await check(
+        [
+          "## 💬 **OQ-A1: First question?**",
+          "",
+          "<!-- vantage: question id=OQ-B1 -->",
+          "",
+          "## 💬 **OQ-B1: Another question?**",
+          "",
+        ].join("\n"),
+      ),
+    ).toEqual([]);
+  });
+
   it("finds its question under frontmatter, which shifts every line", async () => {
     const report = await one(
       `---\nstatus: draft\n---\n\n${declared("✅", "oq id=OQ-1")}`,
