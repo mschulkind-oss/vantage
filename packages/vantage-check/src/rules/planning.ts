@@ -77,6 +77,7 @@ export const PLANNING_RULES = [
   "planning/blocked-on-disagrees",
   "planning/unrouted",
   "planning/question-length",
+  "planning/actions-value",
 ] as const;
 
 type PlanningRule = (typeof PLANNING_RULES)[number];
@@ -278,6 +279,7 @@ class PlanningPass {
         this.report(rule, file, line, message);
       this.stageVocabulary(doc, report);
       this.dependsOnMissing(doc, report);
+      this.actionsValue(doc, report);
       this.stageDisagrees(doc, sections, report);
       this.blockedOnDisagrees(index, doc, report);
       this.questionLength(doc, rel, report);
@@ -335,7 +337,7 @@ class PlanningPass {
    * from its header and one substring test, before the document is parsed.
    *
    * The parse is nearly all of this pass's cost, and most documents in a run
-   * cannot be reported by any of the six rules: without `stage` or
+   * cannot be reported by any of the seven rules: without `stage` or
    * `depends-on` in the header, and without a question directive in the body,
    * none of them has anything to say. Leaving such a document out of the
    * narrow index changes nothing for the others, since each rule reads only
@@ -353,6 +355,7 @@ class PlanningPass {
     const staged = has("stage") && this.config.stages !== null;
     return (
       (has("depends-on") && enabled("planning/depends-on-missing")) ||
+      (has("planning-actions") && enabled("planning/actions-value")) ||
       (staged && enabled("planning/stage-vocabulary")) ||
       (staged && directives && enabled("planning/stage-disagrees")) ||
       (directives && enabled("planning/blocked-on-disagrees")) ||
@@ -428,6 +431,20 @@ class PlanningPass {
           ? `Question ${name} is marked ${VANTAGE_OQ_STATUS.blocked} (blocked), but its \`blocked-on\` names nothing that still waits, so nothing blocks it. Either give it a \`blocked-on\` entry naming what it waits on, or move the marker to ${VANTAGE_OQ_STATUS.open} (open): an unactioned question with an owner, not a blocked one.`
           : `Question ${name} is marked ${VANTAGE_OQ_STATUS.open} (open), but its \`blocked-on\` still waits on ${list(waitingBlockedOn(index, q).map(blockedOnLabel))}. Either move the marker to ${VANTAGE_OQ_STATUS.blocked} (blocked) or remove the entry: the referent decides the question's state.`,
       );
+    }
+  }
+
+  /**
+   * A `planning-actions` the scan cannot honor: a value other than `all` or
+   * `none`, which is read as `all`, or the key on a roadmap, where it does
+   * nothing. The document stays listed either way, so this is a warning, and
+   * it never changes what the document is.
+   */
+  private actionsValue(doc: PlanningDocument, report: Report): void {
+    for (const problem of doc.headerProblems) {
+      if (problem.key === "planning-actions") {
+        report("planning/actions-value", problem.line, problem.message);
+      }
     }
   }
 

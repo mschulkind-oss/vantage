@@ -292,6 +292,12 @@ export const RULES: readonly RuleMeta[] = [
     default: "off",
   },
   {
+    id: "planning/actions-value",
+    summary:
+      "A planning-actions value that is not all or none, or the key on a roadmap",
+    default: "warning",
+  },
+  {
     id: "planning/question-length",
     summary: `A question whose text, leaning and Answer aside, runs past \`max-words\` (${QUESTION_WORDS_DEFAULT}); off by default`,
     default: "off",
