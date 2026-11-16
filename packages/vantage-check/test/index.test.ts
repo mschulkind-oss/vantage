@@ -2559,6 +2559,35 @@ describe("index --request compact", () => {
     expect(open.stdout).toBe("");
   });
 
+  it("never requests compaction of a done-role document, including when filtered to it", async () => {
+    const root = makeTree({
+      ".git/HEAD": "",
+      ".vantage.toml": `${STAGES_TOML}SUPERSEDED = "done"\nGRADUATED = "done"\n`,
+      "roadmap.md": "# Roadmap\n",
+      "active.md": doc("stage: DESIGN", questions("A", ANSWERED)),
+      "superseded.md": doc("stage: SUPERSEDED", questions("S", ANSWERED)),
+      "graduated.md": doc("stage: GRADUATED", questions("G", ANSWERED)),
+    });
+    const result = await index(root, "--request", "compact");
+    expect(result.code).toBe(EXIT_OK);
+    expect(result.stdout).toContain("Compact (1):");
+    expect(result.stdout).toContain("OQ-A1");
+    expect(result.stdout).not.toContain("OQ-S1");
+    expect(result.stdout).not.toContain("OQ-G1");
+    const filtered = await index(
+      root,
+      "--request",
+      "compact",
+      "--filter",
+      "path:superseded.md",
+    );
+    expect(filtered.code).toBe(EXIT_OK);
+    expect(filtered.stdout).toBe("");
+    expect(filtered.stderr).toContain(
+      "Compact has no entries the filter keeps",
+    );
+  });
+
   it("prints nothing and says why when no question is ✅", async () => {
     const root = makeTree({
       ".git/HEAD": "",

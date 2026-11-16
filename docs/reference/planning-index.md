@@ -939,14 +939,14 @@ everything else (`layoutPlanningPage` in `frontend/src/lib/planningPages.ts`).
 | **Too large** (`skipped`) / **Unreadable** (`could-not-read`) | [§16](#16-limits-and-bounds), [§15](#15-failure-modes)                                                                                                                                                                                                               | path                       | you    | kinds of _Maintenance_                                                                                                                                                    |
 
 _Maintenance_ holds one more kind that is not a section of the index: **To fold
-into the ledger** (`compact`), the ✅ questions, listed by `answeredQuestions`, the
-same function the `compact` request reads (P7). The index's sections, and their
-JSON, keep their meaning, as P0 of
-[`checker-version-skew.md`](../design/checker-version-skew.md#1-verdict-and-the-principles)
-requires: `sections.needs-you` still holds ✅
-questions in `vantage-check index --format json`, and the page and the checker
-count _Needs you_ differently, as two views of the same data at different times
-([OQ-TD12](#why-its-this-way)). _Maintenance_'s kinds, in its order:
+into the ledger** (`compact`), the ✅ questions in documents whose stage does
+not have the `done` role, listed by `answeredQuestions`, the same function the
+`compact` request reads (P7). Retired documents are historical records, not
+maintenance requests; this applies to every configured `done` stage, including
+`SUPERSEDED` and `GRADUATED`, and a filter cannot bring them back into Compact.
+The index's sections and their JSON keep their meaning: ✅ questions await
+agent compaction, not a human ruling, so neither the page nor the checker
+counts them in _Needs you_ ([OQ-TD12](#why-its-this-way)). _Maintenance_'s kinds, in its order:
 `unrouted`, `ready`, `graduate`, `disagrees`, `compact`, `skipped`,
 `could-not-read` (`MAINTENANCE_KIND_IDS`).
 

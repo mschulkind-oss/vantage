@@ -496,6 +496,44 @@ describe("the compact request", () => {
     expect(sections.needsYou.map((q) => q.id)).not.toContain("OQ-B1");
   });
 
+  it("excludes every done-role document from compact counts and requests", () => {
+    const retired = indexOf(
+      {
+        ...TREE_WITH_RULED,
+        "docs/superseded.md": doc("stage: SUPERSEDED", ruled("OQ-S1")),
+        "docs/graduated.md": doc("stage: GRADUATED", ruled("OQ-G1")),
+        "docs/custom.md": doc("stage: ARCHIVED", ruled("OQ-C1")),
+        "docs/built.md": doc("stage: BUILT", ruled("OQ-T1")),
+        "docs/unstaged.md": doc("status: draft", ruled("OQ-U1")),
+      },
+      { stages: { ...STAGES, ARCHIVED: "done" } },
+    );
+    const derived = derivePlanningSections(retired);
+    expect(answeredQuestions(retired).map((ref) => ref.id)).toEqual([
+      "OQ-B1",
+      "OQ-B2",
+      "OQ-T1",
+      "OQ-U1",
+    ]);
+    expect(planningRequestCount(retired, derived, "compact")).toBe(4);
+    const text = request(retired, ["compact"]);
+    expect(text).toContain("Compact (4):");
+    for (const id of ["OQ-S1", "OQ-G1", "OQ-C1"]) {
+      expect(text).not.toContain(id);
+    }
+    const onlyRetired = (q: { id: string | null }) => q.id === "OQ-S1";
+    expect(planningRequestCount(retired, derived, "compact", onlyRetired)).toBe(
+      0,
+    );
+    expect(
+      planningAgentRequest(retired, derived, {
+        repository: REPO,
+        ids: ["compact"],
+        filter: { text: "OQ-S1", keeps: onlyRetired },
+      }),
+    ).toBeNull();
+  });
+
   it("lists every ✅ question by document, line, id and title, and restates the style guide's compaction rule", () => {
     const text = planningAgentRequest(index, sections, {
       repository: REPO,
