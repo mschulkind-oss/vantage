@@ -1282,6 +1282,54 @@ describe("Needs you as a to-do list (planning-index.md §6.4)", () => {
     ).toBeTruthy();
   });
 
+  it("hides an opened answered card back into its row without changing the other cards", async () => {
+    pageSize(2);
+    const tree = todoTree(3);
+    seed(tree);
+    answer(tree, "OQ-T1");
+    await renderPage();
+    for (let round = 0; round < 2; round++) {
+      await act(async () => {
+        fireEvent.click(
+          within(
+            screen.getByRole("group", { name: "OQ-T1: Question OQ-T1?" }),
+          ).getByRole("button", { name: /^Show/ }),
+        );
+      });
+      await settle();
+      const hide = within(cardFor("OQ-T1")).getByRole("button", {
+        name: "Hide OQ-T1: Question OQ-T1?",
+      });
+      if (round === 0) {
+        await act(async () => {
+          fireEvent.click(
+            within(cardFor("OQ-T1")).getByRole("button", { name: "Edit" }),
+          );
+        });
+        await settle();
+        expect(hide).toBeDisabled();
+        await act(async () => {
+          fireEvent.click(
+            screen.getAllByRole("button", { name: "Close" }).at(-1)!,
+          );
+        });
+        await settle();
+        expect(hide).not.toBeDisabled();
+      }
+      await act(async () => {
+        fireEvent.click(hide);
+      });
+      await settle();
+      expect(rowIds()).toEqual(["OQ-T1"]);
+      expect(cardIds()).toEqual(["OQ-T2", "OQ-T3"]);
+      const row = screen.getByRole("group", { name: "OQ-T1: Question OQ-T1?" });
+      expect(row).toHaveTextContent("My answer to OQ-T1.");
+      expect(document.activeElement).toBe(
+        within(row).getByRole("button", { name: /^Show/ }),
+      );
+    }
+  });
+
   it("ignores an old address's page parameters, and the in-place rewrite drops them (§6.4)", async () => {
     pageSize(2);
     seed(todoTree(5));
@@ -1322,6 +1370,63 @@ describe("Needs you as a to-do list (planning-index.md §6.4)", () => {
  * ------------------------------------------------------------------ */
 
 describe("your own actions (planning-index.md §6.4)", () => {
+  it("shows the typed answer at collapse even while its save is still in flight", async () => {
+    pageSize(2);
+    seed(todoTree(3));
+    await renderPage();
+    const post = vi.mocked(axios.post).getMockImplementation()!;
+    let release!: () => void;
+    const delayed = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    vi.mocked(axios.post).mockImplementation(async (url, body, config) => {
+      if (String(url).endsWith("/review/comments")) await delayed;
+      return post(url, body, config);
+    });
+    try {
+      await act(async () => {
+        fireEvent.click(
+          within(cardFor("OQ-T1")).getByRole("button", { name: "Answer…" }),
+        );
+      });
+      fireEvent.change(await screen.findByPlaceholderText(/comment/i), {
+        target: { value: "The second way." },
+      });
+      await act(async () => {
+        fireEvent.click(
+          screen.getAllByRole("button", { name: "Close" }).at(-1)!,
+        );
+      });
+      await settle();
+      const row = screen.getByRole("group", { name: "OQ-T1: Question OQ-T1?" });
+      expect(
+        within(row).getByRole("list", { name: "Answers on this question" }),
+      ).toHaveTextContent("The second way.");
+      const before = row.textContent;
+      release();
+      await settle();
+      expect(row.textContent).toBe(before);
+      expect(cardIds()).toEqual(["OQ-T2", "OQ-T3"]);
+      await act(async () => {
+        fireEvent.click(within(row).getByRole("button", { name: /^Show/ }));
+      });
+      await settle();
+      await act(async () => {
+        fireEvent.click(
+          within(cardFor("OQ-T1")).getByRole("button", {
+            name: "Hide OQ-T1: Question OQ-T1?",
+          }),
+        );
+      });
+      await settle();
+      expect(rowIds()).toEqual(["OQ-T1"]);
+      expect(cardIds()).toEqual(["OQ-T2", "OQ-T3"]);
+    } finally {
+      release();
+      await settle();
+    }
+  });
+
   it("shrinks a card answered here to a row where it was, and the next question joins the cards", async () => {
     pageSize(2);
     const tree = todoTree(4);
@@ -3395,9 +3500,12 @@ describe("page inputs, and one commit (planning-index.md §6.5)", () => {
     await renderPage();
     expect(asked).toHaveLength(1);
     // The visit's one more request reads again what an earlier moment read.
-    expect(vi.mocked(axios.post).mock.calls.length).toBeLessThanOrEqual(
-      posts + 1,
-    );
+    expect(
+      vi.mocked(axios.post).mock.calls.length,
+      JSON.stringify(
+        vi.mocked(axios.post).mock.calls.map(([url, body]) => ({ url, body })),
+      ),
+    ).toBeLessThanOrEqual(posts + 1);
     expect(cardsIn("Needs you")).toHaveLength(4);
   });
 
