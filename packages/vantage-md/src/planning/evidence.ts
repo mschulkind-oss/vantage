@@ -4,7 +4,7 @@
  * `internal/review/observation.go` `BuildUnit`), the ids a Decision Ledger's
  * first column holds, and the hashes of a document's anchorable blocks.
  */
-import type { Nodes, Root, RootContent } from "mdast";
+import type { Nodes, Root, RootContent, TableRow } from "mdast";
 import { VANTAGE_OQ_ID } from "../vantageDirectives.js";
 
 const K = new Uint32Array([
@@ -124,12 +124,64 @@ export function blockTextHash(text: string): string {
 const LEDGER_HEADING = /^decision ledger\s*$/i;
 
 /**
+ * Visible node text: raw tags and image alt text contribute nothing; block
+ * children are separated by newlines. The scanner can supply alert titles
+ * that the renderer injects into the DOM.
+ */
+export function textContentOf(
+  node: Nodes,
+  titles?: WeakMap<Nodes, string>,
+): string {
+  switch (node.type) {
+    case "text":
+    case "inlineCode":
+      return node.value;
+    case "break":
+      return "\n";
+    case "html":
+    case "image":
+    case "imageReference":
+    case "definition":
+    case "footnoteReference":
+      return "";
+    case "code":
+    case "math":
+    case "inlineMath":
+      return node.value;
+  }
+  if (!("children" in node)) return "";
+  const phrasing =
+    node.type === "paragraph" ||
+    node.type === "heading" ||
+    node.type === "tableCell" ||
+    node.type === "emphasis" ||
+    node.type === "strong" ||
+    node.type === "delete" ||
+    node.type === "link" ||
+    node.type === "linkReference";
+  const parts = (node.children as Nodes[]).map((child) =>
+    textContentOf(child, titles),
+  );
+  const title = titles?.get(node);
+  if (title !== undefined) parts.unshift(title);
+  return parts.join(phrasing ? "" : "\n");
+}
+
+/**
  * The ids in the first column of every table under a heading named "Decision
  * Ledger" (to the next heading of the same or a higher level): what a
  * compacted question leaves. Unique, in order.
  */
 export function ledgerIds(root: Root, textOf: (n: Nodes) => string): string[] {
-  const ids = new Set<string>();
+  return [...new Set(decisionLedgerRows(root, textOf).map(({ id }) => id))];
+}
+
+/** The same ledger evidence, with row nodes for rendering durable ID anchors. */
+export function decisionLedgerRows(
+  root: Root,
+  textOf: (n: Nodes) => string,
+): { id: string; row: TableRow }[] {
+  const rows: { id: string; row: TableRow }[] = [];
   let depth: number | undefined;
   for (const node of root.children as RootContent[]) {
     if (node.type === "heading") {
@@ -143,10 +195,10 @@ export function ledgerIds(root: Root, textOf: (n: Nodes) => string): string[] {
     for (const row of node.children.slice(1)) {
       const cell = row.children[0];
       const id = cell === undefined ? "" : textOf(cell).trim();
-      if (VANTAGE_OQ_ID.test(id)) ids.add(id);
+      if (VANTAGE_OQ_ID.test(id)) rows.push({ id, row });
     }
   }
-  return [...ids];
+  return rows;
 }
 
 /**

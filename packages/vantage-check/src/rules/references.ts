@@ -201,10 +201,11 @@ function pathOf(url: string): string {
  * Two lifecycle phases, and the rule has to accept both. While the question is
  * in flight it is a question directive (`oq`, or `question` once it is 🔒 or
  * ✅) and `#OQ-4` is a live anchor, so the
- * reference names it directly. Once it is compacted into a Decision Ledger the
- * directive is gone and no anchor declares that id any more — so the rule
- * requires a *fragment*, not the id, and leaves proving the fragment resolves
- * to `link/dead-section-anchor`, which already does exactly that.
+ * reference names it directly. Once it is compacted under a Decision Ledger
+ * heading, the directive is gone but the row retains that exact ID anchor.
+ * The ledger heading is still a valid older/general target, so the rule
+ * requires a fragment, not exclusively the ID, and leaves resolution to
+ * `link/dead-section-anchor`.
  *
  * A question's own definition site is not a reference to itself: its bold
  * title (`**OQ-4: …**`) and the id cell of a Decision Ledger row are excused,
@@ -235,8 +236,8 @@ export function checkOqReferences(collector: Collector): void {
           "can follow it and nothing can notice when it goes stale. Write " +
           `[\`${ref.text}\`](#${ref.text}) for a question in this document, or ` +
           `[\`${ref.text}\`](./other.md#${ref.text}) for one in another. Once ` +
-          "the question is compacted into a Decision Ledger it has no `#id` " +
-          "any more — link the ledger instead.",
+          "the question is compacted under a Decision Ledger heading, its " +
+          "row keeps the exact `#id` anchor; link that row or the ledger heading.",
       );
       continue;
     }

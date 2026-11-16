@@ -747,6 +747,9 @@ export const sanitizeSchema: Schema = {
       // a document could smuggle through here it would be smuggling into `id`.
       // The grammar is imported, never restated — see `VANTAGE_OQ_ID`.
       ["dataVantageOqId", VANTAGE_OQ_ID],
+      // Ledger rows use the same validated ID carrier but do not declare a
+      // live question. This marker is removed during anchor promotion.
+      ["dataVantageLedger", "true"],
       // GFM alerts, compiled by `rehypeVantageAlerts`. Value-allowlisted like
       // the tone tokens it shares a palette with, so a document cannot forge a
       // sixth kind through raw HTML.

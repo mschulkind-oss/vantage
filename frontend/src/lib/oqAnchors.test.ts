@@ -19,6 +19,111 @@ import { renderMarkdown } from "vantage-md";
 const render = async (markdown: string) =>
   (await renderMarkdown(markdown + "\n")).html;
 
+const ledger = (rows = "| OQ-D1 | Keep the behavior. |") =>
+  [
+    "## Decision Ledger",
+    "",
+    "| ID | Decision |",
+    "| --- | --- |",
+    rows,
+    "",
+  ].join("\n");
+
+function renderedDOM(html: string): HTMLDivElement {
+  const container = document.createElement("div");
+  container.innerHTML = html;
+  return container;
+}
+
+describe("compacted question anchors", () => {
+  it("retains the exact question ID on its ledger row, without question controls or a carrier", async () => {
+    const html = await render(ledger());
+    const dom = renderedDOM(html);
+    const row = dom.querySelector("#OQ-D1");
+    expect(row?.tagName).toBe("TR");
+    expect(row).toHaveTextContent("Keep the behavior.");
+    expect(html).not.toContain("user-content-OQ-D1");
+    expect(html).not.toContain("data-vantage-oq-id");
+    expect(html).not.toContain("data-vantage-ledger");
+    expect(dom.querySelector("[data-vantage-question]")).toBeNull();
+    expect(dom.querySelector("[data-vantage-oq]")).toBeNull();
+  });
+
+  it("reads bold and inline-code first-column IDs with case preserved", async () => {
+    const dom = renderedDOM(
+      await render(ledger("| **OQ-A03** | First |\n| `OQ-TP6` | Second |")),
+    );
+    expect(dom.querySelector("#OQ-A03")?.tagName).toBe("TR");
+    expect(dom.querySelector("#OQ-TP6")?.tagName).toBe("TR");
+  });
+
+  it("anchors only valid first-column IDs in the scanner's named ledger scope", async () => {
+    const text = [
+      "## Other table",
+      "",
+      "| ID | Decision |",
+      "| --- | --- |",
+      "| OQ-X1 | Not a ledger |",
+      "",
+      ledger("| OQ-bad | Invalid |\n| Other | OQ-X2 |\n| OQ-D1 | Valid |"),
+      "### More decisions",
+      "",
+      "| ID | Decision |",
+      "| --- | --- |",
+      "| OQ-D2 | Nested section |",
+      "",
+      "## Outside ledger",
+      "",
+      "| ID | Decision |",
+      "| --- | --- |",
+      "| OQ-X3 | Not in scope |",
+      "",
+    ].join("\n");
+    const dom = renderedDOM(await render(text));
+    expect(dom.querySelector("#OQ-D1")).not.toBeNull();
+    expect(dom.querySelector("#OQ-D2")).not.toBeNull();
+    for (const id of ["OQ-X1", "OQ-X2", "OQ-X3", "OQ-bad"]) {
+      expect(dom.querySelector(`[id="${id}"]`)).toBeNull();
+    }
+  });
+
+  it("does not promote an invalid ledger carrier smuggled through raw HTML", async () => {
+    const html = await render(
+      '<table><tbody><tr data-vantage-ledger="true" data-vantage-oq-id="not-a-question-id"><td>Forged</td></tr></tbody></table>',
+    );
+    expect(html).not.toContain('id="not-a-question-id"');
+    expect(html).not.toContain("data-vantage-oq-id");
+    expect(html).not.toContain("data-vantage-ledger");
+  });
+
+  it("gives a repeated ledger ID to the first row only", async () => {
+    const dom = renderedDOM(
+      await render(ledger("| OQ-D1 | First |\n| OQ-D1 | Second |")),
+    );
+    expect(dom.querySelectorAll("#OQ-D1")).toHaveLength(1);
+    expect(dom.querySelector("#OQ-D1")).toHaveTextContent("First");
+  });
+
+  it.each([true, false])(
+    "preserves the live question anchor when a ledger %s precedes it",
+    async (ledgerFirst) => {
+      const live =
+        '<!-- vantage: question id=OQ-D1 leaning="Yes." -->\n\n💬 **OQ-D1: Still live?**\n';
+      const dom = renderedDOM(
+        await render(
+          (ledgerFirst ? [ledger(), live] : [live, ledger()]).join("\n\n"),
+        ),
+      );
+      expect(dom.querySelectorAll("#OQ-D1")).toHaveLength(1);
+      expect(dom.querySelector("#OQ-D1")).toHaveAttribute(
+        "data-vantage-question",
+        "true",
+      );
+      expect(dom.querySelector("tr#OQ-D1")).toBeNull();
+    },
+  );
+});
+
 describe("open question anchors", () => {
   it("promotes the directive's id to a real id on the target", async () => {
     const html = await render(

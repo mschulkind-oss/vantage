@@ -3,6 +3,10 @@ import { toString as mdastToString } from "mdast-util-to-string";
 import GithubSlugger from "github-slugger";
 import { visit } from "unist-util-visit";
 import { oqAnchors } from "./openQuestions.js";
+import {
+  ledgerIds,
+  textContentOf,
+} from "../../../vantage-md/src/planning/evidence.js";
 
 /** Everything one heading pass over a document can answer. */
 export interface DocumentIndex {
@@ -57,7 +61,12 @@ export function indexDocument(mdast: Root): DocumentIndex {
 
   return {
     slugs,
-    anchors: new Set([...slugs, ...htmlAnchors(mdast), ...oqAnchors(mdast)]),
+    anchors: new Set([
+      ...slugs,
+      ...htmlAnchors(mdast),
+      ...oqAnchors(mdast),
+      ...ledgerIds(mdast, textContentOf),
+    ]),
     numbered,
   };
 }
@@ -93,10 +102,11 @@ export function htmlAnchors(mdast: Root): string[] {
 /**
  * Every fragment a link can legitimately target in this document.
  *
- * Three sources, and Open Question ids are the one that is not HTML at all:
+ * Four sources. Open Question ids are not HTML at all:
  * `<!-- vantage: oq id=OQ-4 -->`, or `question id=OQ-4`, becomes `id="OQ-4"`
  * on the block it marks (`rehypeVantageAnchors`), so `#OQ-4` navigates and a
- * reference of the form `[OQ-4](#OQ-4)` is checkable. Only well-formed ids
+ * reference of the form `[OQ-4](#OQ-4)` is checkable. A compacted question keeps
+ * that exact fragment on its Decision Ledger row. Only well-formed ids
  * count — the sanitizer refuses the rest, so counting one would accept a
  * fragment that goes nowhere.
  */

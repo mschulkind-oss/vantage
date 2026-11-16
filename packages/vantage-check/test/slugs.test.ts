@@ -71,6 +71,35 @@ describe("headingSlugs", () => {
 });
 
 describe("documentAnchors", () => {
+  it("matches renderer row anchors for the same ledger IDs the planning scanner recognizes", async () => {
+    const source = [
+      "## Decision Ledger",
+      "",
+      "| ID | Decision |",
+      "| --- | --- |",
+      "| **OQ-D1** | Keep it |",
+      "| `OQ-D2` | Keep it too |",
+      "| OQ-bad | Invalid |",
+      "",
+      "## Another table",
+      "",
+      "| ID | Decision |",
+      "| --- | --- |",
+      "| OQ-X1 | Not in the ledger |",
+      "",
+    ].join("\n");
+    const anchors = documentAnchors(parseMarkdown(source));
+    const { html } = await renderMarkdown(source);
+    for (const id of ["OQ-D1", "OQ-D2"]) {
+      expect(anchors.has(id)).toBe(true);
+      expect(html).toContain(`id="${id}"`);
+    }
+    for (const id of ["OQ-bad", "OQ-X1"]) {
+      expect(anchors.has(id)).toBe(false);
+      expect(html).not.toContain(`id="${id}"`);
+    }
+  });
+
   it("includes ids written by hand in raw HTML", () => {
     const anchors = documentAnchors(
       parseMarkdown(

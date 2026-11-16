@@ -34,6 +34,27 @@ afterEach(() => {
 const OQ = '<!-- vantage: question id=OQ-4 leaning="Yes." -->';
 
 describe("ref/unlinked-oq", () => {
+  it("preserves a cross-document question link when its directive is compacted into a ledger row", async () => {
+    const root = makeTree({
+      "docs/index.md": "See [OQ-D1](./question.md#OQ-D1).\n",
+      "docs/question.md":
+        "<!-- vantage: question id=OQ-D1 -->\n\n✅ **OQ-D1: Keep the behavior?**\n",
+    });
+    expect(ruleIds(await checkTree(root))).toEqual([]);
+    writeFileSync(
+      join(root, "docs/question.md"),
+      [
+        "## Decision Ledger",
+        "",
+        "| ID | Decision |",
+        "| --- | --- |",
+        "| OQ-D1 | Keep the behavior. |",
+        "",
+      ].join("\n"),
+    );
+    expect(ruleIds(await checkTree(root))).toEqual([]);
+  });
+
   it("fires on an id written as prose", async () => {
     const root = makeTree({
       "docs/index.md": `# Q\n\n${OQ}\n\nA question.\n\nWe still owe OQ-4 an answer.\n`,

@@ -148,7 +148,7 @@ What a maintainer breaks by accident.
 | **Question anchor** | The `id` a question directive's id becomes on the block the directive marks | a heading slug, which is lowercased and derived from text | coined here |
 | **Definition site** | Where an id is declared rather than referred to: the question's own bold title, or the id cell of a Decision Ledger row | the directive, an HTML comment that no `ref/*` rule reads | coined by the design this document replaced |
 | **Decision Ledger** | The table where a design document records its settled questions, one row per ruling, its first column the question's id | the Open Questions list, where a question lives while it is being decided | the `design-doc` convention this repository's planning documents follow |
-| **Compaction** | Moving a ruled question out of the Open Questions list and into the Decision Ledger, which deletes its directive and therefore its question anchor | answering it, which keeps the directive | the same convention |
+| **Compaction** | Moving a ruled question out of the Open Questions list and into the Decision Ledger, which deletes its directive and controls while retaining its exact ID anchor on a recognized ledger row | answering it, which keeps the directive | the same convention |
 | **Live** (question) | One still carrying its question directive, so its id is an anchor | *open*: a 🔒 or ✅ question is live too | the [planning index's terms](planning-index.md#2-terms), which define it |
 | **Directive run** | Consecutive directives with nothing but other directives between them, which merge onto the one block after the last | a *check run*, one invocation of `vantage-check` | coined here, for the run [`inline-markup.md`](inline-markup.md#names-position-and-extent) describes |
 
@@ -207,7 +207,7 @@ so the two namespaces cannot collide by accident.
 | :--- | :--- | :--- |
 | A question directive with no `id`, or an empty one | A question with no anchor | Nothing to report: legal |
 | A malformed id | The plugin stamps it anyway — naming the mistake is the checker's job, and a renderer that dropped it would hide it — and the sanitizer refuses it, so the block has no anchor | `vantage/oq-id-format`; the id is not an anchor |
-| The same id on two questions | Both blocks carry it and `#id` lands on the first. The renderer stays a per-node stamp with no memory of other blocks | `vantage/oq-id-duplicate` on the second |
+| The same id on two questions | Both live blocks carry it and `#id` lands on the first; historical row anchors never replace either live declaration | `vantage/oq-id-duplicate` on the second |
 | A question written as a heading | The heading's `id` is the question id. `rehype-slug` skips it, so it gets no slug and the slugs of later repeated headings are counted without it | Counts the question id, and also slugs the heading, so its slugs diverge from the page's (a [known gap](#known-gaps)) |
 | A directive whose target cannot carry a question (a list, say, rather than a list item) | No stamp at all | `vantage/orphan` warns, and the id still counts as an anchor (a [known gap](#known-gaps)) |
 | A question on a raw-HTML element that has its own `id` | The element keeps its own `id`, already renamed by the sanitizer, and the question gets no anchor of its own | Counts the question id as an anchor (a [known gap](#known-gaps)) |
@@ -226,6 +226,33 @@ In the viewer, `anchorTarget`
 fragment by trying the id as written and then with the sanitizer's prefix, so a
 question anchor, which is never renamed, is found on the first try.
 
+### Ledger row anchors
+
+A settled question keeps its exact ID as a row anchor when its ruling is in a
+table's first column under a heading named **Decision Ledger**, ending at the
+next heading of the same or a higher level. Heading matching ignores case.
+This is the same evidence the planning scanner uses to recognize a compacted
+question; an unrelated ID table is not enough. Such tables can still be
+reference definition sites, but their links target the table's heading.
+
+The shared remark pass carries each valid first-column ID onto the table row
+before sanitization. The sanitizer admits it through the question-ID grammar;
+the same post-sanitization anchor pass promotes it without the prefix. The row
+gets no question declaration, leaning or answer controls. A live question's
+anchor wins over a ledger row with the same ID, regardless of document order;
+repeated ledger IDs anchor the first row only. Both temporary carrier
+attributes are removed from the rendered markup.
+
+This preserves ordinary Markdown question-fragment links after compaction
+without making the settled decision open again:
+
+```markdown
+[OQ-TP4](./design.md#OQ-TP4)
+```
+
+An older viewer without row-anchor support still needs a link to the ledger
+heading; its previous behavior is not claimed to have changed.
+
 ### What the checker counts as an anchor
 
 The checker has the parsed Markdown and no rendered page, so it reads question
@@ -234,8 +261,9 @@ directive parser the renderer uses. Within one directive it resolves a repeated
 `id=` as the renderer does, on its last value; across a directive run it does
 not, and counts each directive's id ([Known gaps](#known-gaps)).
 `indexDocument` then builds one set of the fragments a link may target — heading
-slugs, ids written in raw HTML (an `id` or a `name` attribute), and the
-well-formed question ids. The heading slugs and the section numbers come from
+slugs, ids written in raw HTML (an `id` or a `name` attribute), well-formed
+question ids, and the same recognized ledger-row ids the renderer anchors. The
+heading slugs and the section numbers come from
 one slugger pass, so a section number resolved against the set and a link
 checked against it cannot disagree.
 
@@ -317,7 +345,8 @@ OQ-4 is still open.                       <- a finding: not a link
 See [OQ-4](other.md).                     <- a finding: no fragment
 See [OQ-4](#OQ-4).                        <- live, in this document
 See [OQ-4](other.md#OQ-4).                <- live, in another document
-See [OQ-4](other.md#decision-ledger).     <- compacted
+See [OQ-4](other.md#OQ-4).                <- compacted row under Decision Ledger
+See [OQ-4](other.md#decision-ledger).     <- whole ledger / older viewer
 ```
 
 A match outside a link is a finding, unless it is a definition site:
@@ -339,25 +368,25 @@ A match outside a link is a finding, unless it is a definition site:
 
 A match inside a link must carry a **fragment**. A link to a document with no
 fragment lands at its top and leaves the reader to hunt, so it is a finding.
-The rule does not require the fragment to be the id, because a question has two
-phases and only the first has an anchor:
+The rule does not require the fragment to be the id, because a ledger heading
+is still a useful general target and works in older viewers:
 
 - **Live**, the reference names the question anchor itself, in this
   document or another.
-- **Compacted**, the directive is gone and nothing declares that id any more.
-  The reference links to the Decision Ledger instead, `#decision-ledger`.
+- **Compacted**, the directive is gone and the recognized ledger row retains
+  the exact ID anchor. A reference can keep its `#OQ-…` fragment, or target
+  `#decision-ledger` for the whole ledger or older viewers.
 
 Whether the fragment resolves is left to `link/dead-section-anchor`. That a
 fragment names the same question as the link's text is not checked: a link
 whose text is one id and whose fragment is another live id passes.
 
 > [!WARNING]
-> Do not give a compacted question a per-row anchor to keep a fragment alive —
-> not with a directive, and not with a hand-written `<a id=…>` in the ledger
-> cell. Compaction deletes the directive on purpose; the row is the record, and
-> the ledger is the honest target. A hand-written id is also renamed by the
-> sanitizer, reachable only through the viewer's prefix fallback, and tied to
-> its row by nothing any rule checks.
+> Do not restore a question directive merely to keep a settled ID's fragment
+> alive: that would declare a question again. The recognized ledger row receives
+> its anchor automatically. A hand-written `<a id=…>` is still renamed by the
+> sanitizer and tied to the row by no rule; it is not a substitute for a
+> recognized ledger row.
 
 ### `ref/unlinked-section`
 
@@ -551,8 +580,9 @@ it.
 
 ## Current values
 
-Verified at `fced33d`. The prose above explains what each of these is for; this
-table is the only place most of the exact values are stated.
+Ledger anchors were reverified on 2026-11-16; the unchanged settings retain the
+prior verification at `fced33d`. The prose above explains what each is for; this
+table is the only place most exact values are stated.
 
 | Value | Setting | Defined in |
 | :--- | :--- | :--- |
@@ -565,6 +595,8 @@ table is the only place most of the exact values are stated.
 | A heading's number | `^([0-9]+(?:\.[0-9]+)*)[.)\s]` over the trimmed heading text | `indexDocument` in `core/slugs.ts` |
 | Path-shaped token | `^[\w./-]+\.[A-Za-z0-9]{1,6}$` | `PATH_SHAPED` in `rules/references.ts` |
 | Decision Ledger header | first header cell `ID`, any letter case | `ledgerIdCells` in `rules/references.ts` |
+| Automatic row-anchor scope | heading `Decision Ledger`, any letter case; valid exact first-column ID | `decisionLedgerRows` in `packages/vantage-md/src/planning/evidence.ts` |
+| Ledger carrier marker | `data-vantage-ledger="true"`, removed after promotion | `remarkDecisionLedgerAnchors.ts`, `rehypeVantageAnchors.ts`, `sanitizeSchema` |
 | Default severity of the five rules | `error` | `RULES` in `packages/vantage-check/src/rules/registry.ts` |
 
 ---
@@ -581,7 +613,7 @@ ruling of its own, so cite them with this document's path.
 | OQ-1 | `ref/unlinked-section` resolves a section number to the target's heading that opens with it and reports a link with any other fragment; it is silent about where a link points when the target has no numbered headings ([`ref/unlinked-section`](#refunlinked-section)) | 2026-09-04 |
 | OQ-2 | No exemption list for generic manifest names: a `package.json` that resolves beside the document is a finding and gets linked. A list of "generic" names would be a second vocabulary maintained against nothing in particular, and in a repository that serves its own files a link to a manifest is useful. Revisit only if it hurts in a repository carrying more manifests than this one ([`ref/unlinked-file`](#refunlinked-file)) | 2026-09-04 |
 | OQ-3 | `ref/unlinked-file` compares the resolved link target with the resolved token, so a filename linked to a different file is a finding, not a pass ([`ref/unlinked-file`](#refunlinked-file)) | 2026-09-04 |
-| OQ-4 | A compacted question has no question anchor; a reference to it links to the Decision Ledger, and the rule requires only that the link carry a fragment. Nothing reintroduces a per-row anchor ([`ref/unlinked-oq`](#refunlinked-oq)) | 2026-09-04 |
+| OQ-4 | **Updated by the owner on 2026-11-16; the original no-per-row-anchor ruling is superseded.** A compacted question keeps its exact ID anchor on its recognized Decision Ledger row without declaring a question or offering controls. Existing question-fragment links can survive compaction; ledger-heading links remain valid for general use and older viewers ([Ledger row anchors](#ledger-row-anchors), [`ref/unlinked-oq`](#refunlinked-oq)) | 2026-09-04 |
 | — | `ref/unlinked-file` resolves against the document's directory, never the repository root. Measured on this repository when the rule was built, root resolution turned every passing mention of a manifest in a deeply nested document into a demand to link one specific manifest out of the four in the workspace | 2026-09-04 |
 | — | A token starting with a slash is skipped before it is looked up: it was answered against the checker's filesystem, told a runbook its system files existed beside it, and offered a link that resolved nowhere ([`ref/unlinked-file`](#refunlinked-file)) | 2026-09-11 |
 | — | A **bare** token naming a file git ignores gets no finding. It is private to the machine holding it, so a committed document must read the same with and without it, and the demanded link would break for every other reader. An explicit link is still checked, and when git cannot answer the demand comes back ([`ref/unlinked-file`](#refunlinked-file)) | 2026-10-08 |

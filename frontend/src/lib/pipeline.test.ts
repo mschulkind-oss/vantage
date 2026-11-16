@@ -29,7 +29,11 @@ const names = (list: PluggableList): string[] => list.map(nameOf);
 const optionsOf = (entry: Pluggable): unknown =>
   Array.isArray(entry) ? entry[1] : undefined;
 
-const DEFAULT_REMARK = ["remarkGfm", "remarkMath"];
+const DEFAULT_REMARK = [
+  "remarkGfm",
+  "remarkMath",
+  "remarkDecisionLedgerAnchors",
+];
 const DEFAULT_REHYPE = [
   "rehypeRaw",
   "rehypeSourceLines",
@@ -194,7 +198,10 @@ describe("buildPipeline toggles", () => {
     // rehype-only builder lets a caller parse `$$…$$` and never render it.
     const { remarkPlugins, rehypePlugins } = buildPipeline({ math: false });
 
-    expect(names(remarkPlugins)).toEqual(["remarkGfm"]);
+    expect(names(remarkPlugins)).toEqual([
+      "remarkGfm",
+      "remarkDecisionLedgerAnchors",
+    ]);
     expect(names(rehypePlugins)).toEqual([
       "rehypeRaw",
       "rehypeSourceLines",
@@ -208,7 +215,7 @@ describe("buildPipeline toggles", () => {
     ]);
   });
 
-  it("drops only remarkGfm for gfm: false", () => {
+  it("disables GFM parsing and ledger row anchors together for gfm: false", () => {
     const { remarkPlugins, rehypePlugins } = buildPipeline({ gfm: false });
 
     expect(names(remarkPlugins)).toEqual(["remarkMath"]);

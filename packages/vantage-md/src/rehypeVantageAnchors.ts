@@ -20,6 +20,11 @@
  * (`VANTAGE_QUESTION_SELECTOR`) — and leaving a second copy of the id in the
  * markup invites a future reader to use the wrong one.
  *
+ * Compacted IDs use the same carrier on Decision Ledger rows. Their separate
+ * marker distinguishes a historical row from a live question. A live anchor
+ * wins regardless of document order, and repeated ledger IDs anchor only the
+ * first row; no question controls or declarations are introduced.
+ *
  * Architecture and invariants: docs/reference/linked-references.md
  */
 
@@ -28,10 +33,26 @@ import { visit } from "unist-util-visit";
 
 /** What `rehypeVantageDirectives` stamps, in hast property form. */
 const OQ_ID_PROPERTY = "dataVantageOqId";
+const LEDGER_PROPERTY = "dataVantageLedger";
+const isLedgerRow = (node: Element): boolean =>
+  node.tagName === "tr" && node.properties[LEDGER_PROPERTY] === "true";
 
 export default function rehypeVantageAnchors() {
   return (tree: Root) => {
+    const claimed = new Set<string>();
+    // Reserve live and explicit anchors before minting any historical ones:
+    // a ledger placed before a live question cannot steal its fragment.
     visit(tree, "element", (node: Element) => {
+      const id = node.properties.id;
+      if (typeof id === "string" && id !== "") claimed.add(id);
+      const carried = node.properties[OQ_ID_PROPERTY];
+      if (!isLedgerRow(node) && typeof carried === "string" && carried !== "") {
+        claimed.add(carried);
+      }
+    });
+    visit(tree, "element", (node: Element) => {
+      const ledger = isLedgerRow(node);
+      delete node.properties[LEDGER_PROPERTY];
       const carried = node.properties?.[OQ_ID_PROPERTY];
       if (typeof carried !== "string" || carried === "") return;
 
@@ -44,7 +65,9 @@ export default function rehypeVantageAnchors() {
       if (typeof node.properties.id === "string" && node.properties.id !== "") {
         return;
       }
+      if (ledger && claimed.has(carried)) return;
       node.properties.id = carried;
+      claimed.add(carried);
     });
   };
 }
