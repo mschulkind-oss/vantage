@@ -873,3 +873,32 @@ describe("WorkPage", () => {
     expect(index.documents[0]?.stageSince).toBeUndefined();
   });
 });
+
+describe("WorkPage and planning-actions: none", () => {
+  it("says in the card's own details why the document is not in Ready, graduation or compaction, and nowhere else", async () => {
+    seedIndex(
+      {
+        "docs/opted.md": frontmatter("DECIDED", "planning-actions: none\n"),
+        "docs/plain.md": frontmatter("DECIDED"),
+      },
+      1,
+      { stages: { DECIDED: "ready" } },
+    );
+    renderWork();
+    await screen.findByRole("heading", { name: "Work overview" });
+    const opted = document.querySelector(
+      '[data-work-document="docs/opted.md"]',
+    ) as HTMLElement;
+    const plain = document.querySelector(
+      '[data-work-document="docs/plain.md"]',
+    ) as HTMLElement;
+    const line = within(opted).getByText(
+      "Planning actions: none — not offered as ready to build, ready to graduate or to fold into the ledger.",
+    );
+    // Inside the closed disclosure: the card's height does not move.
+    expect(line.closest("details")).not.toBeNull();
+    expect(within(plain).queryByText(/Planning actions:/)).toBeNull();
+    // The stage stays where it was.
+    expect(opted).toHaveTextContent("DECIDED");
+  });
+});
