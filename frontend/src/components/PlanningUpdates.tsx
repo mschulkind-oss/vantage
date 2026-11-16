@@ -1,13 +1,14 @@
 /**
  * The planning page header's updates slot (`docs/reference/planning-index.md`
- * §6.3, §6.4): *N updates · Refresh* while the page holds late data back
+ * §6.3, §6.4): *Apply updates N* while the page holds late data back
  * from its layout, and nothing otherwise.
  *
  * Its room is kept from the first paint, as Copy answers' count is: the
  * button is always in the header, invisible while there is nothing to apply,
  * with the count in a slot of a few digits and its words in a cell as wide
  * as the longer of them. So its appearing moves nothing. Where the header is
- * narrow, its words give way with every button's (`hdr-label`), and the icon
+ * narrow, its words give way only with the primary labels (`hdr-label`), not
+ * with the minor shorthand labels, and the icon
  * and the count stay; it is never folded into the "⋯", where an update would
  * be hidden. Its title lists the updates by kind.
  */
@@ -15,8 +16,6 @@ import React from "react";
 import { RefreshCw, RotateCw } from "lucide-react";
 import { planningLimits } from "../planningScan/limits";
 import type { ReloadStatus } from "../hooks/usePlanningReviews";
-
-const words = (n: number) => `${n === 1 ? "update" : "updates"} · Refresh`;
 
 export const PlanningUpdates: React.FC<{
   /** The held updates' count; `0` hides the button and keeps its room. */
@@ -63,19 +62,13 @@ export const PlanningUpdates: React.FC<{
       }
     >
       <RefreshCw size={14} aria-hidden="true" />
+      <span className="hdr-label">Apply updates</span>
       <span
         data-testid="planning-updates-count"
         className="inline-block text-right tabular-nums"
         style={{ minWidth: `${planningLimits.pendingCountDigits - 1}ch` }}
       >
         {shown ? count.toLocaleString("en-US") : ""}
-      </span>
-      {/* As wide as its longer words, so 1 becoming 2 moves nothing. */}
-      <span className="hdr-label hdr-label-minor inline-grid">
-        <span className="[grid-area:1/1]">{words(count)}</span>
-        <span aria-hidden="true" className="invisible [grid-area:1/1]">
-          {words(2)}
-        </span>
       </span>
     </button>
   );
@@ -126,7 +119,7 @@ export const PlanningReload: React.FC<{
         className="inline-flex items-center gap-1.5 rounded-md border border-blue-300 px-2.5 py-1.5 text-xs font-medium text-blue-600 transition-colors hover:bg-blue-50 disabled:opacity-60 print:hidden dark:border-blue-700 dark:text-blue-400 dark:hover:bg-blue-900/30"
       >
         <RotateCw size={14} aria-hidden="true" />
-        <span className="hdr-label hdr-label-minor">Reload from server</span>
+        <span className="hdr-label">Reload from server</span>
       </button>
     </>
   );

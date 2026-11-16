@@ -155,7 +155,13 @@ groups ([PlanningUnresolved.tsx](../../frontend/src/components/PlanningUnresolve
 carry the original quote and their own **Copy unassigned requests**; a comment is
 in Copy answers or in a group, never both. Filters narrow what is displayed and
 what Copy answers copies ([planning-index.md §6.7](./planning-index.md#67-answering-and-copy-answers));
-they never reclassify a comment.
+they never reclassify a comment. A **Compacted** group explicitly distinguishes
+an ID recorded in the Decision Ledger from an agent reply: the thread can
+still be pending, and no reaction is invented. Its copied request asks the
+agent to check the saved ruling against the existing comment and acknowledge
+that comment or report remaining work, not re-ask the recorded decision.
+The ownership control has a tooltip and keeps its words until the primary
+header labels must yield; it no longer disappears with minor shorthand labels.
 
 **Legacy auto-bind** (`useLegacyAutoBind`) binds an unbound comment only when its
 anchor hash is one block of the whole document (`blockLines[hash] > 0`), that
@@ -269,7 +275,7 @@ click, navigation and Close keep the text.
 
 ## 8. Apply updates, Reload from server and selection anchors
 
-- **Apply updates** (the header button, _N updates · Refresh_) lays the page out
+- **Apply updates** (the header button, _Apply updates N_) lays the page out
   from the data in hand with no request. It is **disabled** with "Save or Restore
   the open answer first" while an open box holds changes: a session box not
   `unchanged`, or a reply box with typed text. It never saves, restores or
@@ -282,6 +288,9 @@ click, navigation and Close keep the text.
   no box and no painted body. A failure keeps what was held; the header then
   shows "Unknown · last successful read HH:MM · last attempt failed HH:MM", or
   "the document changed while it was read, so Reload again" for a changed sample.
+  Both actions keep their primary visible labels as long as the header can fit
+  them, distinguishing fetching server data from applying held layout updates
+  rather than presenting two unlabeled refresh icons.
 - **Selection anchors.** A settled selection (mouse-up, or a keyboard selection
   quiet for 300 ms) of at least 3 characters inside one question's unit offers
   **Comment on selection**; it opens the answer box on that anchor. A headline

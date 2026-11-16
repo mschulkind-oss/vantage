@@ -83,6 +83,7 @@ export function PlanningUnresolved({
         type="button"
         data-testid="unresolved-ownership"
         aria-label={label}
+        data-tip={label}
         aria-haspopup="menu"
         aria-expanded={open}
         aria-hidden={shown ? undefined : true}
@@ -101,7 +102,7 @@ export function PlanningUnresolved({
           icon={<Link2 size={14} aria-hidden="true" />}
           label={label}
           reserve={["Unknown with unresolved ownership", "9999 not attached"]}
-          labelClassName="hdr-label hdr-label-minor"
+          labelClassName="hdr-label"
         />
       </button>
       <AnchoredMenu
@@ -140,6 +141,13 @@ export function PlanningUnresolved({
               <p className="mt-2 font-semibold">
                 {UNRESOLVED_TITLES[kind]} ({groups[kind].length})
               </p>
+              {kind === "compacted" && (
+                <p>
+                  The question ID is recorded in the Decision Ledger, not newly
+                  unanswered. Its review comment still awaits an agent reply;
+                  the ledger entry is not a delivery receipt.
+                </p>
+              )}
               <ul>
                 {groups[kind].map((entry) => {
                   const { path, comment, reason } = entry;
