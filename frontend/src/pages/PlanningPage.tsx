@@ -1691,9 +1691,9 @@ export const PlanningPage: React.FC = () => {
         search: query === "" ? "" : `?${query}`,
         hash,
       },
-      { replace: true },
+      { replace: true, state: location.state },
     );
-  }, [spaceRepo, search, hash, navigate]);
+  }, [spaceRepo, search, hash, navigate, location.state]);
   useEffect(() => {
     // Not while the box leads: the URL takes its text on the idle pause.
     // Nor while the URL has a project still to find, which the navigation
@@ -1706,7 +1706,7 @@ export const PlanningPage: React.FC = () => {
     const query = planningQuery(canonical);
     navigate(
       { search: query === "" ? "" : `?${query}`, hash },
-      { replace: true },
+      { replace: true, state: location.state },
     );
   }, [
     boxLeads,
@@ -1717,6 +1717,7 @@ export const PlanningPage: React.FC = () => {
     navigate,
     hash,
     dropSpace,
+    location.state,
   ]);
 
   /**
@@ -3560,7 +3561,12 @@ export const PlanningPage: React.FC = () => {
   // applied and written, under the roadmap already shown, does nothing. The
   // URL is the filter's writer after it, so nothing typed is owed.
   const applyFilter = useCallback(
-    (text: string, roadmap: string | null, push = false) => {
+    (
+      text: string,
+      roadmap: string | null,
+      push = false,
+      documentScope = false,
+    ) => {
       cancelIdle();
       // A clear inside the idle pause: the text typed is the filter on
       // screen, though the URL does not hold it yet, so it is written first
@@ -3628,7 +3634,10 @@ export const PlanningPage: React.FC = () => {
         }
         navigate(
           { search: query === "" ? "" : `?${query}` },
-          { replace: !push },
+          {
+            replace: !push,
+            state: documentScope ? { planningDocumentReturn: true } : null,
+          },
         );
       });
     },
@@ -3651,10 +3660,10 @@ export const PlanningPage: React.FC = () => {
     else applyFilter("", null, true);
   }, [applyFilter]);
   // A document's outline entry scopes the page to it (§6.9): the click applies
-  // `path:/<its path>`, replacing the filter as the document's own planning-page
-  // link does (§6.14, OQ-PF4), and its first card is brought into view once the
-  // filtered layout is the one on screen. A path no filter can name, or the
-  // filter already applied, is the page's own jump.
+  // `path:/<its path>` and adds a history entry, so Back or the visible return
+  // action restores the reader's previous filter and query. Its first card is
+  // brought into view once the filtered layout is on screen. A path no filter
+  // can name, or the filter already applied, is the page's own jump.
   const documentJumpRef = useRef<{ target: string; filter: string } | null>(
     null,
   );
@@ -3666,7 +3675,7 @@ export const PlanningPage: React.FC = () => {
         return;
       }
       documentJumpRef.current = { target: document.target, filter };
-      applyFilter(filter, null, false);
+      applyFilter(filter, null, true, true);
     },
     [frameFilter, jumpTo, applyFilter],
   );
@@ -4100,6 +4109,14 @@ export const PlanningPage: React.FC = () => {
                       : filterPending
                         ? planningLimits.spinnerMs
                         : null
+                  }
+                  onReturn={
+                    location.state?.planningDocumentReturn === true
+                      ? () => {
+                          navigate(-1);
+                          focusFilter();
+                        }
+                      : undefined
                   }
                   onType={typeFilter}
                   onApply={applyFilter}

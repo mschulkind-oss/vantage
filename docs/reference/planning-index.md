@@ -1717,12 +1717,18 @@ _On this page_ too.
   name with the folder under it and, after the name, how many of its questions
   need you in the layout, cards and the rest; up to a cap, then a line with how
   many more. Clicking one scopes the page to that document — it applies
-  `path:/<its path>`, replacing the filter as the document's own planning-page
+  `path:/<its path>`, setting the document's filter as its own planning-page
   link does ([§6.14](#614-what-is-not-understood-and-canonical-text),
-  [OQ-PF4](#why-its-this-way)) — and then scrolls to its first card, with no
-  history entry, 16 px below the pane's top as the contents column brings a
-  heading (`ANCHOR_MARGIN`), and focuses its first control. A path no filter can
-  name, or the filter already applied, is the scroll alone. The cards above it
+  [OQ-PF4](#why-its-this-way)) — and adds a history entry before scrolling
+  to its first card, 16 px below the pane's top as the contents column brings a
+  heading (`ANCHOR_MARGIN`), and focusing its first control. **Back**, beside
+  the filter box, restores the preceding view's exact filter and query, not
+  merely an unfiltered list; browser Back and Forward work too. A typed filter
+  whose idle URL write is pending is saved into the preceding entry first.
+  The Back control is offered only for scoping reached through the outline,
+  not a document-filter link opened directly, and ordinary filter edits end
+  that scope. A path no filter can name, or the filter already applied, is the
+  scroll alone. The cards above it
   draw the fold controls at their cuts in a pass of their own
   (`afterClampMeasures`), so the scroll is made again once they have, before
   anything paints. The count wraps under the name rather than take its width:
