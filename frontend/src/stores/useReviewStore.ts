@@ -1715,7 +1715,7 @@ function respondingInstructions(
     'mv "$f.writing" "$f"',
     "# Vantage consumes and deletes the file; its disappearance is the receipt.",
     'n=0; while [ -e "$f" ] && [ "$n" -lt 50 ]; do sleep 0.1; n=$((n + 1)); done',
-    '[ -e "$f" ] && echo "queued: Vantage is not running; it will consume this file at startup" || echo "delivered: Vantage consumed $f"',
+    '[ -e "$f" ] && echo "queued: consumption is unconfirmed; check the server logs and inbox path" || echo "delivered: Vantage consumed $f"',
     "```",
     "",
     // The wait loop above turns the confusing signal into a printed one, and
@@ -1733,6 +1733,8 @@ function respondingInstructions(
     "```",
     "",
     "The command writes to a `.writing` scratch name, then `mv`s it onto the `.jsonl` name. That rename is the completion signal: Vantage ignores every non-`.jsonl` name, so it never reads the file until the whole delivery is in place. **Do not write directly to the `.jsonl` name** (`cat > x.jsonl`) — that creates the file empty before the write lands, and Vantage can consume the empty file and drop your response. (If your shell has no `$RANDOM`, substitute any unique token for the suffix. Never append line-by-line.)",
+    "",
+    "Any .jsonl filename is accepted: `planning.<token>.jsonl` and document-named files work alike. Each line's `path` chooses the document; the filename never does. A `queued:` result means consumption is unconfirmed, not that Vantage is stopped. Keep the file and check the server logs and served checkout's inbox path; do not resend it under another name.",
     "",
     "### Delivery rules",
     "",
