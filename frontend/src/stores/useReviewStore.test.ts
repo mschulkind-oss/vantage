@@ -1298,11 +1298,13 @@ describe("useReviewStore", () => {
         'n=0; while [ -e "$f" ] && [ "$n" -lt 50 ]; do sleep 0.1; n=$((n + 1)); done',
       );
       expect(payload).toContain('echo "delivered: Vantage consumed $f"');
-      // A server that is not running is a wait that times out, and that is a
-      // different outcome from a lost delivery: the file drains at startup.
+      // File presence proves only that consumption is not yet confirmed,
+      // not that the server is absent: its watcher may be stalled.
+      expect(payload).not.toContain("Vantage is not running");
       expect(payload).toContain(
-        'echo "queued: Vantage is not running; it will consume this file at startup"',
+        'echo "queued: consumption is unconfirmed; check the server logs and inbox path"',
       );
+      expect(payload).toContain("Any .jsonl filename");
     });
 
     it("says the vanished delivery file is the receipt, not a failure", async () => {

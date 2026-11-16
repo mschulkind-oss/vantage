@@ -76,7 +76,7 @@ EOF
 mv "$f.writing" "$f"
 # Vantage consumes and deletes the file; its disappearance is the receipt.
 n=0; while [ -e "$f" ] && [ "$n" -lt 50 ]; do sleep 0.1; n=$((n + 1)); done
-[ -e "$f" ] && echo "queued: Vantage is not running; it will consume this file at startup" || echo "delivered: Vantage consumed $f"
+[ -e "$f" ] && echo "queued: consumption is unconfirmed; check the server logs and inbox path" || echo "delivered: Vantage consumed $f"
 ```
 
 Each line is one JSON object, newline-terminated. The random suffix keeps two
@@ -91,9 +91,11 @@ documents at once, suggests `planning` in its place.
 disappear — which is indistinguishable, from the agent's side, from a write that
 failed. Left to infer it, agents report the delivery as lost or send it a second
 time. The wait loop names the outcome instead: `delivered:` once the file is
-gone, or `queued:` if it is still there five seconds later, which means no
-Vantage is watching this repository and the delivery will drain at the next
-startup. The payload tells the agent the same thing in words, since an agent
+gone, or `queued:` if it is still there five seconds later. A queued result
+means only that consumption is unconfirmed: the server may be stopped, serving
+another checkout, delayed, or unable to read or apply the delivery. Keep the
+file, check the server logs and inbox path, and do not resend under another
+name. The payload tells the agent the same thing in words, since an agent
 that writes its own delivery command never runs this one.
 
 **Why the rename, and why the random name?** Vantage consumes **only** completed
@@ -122,8 +124,11 @@ carry lines for several documents and still be applied correctly.
 
 ## What Vantage does with it
 
-The file watcher drains the inbox at startup and whenever anything under
-`.vantage/inbox` changes. It touches **only** committed `*.jsonl` files (and its
+A delivery worker drains the inbox at startup, when the file watcher reports
+inbox activity, and periodically if an event was missed or a previous apply
+failed. It runs separately from the repository's filesystem event loop, so a
+slow tree walk or stalled event loop cannot strand responses. It touches
+**only** committed `*.jsonl` files (and its
 own `*.consuming` leftovers) — any other name, including a scratch file an agent
 is still assembling and any temp file another tool drops in the directory, is
 left strictly alone. Draining one committed file is:
@@ -142,6 +147,29 @@ left strictly alone. Draining one committed file is:
 
 If Vantage is not running when the agent delivers, nothing is lost: the file
 sits there and is drained the next time the server starts.
+
+### Checking delivery on the server
+
+Check the logs on the machine running Vantage, not merely inside the agent's
+container. On a Linux user-service installation:
+
+```bash
+journalctl --user -u vantage --since '10 minutes ago' --grep 'inbox worker|review:.*inbox|review:.*delivery'
+```
+
+The `inbox worker started` and `inbox worker heartbeat` lines name the absolute
+inbox path and repository. Compare that path with the host checkout the agent
+is editing. A recent heartbeat shows that the independent delivery worker is
+running; the startup line alone does not prove it is still making progress.
+`review: consumed inbox file` records how many responses were applied. A file
+that was consumed but applied zero responses needs investigation of its `path`
+and comment IDs; disappearance is a consumption receipt, not proof that every
+line matched a comment. Read/apply failures are logged and retried, not treated
+as successful deliveries.
+
+The worker retries every five seconds and logs a heartbeat every minute.
+Events normally deliver sooner; a five-second shell wait can end just before
+one periodic retry, so `queued:` is not a terminal failure.
 
 ## Where review state is kept
 

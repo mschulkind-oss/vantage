@@ -42,6 +42,9 @@ const (
 	// heartbeatInterval is how often watcher stats are logged so a silently
 	// dead inotify thread is visible in the journal.
 	heartbeatInterval = 60 * time.Second
+	// Inbox retries are independent of the filesystem loop: a missed event,
+	// failed watch or slow tree walk must not strand a committed response.
+	inboxRetryInterval = 5 * time.Second
 )
 
 // gitStateFiles are the one-level .git files whose changes signal a repo-state
@@ -212,6 +215,8 @@ type Watcher struct {
 	stamps map[string]fileStamp
 	// rescan carries the directories [Watcher.Rescan] hands the event loop.
 	rescan chan string
+	// inboxWake coalesces delivery notifications for the independent worker.
+	inboxWake chan struct{}
 	// goos is the platform whose limits the log's advice names: runtime.GOOS,
 	// which tests replace to pin one platform's wording on any host.
 	goos string
@@ -267,6 +272,7 @@ func NewWatcher(root, repoName string, mgr *Manager, store *review.Store, useIgn
 		charged:    map[string]int{},
 		dirs:       map[string]struct{}{},
 		rescan:     make(chan string, 16),
+		inboxWake:  make(chan struct{}, 1),
 		goos:       runtime.GOOS,
 	}, nil
 }
@@ -384,16 +390,31 @@ func (w *Watcher) Start(ctx context.Context) error {
 	// Start returns only once fsw is closed, and every file with it.
 	defer w.releaseAllFiles()
 
+	ctx, cancel := context.WithCancel(ctx)
+	var inboxDone sync.WaitGroup
+	if w.store != nil {
+		inboxDone.Add(1)
+		go func() {
+			defer inboxDone.Done()
+			w.runInbox(ctx)
+		}()
+	}
+	defer func() {
+		cancel()
+		inboxDone.Wait()
+	}()
+
 	added := w.addRecursive(w.root)
 	w.seedGitStateFingerprints()
 	w.logStartup(added)
 
-	// Deliveries that landed while the server was down are consumed before the
-	// first event can arrive.
-	w.consumeInbox()
-
 	out := make(chan []string, 1)
-	co := newCoalescer(quietPeriod, maxWait, func(paths []string) { out <- paths })
+	co := newCoalescer(quietPeriod, maxWait, func(paths []string) {
+		select {
+		case out <- paths:
+		case <-ctx.Done():
+		}
+	})
 
 	heartbeat := time.NewTicker(heartbeatInterval)
 	defer heartbeat.Stop()
@@ -581,7 +602,7 @@ func (w *Watcher) handleEvent(ev fsnotify.Event, co *coalescer) {
 				// A .vantage or inbox dir appearing after startup may already
 				// hold deliveries written before its watch existed.
 				if norm := filepath.ToSlash(rel); norm == ".vantage" || isInboxPath(norm) {
-					w.consumeInbox()
+					w.requestInbox()
 				}
 			}
 			return
@@ -645,7 +666,7 @@ func (w *Watcher) handleEvent(ev fsnotify.Event, co *coalescer) {
 		w.stats.kept++
 		w.mu.Unlock()
 		w.logger.Debug("watcher inbox event", "op", ev.Op.String(), "path", rel)
-		w.consumeInbox()
+		w.requestInbox()
 		return
 	}
 
@@ -931,10 +952,44 @@ func (w *Watcher) logStartup(watchedDirs int) {
 	)
 }
 
+// requestInbox wakes delivery consumption without blocking filesystem events.
+func (w *Watcher) requestInbox() {
+	if w.store == nil {
+		return
+	}
+	select {
+	case w.inboxWake <- struct{}{}:
+	default:
+	}
+}
+
+// runInbox consumes at startup, on notifications and periodically. Its worker
+// is joined by Start: retiring a repository never leaves an inbox consumer behind.
+func (w *Watcher) runInbox(ctx context.Context) {
+	ticker := time.NewTicker(inboxRetryInterval)
+	defer ticker.Stop()
+	heartbeat := time.NewTicker(heartbeatInterval)
+	defer heartbeat.Stop()
+	w.logger.Info("inbox worker started", "inbox_dir", review.InboxDir(w.root),
+		"retry_interval_ms", inboxRetryInterval.Milliseconds())
+	w.consumeInbox()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-w.inboxWake:
+			w.consumeInbox()
+		case <-ticker.C:
+			w.consumeInbox()
+		case <-heartbeat.C:
+			w.logger.Info("inbox worker heartbeat", "inbox_dir", review.InboxDir(w.root))
+		}
+	}
+}
+
 // consumeInbox drains the repo's review inbox and pushes review_changed for
-// every document a delivery mutated, so open browsers reload that review. It
-// runs at startup and on every event under the inbox; a missing or empty
-// inbox is a cheap no-op.
+// every document a delivery mutated, so open browsers reload that review.
+// Only the independent inbox worker runs it; missing/empty inboxes are cheap.
 func (w *Watcher) consumeInbox() {
 	if w.store == nil {
 		return
