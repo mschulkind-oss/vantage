@@ -49,7 +49,7 @@
  */
 import React, { useId, useLayoutEffect, useRef, useState } from "react";
 import { useLocation, useNavigationType } from "react-router-dom";
-import { AlertCircle, Loader2, X } from "lucide-react";
+import { AlertCircle, ArrowLeft, Loader2, X } from "lucide-react";
 import {
   parsePlanningFilter,
   readPastedPlanningLink,
@@ -125,6 +125,8 @@ export const PlanningFilterLine: React.FC<{
    * and a paste that is no planning link's. `now` is set for the paste, which
    * is written at once rather than after the idle pause (§6.16).
    */
+  /** Return from outline document scoping to the reader's previous view. */
+  onReturn?: () => void;
   onType: (text: string, now: boolean) => void;
   /**
    * Apply `text` at once, and choose `roadmap` when a pasted link names one:
@@ -166,6 +168,7 @@ export const PlanningFilterLine: React.FC<{
   invalid,
   busyAfter,
   onType,
+  onReturn,
   onApply,
   onEnter,
   onFlush,
@@ -303,6 +306,18 @@ export const PlanningFilterLine: React.FC<{
         }}
         className="flex h-9 flex-nowrap items-center gap-2 print:hidden"
       >
+        {onReturn !== undefined && (
+          <button
+            type="button"
+            onClick={onReturn}
+            aria-label="Back to previous view"
+            title="Restore the view and filter shown before selecting this document"
+            className="inline-flex shrink-0 items-center gap-1 rounded-md border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700"
+          >
+            <ArrowLeft size={14} aria-hidden="true" />
+            Back
+          </button>
+        )}
         <label
           htmlFor={id}
           className="sr-only shrink-0 text-sm font-medium text-slate-600 @sm:not-sr-only dark:text-slate-300"

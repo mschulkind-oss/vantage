@@ -5560,7 +5560,7 @@ describe("the planning outline, On this page (planning-index.md §6.9)", () => {
     expect(outlineLines()).toContain("Answered 4");
   });
 
-  it("scopes the page to a document's filter and goes to its first card, with no history entry", async () => {
+  it("scopes the page to a document's filter, goes to its first card, and offers Return and browser history", async () => {
     seed();
     const scrolled = vi.fn();
     Element.prototype.scrollIntoView = scrolled;
@@ -5571,9 +5571,8 @@ describe("the planning outline, On this page (planning-index.md §6.9)", () => {
         fireEvent.click(outlineDocument("plans/design.md"));
       });
       await settle();
-      // The click applied the document's own filter, as its planning-page
-      // link would, replacing whatever was there, and no history entry was
-      // added (§6.9, OQ-PF10).
+      // Document scoping adds an entry: Return and browser Back must restore
+      // the previous view instead of leaving the planning page.
       expect(router.location).toBe(
         "/.vantage/planning?filter=path:/plans/design.md",
       );
@@ -5581,9 +5580,95 @@ describe("the planning outline, On this page (planning-index.md §6.9)", () => {
       expect(card.id).toBe(cardId("plans/design.md", "OQ-D1"));
       expect(scrolled.mock.contexts).toContain(card);
       expect(card.contains(document.activeElement)).toBe(true);
+      await act(async () => {
+        fireEvent.click(
+          screen.getByRole("button", { name: "Back to previous view" }),
+        );
+      });
+      await settle();
+      expect(router.location).toBe("/.vantage/planning");
+      expect(screen.getByRole("textbox", { name: "Filter" })).toHaveFocus();
+      expect(
+        screen.queryByRole("button", { name: "Back to previous view" }),
+      ).not.toBeInTheDocument();
+      await act(async () => router.navigate!(1));
+      await settle();
+      expect(router.location).toBe(
+        "/.vantage/planning?filter=path:/plans/design.md",
+      );
+      expect(
+        screen.getByRole("button", { name: "Back to previous view" }),
+      ).toBeInTheDocument();
+      await act(async () => router.navigate!(-1));
+      await settle();
+      expect(router.location).toBe("/.vantage/planning");
     } finally {
       delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
     }
+  });
+
+  it.each(["is:open", "path:/plans/design.md is:open"])(
+    "returns from document scoping to the previous %s filter and query",
+    async (filter) => {
+      seed();
+      await renderPage(
+        `/.vantage/planning?filter=${encodeURIComponent(filter)}&x=1`,
+      );
+      const prior = router.location;
+      const priorText = (
+        screen.getByRole("textbox", { name: "Filter" }) as HTMLInputElement
+      ).value;
+      await act(async () =>
+        fireEvent.click(outlineDocument("plans/design.md")),
+      );
+      await settle();
+      expect(router.location).toBe(
+        "/.vantage/planning?filter=path:/plans/design.md&x=1",
+      );
+      await act(async () =>
+        fireEvent.click(
+          screen.getByRole("button", { name: "Back to previous view" }),
+        ),
+      );
+      await settle();
+      expect(router.location).toBe(prior);
+      expect(screen.getByRole("textbox", { name: "Filter" })).toHaveValue(
+        priorText,
+      );
+    },
+  );
+
+  it("returns to a typed filter even when its idle URL write was still pending", async () => {
+    seed();
+    setPlanningLimitsForTests({ filterIdleMs: 60_000 });
+    await renderPage("/.vantage/planning?x=1");
+    await act(async () => {
+      fireEvent.change(screen.getByRole("textbox", { name: "Filter" }), {
+        target: { value: "is:open" },
+      });
+    });
+    await settle();
+    expect(router.location).toBe("/.vantage/planning?x=1");
+    await act(async () => fireEvent.click(outlineDocument("plans/design.md")));
+    await settle();
+    await act(async () =>
+      fireEvent.click(
+        screen.getByRole("button", { name: "Back to previous view" }),
+      ),
+    );
+    await settle();
+    expect(router.location).toBe("/.vantage/planning?filter=is:open&x=1");
+    expect(screen.getByRole("textbox", { name: "Filter" })).toHaveValue(
+      "is:open",
+    );
+  });
+
+  it("offers no return action for a document filter opened directly", async () => {
+    seed();
+    await renderPage("/.vantage/planning?filter=path:/plans/design.md");
+    expect(
+      screen.queryByRole("button", { name: "Back to previous view" }),
+    ).not.toBeInTheDocument();
   });
 
   it("goes to a folded group's heading, opening the group first, with no history entry", async () => {
