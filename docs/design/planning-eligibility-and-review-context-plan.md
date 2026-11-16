@@ -2,8 +2,8 @@
 title: "Planning actions opt-out and 0.12.0 release notes — implementation plan"
 date: 2026-11-16
 status: accepted
-stage: DECIDED
-next: "Build Task 1 (scan, eligibility gates, cache schema), then Tasks 2–4, then prepare 0.12.0 in Task 5; never run the release"
+stage: BUILT
+next: "Graduate the built design into planning-index.md, then delete this plan and the design; the 0.12.0 notes are prepared, and the release is the owner's"
 tags: [planning, plan, scanner, vantage-check, release]
 depends-on:
   - planning-eligibility-and-review-context.md
