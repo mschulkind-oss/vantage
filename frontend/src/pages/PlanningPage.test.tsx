@@ -9886,3 +9886,42 @@ describe("legacy comments: automatic bind and Attach to question…", () => {
     );
   });
 });
+
+describe("planning-actions: none (planning-eligibility-and-review-context.md §2.2)", () => {
+  const NONE = "planning-actions: none";
+
+  it("keeps an opted-out document out of Ready, graduation and the compaction offer, and leaves its questions and conflict on the page", async () => {
+    seed({
+      ...TREE,
+      "plans/opted-ready.md": doc(`stage: DECIDED\n${NONE}`, "A record."),
+      "plans/opted-built.md": doc(`stage: BUILT\n${NONE}`, "A record."),
+      "plans/opted-answered.md": doc(
+        `stage: DESIGN\n${NONE}`,
+        q("OQ-N1", ANSWERED),
+      ),
+      "plans/opted-open.md": doc(`stage: DECIDED\n${NONE}`, q("OQ-N2", OPEN)),
+    });
+    await renderPage();
+    expect(documentsIn("Ready to build")).toEqual(["plans/ready.md"]);
+    expect(documentsIn("Ready to graduate")).toEqual(["plans/built.md"]);
+    expect(listedIn("To fold into the ledger")).toEqual([
+      "OQ-A1: Question OQ-A1?",
+    ]);
+    expect(documentsIn("Stage conflict").sort()).toEqual([
+      "plans/disagrees.md",
+      "plans/opted-open.md",
+    ]);
+    expect(cardsIn("Needs you")).toContain("OQ-N2: Question OQ-N2?");
+  });
+
+  it("keeps it out under a filter that names it", async () => {
+    seed({
+      ...TREE,
+      "plans/opted-ready.md": doc(`stage: DECIDED\n${NONE}`, "A record."),
+    });
+    await renderPage("/.vantage/planning?filter=path:plans/opted-ready.md");
+    expect(
+      document.querySelector('[data-planning-document="plans/opted-ready.md"]'),
+    ).toBeNull();
+  });
+});

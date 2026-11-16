@@ -990,10 +990,16 @@ export function derivePlanningSections(
     onOtherRoadmaps,
     unrouted,
     waiting,
-    ready: stageSection((role, doc) => role === "ready" && !hasOpen(doc)),
+    ready: stageSection(
+      (role, doc) =>
+        role === "ready" && !hasOpen(doc) && doc.planningActions !== "none",
+    ),
     // Every question the index holds is live, so "no live questions" is none.
     graduate: stageSection(
-      (role, doc) => role === "built" && doc.questions.length === 0,
+      (role, doc) =>
+        role === "built" &&
+        doc.questions.length === 0 &&
+        doc.planningActions !== "none",
     ),
     disagrees: stageSection(
       (role, doc) => (role === "ready" || role === "built") && hasOpen(doc),
