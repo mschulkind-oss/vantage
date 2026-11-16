@@ -8,7 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [0.12.0] - 2026-11-16
+
+Keep records out of Ready lists, and fixes to answering, compaction and delivery.
+
 ### Added
+
+**Keep a record out of Ready and compaction.** Add `planning-actions: none` to a live document's frontmatter, and it is no longer offered as ready to build, ready to graduate, or to fold into the ledger. Its questions, badges, stage and dependencies stay as they were. Any other value is read as `all` and reported as a warning by `vantage-check`. See [planning documents](userguide/guides/planning.md).
 
 **Compare five text transitions when a question rolls up.** In the planning
 animation inspector, the **Text handoff** menu starts on the production title
@@ -17,6 +23,8 @@ sliding and fading, and shrinking and fading. Play or step through each with
 the same card roll-up. These comparisons are read-only; choosing one does not
 change the live planning page's transition.
 
+**Build planning views from `vantage-md/planning`.** Your own tool can read the planning index, filters and agent requests the viewer uses, so it shows the same documents and questions.
+
 ### Changed
 
 **Answered cards glide their title into the compact row.** The rest of the card
@@ -24,6 +32,12 @@ fades away as it rolls up. Green grows to a softer tint and stays afterward,
 rather than flashing brighter and fading back. The main app has one fixed
 transition, with no animation setting. With reduced motion, you see the finished
 row and green immediately.
+
+**`vantage-md` ships ES modules only.** Its CommonJS entry threw on import, so `require("vantage-md")` never worked; import it instead. `MarkdownViewer` takes `hideFrontmatter`.
+
+**Apply updates reads as a label.** The Questions toolbar keeps its planning labels beside the primary controls, and a question with unresolved ownership explains itself in a tooltip.
+
+**The checker catches two more misplaced questions.** `vantage/question-name` reports a question directive placed below its own heading, and one whose ID disagrees with the title of the question it attaches to.
 
 ### Fixed
 
@@ -42,6 +56,18 @@ uses the same words.** A unique question id limits the search to that question.
 Repeated matching blocks within it still remain unanchored rather than being
 guessed from an old line. Compact rows also retain answers typed on question
 bodies when you apply updates.
+
+**Answers appear as you type them.** A card shows your answer before the save returns. An answered row you opened into a card has **Hide**, which returns it to its row.
+
+**Review deliveries are consumed without waiting for file events.** A worker picks up each delivery when the inbox changes and retries every five seconds, so a response lands even when file watching stalls. A delivery still waiting is reported as unconfirmed, not as Vantage being stopped. See [the review inbox](userguide/guides/review-inbox.md).
+
+**Compaction requests skip retired documents.** `vantage-check index --request compact` and **To fold into the ledger** no longer list questions in documents whose stage has the done role.
+
+**Back returns from a scoped document view.** Scoping the Planning page to one document from the outline keeps your filter and query, and **Back** restores them.
+
+**Links to a compacted question keep working.** A question folded into a Decision Ledger row keeps its `#OQ-…` anchor on that row.
+
+**Live updates stay connected during heavy logging.** A burst of diagnostic logs no longer closes the connection by exceeding the server's frame limit.
 
 ## [0.11.0] - 2026-11-04
 
