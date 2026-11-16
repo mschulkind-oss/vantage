@@ -73,4 +73,4 @@ The order is the one thing this file holds that no other document can. Each entr
 
 3. [Planning selection coverage](docs/design/planning-review-actions.md) — establish a provable source anchor for generated leaning text before offering selection comments on it; an attractive selection target is not evidence of where the text came from.
 
-4. [Planning action eligibility and review-aware question counts](docs/design/planning-eligibility-and-review-context.md) — settle these two report items before expanding planning policy, because hiding records from action lists must not hide their questions and review-aware agent output must not overstate its evidence.
+4. [Planning action eligibility and review-aware question counts](docs/design/planning-eligibility-and-review-context.md) — settle action eligibility before expanding planning policy, because hiding records from action lists must not hide their questions.
