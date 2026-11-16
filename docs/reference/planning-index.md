@@ -941,7 +941,8 @@ everything else (`layoutPlanningPage` in `frontend/src/lib/planningPages.ts`).
 
 _Maintenance_ holds one more kind that is not a section of the index: **To fold
 into the ledger** (`compact`), the ✅ questions in documents whose stage does
-not have the `done` role, listed by `answeredQuestions`, the same function the
+not have the `done` role and that do not opt out with `planning-actions: none`
+([§3.4](#34-the-header-of-record-stage-next-depends-on)), listed by `answeredQuestions`, the same function the
 `compact` request reads (P7). Retired documents are historical records, not
 maintenance requests; this applies to every configured `done` stage, including
 `SUPERSEDED` and `GRADUATED`, and a filter cannot bring them back into Compact.

@@ -10,11 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.12.0] - 2026-11-16
 
-Keep records out of Ready lists, and fixes to answering, compaction and delivery.
+Keep records out of Ready and compaction with one frontmatter line, and fix answering, compaction, delivery and live updates.
 
 ### Added
 
-**Keep a record out of Ready and compaction.** Add `planning-actions: none` to a live document's frontmatter, and it is no longer offered as ready to build, ready to graduate, or to fold into the ledger. Its questions, badges, stage and dependencies stay as they were. Any other value is read as `all` and reported as a warning by `vantage-check`. See [planning documents](userguide/guides/planning.md).
+**Keep a record out of Ready and compaction.** Add `planning-actions: none` to a live document's frontmatter, and it is no longer offered as ready to build, ready to graduate, or to fold into the ledger. Its questions, badges, stage and dependencies stay as they were. An invalid value is read as `all` and reported as a warning by `vantage-check`. On a done-role stage the key does nothing and is silent; on a roadmap it does nothing and is reported. See [planning documents](userguide/guides/planning.md).
 
 **Compare five text transitions when a question rolls up.** In the planning
 animation inspector, the **Text handoff** menu starts on the production title
@@ -57,9 +57,9 @@ Repeated matching blocks within it still remain unanchored rather than being
 guessed from an old line. Compact rows also retain answers typed on question
 bodies when you apply updates.
 
-**Answers appear as you type them.** A card shows your answer before the save returns. An answered row you opened into a card has **Hide**, which returns it to its row.
+**Answers typed in an opened answered row appear before the save completes.** The card shows your typed answer while the save is in flight. An opened row has **Hide**, which returns it to its row.
 
-**Review deliveries are consumed without waiting for file events.** A worker picks up each delivery when the inbox changes and retries every five seconds, so a response lands even when file watching stalls. A delivery still waiting is reported as unconfirmed, not as Vantage being stopped. See [the review inbox](userguide/guides/review-inbox.md).
+**Review deliveries are consumed without waiting for file events.** A worker picks up each delivery when the inbox changes and retries every five seconds, so a response lands even when file watching stalls. A delivery still waiting is reported as unconfirmed, not as Vantage stopped. See [the review inbox](userguide/guides/review-inbox.md).
 
 **Compaction requests skip retired documents.** `vantage-check index --request compact` and **To fold into the ledger** no longer list questions in documents whose stage has the done role.
 
@@ -67,7 +67,7 @@ bodies when you apply updates.
 
 **Links to a compacted question keep working.** A question folded into a Decision Ledger row keeps its `#OQ-…` anchor on that row.
 
-**Live updates stay connected during heavy logging.** A burst of diagnostic logs no longer closes the connection by exceeding the server's frame limit.
+**Live updates stay connected during heavy logging.** Diagnostic log bursts no longer exceed the server's frame limit and close the connection.
 
 ## [0.11.0] - 2026-11-04
 

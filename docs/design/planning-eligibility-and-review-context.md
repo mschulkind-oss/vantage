@@ -5,10 +5,10 @@ status: accepted
 stage: BUILT
 next: Graduate the built opt-out into planning-index.md and retire this design with its plan; retain the existing offline CLI policy
 summary: >
-  One proposed change and one retained policy. (A) Add one explicit per-document
-  opt-out that removes a document from the Ready, graduation and compaction
-  lists only, leaving its questions, routing, dependencies and badges untouched.
-  (B) Add no new channel between the CLI and a running Vantage; retain the
+  One built change and one retained policy. (A) One explicit per-document
+  opt-out, `planning-actions: none`, that removes a document from the Ready,
+  graduation and compaction lists only, leaving its questions, routing,
+  dependencies and badges untouched. (B) No new channel between the CLI and a running Vantage; retain the
   current offline "open in Markdown" count, its existing note and the generated
   handoff, and bind any later review-aware tool to the contract in section 3.3.
 tags: [planning, design, cli, review, eligibility]
@@ -38,14 +38,14 @@ Two terms are coined here.
 
 ## 2. Issue A: participation versus action eligibility
 
-### 2.1 What happens today
+### 2.1 What happened before the change (baseline, at `9e6bbaaa`)
 
 A document joins the planning index if it is the configured roadmap, has a `status` or `stage` key, or contains a question directive ([`scan.ts`](../../packages/vantage-md/src/planning/scan.ts#L1442-L1476)).
 The scanner has no test for what kind of document it is.
 
 The lists are stage predicates ([`sections.ts`](../../packages/vantage-md/src/planning/sections.ts#L926-L1005)):
 
-| List | Predicate today |
+| List | Predicate at baseline |
 |---|---|
 | Ready | role `ready` and no open questions |
 | Graduate | role `built` and no questions at all |
@@ -65,7 +65,7 @@ Separate two things the index currently treats as one.
 
 - **Participation** is unchanged: status, stage or a question directive.
 - **Action eligibility** defaults to yes, and one frontmatter key can turn it off for that document.
-- **Author control:** you or an agent deliberately adds the setting to the document. Once implemented, the shared planning scan applies it in both the browser and CLI. No automatic classification or new UI toggle is included. Removing the setting restores normal stage-based eligibility.
+- **Author control:** you or an agent deliberately adds the setting to the document. The shared planning scan applies it in both the browser and CLI. No automatic classification or new UI toggle is included. Removing the setting restores normal stage-based eligibility.
 
 Syntax, built:
 
@@ -73,7 +73,7 @@ Syntax, built:
 ---
 title: Rulings log, 2026 Q3
 stage: DECIDED
-planning-actions: none   # PROPOSED. Values: all (default) | none
+planning-actions: none   # Values: all (default) | none
 ---
 ```
 
@@ -106,7 +106,7 @@ The disagrees list is kept because it is the one place a stage and an open quest
 
 ### 2.4 Value rules
 
-| Case | Behaviour |
+| Case | Behavior |
 |---|---|
 | Key missing | `all`; identical to today |
 | `all` | Identical to today |
@@ -118,7 +118,7 @@ The disagrees list is kept because it is the one place a stage and an open quest
 | Key on the configured roadmap | Inert, with a diagnostic. The roadmap owns order only. |
 | Roadmap lists an opted-out document | Allowed; the order is shown and the roadmap cannot override the key |
 
-The diagnostic's rule name and severity are not chosen here.
+The diagnostic is built as `planning/actions-value`, a warning. A key on a done-role document is silent; a key on a roadmap is reported whatever its stage.
 
 ### 2.5 Alternatives
 
@@ -248,7 +248,7 @@ Related documents, not re-verified for this design: [planning index](../referenc
 
 ## 5. Acceptance scenarios
 
-These describe behavior that would show the design is met. None has been run.
+Each scenario is pinned by a test named in the [build plan](planning-eligibility-and-review-context-plan.md), and the suites passed at the build commit.
 
 **Issue A**
 

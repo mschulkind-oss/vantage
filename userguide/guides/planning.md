@@ -158,7 +158,10 @@ question to the index, although the page's
 ## The header: `stage`, `next` and `depends-on`
 
 Three top-level frontmatter keys sit beside `status`. They are facts about the
-document, so each is written once, here, and read from here by everything else:
+document, so each is written once, here, and read from here by everything else.
+A fourth, `planning-actions`, is optional and only removes a live record from
+three action lists; [what it does and does not change](#what-vantage-reads)
+explains it.
 
 ```yaml
 ---
@@ -176,6 +179,7 @@ depends-on:
 | `stage` | one word from the repository's own vocabulary | Shown as written, trimmed. Matched against `[planning.stages]` exactly, case included, so `Decided` is not `DECIDED`. When stages are declared, a word outside them is drawn in the warning tone, and `vantage-check` reports it. |
 | `next` | the next step, as one line of plain text | A bare `OQ-…` id in it becomes a link to this document's question of that id ([below](#the-next-link)). |
 | `depends-on` | what the document waits on: relative paths, each optionally ending in `#OQ-…` | Resolved like links. One path on its own counts as a one-entry list. A target that does not exist, lies outside the repository, or does not contain the id is reported by `vantage-check`. |
+| `planning-actions` | `all` (the default) or `none` | `none` leaves the document out of Ready to build, Ready to graduate and the compaction offer only. Any other value is read as `all`, and `vantage-check` reports it as `planning/actions-value`. |
 
 A value of the wrong shape, such as a `stage` that is a number or a list, or a
 `next` that runs over several lines, is ignored. A header that does not parse
