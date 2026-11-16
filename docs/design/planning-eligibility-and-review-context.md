@@ -1,9 +1,9 @@
 ---
 title: Planning action eligibility and review-aware question counts
 date: 2026-11-16
-status: in-review
-stage: DESIGN
-next: Owner clarifies and rules on OQ-ER1 (action opt-out); the offline CLI policy is settled, and the opt-out is not built
+status: accepted
+stage: DECIDED
+next: Build the approved per-document action opt-out; retain the existing offline CLI policy
 summary: >
   One proposed change and one retained policy. (A) Add one explicit per-document
   opt-out that removes a document from the Ready, graduation and compaction
@@ -20,16 +20,15 @@ This document answers two unresolved items from an agent report.
 Item 8: Ready lists show records, task lists and historical rulings as if they were proposals.
 Item 9: the CLI counts a question as open when the browser shows a human answer saved in review.
 
-Action eligibility remains a recommendation awaiting an owner ruling.
-The offline CLI policy is settled in the [Decision Ledger](#decision-ledger).
-The proposed action opt-out is not implemented, and its syntax is unsupported today.
+Action eligibility and the offline CLI policy are settled in the [Decision Ledger](#decision-ledger).
+The approved action opt-out is not implemented, and its syntax is unsupported today.
 Evidence was gathered on 2026-11-16 at commit `9e6bbaaa` and is listed in [section 4](#4-evidence).
 
 ## 1. Recommendations
 
 | Item | Recommendation | Status | Owner choice |
 |---|---|---|---|
-| A (report item 8) | One explicit per-document opt-out, scoped to three action lists only. Default unchanged. No genre taxonomy, no inference. | Not built; syntax proposed | [OQ-ER1](#OQ-ER1) |
+| A (report item 8) | One explicit per-document opt-out, scoped to three action lists only. Default unchanged. No genre taxonomy, no inference. | Approved; not built | [OQ-ER1](#decision-ledger) |
 | B (report item 9) | No new network feature and no review-aware CLI mode. Retain the current offline count, its existing "open in Markdown" note, and the existing generated handoff. | Settled; existing behavior retained, no implementation needed | [OQ-ER2](#decision-ledger) |
 
 Two terms are coined here.
@@ -60,14 +59,15 @@ A truthful done-role stage retires the document, as described in [section 2.3](#
 Path exclusion is the existing opt-out from all participation: it removes the document from planning entirely ([planning guide](../../userguide/guides/planning.md#L25-L92)).
 Exclusion hides the document's questions and badges, and stops it holding up documents that depend on it.
 
-### 2.2 Recommended policy
+### 2.2 Approved policy
 
 Separate two things the index currently treats as one.
 
 - **Participation** is unchanged: status, stage or a question directive.
 - **Action eligibility** defaults to yes, and one frontmatter key can turn it off for that document.
+- **Author control:** you or an agent deliberately adds the setting to the document. Once implemented, the shared planning scan applies it in both the browser and CLI. No automatic classification or new UI toggle is included. Removing the setting restores normal stage-based eligibility.
 
-Proposed syntax, **unsupported today**:
+Approved syntax, **unsupported until implementation**:
 
 ```yaml
 ---
@@ -110,7 +110,7 @@ The disagrees list is kept because it is the one place a stage and an open quest
 |---|---|
 | Key missing | `all`; identical to today |
 | `all` | Identical to today |
-| `none` | As in [section 2.2](#22-recommended-policy) |
+| `none` | As in [section 2.2](#22-approved-policy) |
 | Any other value, or a non-string | Treated as `all`, with a visible diagnostic. An invalid value must leave the document in the lists rather than silently drop it. |
 | Malformed frontmatter | Unreadable, as today |
 | Key on a document with no status, stage or question | Inert; the key does not make a document a contributor |
@@ -280,28 +280,9 @@ These describe behavior that would show the design is met. None has been run.
 - `planning/question-length` stays off by default.
 - No second Go Markdown parser, no per-card CLI, and no in-process git library.
 
-## Open Questions
-
-1. 💬 **OQ-ER1: Should a document be able to opt out of Ready, graduation and compaction without leaving planning?**
-
-   Walkthrough: you open the Planning page and Ready lists a quarterly rulings log, staged `DECIDED` only because it shares the frontmatter convention. It is not something to build. Today you can exclude its path, which also hides any open question in it, or you can ignore the entry.
-
-   Under Option A, you or an agent deliberately adds a frontmatter setting to that document. Once implemented, the shared planning scan reads it and keeps the document out of the three action lists in both the browser and CLI. There is no automatic classification or new UI toggle in this proposal. Removing the setting restores normal action eligibility; the setting does not work today.
-
-   - **Option A, action opt-out (proposed key).** Add `planning-actions: none` to that file. It leaves Ready, graduation and compaction. Its questions, badges and dependency role stay. Other documents are unaffected.
-   - **Option B, existing tools only.** Restage finished records to a true done stage and path-exclude the rest. Nothing new to learn. A live record with a real open question either stays in the lists or loses its question from planning.
-   - **Option C, document kinds.** Every planning document declares a kind, and each kind has its own list rules. Most expressive; every existing document needs classifying, and tasks that are real proposals need an exception.
-
-   <!-- vantage: question id=OQ-ER1 leaning="Option A: one per-document opt-out scoped to Ready, graduation and compaction only" -->
-
-   _Leaning:_ Option A: one per-document opt-out scoped to Ready, graduation and compaction only.
-
-   **Answer:**
-
-   >
-
 ## Decision Ledger
 
 | ID | Ruling / Decision | Date | Settled in | Built |
 |---|---|---|---|---|
+| OQ-ER1 | Option A: author-controlled `planning-actions: none` removes only Ready, graduation and compaction offers. Questions, badges, routing and dependencies remain unchanged; no classifier or UI toggle. | 2026-11-16 | [Approved policy](#22-approved-policy) | Not built |
 | OQ-ER2 | Option A: retain the offline CLI, its existing "open in Markdown" explanation and generated handoff. Add no review-aware mode, export or live query. | 2026-11-16 | [Retained offline policy](#32-retained-offline-policy) | Existing behavior retained; no implementation needed |
