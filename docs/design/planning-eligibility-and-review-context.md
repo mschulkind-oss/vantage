@@ -3,9 +3,9 @@ title: Planning action eligibility and review-aware question counts
 date: 2026-11-16
 status: in-review
 stage: DESIGN
-next: Owner rules on OQ-ER1 (action opt-out) and OQ-ER2 (review state for agents); nothing here is built or accepted
+next: Owner clarifies and rules on OQ-ER1 (action opt-out); the offline CLI policy is settled, and the opt-out is not built
 summary: >
-  Two design recommendations, neither built. (A) Add one explicit per-document
+  One proposed change and one retained policy. (A) Add one explicit per-document
   opt-out that removes a document from the Ready, graduation and compaction
   lists only, leaving its questions, routing, dependencies and badges untouched.
   (B) Add no new channel between the CLI and a running Vantage; retain the
@@ -20,8 +20,9 @@ This document answers two unresolved items from an agent report.
 Item 8: Ready lists show records, task lists and historical rulings as if they were proposals.
 Item 9: the CLI counts a question as open when the browser shows a human answer saved in review.
 
-Everything here is a recommendation awaiting an owner ruling.
-Nothing is implemented, and the proposed syntax is unsupported today.
+Action eligibility remains a recommendation awaiting an owner ruling.
+The offline CLI policy is settled in the [Decision Ledger](#decision-ledger).
+The proposed action opt-out is not implemented, and its syntax is unsupported today.
 Evidence was gathered on 2026-11-16 at commit `9e6bbaaa` and is listed in [section 4](#4-evidence).
 
 ## 1. Recommendations
@@ -29,7 +30,7 @@ Evidence was gathered on 2026-11-16 at commit `9e6bbaaa` and is listed in [secti
 | Item | Recommendation | Status | Owner choice |
 |---|---|---|---|
 | A (report item 8) | One explicit per-document opt-out, scoped to three action lists only. Default unchanged. No genre taxonomy, no inference. | Not built; syntax proposed | [OQ-ER1](#OQ-ER1) |
-| B (report item 9) | No new network feature and no review-aware CLI mode. Retain the current offline count, its existing "open in Markdown" note, and the existing generated handoff. | Current behavior retained; nothing new proposed | [OQ-ER2](#OQ-ER2) |
+| B (report item 9) | No new network feature and no review-aware CLI mode. Retain the current offline count, its existing "open in Markdown" note, and the existing generated handoff. | Settled; existing behavior retained, no implementation needed | [OQ-ER2](#decision-ledger) |
 
 Two terms are coined here.
 
@@ -161,7 +162,7 @@ The CLI also says so itself. Its index command carries the note "The count is op
 
 So the report's observation is correct, and it is the documented and labeled behavior.
 
-### 3.2 Recommended policy
+### 3.2 Retained offline policy
 
 Add no network feature, no review-aware CLI mode, no export and no receipts.
 
@@ -285,6 +286,8 @@ These describe behavior that would show the design is met. None has been run.
 
    Walkthrough: you open the Planning page and Ready lists a quarterly rulings log, staged `DECIDED` only because it shares the frontmatter convention. It is not something to build. Today you can exclude its path, which also hides any open question in it, or you can ignore the entry.
 
+   Under Option A, you or an agent deliberately adds a frontmatter setting to that document. Once implemented, the shared planning scan reads it and keeps the document out of the three action lists in both the browser and CLI. There is no automatic classification or new UI toggle in this proposal. Removing the setting restores normal action eligibility; the setting does not work today.
+
    - **Option A, action opt-out (proposed key).** Add `planning-actions: none` to that file. It leaves Ready, graduation and compaction. Its questions, badges and dependency role stay. Other documents are unaffected.
    - **Option B, existing tools only.** Restage finished records to a true done stage and path-exclude the rest. Nothing new to learn. A live record with a real open question either stays in the lists or loses its question from planning.
    - **Option C, document kinds.** Every planning document declares a kind, and each kind has its own list rules. Most expressive; every existing document needs classifying, and tasks that are real proposals need an exception.
@@ -297,18 +300,8 @@ These describe behavior that would show the design is met. None has been run.
 
    >
 
-2. 💬 **OQ-ER2: Should agents get any view of review state beyond the offline "open in Markdown" count?**
+## Decision Ledger
 
-   Walkthrough: you answer three questions in review in the browser and the agent has not yet recorded those rulings in Markdown. An agent runs the CLI, sees those three still open in Markdown, and mentions them in its report. The planning page shows them as response saved.
-
-   - **Option A, offline only.** The CLI stays as it is, including its existing "open in Markdown" note. The handoff link shows you the live page. The agent may still mention the three questions, but never as waiting on you. No published principle changes.
-   - **Option B, browser export.** You press an export control and hand the agent a point-in-time file. The agent sees those three as "response saved, observed at T" and nothing of your answer text. The file is a point-in-time record and is stale once you edit or answer again; the agent's tool must hash the local files when it reads the export and treat any mismatch as unknown. The filesystem stays the only channel. You would confirm that a status-only export stays within the boundary of [answer publication section 3.1](./answer-publication.md#31-document-evidence).
-   - **Option C, explicit live query.** A separate, explicitly invoked tool asks a running Vantage. It is freshest, and it fails loudly with no counts when the server is unreachable. This needs explicit amendments to P1 and [section 10 of the agent CLI reference](../reference/agent-cli.md#10-non-goals), and an endpoint contract change.
-
-   <!-- vantage: question id=OQ-ER2 leaning="Option A: offline only, with the count labeled open in Markdown and no new channel" -->
-
-   _Leaning:_ Option A: offline only, with the count labeled open in Markdown and no new channel.
-
-   **Answer:**
-
-   >
+| ID | Ruling / Decision | Date | Settled in | Built |
+|---|---|---|---|---|
+| OQ-ER2 | Option A: retain the offline CLI, its existing "open in Markdown" explanation and generated handoff. Add no review-aware mode, export or live query. | 2026-11-16 | [Retained offline policy](#32-retained-offline-policy) | Existing behavior retained; no implementation needed |
