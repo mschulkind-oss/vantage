@@ -40,9 +40,10 @@ import type {
 /**
  * The scanner id's first part: bumped by hand whenever a stored shape
  * changes, so no result of the old shape is ever read as the new one. 3: a
- * planning document carries a display title.
+ * planning document carries a display title. 4: a planning document may carry
+ * planningActions.
  */
-export const SCAN_CACHE_SCHEMA = 3;
+export const SCAN_CACHE_SCHEMA = 4;
 
 /**
  * The scanner id (§11.2): the schema, the hash of the source the scan is built

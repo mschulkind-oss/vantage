@@ -221,7 +221,7 @@ export type BlockedOn =
 
 /** A header value that is ignored, and why (§3.4, Plan Q20). */
 export interface HeaderProblem {
-  key: "stage" | "next" | "depends-on";
+  key: "stage" | "next" | "depends-on" | "planning-actions";
   line: number;
   message: string;
 }
@@ -242,6 +242,13 @@ export interface PlanningDocument {
    * when both a valid current stage and valid top-level `stage-since` exist.
    */
   stageSince?: string;
+  /**
+   * Present only when the document's `planning-actions` is `none`. Absent
+   * means eligible, as it does for every document without the key: a
+   * `none` document stays in the index and its questions, but is left out of
+   * Ready, graduation and the compaction offer (design §2.2).
+   */
+  planningActions?: "none";
   /** A one-line string, trimmed; else `null` plus a problem. */
   next: string | null;
   /** A single path is a one-entry list; a non-string entry is dropped. */
@@ -1088,7 +1095,12 @@ export function idsOf(source: string): string[] {
  * ------------------------------------------------------------------ */
 
 type HeaderKey = HeaderProblem["key"];
-const HEADER_KEYS: readonly HeaderKey[] = ["stage", "next", "depends-on"];
+const HEADER_KEYS: readonly HeaderKey[] = [
+  "stage",
+  "next",
+  "depends-on",
+  "planning-actions",
+];
 
 /** Where each header key, and each of a list's entries, sits in the file. */
 interface HeaderLines {
@@ -1283,6 +1295,7 @@ interface Header {
   stage: string | null;
   stageLine: number | null;
   stageSince?: string;
+  planningActions?: "none";
   next: string | null;
   dependsOn: DependsOn[];
   headerProblems: HeaderProblem[];
@@ -1292,6 +1305,7 @@ function readHeader(
   path: string,
   source: string,
   parsed: ParsedFrontmatter,
+  isRoadmap: boolean,
 ): Header {
   const fm = parsed.frontmatter;
   const has = (key: string) => Object.hasOwn(fm, key);
@@ -1402,6 +1416,30 @@ function readHeader(
         line,
       });
     });
+  }
+
+  if (has("planning-actions")) {
+    const value = fm["planning-actions"];
+    const text = typeof value === "string" ? value.trim() : undefined;
+    if (isRoadmap) {
+      problem(
+        "planning-actions",
+        "`planning-actions` does nothing on the roadmap, which is always listed, so it is ignored here.",
+      );
+    } else if (text === "none") {
+      header.planningActions = "none";
+    } else if (text !== "all") {
+      const shown =
+        text === undefined
+          ? describe(value)
+          : text === ""
+            ? "empty"
+            : `\`${text}\``;
+      problem(
+        "planning-actions",
+        `\`planning-actions\` must be \`all\` or \`none\`, and this one is ${shown}, so it is read as \`all\`.`,
+      );
+    }
   }
   return header;
 }
@@ -1589,7 +1627,7 @@ export function scanPlanningDocument(
       path,
       title: documentTitle(path, fm["title"], root),
       status: isDocStatus(status) ? status : null,
-      ...readHeader(path, source, parsed),
+      ...readHeader(path, source, parsed, isRoadmap),
       questions,
       links: linksOf(
         root,

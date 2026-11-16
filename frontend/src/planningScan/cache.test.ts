@@ -71,7 +71,7 @@ function brokenStore(): ScanStore & { calls: number } {
 describe("the scanner id", () => {
   it("joins the schema, the source hash and the user agent", () => {
     expect(scannerIdOf("abc", "Mozilla/5.0 (X11)")).toBe(
-      "3:abc:Mozilla/5.0 (X11)",
+      "4:abc:Mozilla/5.0 (X11)",
     );
   });
 

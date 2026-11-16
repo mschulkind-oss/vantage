@@ -234,16 +234,17 @@ export type PlanningQuestionKeeper = (question: PlanningQuestion) => boolean;
 
 /**
  * The ✅ questions the `compact` request lists: every one in a document whose
- * stage does not have the done role, by document in index order, then line,
- * that `keeps` keeps (default: all). Retired documents are historical records,
- * not maintenance requests, just as in the other planning sections.
+ * stage does not have the done role and that does not opt out with
+ * `planning-actions: none`, by document in index order, then line, that `keeps`
+ * keeps (default: all). Retired documents are historical records, not
+ * maintenance requests, just as in the other planning sections.
  */
 export function answeredQuestions(
   index: PlanningIndex,
   keeps: PlanningQuestionKeeper = () => true,
 ): QuestionRef[] {
   return index.documents
-    .filter((doc) => isLive(index, doc))
+    .filter((doc) => isLive(index, doc) && doc.planningActions !== "none")
     .flatMap((doc) =>
       doc.questions
         .filter((q) => q.state === "answered" && keeps(q))
