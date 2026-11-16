@@ -59,6 +59,31 @@ deprecated name it replaces. Every roadmap
 be neither, and dropped. Only planning documents contribute to the index: their
 header, their questions and their links.
 
+**Opting records out without claiming they are done.** Vantage does not infer
+whether a document is a design, task list, inventory or historical ruling from
+its title or prose. A `ready` stage with no open questions makes an indexed
+document eligible for Ready to build, whatever kind of document the author
+intended. There is no document-kind classifier or per-document `planning:
+false` switch.
+
+Use the existing path-based opt-out in the repository's `.vantage.toml` when
+those documents should not participate in planning at all. For example, merge
+these patterns into the existing `[planning]` table rather than adding a second
+one or discarding its other exclusions:
+
+```toml
+[planning]
+exclude = ["docs/records/**", "docs/inventories/**", "docs/rulings/**"]
+```
+
+Choose the paths deliberately; do not exclude active tasks merely because they
+are called tasks. Excluded documents lose planning badges and maintenance
+entries, and dependencies outside the index do not make anything wait. For a
+temporary view that keeps the underlying index intact, use the page's filter
+or `vantage-check index --filter`
+instead. Assign a `done` stage role only when that stage truthfully means
+historical or reference material, not as a way to hide active work.
+
 **Questions.** A question is a `question` or an `oq` directive, identified by
 its document and its `id`. Its state comes from the emoji before its bold
 title, checked against what the question's `blocked-on` names:
@@ -96,7 +121,12 @@ A question stops counting when its directive is removed, and that is normally
 when it is **compacted**: once a question is ruled, the design-document
 convention Vantage's own documents follow deletes the question and keeps one
 row for it, id included, in the document's **Decision Ledger**, a table of
-its rulings.
+its rulings. Under a heading named **Decision Ledger**, valid exact IDs in
+that table's first column keep their `#OQ-…` row anchors without declaring new
+questions or offering answer controls. Existing question links can survive
+compaction; older viewers without row-anchor support still need ledger-heading
+links. See [Ledger row anchors](../../docs/reference/linked-references.md#ledger-row-anchors)
+for scope and collision handling.
 
 A directive with no `id`, a malformed one, or an id used earlier in the same
 document still makes a question, counted like any other; it simply has no id
@@ -1102,7 +1132,14 @@ leaves out what it matches:
   you have already answered with a comment, since Vantage reads no comments to
   decide what is open; it stays an answered row of *Needs you*. The page
   subtracts answers pending in review, and `vantage-check index` cannot, so
-  its count is *open in Markdown* and never *waiting on you*. An agent handing
+  its count is *open in Markdown* and never *waiting on you*. The standalone
+  command does not read machine-local review files or contact the running
+  server; there is no server-aware index mode. An agent must not use its count
+  as proof that the human has not answered. Use the browser's **Copy answers**
+  for saved review responses and deliver real replies through the
+  [review inbox](review-inbox.md#what-the-agent-writes). An ID recorded in a ledger
+  is evidence of document state, not proof that a reply was consumed.
+  An agent handing
   you a filter follows the contract in the [style guide](../reference/style-guide.md);
   a `OQ-` id in a table is no question until it is filed with a `question`
   directive, and `vantage-check` warns about one (`vantage/question-candidate`).
