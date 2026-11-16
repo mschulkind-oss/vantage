@@ -60,7 +60,12 @@ import {
 } from "../vantageDirectives.js";
 import { isDocStatus, type DocStatus } from "../vantageFrontmatter.js";
 import { cutCardBlocks, outlineOf } from "./cardSource.js";
-import { blockLines, ledgerIds, unitFingerprint } from "./evidence.js";
+import {
+  blockLines,
+  ledgerIds,
+  textContentOf,
+  unitFingerprint,
+} from "./evidence.js";
 import { resolveRepoLink } from "./links.js";
 
 /** A question's state. `answered` is ✅: ruled, awaiting compaction. */
@@ -358,37 +363,7 @@ function flatten(text: string): string {
  * alt text contribute nothing, as they contribute nothing to `textContent`.
  */
 function textOf(node: Nodes): string {
-  switch (node.type) {
-    case "text":
-    case "inlineCode":
-      return node.value;
-    case "break":
-      return "\n";
-    case "html":
-    case "image":
-    case "imageReference":
-    case "definition":
-    case "footnoteReference":
-      return "";
-    case "code":
-    case "math":
-    case "inlineMath":
-      return node.value;
-  }
-  if (!("children" in node)) return "";
-  const phrasing =
-    node.type === "paragraph" ||
-    node.type === "heading" ||
-    node.type === "tableCell" ||
-    node.type === "emphasis" ||
-    node.type === "strong" ||
-    node.type === "delete" ||
-    node.type === "link" ||
-    node.type === "linkReference";
-  const parts = (node.children as Nodes[]).map(textOf);
-  const title = alertTitles.get(node);
-  if (title !== undefined) parts.unshift(title);
-  return parts.join(phrasing ? "" : "\n");
+  return textContentOf(node, alertTitles);
 }
 
 /** The first `strong` in `node`, pre-order, whose text opens with an id. */

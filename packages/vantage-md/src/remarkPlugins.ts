@@ -14,6 +14,7 @@
 import type { PluggableList } from "unified";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
+import remarkDecisionLedgerAnchors from "./remarkDecisionLedgerAnchors.js";
 import type { PipelineOptions } from "./pipeline.js";
 
 /**
@@ -33,5 +34,6 @@ export function buildRemarkPlugins(
   // style guide and the user guide state, not preferences.
   if (gfm) plugins.push([remarkGfm, { singleTilde: false }]);
   if (math) plugins.push([remarkMath, { singleDollarTextMath: false }]);
+  if (gfm) plugins.push(remarkDecisionLedgerAnchors);
   return plugins;
 }
