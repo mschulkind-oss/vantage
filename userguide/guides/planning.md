@@ -59,12 +59,31 @@ deprecated name it replaces. Every roadmap
 be neither, and dropped. Only planning documents contribute to the index: their
 header, their questions and their links.
 
-**Opting records out without claiming they are done.** Vantage does not infer
+**Opting a record out of Ready and compaction.** Vantage does not infer
 whether a document is a design, task list, inventory or historical ruling from
 its title or prose. A `ready` stage with no open questions makes an indexed
 document eligible for Ready to build, whatever kind of document the author
-intended. There is no document-kind classifier or per-document `planning:
-false` switch.
+intended. There is no document-kind classifier and no `planning: false` switch.
+
+Add `planning-actions: none` to the frontmatter of a live record that should
+not be offered as ready to build, as ready to graduate, or as a question to fold
+into the ledger. It takes effect in three places only:
+
+- the document is left out of **Ready to build**, **Ready to graduate** and
+  **To fold into the ledger**, and the `compact` request skips its answered
+  questions;
+- its questions, their badges, its stage, the **Stage conflict** list and its
+  dependencies, the routing of its questions and **Not on a roadmap** are
+  unchanged, so an open question still shows and still waits for a roadmap;
+- no filter brings it back into those three lists.
+
+`planning-actions: all` is the default, and it is the same as leaving the key
+out. Any other value, such as `maybe` or `true`, is read as `all`, and
+`vantage-check` reports it as a warning (`planning/actions-value`). On a roadmap
+the key does nothing, and `vantage-check` says so. On a stage with the `done`
+role it has no effect, since nothing is offered from there anyway. A document
+with only this key and no `stage`, `status` or question is still not a planning
+document. The Work card's details say when the key is set.
 
 Use the existing path-based opt-out in the repository's `.vantage.toml` when
 those documents should not participate in planning at all. For example, merge
@@ -485,10 +504,10 @@ From top to bottom, leaving out any that are empty:
 | Kind | Holds |
 | :--- | :--- |
 | **Not on a roadmap** | Open questions no roadmap routes, by path |
-| **Ready to build** | Documents whose stage has the `ready` role and no open questions, whether or not a `depends-on` still waits |
-| **Ready to graduate** | Documents whose stage has the `built` role and no questions left, whether or not a `depends-on` still waits |
+| **Ready to build** | Documents whose stage has the `ready` role and no open questions, whether or not a `depends-on` still waits, unless the document opts out with `planning-actions: none` |
+| **Ready to graduate** | Documents whose stage has the `built` role and no questions left, whether or not a `depends-on` still waits, unless the document opts out with `planning-actions: none` |
 | **Stage conflict** | Documents whose stage says `ready` or `built` while they still have open questions |
-| **To fold into the ledger** | ✅ questions: ruled, and waiting for an agent to fold the ruling into the document and record it |
+| **To fold into the ledger** | ✅ questions: ruled, and waiting for an agent to fold the ruling into the document and record it, unless the document opts out with `planning-actions: none` |
 | **Too large** | Candidates over the size limit ([below](#limits)): the path, its size and the limit |
 | **Unreadable** | Candidates that could not be read, or whose frontmatter does not parse: the path and why |
 

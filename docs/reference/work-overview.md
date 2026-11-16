@@ -112,7 +112,10 @@ question and conflict cues; its keyboard-accessible details disclosure is named
 with both the title and path, so repeated titles remain distinct. Open details
 flow within the tile, growing it in the page rather than floating over its
 neighbors; every fact and handoff action remains in the same scrollable content
-as its tile.
+as its tile. A document whose `planning-actions` is `none` says so in its details,
+in one line the closed tile does not show, so the tile keeps its height; the line
+says it is not offered as ready to build, ready to graduate or to fold into the
+ledger ([planning documents](../../userguide/guides/planning.md)).
 
 Question links open Questions scoped to that document, preserving the existing
 answer-and-copy flow. Known next-step question references link to the same

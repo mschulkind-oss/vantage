@@ -8,7 +8,7 @@ The order is the one thing this file holds that no other document can. Each entr
 
 ## 📦 Up Next
 
-1. [Planning actions opt-out and the 0.12.0 release preparation](docs/design/planning-eligibility-and-review-context-plan.md), first, because the owner approved the opt-out and the next minor release should carry it; hiding records from action lists must not hide their questions, and [the design](docs/design/planning-eligibility-and-review-context.md) keeps them listed.
+1. [Planning actions opt-out and the 0.12.0 release preparation](docs/design/planning-eligibility-and-review-context-plan.md), first, because the opt-out is built and its 0.12.0 notes are prepared, and what remains is the owner's release and graduating [the design](docs/design/planning-eligibility-and-review-context.md) into the planning reference; the opt-out hides records from action lists and never their questions.
 
 2. [Forward-compatible notation for 0.8.0](docs/design/checker-version-skew.md), next, because 0.8.0 is tagged next and the author's agent instructions outside this repository still teach the old question names until [their owner updates them](docs/design/checker-version-skew-plan.md#hand-off-agent-instructions-outside-this-repository). Once the tag is out, the design graduates into a reference.
 
