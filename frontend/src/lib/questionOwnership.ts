@@ -373,6 +373,9 @@ export function unassignedRequestsText(
         [
           `## ${UNRESOLVED_TITLES[kind]}: ${path}`,
           reason ? `(${reason})` : "",
+          kind === "compacted"
+            ? "This ID is already recorded in the Decision Ledger. Check the saved ruling against this comment: if it satisfies the comment, acknowledge the existing comment; otherwise report the remaining work. Do not treat the ledger ID as a new unanswered question or re-ask the recorded decision. The ledger entry does not prove a reply was delivered."
+            : "",
           quote ? `> ${quote.replace(/\n/g, "\n> ")}` : "",
           `comment_id: ${comment.id}`,
           comment.comment,

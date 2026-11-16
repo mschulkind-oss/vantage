@@ -330,6 +330,25 @@ describe("Compacted", () => {
     "",
   ].join("\n");
 
+  it("asks for a real reply on a compacted comment without re-asking the recorded decision", () => {
+    const index = indexOf({ "a.md": doc(own("OQ-B1"), ledger) }, STAGES);
+    const pending = comment({ question_id: "OQ-C1", comment: "My ruling" });
+    const map = ownershipMap(index, { "a.md": [pending] });
+    const groups = unresolvedGroups(map, new Set());
+    const text = unassignedRequestsText(groups)!;
+    expect(text).toContain(`comment_id: ${pending.id}`);
+    expect(text).toContain("My ruling");
+    expect(text).toContain(
+      "This ID is already recorded in the Decision Ledger",
+    );
+    expect(text).toContain("acknowledge the existing comment");
+    expect(text).toContain(
+      "Do not treat the ledger ID as a new unanswered question or re-ask the recorded decision",
+    );
+    expect(pending.reactions).toEqual([]);
+    expect(map.unresolved.compacted).toHaveLength(1);
+  });
+
   it("reads a comment on an id only the ledger holds as Compacted, and one on an id written elsewhere as Unknown", () => {
     const index = indexOf(
       { "a.md": doc(own("OQ-A1"), ledger, "", "See OQ-Z9 for context.") },

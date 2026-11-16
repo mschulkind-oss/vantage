@@ -99,6 +99,35 @@ describe("PlanningUnresolved", () => {
     expect(control).toHaveAccessibleName("1 with unresolved ownership");
   });
 
+  it("keeps the ownership control's words until the primary labels must yield and provides a tooltip", () => {
+    render(<PlanningUnresolved groups={groupsOf([legacy])} known />);
+    const control = screen.getByTestId("unresolved-ownership");
+    expect(control.querySelector(".hdr-label")).not.toHaveClass(
+      "hdr-label-minor",
+    );
+    expect(control).toHaveAttribute("data-tip", "1 with unresolved ownership");
+  });
+
+  it("explains that a ledger-recorded ID is not a new unanswered question or proof of a reply", () => {
+    const groups = groupsOf([]);
+    const compacted: CommentOwnership = {
+      path: "a.md",
+      comment: { ...legacy, question_id: "OQ-C1" },
+      kind: "compacted",
+      reason: "id OQ-C1 is in the Decision Ledger and has no question left",
+    };
+    render(
+      <PlanningUnresolved
+        groups={{ ...groups, compacted: [compacted] }}
+        known
+      />,
+    );
+    fireEvent.click(screen.getByTestId("unresolved-ownership"));
+    expect(screen.getByTestId("unresolved-compacted")).toHaveTextContent(
+      "The question ID is recorded in the Decision Ledger, not newly unanswered. Its review comment still awaits an agent reply; the ledger entry is not a delivery receipt.",
+    );
+  });
+
   it("counts the unresolved comments and says Unknown while the reviews are not all read", () => {
     const { rerender } = render(
       <PlanningUnresolved groups={groupsOf([legacy])} known />,
