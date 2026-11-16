@@ -3305,11 +3305,32 @@ export const PlanningPage: React.FC = () => {
       // The answers it shows: live for a question the reader answered here
       // this visit, else the reviews the layout painted, so a reply or an
       // answer made elsewhere never changes the row's lines (§12.1).
+      // Include this tab's typed text before a save lands, so collapsing
+      // does not draw an empty row and add the answer on a later response.
+      const savedComments =
+        now === undefined ? undefined : liveComments.get(questionKey(now));
+      const documentComments = reviews.byPath[question.path] ?? [];
+      const typed = own.has(item.key)
+        ? typedComments(question.path, documentComments)
+        : [];
+      // Preserve the card's exact scoping for existing comments. Only newly
+      // typed comments need placement before their save has been reported.
+      const newComments =
+        commentsByQuestion(
+          [now ?? question],
+          {
+            [question.path]: typed.filter(
+              (c) => !documentComments.some((saved) => saved.id === c.id),
+            ),
+          },
+          index === null ? undefined : allQuestionsByPath(index),
+        ).get(questionKey(now ?? question)) ?? [];
+      const ownedIds = new Set(
+        [...(savedComments ?? []), ...newComments].map((c) => c.id),
+      );
       const answers = rowAnswers(
         own.has(item.key)
-          ? now === undefined
-            ? undefined
-            : liveComments.get(questionKey(now))
+          ? typed.filter((c) => ownedIds.has(c.id))
           : current?.paintedByQuestion.get(questionKey(question)),
         question.leaning ?? OQ_DEFAULT_LEANING,
       );
@@ -3413,6 +3434,21 @@ export const PlanningPage: React.FC = () => {
         newReply={newReply}
         onNewReply={seeCardReply}
         onAnswered={answeredHere}
+        onCollapse={
+          current?.inPlace.opened.has(item.key) &&
+          (liveComments.get(questionKey(question))?.length ?? 0) > 0
+            ? () => {
+                focusRef.current = {
+                  key: item.key,
+                  on: "row",
+                  onlyIfLost: false,
+                };
+                changeInPlace((s) =>
+                  shrinkCard(s.inPlace, s.needsYou, item.key),
+                );
+              }
+            : undefined
+        }
         onAnswering={answering}
         growing={growing.has(item.key)}
         onGrown={grown}

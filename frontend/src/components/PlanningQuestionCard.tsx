@@ -301,6 +301,8 @@ interface PlanningQuestionCardProps {
   newReply?: boolean;
   /** New reply pressed: the list opens on the reply, and the page is told. */
   onNewReply?: (key: string) => void;
+  /** Hide a card opened from an answered row, returning it to that row. */
+  onCollapse?: () => void;
   /**
    * A comment filed from this card landed, its box closed holding text or a
    * leaning taken: the page shrinks the card to a row (§6.4), from `height`,
@@ -732,6 +734,7 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
   newReply = false,
   onNewReply,
   onAnswered,
+  onCollapse,
   onAnswering,
   growing = false,
   onGrown,
@@ -1444,6 +1447,17 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
           newReply={newReply}
           onNewReply={pressNewReply}
         />
+        {onCollapse !== undefined && (
+          <button
+            type="button"
+            aria-label={`Hide ${question.title}`}
+            disabled={answering !== null || editing !== null}
+            onClick={onCollapse}
+            className="ml-auto rounded px-1.5 py-0.5 text-[11px] font-medium text-slate-600 hover:bg-slate-100 disabled:opacity-50 dark:text-slate-300 dark:hover:bg-slate-700"
+          >
+            Hide
+          </button>
+        )}
       </div>
 
       {lifecycle !== undefined && lifecycle !== null && (
