@@ -195,7 +195,7 @@ export const RULES: readonly RuleMeta[] = [
   {
     id: "vantage/question-name",
     summary:
-      "An `oq` directive on a 🔒 or ✅ question, which every viewer before 0.8 offers to answer, or a question directive below a 🔒 or ✅ title outside a list, where the question reads as open",
+      "An `oq` directive on a 🔒 or ✅ question, a question directive below its own heading or a closed title outside a list, or a directive ID disagreeing with the question title it actually attaches to",
     default: "error",
   },
   {
