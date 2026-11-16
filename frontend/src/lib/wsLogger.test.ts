@@ -78,6 +78,65 @@ describe("wsLogger", () => {
     expect(payload.entries[0].msg).toBe("[ws] dropped");
   });
 
+  it.each(["x", "😀", '"\\\n'])(
+    "bounds oversized live log frames containing %j without changing console output",
+    (character) => {
+      bindLoggerSocket(socket as unknown as WebSocket);
+      const message = character.repeat(40_000);
+      wsLog.log(message);
+      const frame = socket.send.mock.calls[0][0] as string;
+      expect(new TextEncoder().encode(frame).length).toBeLessThanOrEqual(
+        16_384,
+      );
+      const payload = JSON.parse(frame);
+      expect(payload.msg).toContain("[truncated]");
+      expect(payload.msg).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/u);
+      expect(consoleLog).toHaveBeenCalledWith(message);
+      bindLoggerSocket(socket as unknown as WebSocket);
+      expect(socket.send).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("splits a full reconnect backlog into bounded frames in order", () => {
+    for (let i = 0; i < 500; i++) wsLog.log(`${i}: ${"😀".repeat(100)}`);
+    bindLoggerSocket(socket as unknown as WebSocket);
+    expect(socket.send.mock.calls.length).toBeGreaterThan(1);
+    const entries = socket.send.mock.calls.flatMap(([frame]) => {
+      expect(
+        new TextEncoder().encode(frame as string).length,
+      ).toBeLessThanOrEqual(16_384);
+      return JSON.parse(frame as string).entries as { msg: string }[];
+    });
+    expect(entries).toHaveLength(500);
+    entries.forEach((entry, i) =>
+      expect(entry.msg).toBe(`${i}: ${"😀".repeat(100)}`),
+    );
+    socket.send.mockClear();
+    bindLoggerSocket(socket as unknown as WebSocket);
+    expect(socket.send).not.toHaveBeenCalled();
+  });
+
+  it("keeps only unsent batches when a backlog flush fails partway through", () => {
+    for (let i = 0; i < 100; i++) wsLog.log(`${i}: ${"x".repeat(1000)}`);
+    const frames: string[] = [];
+    socket.send.mockImplementation((frame: string) => {
+      if (frames.length === 1) throw new Error("socket closed");
+      frames.push(frame);
+    });
+    bindLoggerSocket(socket as unknown as WebSocket);
+    expect(socket.send).toHaveBeenCalledTimes(2);
+    const next: FakeSocket = { readyState: OPEN, send: vi.fn() };
+    bindLoggerSocket(next as unknown as WebSocket);
+    frames.push(...next.send.mock.calls.map(([frame]) => frame as string));
+    const entries = frames.flatMap(
+      (frame) => JSON.parse(frame).entries as { msg: string }[],
+    );
+    expect(entries).toHaveLength(100);
+    entries.forEach((entry, i) =>
+      expect(entry.msg).toBe(`${i}: ${"x".repeat(1000)}`),
+    );
+  });
+
   it("still mirrors to the browser console", () => {
     bindLoggerSocket(socket as unknown as WebSocket);
     wsLog.log("[ws] visible-in-devtools");
