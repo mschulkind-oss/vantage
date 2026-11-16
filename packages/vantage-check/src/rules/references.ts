@@ -232,7 +232,7 @@ export function checkOqReferences(collector: Collector): void {
       collector.report(
         "ref/unlinked-oq",
         ref.at,
-        `\`${ref.text}\` names an open question but is not a link, so nobody ` +
+        `\`${ref.text}\` names a question ID but is not a link, so nobody ` +
           "can follow it and nothing can notice when it goes stale. Write " +
           `[\`${ref.text}\`](#${ref.text}) for a question in this document, or ` +
           `[\`${ref.text}\`](./other.md#${ref.text}) for one in another. Once ` +
