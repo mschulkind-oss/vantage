@@ -55,6 +55,28 @@ describe("ref/unlinked-oq", () => {
     expect(ruleIds(await checkTree(root))).toEqual([]);
   });
 
+  it("requires a link to a recorded ID without describing the decision as still open", async () => {
+    const root = makeTree({
+      "index.md": [
+        "## Decision Ledger",
+        "",
+        "| ID | Decision |",
+        "| --- | --- |",
+        "| OQ-D1 | Keep the behavior. |",
+        "",
+        "The ruling for OQ-D1 applies here.",
+        "",
+      ].join("\n"),
+    });
+    const report = await checkTree(root);
+    expect(ruleIds(report)).toEqual(["ref/unlinked-oq"]);
+    expect(report.findings[0]?.message).toContain("names a question ID");
+    expect(report.findings[0]?.message).not.toContain("an open question");
+    expect(report.findings[0]?.message).toContain(
+      "row keeps the exact `#id` anchor",
+    );
+  });
+
   it("fires on an id written as prose", async () => {
     const root = makeTree({
       "docs/index.md": `# Q\n\n${OQ}\n\nA question.\n\nWe still owe OQ-4 an answer.\n`,
