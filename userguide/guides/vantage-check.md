@@ -475,6 +475,7 @@ scan, so the gate and the page of one release cannot disagree.
 | `planning/blocked-on-disagrees` | A question marker that disagrees with its `blocked-on` referent: a 🔒 with nothing that still waits, or a 💬 whose referent does | error |
 | `planning/unrouted` | An open question no roadmap [links to](planning.md#the-roadmap), directly or through its document | **off** |
 | `planning/question-length` | A question whose text, not counting its leaning and its Answer, runs past 120 words | off |
+| `planning/actions-value` | A `planning-actions` that is not `all` or `none`, which is read as `all`, or the key on a roadmap, where it does nothing | warning |
 
 They run once, after every document in the run has been checked, and each one
 needs only the document it reports on and the roadmaps. A roadmap that

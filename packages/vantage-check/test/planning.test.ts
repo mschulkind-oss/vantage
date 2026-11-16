@@ -67,7 +67,7 @@ async function messages(cwd: string, ...args: string[]): Promise<string[]> {
 }
 
 describe("the registry", () => {
-  it("registers the six rules with their defaults", () => {
+  it("registers the seven rules with their defaults", () => {
     expect(PLANNING_RULES.map((id) => [id, ruleMeta(id)?.default])).toEqual([
       ["planning/stage-vocabulary", "error"],
       ["planning/depends-on-missing", "error"],
@@ -75,8 +75,9 @@ describe("the registry", () => {
       ["planning/blocked-on-disagrees", "error"],
       ["planning/unrouted", "off"],
       ["planning/question-length", "off"],
+      ["planning/actions-value", "warning"],
     ]);
-    expect(RULES.filter((r) => r.id.startsWith("planning/"))).toHaveLength(6);
+    expect(RULES.filter((r) => r.id.startsWith("planning/"))).toHaveLength(7);
   });
 
   // This repository's own .vantage.toml turns `planning/unrouted` up to a
