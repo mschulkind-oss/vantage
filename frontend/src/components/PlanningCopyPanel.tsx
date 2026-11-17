@@ -13,8 +13,8 @@
  *   it, so tabbing past does not throw a panel over the page.
  * - **Esc or a press elsewhere closes it.** Esc gives the focus back to the ▾.
  * - **The checkboxes are one preference** in this browser, the kinds left
- *   out (`lib/planningCopy.ts`), *Ready to build* among them until the reader
- *   checks it, followed across tabs.
+ *   out (`lib/planningCopy.ts`), followed across tabs. Documents not marked
+ *   built are human information, never offered here.
  * - **Greyed out, never disabled,** with no kind checked or nothing to copy:
  *   `aria-disabled`, so the button keeps its place in the tab order and the
  *   panel still opens from it, or nothing could check a kind again.

@@ -804,19 +804,19 @@ describe("the sections, top to bottom (§6.2)", () => {
     );
   });
 
-  it("lists Ready to build, Ready to graduate and Stage conflict by stage", async () => {
+  it("lists Not marked built, Ready to graduate and Stage conflict by stage", async () => {
     await renderPage();
-    expect(documentsIn("Ready to build")).toEqual(["plans/ready.md"]);
+    expect(documentsIn("Not marked built")).toEqual(["plans/ready.md"]);
     expect(documentsIn("Ready to graduate")).toEqual(["plans/built.md"]);
     expect(documentsIn("Stage conflict")).toEqual(["plans/disagrees.md"]);
     // Each by name, with its badge.
     expect(
-      within(section("Ready to build")).getByRole("link", {
+      within(section("Not marked built")).getByRole("link", {
         name: "plans/ready.md",
       }),
     ).toHaveAttribute("href", "/plans/ready.md");
     expect(
-      within(section("Ready to build")).getByRole("img", {
+      within(section("Not marked built")).getByRole("img", {
         name: "accepted, decided",
       }),
     ).toBeTruthy();
@@ -859,7 +859,7 @@ describe("the sections, top to bottom (§6.2)", () => {
         .map((h) => h.textContent?.replace(/ [\d,]+$/, "")),
     ).toEqual([
       "Not on a roadmap",
-      "Ready to build",
+      "Not marked built",
       "Ready to graduate",
       "Stage conflict",
       "To fold into the ledger",
@@ -884,7 +884,7 @@ describe("empty and degenerate states", () => {
       "Needs you",
       "Not on a roadmap",
       "Blocked",
-      "Ready to build",
+      "Not marked built",
       "Ready to graduate",
       "Stage conflict",
       "Too large",
@@ -1004,7 +1004,7 @@ describe("empty and degenerate states", () => {
     seed(TREE, { stages: null });
     await renderPage();
     expect(screen.getByText(PLANNING_NOTICES.noStages)).toBeTruthy();
-    expect(querySection("Ready to build")).toBeNull();
+    expect(querySection("Not marked built")).toBeNull();
     expect(querySection("Ready to graduate")).toBeNull();
     expect(querySection("Stage conflict")).toBeNull();
     // Needs you, Not on a roadmap and Blocked need only questions and links.
@@ -2062,7 +2062,7 @@ describe("a group the layout did not have (§6.4)", () => {
     seed(tree);
     await renderPage();
     const kinds = () => screen.getByTestId("maintenance-kinds");
-    expect(kinds()).toHaveTextContent(/^· 1 ready to build$/);
+    expect(kinds()).toHaveTextContent(/^· 1 not marked built$/);
     const after = {
       ...tree,
       "plans/ready2.md": doc("status: accepted\nstage: DECIDED", "Decided."),
@@ -2071,9 +2071,9 @@ describe("a group the layout did not have (§6.4)", () => {
     serveTree(after);
     setLoad(readyOf(after));
     await settle();
-    expect(kinds()).toHaveTextContent(/^· 2 ready to build$/);
+    expect(kinds()).toHaveTextContent(/^· 2 not marked built$/);
     await refresh();
-    expect(kinds()).toHaveTextContent(/^· 2 ready to build · 1 to graduate$/);
+    expect(kinds()).toHaveTextContent(/^· 2 not marked built · 1 to graduate$/);
   });
 });
 
@@ -4629,8 +4629,8 @@ describe("each section's explanation, and Copy agent request", () => {
     screen.getByRole("button", { name: `Copy agent request for ${title}` });
   /**
    * Copy answers + maintenance, which replaced Copy all agent requests
-   * (planning-index.md §6.7): with every kind checked and no answer
-   * pending, what it copies is every request, as `--request` prints it.
+   * (planning-index.md §6.7): with every offered kind checked and no answer
+   * pending, it copies those kinds' requests, as `--request <kinds>` prints them.
    */
   const copyAll = () =>
     screen.getByRole("button", { name: /^Copy answers \+ maintenance / });
@@ -4649,7 +4649,7 @@ describe("each section's explanation, and Copy agent request", () => {
     resetRepoRootsForTests();
     seed();
     serveInfo(ROOT);
-    // Every kind checked, Ready to build too.
+    // A legacy saved All choice, which used to include ready-stage documents.
     localStorage.setItem("vantage:planningCopyLeftOut", "");
   });
 
@@ -4659,10 +4659,12 @@ describe("each section's explanation, and Copy agent request", () => {
       "needs-you",
       "unrouted",
       "waiting",
-      "ready",
       "graduate",
       "disagrees",
     ] as const;
+    expect(section("Not marked built")).toHaveAccessibleDescription(
+      "Decided, with no open questions, but not marked built. Vantage reads the document’s stage; it does not verify whether the work is built.",
+    );
     for (const id of shown) {
       const { title, explanation } = PLANNING_SECTION_GUIDE[id];
       const region = section(title);
@@ -4707,12 +4709,11 @@ describe("each section's explanation, and Copy agent request", () => {
     await renderPage();
     expect(agentButtons()).toEqual([
       "Copy agent request for Not on a roadmap",
-      "Copy agent request for Ready to build",
       "Copy agent request for Ready to graduate",
       "Copy agent request for Stage conflict",
       "Copy agent request for To fold into the ledger",
     ]);
-    for (const title of ["Needs you", "Blocked"]) {
+    for (const title of ["Needs you", "Blocked", "Not marked built"]) {
       expect(
         within(section(title)).queryByRole("button", { name: /agent/ }),
       ).toBeNull();
@@ -4763,22 +4764,26 @@ describe("each section's explanation, and Copy agent request", () => {
     );
   });
 
-  it("copies every agent section's request in one with every kind checked, as vantage-check index --request prints it by default", async () => {
+  it("copies actionable maintenance only with a saved All choice, keeping not-marked-built information for humans", async () => {
     await renderPage();
     const { index, sections } = shownState();
     await press(copyAll());
     const copied = writeText.mock.calls[0][0] as string;
     expect(copied).toBe(
-      planningAgentRequest(index, sections, { repository: ROOT }),
+      planningAgentRequest(index, sections, {
+        repository: ROOT,
+        ids: ["unrouted", "disagrees", "compact", "graduate"],
+      }),
     );
     for (const title of [
       "Not on a roadmap",
-      "Ready to build",
       "Ready to graduate",
       "Stage conflict",
     ]) {
       expect(copied).toContain(title);
     }
+    expect(copied).not.toContain("plans/ready.md");
+    expect(section("Not marked built")).toHaveTextContent("1");
     expect(copyAll()).toHaveTextContent(/^Copied/);
     expect(
       screen.getByText("Copied your answers and the maintenance checked."),
@@ -4791,7 +4796,7 @@ describe("each section's explanation, and Copy agent request", () => {
     const count = () => screen.getByTestId("copy-maintenance-count");
 
     it("sits in the header beside Copy answers, counting the answers and the checked kinds' items", async () => {
-      // The default: Ready to build left out.
+      // The default: every actionable maintenance kind checked.
       localStorage.removeItem("vantage:planningCopyLeftOut");
       await renderPage();
       expect(header()).toContainElement(copyAll());
@@ -4800,7 +4805,7 @@ describe("each section's explanation, and Copy agent request", () => {
           Node.DOCUMENT_POSITION_FOLLOWING,
       ).toBeTruthy();
       // Not on a roadmap 2, Stage conflict 1, To fold into the ledger 1,
-      // Ready to graduate 1; Ready to build's 1 left out.
+      // Ready to graduate 1; the not-marked-built document is not maintenance.
       expect(count()).toHaveTextContent("5");
       await act(async () => {
         fireEvent.click(
@@ -4837,24 +4842,13 @@ describe("each section's explanation, and Copy agent request", () => {
       );
     });
 
-    it("follows the filter in its counts and in what it copies", async () => {
+    it("keeps a filtered not-marked-built count visible without copying an agent request", async () => {
       await renderPage("/.vantage/planning?filter=path:plans/ready.md");
-      expect(count()).toHaveTextContent("1");
+      expect(count()).toHaveTextContent("0");
+      expect(copyAll()).toHaveAttribute("aria-disabled", "true");
+      expect(section("Not marked built")).toHaveTextContent("1");
       await press(copyAll());
-      const { index } = shownState();
-      expect(writeText.mock.calls[0][0]).toBe(
-        planningAgentRequest(
-          index,
-          sectionsOf(index, null, "path:plans/ready.md"),
-          {
-            repository: ROOT,
-            filter: {
-              text: "path:plans/ready.md",
-              keeps: keepsOf("path:plans/ready.md"),
-            },
-          },
-        ),
-      );
+      expect(writeText).not.toHaveBeenCalled();
     });
 
     it("is greyed out with nothing to copy, and copies nothing", async () => {
@@ -4894,7 +4888,10 @@ describe("each section's explanation, and Copy agent request", () => {
     const { index, sections } = shownState();
     await press(copyAll());
     expect(writeText.mock.calls[0][0]).toBe(
-      planningAgentRequest(index, sections, { repository: "." }),
+      planningAgentRequest(index, sections, {
+        repository: ".",
+        ids: ["unrouted", "disagrees", "compact", "graduate"],
+      }),
     );
   });
 
@@ -4909,11 +4906,11 @@ describe("each section's explanation, and Copy agent request", () => {
     serveInfo("/srv/alpha", "/api/r/alpha");
     await renderPage("/.vantage/planning/alpha");
     const { index, sections } = shownState("alpha");
-    await press(copyFor("Ready to build"));
+    await press(copyFor("Ready to graduate"));
     expect(writeText.mock.calls[0][0]).toBe(
       planningAgentRequest(index, sections, {
         repository: "/srv/alpha",
-        ids: ["ready"],
+        ids: ["graduate"],
       }),
     );
   });
@@ -4971,9 +4968,8 @@ describe("each section's explanation, and Copy agent request", () => {
       ).toBe(NESTED);
 
       const pressed: [HTMLElement, string[]][] = [
-        [copyAll(), []],
+        [copyAll(), ["unrouted", "disagrees", "compact", "graduate"]],
         [copyFor("Not on a roadmap"), ["unrouted"]],
-        [copyFor("Ready to build"), ["ready"]],
         [copyFor("Ready to graduate"), ["graduate"]],
         [copyFor("Stage conflict"), ["disagrees"]],
       ];
@@ -4986,9 +4982,9 @@ describe("each section's explanation, and Copy agent request", () => {
       }
       // And the default roadmap's run prints the same: no request depends on
       // which roadmap Needs you follows.
-      expect(await cli("--request")).toBe(
-        `${writeText.mock.calls[0][0] as string}\n`,
-      );
+      expect(
+        await cli("--request", "unrouted", "disagrees", "compact", "graduate"),
+      ).toBe(`${writeText.mock.calls[0][0] as string}\n`);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -5007,7 +5003,7 @@ describe("each section's explanation, and Copy agent request", () => {
   // unfiltered sections.
   it("copies, on a filtered page, the kept entries under a Filter: line", async () => {
     await renderPage(
-      "/.vantage/planning?filter=path:plans/desing+path:plans/ready.md",
+      "/.vantage/planning?filter=path:plans/desing+path:plans/built.md",
     );
     await press(copyAll());
     const copied = writeText.mock.calls[0][0] as string;
@@ -5015,23 +5011,23 @@ describe("each section's explanation, and Copy agent request", () => {
     const sections = sectionsOf(
       index,
       null,
-      "path:plans/desing path:plans/ready.md",
+      "path:plans/desing path:plans/built.md",
     );
     expect(copied).toBe(
       planningAgentRequest(index, sections, {
         repository: ROOT,
         filter: {
-          text: "path:plans/ready.md",
-          keeps: keepsOf("path:plans/desing path:plans/ready.md"),
+          text: "path:plans/built.md",
+          keeps: keepsOf("path:plans/desing path:plans/built.md"),
         },
       }),
     );
     expect(copied.split("\n").slice(0, 2)).toEqual([
       `Repository: ${ROOT}`,
-      "Filter: `path:plans/ready.md`. Only the entries it keeps are listed.",
+      "Filter: `path:plans/built.md`. Only the entries it keeps are listed.",
     ]);
-    expect(copied).toContain("plans/ready.md");
-    expect(copied).not.toContain("plans/built.md");
+    expect(copied).toContain("plans/built.md");
+    expect(copied).not.toContain("plans/ready.md");
     // Not understood, it is not applied, and its request is the plain one.
     cleanup();
     writeText.mockClear();
@@ -5040,6 +5036,7 @@ describe("each section's explanation, and Copy agent request", () => {
     expect(writeText.mock.calls[0][0]).toBe(
       planningAgentRequest(index, derivePlanningSections(index), {
         repository: ROOT,
+        ids: ["unrouted", "disagrees", "compact", "graduate"],
       }),
     );
   });
@@ -5144,6 +5141,7 @@ describe("each section's explanation, and Copy agent request", () => {
             {
               repository: root,
               viewer: VIEWER_RELEASE,
+              ids: ["unrouted", "disagrees", "compact", "graduate"],
               filter: {
                 text: summary.requestText,
                 keeps: keepsOf(text),
@@ -5151,7 +5149,15 @@ describe("each section's explanation, and Copy agent request", () => {
             },
           ),
         );
-        const printed = await cli("--request", "--filter", summary.requestText);
+        const printed = await cli(
+          "--request",
+          "unrouted",
+          "disagrees",
+          "compact",
+          "graduate",
+          "--filter",
+          summary.requestText,
+        );
         expect(printed.code, text).toBe(0);
         expect(`${copied}\n`, text).toBe(printed.stdout);
         compared++;
@@ -5678,14 +5684,14 @@ describe("the planning outline, On this page (planning-index.md §6.9)", () => {
     Element.prototype.scrollIntoView = scrolled;
     try {
       await renderPage("/.vantage/planning", ["/plans/roadmap.md"]);
-      expect(querySection("Ready to build")).toBeNull();
+      expect(querySection("Not marked built")).toBeNull();
       scrolled.mockClear();
       await act(async () => {
         fireEvent.click(outlineLine("maintenance"));
       });
       await settle();
       expect(router.location).toBe("/.vantage/planning");
-      expect(querySection("Ready to build")).not.toBeNull();
+      expect(querySection("Not marked built")).not.toBeNull();
       const heading = document.getElementById("maintenance")!;
       expect(scrolled.mock.contexts).toContain(heading);
       expect(document.activeElement).toBe(heading);
@@ -5780,7 +5786,7 @@ describe("the planning outline, On this page (planning-index.md §6.9)", () => {
       );
       expect(scrolled).toHaveBeenCalledTimes(1);
       expect(scrolled.mock.contexts[0]).toBe(
-        section("Ready to build").querySelector(
+        section("Not marked built").querySelector(
           '[data-planning-document="plans/ready.md"]',
         ),
       );
@@ -6065,7 +6071,7 @@ describe("Expand all and Collapse all (planning-index.md §6.6)", () => {
       "plans/ready.md": doc("status: accepted\nstage: DECIDED", "Decided."),
     });
     await renderPage();
-    expect(documentsIn("Ready to build")).toEqual(["plans/ready.md"]);
+    expect(documentsIn("Not marked built")).toEqual(["plans/ready.md"]);
     expect(header()).toContainElement(toggle());
   });
 });
@@ -6487,7 +6493,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
         "OQ-D1: Question OQ-D1?",
         "OQ-D3: Question OQ-D3?",
       ]);
-      for (const name of ["Not on a roadmap", "Blocked", "Ready to build"]) {
+      for (const name of ["Not on a roadmap", "Blocked", "Not marked built"]) {
         expect(querySection(name)).toBeNull();
       }
       expect(screen.getByTestId("needs-you-count")).toHaveTextContent("2");
@@ -6884,13 +6890,13 @@ describe("the planning filter (planning-index.md §6.11)", () => {
     });
 
     it("leaves Nothing this filter keeps needs you where the filter keeps an entry", async () => {
-      // A Ready to build row alone: an entry, and no open question.
+      // A Not marked built row alone: an entry, and no open question.
       await renderPage("/.vantage/planning?filter=path:plans/ready.md");
       expect(screen.getByTestId("nothing-needs-you")).toHaveTextContent(
         PLANNING_NOTICES.nothingFilteredNeedsYou,
       );
       expect(nothingMatches()).toBeNull();
-      expect(documentsIn("Ready to build")).toEqual(["plans/ready.md"]);
+      expect(documentsIn("Not marked built")).toEqual(["plans/ready.md"]);
     });
   });
 
@@ -7198,7 +7204,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
         "2 match, 7 hidden. 1 of its questions is blocked and will need you later.",
       );
       await enter("path:plans/ready.md");
-      // It keeps a Ready to build row alone, so nothing it keeps needs you,
+      // It keeps a Not marked built row alone, so nothing it keeps needs you,
       // which is said and describes the box too (planning-index.md §6.18).
       expect(status().textContent).toBe(
         "1 matches, 8 hidden. Nothing this filter keeps needs you.",
@@ -7396,7 +7402,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
         [D3],
       ]);
       // Rows hold no id, so a word only an id holds leaves them out.
-      expect(querySection("Ready to build")).toBeNull();
+      expect(querySection("Not marked built")).toBeNull();
       expect(filterShown()).toMatch(/^oq-d3$/);
       expect(router.location).toBe("/.vantage/planning");
       // Halfway through the pause, nothing is written yet; after it, once.
@@ -7785,7 +7791,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
             String(url).endsWith("/planning/reviews"),
           )
           .map(([, body]) => (body as { paths: string[] }).paths);
-      // Rows of Ready to build: the first request holds the cards' documents
+      // Rows of Not marked built: the first request holds the cards' documents
       // and those needing the human, and leaves the rows' for the second.
       const ROWS: Record<string, string> = { ...TREE };
       for (let i = 0; i < 3; i++) {
@@ -7823,7 +7829,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       await type("");
       await settle();
       await idle();
-      expect(documentsIn("Ready to build")).toEqual([
+      expect(documentsIn("Not marked built")).toEqual([
         "plans/r0.md",
         "plans/r1.md",
         "plans/r2.md",
@@ -9637,7 +9643,7 @@ describe("the planning filter (planning-index.md §6.11)", () => {
         );
       });
       await settle();
-      expect(documentsIn("Ready to build")).toEqual(["plans/ready.md"]);
+      expect(documentsIn("Not marked built")).toEqual(["plans/ready.md"]);
       expect(reviewRequests()).toHaveLength(2);
       expect(reviewGets()).toEqual([]);
     });
@@ -9902,7 +9908,7 @@ describe("planning-actions: none (planning-eligibility-and-review-context.md §2
       "plans/opted-open.md": doc(`stage: DECIDED\n${NONE}`, q("OQ-N2", OPEN)),
     });
     await renderPage();
-    expect(documentsIn("Ready to build")).toEqual(["plans/ready.md"]);
+    expect(documentsIn("Not marked built")).toEqual(["plans/ready.md"]);
     expect(documentsIn("Ready to graduate")).toEqual(["plans/built.md"]);
     expect(listedIn("To fold into the ledger")).toEqual([
       "OQ-A1: Question OQ-A1?",

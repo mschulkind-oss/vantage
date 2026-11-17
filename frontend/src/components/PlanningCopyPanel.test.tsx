@@ -225,7 +225,7 @@ describe("what the panel says", () => {
     expect(row("answers")).toHaveTextContent(/^Your answers3$/);
     expect(row("answers").querySelector("input")).toBeNull();
     expect(
-      ["unrouted", "disagrees", "compact", "graduate", "ready"].map(
+      ["unrouted", "disagrees", "compact", "graduate"].map(
         (id) => row(id).textContent,
       ),
     ).toEqual([
@@ -233,7 +233,6 @@ describe("what the panel says", () => {
       "Stage conflict1",
       "To fold into the ledger3",
       "Ready to graduate2",
-      "Ready to build4",
     ]);
     expect(row("total")).toHaveTextContent(/^Copied12$/);
   });
@@ -268,24 +267,22 @@ describe("what the panel says", () => {
 });
 
 describe("the checkboxes", () => {
-  it("leave Ready to build out until it is checked, and the count follows", () => {
+  it("never offers not-marked-built documents, including a saved All choice", () => {
+    localStorage.setItem("vantage:planningCopyLeftOut", "");
     renderPanel();
     expect(screen.getByTestId("copy-maintenance-count")).toHaveTextContent(
       "12",
     );
     fireEvent.click(toggle(), { detail: 1 });
-    expect(row("ready").querySelector("input")).not.toBeChecked();
-    fireEvent.click(row("ready").querySelector("input")!);
-    expect(screen.getByTestId("copy-maintenance-count")).toHaveTextContent(
-      "16",
-    );
+    expect(panel()!.querySelector('[data-copy-row="ready"]')).toBeNull();
+    expect(panel()).not.toHaveTextContent("Ready to build");
   });
 
   it("are one preference in this browser, kept for the next visit", () => {
     renderPanel();
     fireEvent.click(toggle(), { detail: 1 });
     fireEvent.click(row("compact").querySelector("input")!);
-    expect(readPreference("vantage:planningCopyLeftOut")).toBe("compact,ready");
+    expect(readPreference("vantage:planningCopyLeftOut")).toBe("compact");
     cleanup();
     renderPanel();
     fireEvent.click(toggle(), { detail: 1 });
@@ -298,7 +295,7 @@ describe("the checkboxes", () => {
     fireEvent.click(toggle(), { detail: 1 });
     fireEvent.click(screen.getByRole("button", { name: "All" }));
     expect(readPreference("vantage:planningCopyLeftOut")).toBe("");
-    expect(row("total")).toHaveTextContent(/^Copied16$/);
+    expect(row("total")).toHaveTextContent(/^Copied12$/);
     fireEvent.click(screen.getByRole("button", { name: "None" }));
     expect(panel()!.querySelectorAll("input:checked")).toHaveLength(0);
   });

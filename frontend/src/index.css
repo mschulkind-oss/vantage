@@ -264,6 +264,15 @@ code {
   border: 0;
 }
 
+/* Applying held changes keeps a meaningful compact label, not a second
+   anonymous refresh icon, without squeezing the planning view selector. */
+.hdr-updates-short {
+  display: none;
+}
+.viewer-header[data-yield~="labels"] .hdr-updates-short {
+  display: inline;
+}
+
 /* 6. The folders fold into the "…" that lists them. */
 .viewer-header[data-yield~="dirs"] .hdr-dirs {
   display: none;

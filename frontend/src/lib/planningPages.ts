@@ -105,7 +105,7 @@ export type MaintenanceKindId = (typeof MAINTENANCE_KIND_IDS)[number];
 /** Each kind's sub-heading. */
 export const MAINTENANCE_TITLES: Readonly<Record<MaintenanceKindId, string>> = {
   unrouted: PLANNING_SECTION_TITLES.unrouted,
-  ready: PLANNING_SECTION_TITLES.ready,
+  ready: "Not marked built",
   graduate: PLANNING_SECTION_TITLES.graduate,
   disagrees: PLANNING_SECTION_TITLES.disagrees,
   compact: "To fold into the ledger",

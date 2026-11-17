@@ -11,26 +11,22 @@ import type { PlanningRequestId } from "vantage-md/planning";
 
 /**
  * The kinds the panel offers, in the order it lists them (§6.7): each of
- * *Maintenance*'s kinds that has an agent request. *Too large* and
- * *Unreadable* have none, so they are not offered.
+ * *Maintenance*'s actionable kinds. Documents not marked built are
+ * information for the human, never agent maintenance. *Too large* and
+ * *Unreadable* have no request, so they are not offered.
  */
 export const COPY_KINDS: readonly PlanningRequestId[] = [
   "unrouted",
   "disagrees",
   "compact",
   "graduate",
-  "ready",
 ];
 
-/**
- * The kinds left out until the reader chooses: *Ready to build*, whose
- * request, sent by accident, starts the most expensive work there is (§6.7).
- */
-export const COPY_LEFT_OUT_DEFAULT: ReadonlySet<PlanningRequestId> = new Set([
-  "ready",
-]);
+/** All offered maintenance kinds are checked until the reader chooses. */
+export const COPY_LEFT_OUT_DEFAULT: ReadonlySet<PlanningRequestId> = new Set();
 
-const isCopyKind = (value: string): value is PlanningRequestId =>
+/** Whether a kind is actionable maintenance offered by the planning page. */
+export const isPlanningCopyKind = (value: string): value is PlanningRequestId =>
   (COPY_KINDS as readonly string[]).includes(value);
 
 /**
@@ -46,7 +42,7 @@ export function parseLeftOut(
     raw
       .split(",")
       .map((id) => id.trim())
-      .filter(isCopyKind),
+      .filter(isPlanningCopyKind),
   );
 }
 
