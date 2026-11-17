@@ -7,13 +7,13 @@
  * button is always in the header, invisible while there is nothing to apply,
  * with the count in a slot of a few digits and its words in a cell as wide
  * as the longer of them. So its appearing moves nothing. Where the header is
- * narrow, its words give way only with the primary labels (`hdr-label`), not
- * with the minor shorthand labels, and the icon
- * and the count stay; it is never folded into the "⋯", where an update would
+ * narrow, its label shortens to Apply alongside the list/check icon and count,
+ * so it cannot become a second anonymous refresh arrow beside Reload from
+ * server. It is never folded into the "⋯", where an update would
  * be hidden. Its title lists the updates by kind.
  */
 import React from "react";
-import { RefreshCw, RotateCw } from "lucide-react";
+import { CloudDownload, ListChecks } from "lucide-react";
 import { planningLimits } from "../planningScan/limits";
 import type { ReloadStatus } from "../hooks/usePlanningReviews";
 
@@ -43,7 +43,7 @@ export const PlanningUpdates: React.FC<{
         blockedReason !== null
           ? blockedReason
           : shown
-            ? `Apply updates, with no request: ${title}`
+            ? `Apply changes already received, without fetching again: ${title}`
             : undefined
       }
       aria-label={
@@ -61,8 +61,11 @@ export const PlanningUpdates: React.FC<{
         (blockedReason !== null ? " cursor-not-allowed opacity-60" : "")
       }
     >
-      <RefreshCw size={14} aria-hidden="true" />
-      <span className="hdr-label">Apply updates</span>
+      <ListChecks size={14} aria-hidden="true" />
+      <span className="hdr-label whitespace-nowrap">Apply updates</span>
+      <span className="hdr-updates-short" aria-hidden="true">
+        Apply
+      </span>
       <span
         data-testid="planning-updates-count"
         className="inline-block text-right tabular-nums"
@@ -118,7 +121,7 @@ export const PlanningReload: React.FC<{
         data-tip="Read the document and its reviews from the server again. Layout waits for Apply updates."
         className="inline-flex items-center gap-1.5 rounded-md border border-blue-300 px-2.5 py-1.5 text-xs font-medium text-blue-600 transition-colors hover:bg-blue-50 disabled:opacity-60 print:hidden dark:border-blue-700 dark:text-blue-400 dark:hover:bg-blue-900/30"
       >
-        <RotateCw size={14} aria-hidden="true" />
+        <CloudDownload size={14} aria-hidden="true" />
         <span className="hdr-label">Reload from server</span>
       </button>
     </>

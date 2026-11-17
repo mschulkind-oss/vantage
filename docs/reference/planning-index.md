@@ -965,6 +965,15 @@ counts them in _Needs you_ ([OQ-TD12](#why-its-this-way)). _Maintenance_'s kinds
   roadmap order for it to follow. _To fold into the ledger_'s is the page's own,
   _Ruled, and waiting to be folded into the body they govern. An agent compacts
   each._
+- **On the planning page, `ready` is human information, not agent maintenance.**
+  Its heading is _Not marked built_, with the same live count and document list:
+  the saved stage has the `ready` role and there are no open questions. The
+  explanation says _Decided, with no open questions, but not marked built.
+  Vantage reads the document’s stage; it does not verify whether the work is
+  built._ It has no Copy agent request button and is never included in Copy
+  answers + maintenance, even through **All** or a saved preference. The CLI's
+  existing section names and explicit request interface are unchanged; the page
+  asks that interface only for the maintenance kinds it offers.
 - **Each agent kind has an agent request** (`planningAgentRequest`), generated
   from the index each time it is asked for, so it names what the documents say
   now in the stage words `[planning.stages]` declares now, in code-unit order. It
@@ -1059,7 +1068,7 @@ line's text>'`** for the same tree; the parity test runs Copy answers +
   (`vantage:planningBlockedOpen`, `vantage:planningMaintenanceOpen`), read once a
   visit (`frontend/src/components/PlanningGroups.tsx`). _Maintenance_'s heading
   line names each of the layout's kinds with its live count, as _Maintenance 13 ·
-  3 not on a roadmap · 4 ready to build_, on one line that never wraps. Opened, a
+  3 not on a roadmap · 4 not marked built_, on one line that never wraps. Opened, a
   group lists one row per item, never a card — a question by its document, id and
   title, a document by its path and badge, each a link — the first 100 of each
   list and then _Show all N_. The rows are the layout's: a row whose item has gone
@@ -1116,9 +1125,11 @@ and it commits inside the transition at once.
   **Copy answers** and **Copy answers + maintenance**
   ([§6.7](#67-answering-and-copy-answers)). It is fitted by the viewer's yield
   steps (`frontend/src/lib/headerFit.ts`); at 1280 px with the sidebar open the
-  shorthand labels go first — the updates slot's words, _Review answers_ and
-  _Copy answers + maintenance_ — and the two copies' _Copy answers_ is the one
-  that stays readable longest.
+  shorthand labels go first — _Review answers_ and _Copy answers + maintenance_ —
+  and the two copies' _Copy answers_ is the one that stays readable longest.
+  _Apply updates_ shortens to _Apply_ in a compact header, never just an icon. Its list/check
+  icon differs from _Reload from server_'s cloud/download icon; applying held
+  changes and fetching server data never look like adjacent refresh arrows.
 - **The frame** is the header, then, while the contents column is drawn, the
   planning outline with the roadmap picker at its head ([§6.9](#69-the-planning-outline));
   then the notices (_Not filtered_
@@ -1618,13 +1629,14 @@ requests.
   opens it. It reads the sentence _Your answers, the same as Copy answers, plus
   the maintenance this page found for the agent._, **All · None**, a row _Your
   answers_ with no checkbox, a checkbox row per kind (_Not on a roadmap_, _Stage
-  conflict_, _To fold into the ledger_, _Ready to graduate_, _Ready to build_)
+  conflict_, _To fold into the ledger_, _Ready to graduate_)
   with its live count, 0 shown with the checkbox kept, and a total row _Copied
-  N_. _Too large_ and _Unreadable_ have no request, so they are not offered.
+  N_. _Not marked built_ is information for the human, never agent maintenance,
+  so it is not offered. _Too large_ and _Unreadable_ have no request either.
 - **The checkboxes are one preference,** the kinds left out, comma-separated,
-  under `vantage:planningCopyLeftOut`, followed across tabs; absent, _Ready to
-  build_ alone is left out, since sent by accident it starts the most expensive
-  work there is. An id a later release offers is ignored.
+  under `vantage:planningCopyLeftOut`, followed across tabs; absent, all offered
+  kinds are checked. Unoffered ids, including an old `ready` choice, are ignored.
+  **All** and saved choices cannot add not-marked-built documents to the copy.
 - **Greyed out, never disabled:** with no kind checked, which would copy nothing
   Copy answers does not, or a total of 0, or while Copy answers' quoted lines are
   still on their way (below), when Copy answers is disabled, the button is

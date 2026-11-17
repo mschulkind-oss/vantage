@@ -531,8 +531,27 @@ test.describe("the planning page", () => {
     const late = await shifted(page, true);
     expect(late, JSON.stringify(late)).toEqual([]);
 
-    // Refresh lays it out: the take answered, it needs you again, a card.
-    await page.locator("[data-planning-updates]").click();
+    // Even in the compact header this says what it does, instead of
+    // becoming a circular arrow indistinguishable from server reload.
+    const viewport = page.viewportSize()!;
+    await page.setViewportSize({ width: 390, height: 844 });
+    const closeSidebar = page.getByRole("button", { name: "Close sidebar" });
+    if (await closeSidebar.isVisible()) await closeSidebar.click();
+    const apply = page.locator("[data-planning-updates]");
+    await expect(apply.getByText("Apply", { exact: true })).toBeVisible();
+    const questions = page.getByTestId("planning-header").getByRole("link", { name: "Questions", exact: true });
+    await expect(questions).toBeVisible();
+    const questionsBox = await questions.boundingBox();
+    const applyBox = await apply.boundingBox();
+    expect(questionsBox!.x + questionsBox!.width).toBeLessThanOrEqual(applyBox!.x);
+    await expect(apply.locator(".lucide-list-checks")).toBeVisible();
+    await apply.click({ trial: true });
+    await expect(page.getByTestId("planning-header")).toHaveJSProperty("scrollWidth", 390);
+    await page.screenshot({ path: test.info().outputPath("apply-updates-narrow.png") });
+    await page.setViewportSize(viewport);
+
+    // Apply lays it out: the take answered, it needs you again, a card.
+    await apply.click();
     await expect(row(page, "OQ-P1: Which way for part 1?")).toHaveCount(0);
     await expect(third).toBeVisible();
     await expect(page.locator("[data-planning-updates]")).toBeHidden();
@@ -725,13 +744,13 @@ test.describe("the planning page", () => {
     await page.mouse.move(5, 700);
     await expect(panel).toHaveCount(0);
 
-    // Ready to build starts unchecked; None greys the button out, and the ▾
-    // still opens the panel.
+    // Not-marked-built documents are never offered; None greys the button
+    // out, and the ▾ still opens the panel.
     await toggle.click();
     await expect(panel).toBeVisible();
     await expect(
-      panel.getByRole("checkbox", { name: /Ready to build/ }),
-    ).not.toBeChecked();
+      panel.getByRole("checkbox", { name: /Ready to build|Not marked built/ }),
+    ).toHaveCount(0);
     await expect(
       panel.getByRole("checkbox", { name: /Not on a roadmap/ }),
     ).toBeChecked();

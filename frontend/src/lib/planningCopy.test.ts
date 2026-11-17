@@ -14,18 +14,18 @@ import {
 } from "./planningCopy";
 
 describe("the kinds left out", () => {
-  it("offers the five kinds with a request, in the panel's order", () => {
+  it("offers only the four maintenance kinds for agents, in the panel's order", () => {
     expect(COPY_KINDS).toEqual([
       "unrouted",
       "disagrees",
       "compact",
       "graduate",
-      "ready",
     ]);
   });
 
-  it("leaves Ready to build out until the reader chooses", () => {
-    expect([...parseLeftOut(null)]).toEqual(["ready"]);
+  it("never offers not-marked-built documents, even with a saved All choice", () => {
+    expect([...parseLeftOut(null)]).toEqual([]);
+    expect(checkedKinds(parseLeftOut(""))).not.toContain("ready");
     expect(checkedKinds(parseLeftOut(null))).toEqual([
       "unrouted",
       "disagrees",
@@ -45,10 +45,7 @@ describe("the kinds left out", () => {
   });
 
   it("ignores an id this release does not offer", () => {
-    expect([...parseLeftOut("later,graduate, ready")]).toEqual([
-      "graduate",
-      "ready",
-    ]);
+    expect([...parseLeftOut("later,graduate, ready")]).toEqual(["graduate"]);
   });
 });
 
@@ -63,7 +60,7 @@ describe("the total, and greying out", () => {
 
   it("counts the answers and every checked kind's items", () => {
     expect(copyTotal(3, counts, parseLeftOut(null))).toBe(12);
-    expect(copyTotal(3, counts, new Set())).toBe(16);
+    expect(copyTotal(3, counts, new Set())).toBe(12);
     expect(copyTotal(3, counts, new Set(COPY_KINDS))).toBe(3);
   });
 

@@ -3457,14 +3457,17 @@ export const PlanningPage: React.FC = () => {
     );
   };
 
-  // Each kind's line under its sub-heading: the shared guide's.
+  // The page treats ready-stage documents as recorded metadata, not a
+  // request to build. Other section explanations read the shared CLI guide.
   const explanationOf = useCallback(
     (id: MaintenanceKindId | "waiting") =>
-      id === "compact"
-        ? COMPACT_EXPLANATION
-        : frameSections === null
-          ? ""
-          : sectionExplanation(id, frameSections),
+      id === "ready"
+        ? "Decided, with no open questions, but not marked built. Vantage reads the document’s stage; it does not verify whether the work is built."
+        : id === "compact"
+          ? COMPACT_EXPLANATION
+          : frameSections === null
+            ? ""
+            : sectionExplanation(id, frameSections),
     [frameSections],
   );
 

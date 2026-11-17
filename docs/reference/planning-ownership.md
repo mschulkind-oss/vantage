@@ -288,9 +288,10 @@ click, navigation and Close keep the text.
   no box and no painted body. A failure keeps what was held; the header then
   shows "Unknown · last successful read HH:MM · last attempt failed HH:MM", or
   "the document changed while it was read, so Reload again" for a changed sample.
-  Both actions keep their primary visible labels as long as the header can fit
-  them, distinguishing fetching server data from applying held layout updates
-  rather than presenting two unlabeled refresh icons.
+  _Apply updates_ shortens to _Apply_ when toolbar labels yield, keeping a
+  meaningful visible label with a list/check icon and its pending count. _Reload from server_ uses a
+  cloud/download icon and folds into the toolbar overflow on a narrow header.
+  Fetching data and applying held changes do not share a refresh-arrow icon.
 - **Selection anchors.** A settled selection (mouse-up, or a keyboard selection
   quiet for 300 ms) of at least 3 characters inside one question's unit offers
   **Comment on selection**; it opens the answer box on that anchor. A headline

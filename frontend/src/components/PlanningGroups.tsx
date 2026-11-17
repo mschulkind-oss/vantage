@@ -17,12 +17,12 @@ import {
   badgeFor,
   blockedOnLabel,
   findDocument,
-  isPlanningRequestId,
   waitingBlockedOn,
   type PlanningIndex,
   type PlanningQuestion,
   type PlanningRequestId,
 } from "vantage-md/planning";
+import { isPlanningCopyKind } from "../lib/planningCopy";
 import { MARK_LABELS, itemKey } from "../lib/planningLayout";
 import {
   MAINTENANCE_TITLES,
@@ -44,7 +44,7 @@ export type GroupId = "blocked" | "maintenance";
 /** What each kind is called in *Maintenance*'s heading line. */
 const SUMMARY_WORDS: Readonly<Record<MaintenanceKindId, string>> = {
   unrouted: "not on a roadmap",
-  ready: "ready to build",
+  ready: "not marked built",
   graduate: "to graduate",
   disagrees: "stage conflict",
   compact: "to fold into the ledger",
@@ -474,7 +474,7 @@ export const PlanningGroups: React.FC<{
                           <LiveCount n={count} room={1} />
                         </span>
                       </h3>
-                      {isPlanningRequestId(kind.id) && (
+                      {isPlanningCopyKind(kind.id) && (
                         <CopyRequestButton
                           label="Copy agent request"
                           name={`Copy agent request for ${title}`}
