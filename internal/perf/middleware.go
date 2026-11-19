@@ -66,7 +66,7 @@ func Middleware(store *Store) func(http.Handler) http.Handler {
 			operation := req.Method + " " + collapsePathParams(collapseRepoPath(path))
 			store.recordRequest(operation, durationMs, rec.status)
 
-			logRequest(operation, durationMs, rec.status)
+			logRequest(operation, durationMs, rec.status, repoOf(path))
 		})
 	}
 }
@@ -88,6 +88,16 @@ func collapseRepoPath(path string) string {
 		return "/api/r/*/" + parts[4]
 	}
 	return "/api/r/*"
+}
+
+// repoOf is the {repo} segment of an /api/r/{repo}/… path, "" for any other.
+// It is what collapseRepoPath drops from the bucket, kept for the log line.
+func repoOf(path string) string {
+	if !strings.HasPrefix(path, "/api/r/") {
+		return ""
+	}
+	repo, _, _ := strings.Cut(strings.TrimPrefix(path, "/api/r/"), "/")
+	return repo
 }
 
 // collapsePathParams replaces an opaque identifier in a known path position
@@ -113,12 +123,17 @@ func collapsePathParams(path string) string {
 }
 
 // logRequest emits a request-timing log line gated by duration: WARN above
-// 1000ms, INFO above 200ms, DEBUG otherwise.
-func logRequest(operation string, durationMs float64, status int) {
+// 1000ms, INFO above 200ms, DEBUG otherwise. The line names the repository
+// (when the path has one) that the operation's bucket collapsed away, so a slow
+// request on a multi-repo daemon says where it was slow.
+func logRequest(operation string, durationMs float64, status int, repo string) {
 	attrs := []any{
 		slog.String("operation", operation),
 		slog.Float64("duration_ms", durationMs),
 		slog.Int("status", status),
+	}
+	if repo != "" {
+		attrs = append(attrs, slog.String("repo", repo))
 	}
 	switch {
 	case durationMs > 1000:

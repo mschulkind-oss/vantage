@@ -269,7 +269,7 @@ func (s *FileSystemService) withinBoundary(full string) bool {
 // a directory likewise returns a *PathError. A permission error while scanning
 // degrades to an empty slice, never an error.
 func (s *FileSystemService) ListDirectory(path string, opts Options) ([]model.FileNode, error) {
-	defer perf.Default.Track(perf.CategoryFS, "list_directory")()
+	defer perf.Default.Track(perf.CategoryFS, "list_directory", "dir", s.rootPath)()
 
 	targetDir, err := s.validatePath(path)
 	if err != nil {
@@ -644,7 +644,7 @@ var errStopWalk = errors.New("stop walk")
 // [FileSystemService.IsListed] applies to one path, so the listing and a
 // question about one of its members cannot disagree about a rule.
 func (s *FileSystemService) ListAllFiles() []string {
-	defer perf.Default.Track(perf.CategoryFS, "list_all_files")()
+	defer perf.Default.Track(perf.CategoryFS, "list_all_files", "dir", s.rootPath)()
 
 	matcher := s.matcher()
 	// Non-nil, so a root with no Markdown marshals as [] rather than null.

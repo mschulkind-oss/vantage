@@ -99,6 +99,10 @@ ${REQUEST_SECTION_LIST}
                                      (and .vantage/.gitignore, when it
                                      makes .vantage), so a Vantage serving
                                      several projects opens this one.
+  --document <path>                  print instead one document's entry,
+                                     reading no other file (needs --format
+                                     json; takes no --request, --roadmap or
+                                     --filter)
   --config <path>                    use this .vantage.toml
   --no-config                        ignore .vantage.toml entirely
 

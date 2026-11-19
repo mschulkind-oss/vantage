@@ -280,7 +280,7 @@ var readOnlyArgs = []string{"--no-optional-locks"}
 // caller is expected to degrade to an empty result. stderr is intentionally
 // discarded — git diagnostics never surface to the API.
 func (s *GitService) run(cwd string, timeout time.Duration, args ...string) ([]byte, error) {
-	defer perf.Default.Track(perf.CategoryGit, "exec:"+gitSubcommand(args))()
+	defer perf.Default.Track(perf.CategoryGit, "exec:"+gitSubcommand(args), "dir", cwd)()
 
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
@@ -991,7 +991,7 @@ func (s *GitService) RecentsUnreported(limit int, extensions []string, showHidde
 // warm run the same code, and folding them into one operation hid a 30s
 // background walk inside the latency of a user-facing request.
 func (s *GitService) recents(limit int, extensions []string, showHidden, showGitignored, report bool, operation string) []model.RecentFile {
-	defer perf.Default.Track(perf.CategoryGit, operation)()
+	defer perf.Default.Track(perf.CategoryGit, operation, "dir", s.repoPath)()
 
 	if len(extensions) == 0 {
 		extensions = defaultExtensions

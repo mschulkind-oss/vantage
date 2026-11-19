@@ -11,10 +11,12 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/mschulkind-oss/vantage/internal/model"
+	"github.com/mschulkind-oss/vantage/internal/perf"
 	"github.com/mschulkind-oss/vantage/internal/review"
 )
 
@@ -34,12 +36,15 @@ type ScannedQuestion struct {
 // repository rooted at root, by repository-relative document path. It is the
 // bridge to the one scanner the viewer and the checker share: the server has no
 // Markdown parser of its own.
+//
+// path is the one document the caller asks about. A scanner may answer for that
+// document alone or for the whole repository; a caller reads only path's entry.
 type QuestionScanner interface {
-	Scan(ctx context.Context, root string) (map[string][]ScannedQuestion, error)
+	Scan(ctx context.Context, root, path string) (map[string][]ScannedQuestion, error)
 }
 
-// CLIQuestionScanner runs `vantage-check index --format json` in the repository
-// root and reads each document's questions from its index.
+// CLIQuestionScanner runs `vantage-check index --format json --document <path>`
+// in the repository root and reads the document's questions from its index.
 type CLIQuestionScanner struct {
 	// Command is the checker's argv prefix, for example ["vantage-check"].
 	Command []string
@@ -48,24 +53,64 @@ type CLIQuestionScanner struct {
 // scanTimeout bounds one scan so a wedged checker cannot hold a review lock.
 const scanTimeout = 30 * time.Second
 
-// Scan implements [QuestionScanner].
-func (c CLIQuestionScanner) Scan(ctx context.Context, root string) (map[string][]ScannedQuestion, error) {
+// olderCheckers holds each checker command (its argv joined by NUL) that refused
+// --document, so its later scans go straight to the whole project instead of
+// paying for a refused run first. A checker upgraded in place is used for one
+// document again after a restart.
+var olderCheckers sync.Map
+
+// Scan implements [QuestionScanner]. It asks for path alone, which reads one
+// file however large the project is; a checker older than --document refuses
+// it as an unknown option, and then the whole project is scanned, as before
+// --document existed (docs/reference/planning-index.md §13.7).
+func (c CLIQuestionScanner) Scan(ctx context.Context, root, path string) (map[string][]ScannedQuestion, error) {
 	if len(c.Command) == 0 {
 		return nil, fmt.Errorf("no checker command")
 	}
+	defer perf.Default.Track(perf.CategoryChecker, "index_scan", "dir", root, "path", path)()
 	ctx, cancel := context.WithTimeout(ctx, scanTimeout)
 	defer cancel()
+	key := strings.Join(c.Command, "\x00")
+	if _, older := olderCheckers.Load(key); !older {
+		out, errOut, err := c.index(ctx, root, "--document", path)
+		if !refusedDocument(err, errOut) {
+			return parseIndex(out, errOut, err)
+		}
+		olderCheckers.Store(key, struct{}{})
+		slog.Warn("api: the checker does not know index --document; every question scan reads the whole project until it is upgraded",
+			"checker", c.Command[0])
+	}
+	return parseIndex(c.index(ctx, root))
+}
+
+// index runs the checker's index command in root with extra arguments, and
+// returns its stdout, its stderr and how it exited.
+func (c CLIQuestionScanner) index(ctx context.Context, root string, extra ...string) ([]byte, string, error) {
 	args := append(append([]string{}, c.Command[1:]...), "index", "--format", "json")
-	cmd := exec.CommandContext(ctx, c.Command[0], args...)
+	cmd := exec.CommandContext(ctx, c.Command[0], append(args, extra...)...)
 	cmd.Dir = root
 	var out, errOut bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errOut
-	if err := cmd.Run(); err != nil {
+	err := cmd.Run()
+	return out.Bytes(), errOut.String(), err
+}
+
+// refusedDocument reports whether a run failed because the checker does not
+// know --document: a usage exit (2) saying so.
+func refusedDocument(err error, stderr string) bool {
+	var exit *exec.ExitError
+	return errors.As(err, &exit) && exit.ExitCode() == 2 &&
+		strings.Contains(stderr, "unknown option for index: --document")
+}
+
+// parseIndex reads each document's questions from one index run's output.
+func parseIndex(out []byte, errOut string, err error) (map[string][]ScannedQuestion, error) {
+	if err != nil {
 		var exit *exec.ExitError
-		if errors.As(err, &exit) && indexRefused(out.Bytes()) {
+		if errors.As(err, &exit) && indexRefused(out) {
 			return nil, ErrScanRefused
 		}
-		return nil, fmt.Errorf("%w: %s", err, errOut.String())
+		return nil, fmt.Errorf("%w: %s", err, errOut)
 	}
 	var parsed struct {
 		Index struct {
@@ -80,7 +125,7 @@ func (c CLIQuestionScanner) Scan(ctx context.Context, root string) (map[string][
 			} `json:"documents"`
 		} `json:"index"`
 	}
-	if err := json.Unmarshal(out.Bytes(), &parsed); err != nil {
+	if err := json.Unmarshal(out, &parsed); err != nil {
 		return nil, err
 	}
 	result := map[string][]ScannedQuestion{}
@@ -190,7 +235,7 @@ func (d *DocumentObserver) units(svc RepoServices, path, content, hash string) *
 	if d.failure(key) != "" {
 		return nil
 	}
-	scanned, err := d.scanner.Scan(context.Background(), svc.FS.RootPath())
+	scanned, err := d.scanner.Scan(context.Background(), svc.FS.RootPath(), path)
 	if err != nil {
 		reason := model.ReasonScannerFailed
 		if errors.Is(err, ErrScanRefused) {

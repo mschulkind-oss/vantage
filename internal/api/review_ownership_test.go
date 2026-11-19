@@ -185,7 +185,7 @@ type countingScanner struct {
 	gate  chan struct{}
 }
 
-func (c *countingScanner) Scan(ctx context.Context, root string) (map[string][]ScannedQuestion, error) {
+func (c *countingScanner) Scan(ctx context.Context, root, _ string) (map[string][]ScannedQuestion, error) {
 	c.calls.Add(1)
 	if c.gate != nil {
 		<-c.gate
@@ -268,6 +268,6 @@ func TestCheckerDiscoveryOrder(t *testing.T) {
 
 type noQuestions struct{}
 
-func (noQuestions) Scan(context.Context, string) (map[string][]ScannedQuestion, error) {
+func (noQuestions) Scan(context.Context, string, string) (map[string][]ScannedQuestion, error) {
 	return map[string][]ScannedQuestion{}, nil
 }

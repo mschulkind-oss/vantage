@@ -368,6 +368,7 @@ describe("run", () => {
       "--request [<section>...]",
       "--roadmap <path>",
       "--filter <text>",
+      "--document <path>",
       "--config <path>",
       "--no-config",
     ]);

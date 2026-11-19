@@ -59,7 +59,9 @@ number is assumed to order anything.
 
 ## 3. The scanner bridge
 
-The server runs `vantage-check index --format json` in the repository root and
+The server runs `vantage-check index --format json --document <path>` in the
+repository root, which reads that one document and no other file
+([planning-index §13.7](planning-index.md#137-one-documents-index---document)), and
 reads each question's `id`, `unitLine`, `unitEndLine` and `unitText` (the unit as
 rendered). The checker is found at `$VANTAGE_CHECK`, else an executable
 `vantage-check` beside the running server executable, else on `PATH`; with none
@@ -75,8 +77,18 @@ reads `scanner_failed`; a document written while it was scanned reads
 the page words each reason apart ("not installed", "refused", "failed", "changed
 while checked"). A failed or raced scan is remembered for 5 s per (repository, path, content hash), so a failing
 checker is not re-run on every write. One scan is bounded by 30 s and cached per
-(repository, path, content hash); a scan costs a whole-project `index` run per
-distinct document content, serialized, and keeps one document's result.
+(repository, path, content hash); a scan costs one one-document `index` run per
+distinct document content, serialized. A checker older than `--document` exits 2
+with `unknown option for index: --document`; the server then scans the whole
+project instead, as it did before 2026-11-19, logs one warning, and skips the
+refused run for that checker until it restarts. Only that whole-project fallback
+can read `scan_refused`, because `--document` has no `max-candidates` refusal.
+Each run is timed as the `checker` perf category's `index_scan` operation, its
+log line naming the repository directory and the document.
+
+Until 2026-11-19 every scan was the whole project. On a project of about 700
+candidates that took 10–27 s, under the review's lock, so a take or an autosaved
+edit waited that long, and so did every other write to the same review.
 
 Every command that needs the document reads and scans it **after** taking the
 review's lock, so the revision, the content hash and the units are one reading.
