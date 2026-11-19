@@ -49,7 +49,7 @@ type failingScanner struct {
 	err   error
 }
 
-func (f *failingScanner) Scan(context.Context, string) (map[string][]ScannedQuestion, error) {
+func (f *failingScanner) Scan(context.Context, string, string) (map[string][]ScannedQuestion, error) {
 	f.calls.Add(1)
 	return nil, f.err
 }

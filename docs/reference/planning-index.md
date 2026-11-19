@@ -4198,6 +4198,34 @@ clicked in a document, found or not, move nothing painted outside the sidebar.
 **Older viewers** ignore `space=`: 0.9.0 keeps it in the URL and reads no meaning
 into it, so the link opens as a 0.9.0 link does.
 
+### 13.7 One document's index: `--document`
+
+`vantage-check index --format json --document <path>` prints the JSON envelope
+of [§13.2](#132-vantage-check-index) with `index.documents` holding at most the
+one document at `<path>`, relative to the project root (one leading `./`
+dropped). It is for the server's review commands, which prove one document's
+questions per take or edit
+([planning-ownership §3](planning-ownership.md#3-the-scanner-bridge)) and used
+to read the whole project to do it.
+
+- **What it reads.** It does not walk the tree. It asks whether `<path>` is a
+  candidate as the walk would answer, then reads and scans that file alone, as
+  the whole run reads and scans it. A document's questions depend only on its own
+  text and the config, so its entry equals the whole run's entry for it. That
+  includes its links, narrowed to candidates by asking each link target the same
+  question.
+- **What it does not read.** Any other file. So `sections`, `sectionGuide` and
+  `roadmaps` are `null`, because one document cannot derive the page, and a
+  top-level `document` key names the path asked for.
+- **No refusal.** `max-candidates` bounds what a whole run reads, and one
+  document is bounded already, so a project past it still answers, with
+  `index.refused` false. A path that is not a candidate lists no document and
+  still exits 0. A candidate past `max-file-bytes` is listed in `index.skipped`,
+  as the whole run lists it.
+- **Usage.** JSON only. It takes no `--request`, `--roadmap` or `--filter`,
+  which shape a page it does not print; each of those, or a missing
+  `--format json`, exits 2.
+
 ---
 
 ## 14. Configuration

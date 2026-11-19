@@ -2,9 +2,9 @@
 // timing records, request-timing middleware, percentile diagnostics, and an
 // anonymized repo-shape walk.
 //
-// Timing records are grouped by category. Only three categories exist:
-// "request" (HTTP requests, recorded by the middleware), "git", and "fs"
-// (service calls, recorded via Track). Diagnostics splits the two: request
+// Timing records are grouped by category. Only four categories exist:
+// "request" (HTTP requests, recorded by the middleware), and "git", "fs" and
+// "checker" (service calls, recorded via Track). Diagnostics splits the two: request
 // timings feed requests.by_endpoint, while non-request timings feed
 // services.by_operation.
 package perf
@@ -20,12 +20,14 @@ import (
 // overwritten once the buffer is full.
 const maxRecords = 2000
 
-// CategoryRequest, CategoryGit, and CategoryFS are the only valid timing
-// categories. Anything other than CategoryRequest is treated as a service call.
+// CategoryRequest, CategoryGit, CategoryFS and CategoryChecker are the only
+// valid timing categories. Anything other than CategoryRequest is treated as a
+// service call. CategoryChecker is a run of the vantage-check binary.
 const (
 	CategoryRequest = "request"
 	CategoryGit     = "git"
 	CategoryFS      = "fs"
+	CategoryChecker = "checker"
 )
 
 // timingRecord is a single timing measurement. status is set only for request
@@ -111,38 +113,38 @@ func (s *Store) recordRequest(operation string, durationMs float64, status int) 
 //
 //	defer perf.Default.Track(perf.CategoryGit, "get_history")()
 //
+// attrs are slog key-value pairs added to the log line only — say which
+// repository or path was slow — never to the bucket, which stays one per
+// operation so percentiles are not split by them.
+//
 // The returned closure must be invoked (typically immediately via defer) to
 // finalize the measurement. Because the closure runs during stack unwinding, the
 // timing is recorded even if the tracked function panics — the panic continues
 // to propagate afterward.
-func (s *Store) Track(category, operation string) func() {
+func (s *Store) Track(category, operation string, attrs ...any) func() {
 	start := time.Now()
 	return func() {
 		durationMs := float64(time.Since(start).Microseconds()) / 1000
 		s.Record(category, operation, durationMs)
-		logDuration(category, operation, durationMs)
+		logDuration(category, operation, durationMs, attrs)
 	}
 }
 
 // logDuration emits a perf log line gated by duration: WARN above 1000ms, INFO
 // above 200ms, DEBUG otherwise.
-func logDuration(category, operation string, durationMs float64) {
+func logDuration(category, operation string, durationMs float64, attrs []any) {
+	line := append([]any{
+		slog.String("category", category),
+		slog.String("operation", operation),
+		slog.Float64("duration_ms", durationMs),
+	}, attrs...)
 	switch {
 	case durationMs > 1000:
-		slog.Warn("perf slow service call",
-			slog.String("category", category),
-			slog.String("operation", operation),
-			slog.Float64("duration_ms", durationMs))
+		slog.Warn("perf slow service call", line...)
 	case durationMs > 200:
-		slog.Info("perf service call",
-			slog.String("category", category),
-			slog.String("operation", operation),
-			slog.Float64("duration_ms", durationMs))
+		slog.Info("perf service call", line...)
 	default:
-		slog.Debug("perf service call",
-			slog.String("category", category),
-			slog.String("operation", operation),
-			slog.Float64("duration_ms", durationMs))
+		slog.Debug("perf service call", line...)
 	}
 }
 

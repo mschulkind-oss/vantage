@@ -156,7 +156,7 @@ function parseCheck(argv: string[]): Invocation {
 
 /**
  * `index [--format text|json] [--request [<section>...]] [--roadmap <path>]
- * [--filter <text>] [--config <path> | --no-config]`. It takes no paths: it
+ * [--filter <text>] [--document <path>] [--config <path> | --no-config]`. It takes no paths: it
  * scans the project the working directory belongs to, so a path would be a
  * second answer to a question the root already settles. `--roadmap` chooses
  * which roadmap Needs you follows, and given twice, the last wins, as
@@ -165,6 +165,10 @@ function parseCheck(argv: string[]): Invocation {
  * `--request` takes the words after it, up to the next option, as agent
  * request ids (the four agent sections and `compact`), none meaning all five; given twice, the ids add up. It prints
  * text, so it refuses `--format json`.
+ *
+ * `--document` narrows the output to one document's entry, for the server's
+ * review commands; it is JSON only and refuses the options that shape the page
+ * (`docs/reference/planning-index.md` §13.7). Given twice, the last wins.
  *
  * `--filter` takes the next argument whatever it is, so `--filter -path:x` is
  * a filter, an exclusion, rather than an unknown option.
@@ -255,6 +259,14 @@ function parseIndex(argv: string[]): Invocation {
         options.roadmap = value;
         break;
       }
+      case "--document": {
+        const value = takeValue();
+        if (value === undefined) {
+          return { kind: "usage-error", message: "--document needs a path" };
+        }
+        options.document = value;
+        break;
+      }
       case "--filter": {
         const value = takeValue();
         if (value === undefined) {
@@ -276,6 +288,30 @@ function parseIndex(argv: string[]): Invocation {
     }
   }
 
+  // One document's entry cannot derive the page, so nothing that shapes the
+  // page goes with it, and it has no text form (§13.7).
+  if (options.document !== undefined) {
+    const shaping =
+      options.request !== undefined
+        ? "--request"
+        : options.roadmap !== undefined
+          ? "--roadmap"
+          : options.filter !== undefined
+            ? "--filter"
+            : null;
+    if (shaping !== null) {
+      return {
+        kind: "usage-error",
+        message: `--document prints one document's entry, which has no page to shape, so it takes no ${shaping}`,
+      };
+    }
+    if (format !== "json") {
+      return {
+        kind: "usage-error",
+        message: "--document prints JSON only: give --format json",
+      };
+    }
+  }
   if (options.request !== undefined && format === "json") {
     return {
       kind: "usage-error",

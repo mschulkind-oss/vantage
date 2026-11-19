@@ -158,7 +158,7 @@ func (s *Stream) Wants(path, hash string) bool {
 // connection only at the next flush, 64 KiB of them later. Any other error
 // means w stopped accepting the body, and nothing more is read for it either.
 func (s *Stream) Write(ctx context.Context, w Flusher, have map[string]string) error {
-	defer perf.Default.Track(perf.CategoryFS, "planning_stream")()
+	defer perf.Default.Track(perf.CategoryFS, "planning_stream", "dir", s.root)()
 
 	out := newLineWriter(w)
 	if err := out.line(headerLine{KindHeader, s.cfg, len(s.candidates), s.refused}); err != nil {

@@ -39,7 +39,12 @@ import {
   type QuestionState,
 } from "../../../vantage-md/src/planning/index.js";
 import { VANTAGE_OQ_STATUS } from "../../../vantage-md/src/vantageDirectives.js";
-import { Listing, listCandidates, readCandidate } from "../core/candidates.js";
+import {
+  Listing,
+  isCandidate,
+  listCandidates,
+  readCandidate,
+} from "../core/candidates.js";
 import {
   ConfigError,
   configPathFor,
@@ -124,6 +129,12 @@ export interface IndexOptions {
    * alone, is no filter, and the output is byte for byte a run without it.
    */
   filter?: string;
+  /**
+   * `--document`: print one document's entry and no page (§13.7). The parser
+   * has already refused it beside the options that shape the page, and
+   * without `--format json`.
+   */
+  document?: string;
 }
 
 /**
@@ -137,8 +148,8 @@ export const INDEX_FORMAT_VERSION = 3;
 interface ScannedProject {
   root: string;
   index: PlanningIndex;
-  /** Every candidate, for narrowing each document's links on output. */
-  candidates: ReadonlySet<string>;
+  /** Whether a path is a candidate, for narrowing each document's links on output. */
+  isCandidate: (path: string) => boolean;
   /** Each read candidate's text, for the roadmap's badged source. */
   sources: ReadonlyMap<string, string>;
 }
@@ -191,6 +202,12 @@ export function indexCommand(options: IndexOptions, io: Io): number {
     return EXIT_USAGE;
   }
   const filter = parsed?.kind === "understood" ? parsed : null;
+
+  if (options.document !== undefined) {
+    const path = options.document.replace(/^\.\//, "");
+    io.out(renderDocumentJson(scanDocument(root, loaded.planning, path), path));
+    return EXIT_OK;
+  }
 
   const project = scanProject(root, loaded.planning);
   const { index } = project;
@@ -309,6 +326,41 @@ function scanProject(
 ): ScannedProject {
   const candidates = listCandidates(new Listing(root), config);
   const refused = candidates.length > config.maxCandidates;
+  const listed = new Set(candidates);
+  return scanCandidates(root, config, candidates, refused, (path) =>
+    listed.has(path),
+  );
+}
+
+/**
+ * One document, read and scanned as {@link scanProject} reads and scans it,
+ * without walking the tree or reading any other file (§13.7). A path that is
+ * not a candidate is read as nothing. There is no refusal: `max-candidates`
+ * bounds what a whole scan reads, and one document is bounded already.
+ */
+function scanDocument(
+  root: string,
+  config: PlanningSources["config"],
+  path: string,
+): ScannedProject {
+  const listing = new Listing(root);
+  const candidate = (rel: string) => isCandidate(listing, config, rel);
+  return scanCandidates(
+    root,
+    config,
+    candidate(path) ? [path] : [],
+    false,
+    candidate,
+  );
+}
+
+function scanCandidates(
+  root: string,
+  config: PlanningSources["config"],
+  candidates: readonly string[],
+  refused: boolean,
+  candidate: (path: string) => boolean,
+): ScannedProject {
   const sources: PlanningSources = {
     config,
     candidateCount: candidates.length,
@@ -341,7 +393,7 @@ function scanProject(
   return {
     root,
     index: buildPlanningIndex(sources),
-    candidates: new Set(candidates),
+    isCandidate: candidate,
     sources: texts,
   };
 }
@@ -625,13 +677,13 @@ interface RoadmapLink {
  * candidate.
  */
 function narrowed(project: ScannedProject): PlanningIndex {
-  const { index, candidates } = project;
+  const { index, isCandidate: candidate } = project;
   return {
     ...index,
     documents: index.documents.map((doc) => ({
       ...doc,
       links: doc.links.filter(
-        (link) => link.target !== doc.path && candidates.has(link.target),
+        (link) => link.target !== doc.path && candidate(link.target),
       ),
     })),
   };
@@ -722,6 +774,19 @@ function renderJson(
     null,
     2,
   )}\n`;
+}
+
+/**
+ * `--document`'s JSON (§13.7): the envelope {@link renderJson} prints, its
+ * index holding at most the one document, the page's keys null because one
+ * document cannot derive them, and `document` naming the path asked for.
+ */
+function renderDocumentJson(project: ScannedProject, path: string): string {
+  const payload = JSON.parse(renderJson(project, null)) as Record<
+    string,
+    unknown
+  >;
+  return `${JSON.stringify({ ...payload, document: path }, null, 2)}\n`;
 }
 
 /**

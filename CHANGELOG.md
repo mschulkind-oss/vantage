@@ -8,6 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Added
+
+**Scan one document with `vantage-check index --document <path>`.** It prints that document's entry in the planning index as JSON, reading no other file. See [one document's index](docs/reference/planning-index.md#137-one-documents-index---document).
+
+### Changed
+
+**Slow-call log lines say where they were slow.** A slow request names its repository, and a slow git, file or checker call names its directory, so a server serving many projects shows which one is slow. `/api/perf/diagnostics` is unchanged.
+
+### Fixed
+
+**Take this leaning, editing an answer and replying no longer wait on a scan of the whole project.** Proving which question an answer belongs to ran the checker over every planning document, which took 10–27 s on a project of about 700, and other writes to that document's review waited behind it. The server now scans only the one document. With a checker older than this release it falls back to the whole project, as before.
+
 ## [0.12.0] - 2026-11-16
 
 Keep records out of Ready and compaction with one frontmatter line, and fix answering, compaction, delivery and live updates.
