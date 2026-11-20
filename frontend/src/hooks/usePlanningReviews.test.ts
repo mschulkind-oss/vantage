@@ -11,9 +11,11 @@ import axios from "axios";
 import {
   fetchPlanningReviews,
   planningReviewsOf,
-  reloadPlanningReviews,
+  freshnessOf,
+  OFFLINE_AFTER_MS,
+  reconcilePlanningReviews,
   resetPlanningReviews,
-  useReloadStatus,
+  retryPlanningReviews,
   usePlanningReviews,
 } from "./usePlanningReviews";
 import { usePlanningStore } from "../stores/usePlanningStore";
@@ -363,7 +365,7 @@ describe("fetchPlanningReviews", () => {
     expect(result.current.evidence["a.md"]?.mutation_revision).toBe(5);
   });
 
-  it("clears the comments of a review the server no longer has, through a push re-read and through Reload", async () => {
+  it("clears the comments of a review the server no longer has, through a push re-read and through a reconcile", async () => {
     stored = {
       "a.md": review("a.md", comment("c1")),
       "b.md": review("b.md", comment("c2")),
@@ -384,7 +386,7 @@ describe("fetchPlanningReviews", () => {
 
     delete stored["b.md"];
     await act(async () => {
-      await reloadPlanningReviews("", ["a.md", "b.md"]);
+      await reconcilePlanningReviews("", ["a.md", "b.md"]);
     });
     expect(ids(result.current.byPath["b.md"])).toEqual([]);
   });
@@ -443,11 +445,14 @@ describe("fetchPlanningReviews", () => {
   });
 });
 
-describe("reloadPlanningReviews (Reload from server)", () => {
+describe("reconcilePlanningReviews (the page keeps itself current)", () => {
   const rescan = vi.fn();
   beforeEach(() => {
     rescan.mockReset();
     usePlanningStore.setState({ rescan });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("reads every listed path in one request, even if held, and rescans the scan", async () => {
@@ -461,13 +466,34 @@ describe("reloadPlanningReviews (Reload from server)", () => {
     reading = { boot_id: "boot-1", generation: 2, revision: 2 };
     let outcome: string | undefined;
     await act(async () => {
-      outcome = await reloadPlanningReviews("", ["a.md", "b.md"]);
+      outcome = await reconcilePlanningReviews("", ["a.md", "b.md"]);
     });
     expect(outcome).toBe("adopted");
     expect(posted()).toEqual([["a.md", "b.md"]]);
     expect(ids(result.current.byPath["a.md"])).toEqual(["new"]);
     expect(rescan).toHaveBeenCalledWith("", { bypassCache: false });
-    expect(useReloadStatus.getState().byRepo[""]?.lastSuccessAt).not.toBeNull();
+    expect(freshnessOf("")).toEqual({ failingSince: null, offline: false });
+  });
+
+  it("reconciles every listed document when the socket reconnects, and not before", async () => {
+    stored = {
+      "a.md": review("a.md", comment("a")),
+      "b.md": review("b.md", comment("b")),
+    };
+    const { result } = renderHook(() =>
+      usePlanningReviews("", ["a.md", "b.md"]),
+    );
+    await waitFor(() => expect(result.current.known).toBe(true));
+    mockedPost.mockClear();
+    stored["b.md"] = review("b.md", comment("b2"));
+    reading = { boot_id: "boot-1", generation: 2, revision: 1 };
+    await act(async () => {
+      usePlanningStore.getState().noteReconnect();
+    });
+    await waitFor(() =>
+      expect(ids(result.current.byPath["b.md"])).toEqual(["b2"]),
+    );
+    expect(posted()).toEqual([["a.md", "b.md"]]);
   });
 
   it("never adopts an older document generation", async () => {
@@ -478,7 +504,7 @@ describe("reloadPlanningReviews (Reload from server)", () => {
     stored["a.md"] = review("a.md", comment("older"));
     reading = { boot_id: "boot-1", generation: 4, revision: 9 };
     await act(async () => {
-      await reloadPlanningReviews("", ["a.md"]);
+      await reconcilePlanningReviews("", ["a.md"]);
     });
     expect(ids(result.current.byPath["a.md"])).toEqual(["held"]);
   });
@@ -495,7 +521,7 @@ describe("reloadPlanningReviews (Reload from server)", () => {
     stored = { "a.md": review("a.md", comment("a2")) };
     reading = { boot_id: "boot-2", generation: 1, revision: 1 };
     await act(async () => {
-      await reloadPlanningReviews("", ["a.md"]);
+      await reconcilePlanningReviews("", ["a.md"]);
     });
     expect(ids(result.current.byPath["a.md"])).toEqual(["a2"]);
     // The unlisted-in-the-answer path kept nothing of the old boot: it is
@@ -505,44 +531,117 @@ describe("reloadPlanningReviews (Reload from server)", () => {
     expect(rescan).toHaveBeenCalledWith("", { bypassCache: true });
   });
 
-  it("records a changed sample as Unknown and does not ask again by itself", async () => {
+  it("reads a changed sample again after 1 s, without calling the page offline", async () => {
+    vi.useFakeTimers();
     stored = { "a.md": review("a.md", comment("a")) };
+    let changing = true;
     mockedPost.mockImplementation(async (_url, body) => ({
       data: {
         reviews: (body as { paths: string[] }).paths.map((path) => ({
           path,
           review: stored[path],
-          evidence: { ...evidence(path), sample_changed: true },
+          evidence: { ...evidence(path), sample_changed: changing },
         })),
       },
     }));
-    let outcome: string | undefined;
-    await act(async () => {
-      outcome = await reloadPlanningReviews("", ["a.md"]);
-    });
-    expect(outcome).toBe("unknown");
-    expect(useReloadStatus.getState().byRepo[""]?.sampleChanged).toBe(true);
-    await new Promise((r) => setTimeout(r, 30));
+    expect(await reconcilePlanningReviews("", ["a.md"])).toBe("changed");
+    changing = false;
+    await vi.advanceTimersByTimeAsync(999);
     expect(mockedPost).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(mockedPost).toHaveBeenCalledTimes(2);
+    expect(freshnessOf("").failingSince).toBeNull();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(mockedPost).toHaveBeenCalledTimes(2);
   });
 
-  it("keeps what is held and records the last failure beside the last success", async () => {
+  it("retries a failed read from 1 s doubling to 30 s, calls the page offline after 30 s, and the first success clears it", async () => {
+    vi.useFakeTimers();
+    stored = { "a.md": review("a.md", comment("a")) };
+    const sentAt: number[] = [];
+    let down = true;
+    mockedPost.mockImplementation(async (_url, body) => {
+      sentAt.push(Date.now());
+      if (down) throw new Error("down");
+      const { paths } = body as { paths: string[] };
+      return {
+        data: {
+          reviews: paths.map((path) => ({
+            path,
+            review: stored[path],
+            evidence: evidence(path),
+          })),
+        },
+      };
+    });
+    const start = Date.now();
+    expect(await reconcilePlanningReviews("", ["a.md"])).toBe("failed");
+    expect(freshnessOf("")).toEqual({ failingSince: start, offline: false });
+    await vi.advanceTimersByTimeAsync(OFFLINE_AFTER_MS - 1);
+    expect(freshnessOf("").offline).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(freshnessOf("")).toEqual({ failingSince: start, offline: true });
+    await vi.advanceTimersByTimeAsync(120_000);
+    const gaps = sentAt.slice(1).map((t, i) => t - sentAt[i]);
+    expect(gaps.slice(0, 7)).toEqual([
+      1000, 2000, 4000, 8000, 16000, 30000, 30000,
+    ]);
+    down = false;
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(freshnessOf("")).toEqual({ failingSince: null, offline: false });
+    expect(ids(planningReviewsOf("")["a.md"])).toEqual(["a"]);
+    const settled = sentAt.length;
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(sentAt.length).toBe(settled);
+  });
+
+  it("Retry now asks at once for what failed, and keeps the paths of every failure", async () => {
+    vi.useFakeTimers();
+    stored = {
+      "a.md": review("a.md", comment("a")),
+      "b.md": review("b.md", comment("b")),
+    };
+    mockedPost.mockRejectedValue(new Error("down"));
+    await reconcilePlanningReviews("", ["a.md"]);
+    await reconcilePlanningReviews("", ["b.md"]);
+    serve();
+    mockedPost.mockClear();
+    await retryPlanningReviews("");
+    expect(posted()).toEqual([["a.md", "b.md"]]);
+    expect(freshnessOf("").failingSince).toBeNull();
+  });
+
+  it("puts a failed push re-read into the retry, so it never waits for the next push", async () => {
+    vi.useFakeTimers();
+    stored = { "a.md": review("a.md", comment("a")) };
+    const { result } = renderHook(() => usePlanningReviews("", ["a.md"]));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(result.current.known).toBe(true);
+    mockedPost.mockRejectedValueOnce(new Error("down"));
+    stored["a.md"] = review("a.md", comment("a2"));
+    await act(async () => {
+      usePlanningStore.setState({ reviewEpoch: { "\na.md": 1 } });
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(freshnessOf("").failingSince).not.toBeNull();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+    expect(ids(result.current.byPath["a.md"])).toEqual(["a2"]);
+    expect(freshnessOf("").failingSince).toBeNull();
+  });
+
+  it("keeps what is held when a read fails", async () => {
     stored = { "a.md": review("a.md", comment("a")) };
     const { result } = renderHook(() => usePlanningReviews("", ["a.md"]));
     await waitFor(() => expect(result.current.known).toBe(true));
-    await act(async () => {
-      await reloadPlanningReviews("", ["a.md"]);
-    });
     mockedPost.mockRejectedValue(new Error("down"));
     let outcome: string | undefined;
     await act(async () => {
-      outcome = await reloadPlanningReviews("", ["a.md"]);
+      outcome = await reconcilePlanningReviews("", ["a.md"]);
     });
     expect(outcome).toBe("failed");
-    const status = useReloadStatus.getState().byRepo[""];
-    expect(status?.lastSuccessAt).not.toBeNull();
-    expect(status?.lastFailureAt).not.toBeNull();
     expect(ids(result.current.byPath["a.md"])).toEqual(["a"]);
-    expect(rescan).toHaveBeenCalledTimes(1);
+    expect(rescan).not.toHaveBeenCalled();
   });
 });

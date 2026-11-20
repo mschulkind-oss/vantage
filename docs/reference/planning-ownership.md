@@ -324,6 +324,16 @@ click, navigation and Close keep the text.
   meaningful visible label with a list/check icon and its pending count. _Reload from server_ uses a
   cloud/download icon and folds into the toolbar overflow on a narrow header.
   Fetching data and applying held changes do not share a refresh-arrow icon.
+- **Reconcile** ([`planning-page-freshness.md` §4.4](../design/planning-page-freshness.md#44-when-the-system-reconciles))
+  is that same read, run without a press. It runs for every listed document
+  when the push connection comes back, which covers a tab hidden for 30 s or
+  more, since that forces the reconnect. Any failed review read joins one
+  retry per repository: the reconcile's own, a push's single-document re-read,
+  and a visit's batch. The retry waits 1 s, doubling to 30 s, indefinitely, and
+  a good answer sends whatever still waits at once. A document read while it
+  changed (`sample_changed`) is read again on the same backoff. Reads that
+  have failed for 30 s set the repository's freshness to offline
+  (`useFreshnessOf`), and the first good answer clears it.
 - **Selection anchors.** A settled selection (mouse-up, or a keyboard selection
   quiet for 300 ms) of at least 3 characters inside one question's unit offers
   **Comment on selection**; it opens the answer box on that anchor. A headline

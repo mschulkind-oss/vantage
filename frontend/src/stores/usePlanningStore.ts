@@ -90,6 +90,13 @@ interface PlanningStore {
   /** By `${repo}\n${path}`: bumped on each `review_changed` for that document. */
   reviewEpoch: Readonly<Record<string, number>>;
   /**
+   * How many times the push connection has come back after dropping. The
+   * planning page reconciles every listed document's reviews on each, since
+   * pushes may have been lost while it was down
+   * (`docs/design/planning-page-freshness.md` §4.4).
+   */
+  reconnects: number;
+  /**
    * Start the build for `repo` unless one has already been started. A no-op
    * until the repo store has loaded, and in daemon mode for `""`. In a static
    * export it gives `error` at once, with no request (Plan Q3).
@@ -457,6 +464,7 @@ export const usePlanningStore = create<PlanningStore>((set, get) => {
   return {
     byRepo: {},
     reviewEpoch: {},
+    reconnects: 0,
 
     ensure: (repo) => {
       if (isStaticMode()) {
@@ -544,6 +552,7 @@ export const usePlanningStore = create<PlanningStore>((set, get) => {
     },
 
     noteReconnect: () => {
+      set((state) => ({ reconnects: state.reconnects + 1 }));
       for (const [repo, load] of Object.entries(get().byRepo)) {
         if (load.status === "ready") get().rescan(repo);
       }

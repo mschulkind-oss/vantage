@@ -179,7 +179,7 @@ import { CONTENTS_COLUMN_QUERY, useMediaQuery } from "../hooks/useMediaQuery";
 import { usePersistentFlag } from "../hooks/usePersistentFlag";
 import {
   fetchPlanningReviews,
-  reloadPlanningReviews,
+  reconcilePlanningReviews,
   useReloadStatusOf,
   usePlanningReviews,
 } from "../hooks/usePlanningReviews";
@@ -2892,7 +2892,7 @@ export const PlanningPage: React.FC = () => {
   // Reload from server: reads again, repaints nothing (Apply updates does).
   const reloadStatus = useReloadStatusOf(onThisRepo ? repo : null);
   const reloadFromServer = useCallback(() => {
-    if (repo !== null) void reloadPlanningReviews(repo, listedPaths);
+    if (repo !== null) void reconcilePlanningReviews(repo, listedPaths);
   }, [repo, listedPaths]);
   const refresh = useCallback(async () => {
     if (liveBoxes().some((box) => box.holdsChanges)) return;

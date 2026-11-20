@@ -24,7 +24,7 @@
  * Not the review store, which holds one document — the one the viewer is on —
  * and resets itself on every switch.
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import { create } from "zustand";
 import { usePlanningStore } from "../stores/usePlanningStore";
@@ -180,6 +180,7 @@ function hold(
 /** Forget every repository's reviews. For tests. */
 export function resetPlanningReviews(): void {
   books.clear();
+  resetRetries();
   useHeldReviews.setState({ byRepo: {}, evidenceByRepo: {} });
 }
 
@@ -285,8 +286,12 @@ export function fetchPlanningReviews(
       }
       settle();
       // A failure is a real one: a path with no review is left out of a good
-      // answer, not failed. The next push, or the next page, asks again.
-      if (answered === null) return false;
+      // answer, not failed. It is read again by the retry.
+      if (answered === null) {
+        noteFailure(repo, asked);
+        return false;
+      }
+      noteSuccess(repo, asked);
       const entries: Record<string, readonly ReviewComment[]> = {};
       const evidence: Record<string, ReviewEvidence | null> = {};
       for (const { path, seq, epoch } of sent) {
@@ -341,22 +346,171 @@ export const useReloadStatusOf = (repo: string | null): ReloadStatus =>
     repo === null ? NO_RELOAD : (state.byRepo[repo] ?? NO_RELOAD),
   );
 
+/** A failed reconcile's first retry, after 1 s; it doubles from there. */
+export const RECONCILE_RETRY_MIN_MS = 1000;
+/** The longest wait between retries, as a comment box's save waits. */
+export const RECONCILE_RETRY_MAX_MS = 30_000;
+/** How long reads may fail before the page says it is offline (§4.6). */
+export const OFFLINE_AFTER_MS = 30_000;
+
 /**
- * Reload from server: read every path's review in one request regardless of
- * what is held (requests in flight are discarded), adopt the answer through
- * `hold`, which refuses an older document generation of the same boot, and
- * ask for a rescan. An answer from another boot id discards everything held
- * for the repository first, and rescans without the cache. A changed sample is
- * held as Unknown and recorded; nothing here asks again by itself. Never
- * touches an edit buffer or a painted body.
+ * Page freshness, as far as reading reviews goes, for one repository
+ * (`docs/design/planning-page-freshness.md` §4.1): whether its reads are
+ * failing, since when, and whether they have failed long enough that the
+ * page says it is offline.
  */
-export async function reloadPlanningReviews(
+export interface Freshness {
+  /** `Date.now()` of the first failed read not since followed by a good one. */
+  failingSince: number | null;
+  /** Reads have failed for `OFFLINE_AFTER_MS`: the header says so, once. */
+  offline: boolean;
+}
+
+const CURRENT: Freshness = { failingSince: null, offline: false };
+
+/** Freshness by repository; renders the header's offline line. */
+export const usePlanningFreshness = create<{
+  byRepo: Readonly<Record<string, Freshness>>;
+}>(() => ({ byRepo: {} }));
+
+/** The freshness of `repo` now. */
+export const freshnessOf = (repo: string): Freshness =>
+  usePlanningFreshness.getState().byRepo[repo] ?? CURRENT;
+
+/** The freshness of `repo` (`null`: none asked, so current). */
+export const useFreshnessOf = (repo: string | null): Freshness =>
+  usePlanningFreshness((state) =>
+    repo === null ? CURRENT : (state.byRepo[repo] ?? CURRENT),
+  );
+
+const setFreshness = (repo: string, freshness: Freshness) =>
+  usePlanningFreshness.setState((state) => ({
+    byRepo: { ...state.byRepo, [repo]: freshness },
+  }));
+
+/** One repository's retry: what waits to be read again, and when. */
+interface Retry {
+  paths: Set<string>;
+  delay: number;
+  timer: ReturnType<typeof setTimeout> | null;
+  offlineTimer: ReturnType<typeof setTimeout> | null;
+}
+
+const retries = new Map<string, Retry>();
+
+function retryOf(repo: string): Retry {
+  let retry = retries.get(repo);
+  if (retry === undefined) {
+    retry = {
+      paths: new Set(),
+      delay: RECONCILE_RETRY_MIN_MS,
+      timer: null,
+      offlineTimer: null,
+    };
+    retries.set(repo, retry);
+  }
+  return retry;
+}
+
+/** Read `paths` of `repo` again once the retry's wait is up. */
+function retryLater(repo: string, paths: Iterable<string>): void {
+  const retry = retryOf(repo);
+  for (const path of paths) retry.paths.add(path);
+  if (retry.timer !== null || retry.paths.size === 0) return;
+  const delay = retry.delay;
+  retry.delay = Math.min(delay * 2, RECONCILE_RETRY_MAX_MS);
+  retry.timer = setTimeout(() => {
+    retry.timer = null;
+    void retryPlanningReviews(repo);
+  }, delay);
+}
+
+/** A read of `paths` failed: retry them, and start the offline deadline. */
+function noteFailure(repo: string, paths: Iterable<string>): void {
+  if (freshnessOf(repo).failingSince === null) {
+    const since = Date.now();
+    setFreshness(repo, { failingSince: since, offline: false });
+    const retry = retryOf(repo);
+    if (retry.offlineTimer !== null) clearTimeout(retry.offlineTimer);
+    retry.offlineTimer = setTimeout(() => {
+      retry.offlineTimer = null;
+      if (freshnessOf(repo).failingSince === since) {
+        setFreshness(repo, { failingSince: since, offline: true });
+      }
+    }, OFFLINE_AFTER_MS);
+  }
+  retryLater(repo, paths);
+}
+
+/**
+ * A read of `read` was answered: the page is not offline, and those paths no
+ * longer wait. What still waits for a retry goes now, since the server is
+ * answering again.
+ */
+function noteSuccess(repo: string, read: Iterable<string>): void {
+  if (freshnessOf(repo).failingSince !== null) setFreshness(repo, CURRENT);
+  const retry = retries.get(repo);
+  if (retry === undefined) return;
+  for (const path of read) retry.paths.delete(path);
+  if (retry.offlineTimer !== null) clearTimeout(retry.offlineTimer);
+  retry.offlineTimer = null;
+  retry.delay = RECONCILE_RETRY_MIN_MS;
+  if (retry.timer !== null) {
+    clearTimeout(retry.timer);
+    retry.timer = null;
+    if (retry.paths.size > 0) void retryPlanningReviews(repo);
+  }
+}
+
+/** Stop every retry and forget every repository's freshness. For tests. */
+function resetRetries(): void {
+  for (const retry of retries.values()) {
+    if (retry.timer !== null) clearTimeout(retry.timer);
+    if (retry.offlineTimer !== null) clearTimeout(retry.offlineTimer);
+  }
+  retries.clear();
+  usePlanningFreshness.setState({ byRepo: {} });
+}
+
+/**
+ * Retry now: read at once every path a failed read left waiting for `repo`.
+ * Resolves as `reconcilePlanningReviews` does; `"adopted"` when nothing waits.
+ */
+export function retryPlanningReviews(
+  repo: string,
+): Promise<"adopted" | "changed" | "failed"> {
+  return reconcilePlanningReviews(repo, []);
+}
+
+/**
+ * Reconcile (`docs/design/planning-page-freshness.md` §4.4): read every path's
+ * review in one request regardless of what is held (requests in flight are
+ * discarded), together with every path a failed read left waiting, adopt the
+ * answer through `hold`, which refuses an older document generation of the
+ * same boot, and ask for a rescan. An answer from another boot id discards
+ * everything held for the repository first, and rescans without the cache.
+ *
+ * A failed request is retried after 1 s, doubling to 30 s, indefinitely, and
+ * 30 s of failure calls the page offline (`useFreshnessOf`); the first good
+ * answer clears it. A path read while its document changed is read again
+ * after the same wait. Never touches an edit buffer or a painted body: what
+ * it changes is marks and counts, never a layout.
+ */
+export async function reconcilePlanningReviews(
   repo: string,
   paths: readonly string[],
-): Promise<"adopted" | "unknown" | "failed"> {
+): Promise<"adopted" | "changed" | "failed"> {
   if (isStaticMode()) return "failed";
   const book = bookOf(repo);
-  const listed = [...new Set(paths)];
+  const retry = retries.get(repo);
+  const waiting = retry === undefined ? [] : [...retry.paths];
+  if (retry !== undefined) {
+    retry.paths.clear();
+    if (retry.timer !== null) clearTimeout(retry.timer);
+    retry.timer = null;
+  }
+  const listed = [...new Set([...paths, ...waiting])].sort();
+  if (listed.length === 0) return "adopted";
   noteReload(repo, { running: true });
   const sent = listed.map((path) => {
     const seq = (book.seq.get(path) ?? 0) + 1;
@@ -376,6 +530,7 @@ export async function reloadPlanningReviews(
   }
   if (answered === null) {
     noteReload(repo, { lastFailureAt: Date.now(), running: false });
+    noteFailure(repo, listed);
     return "failed";
   }
   const heldEvidence = useHeldReviews.getState().evidenceByRepo[repo] ?? {};
@@ -400,14 +555,23 @@ export async function reloadPlanningReviews(
     book.read.set(path, { epoch, at });
   }
   hold(repo, entries, evidence, unreviewedIn(sent, answered));
-  const changed = Object.values(evidence).some((e) => e?.sample_changed);
+  const changed = Object.entries(evidence)
+    .filter(([, e]) => e?.sample_changed)
+    .map(([path]) => path);
   noteReload(repo, {
     lastSuccessAt: Date.now(),
-    sampleChanged: changed,
+    sampleChanged: changed.length > 0,
     running: false,
   });
+  // The retry's wait starts again from 1 s only once every read is coherent:
+  // a document that keeps changing while it is read backs off as a failure does.
+  if (changed.length === 0) noteSuccess(repo, listed);
+  else {
+    if (freshnessOf(repo).failingSince !== null) setFreshness(repo, CURRENT);
+    retryLater(repo, changed);
+  }
   usePlanningStore.getState().rescan(repo, { bypassCache: bootChanged });
-  return changed ? "unknown" : "adopted";
+  return changed.length > 0 ? "changed" : "adopted";
 }
 
 /** Read one path's review again, as a `review_changed` push asks. */
@@ -432,12 +596,14 @@ function refetchOne(repo: string, path: string): void {
       answered = all.get(path);
     } catch {
       // A document with no review is left out of a good answer, so a failure
-      // is a real one. The comments already shown stay; the next push for it
-      // asks again.
+      // is a real one. The comments already shown stay, and the retry reads
+      // it again.
       settle();
+      noteFailure(repo, [path]);
       return false;
     }
     settle();
+    noteSuccess(repo, [path]);
     if (book.seq.get(path) !== seq) return true;
     book.read.set(path, { epoch, at });
     hold(
@@ -516,6 +682,18 @@ export function usePlanningReviews(
     // `byPath` too: a push that lands while its document is being read is
     // read again once that answer is in.
   }, [repo, listed, epochs, readRest, since, byPath]);
+
+  // The push connection came back: pushes may have been lost while it was
+  // down, so every listed document is reconciled. Its first connection is
+  // not a reconnect, and neither is the count this hook was mounted at.
+  const reconnects = usePlanningStore((state) => state.reconnects);
+  const seenReconnects = useRef(reconnects);
+  useEffect(() => {
+    if (seenReconnects.current === reconnects) return;
+    seenReconnects.current = reconnects;
+    if (repo === null || isStaticMode() || listed.length === 0) return;
+    void reconcilePlanningReviews(repo, listed);
+  }, [repo, listed, reconnects]);
 
   const adopt = useCallback(
     (path: string, data: ReviewData | null) => {
