@@ -167,10 +167,16 @@ reviews:
 | Ambiguous  | id is declared more than once; credited to no card                                                                                                                                                             |
 | Removed    | id is in no directive and nowhere in the text                                                                                                                                                                  |
 | Compacted  | id is in `ledgerIds` and in no directive                                                                                                                                                                       |
-| Unknown    | document is not scanned, the reviews were read against another version of the document (no evidence, `sample_changed`, or `content_hash` not the scan's), or the id is written in the text outside a directive |
+| Unknown    | document is not scanned, or the id is written in the text outside a directive |
 
 The header counts "M with unresolved ownership" apart from the questions that
-need you, and says Unknown until every listed document's reviews are read. The
+need you, and says Unknown until every listed document's reviews are read as
+one reading with its scan. A document held as an older reading (no evidence,
+`sample_changed`, or a `content_hash` not the scan's) is **unpaired**: its
+comments are in no group and in no Copy answers, and both counts read Unknown
+until the next read pairs it. What is unread is not unowned — listing those
+comments as without a question made every answer on a just-edited document
+look lost. The
 groups ([PlanningUnresolved.tsx](../../frontend/src/components/PlanningUnresolved.tsx))
 carry the original quote and their own **Copy unassigned requests**; a comment is
 in Copy answers or in a group, never both. Filters narrow what is displayed and

@@ -9881,16 +9881,20 @@ describe("legacy comments: automatic bind and Attach to question…", () => {
     );
   });
 
-  it("counts a pending comment as unresolved, not as an answer, when its reviews were read against another version", async () => {
+  it("lists an answer read against another version of its document nowhere, and says the counts are unknown", async () => {
     staleEvidence = true;
     reviews["plans/unrouted.md"] = [
       { ...legacyOn(DETAIL), question_id: "OQ-U1" },
     ];
     await renderPage();
-    fireEvent.click(screen.getByTestId("unresolved-ownership"));
-    expect(screen.getByTestId("unresolved-unknown")).toHaveTextContent(
-      "another version of the document",
+    // Not an answer yet, and not without a question either: unread.
+    const control = screen.getByTestId("unresolved-ownership");
+    expect(control).toHaveAttribute(
+      "aria-label",
+      "Unknown with unresolved ownership",
     );
+    expect(control).toBeDisabled();
+    expect(screen.queryByTestId("unresolved-unknown")).toBeNull();
   });
 });
 

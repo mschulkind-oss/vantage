@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+**Answers on a document an agent just edited no longer show as *not attached*.** Until the page re-read that document's comments, it listed every pending answer on it under the header's link control, as if they had lost their question. They are now listed nowhere for that moment, and the counts read *Unknown* until the read lands.
+
 **A comment on a question's empty *Answer* no longer shows as "original text no longer found" the moment it is saved.** Every open question's empty answer reads the same, so a comment filed on one by clicking it, selecting it or pressing **Answer…** could not be told apart from the others and was drawn as lost. Those comments are now filed under their question's id, as **Take this leaning** already was. A comment already saved this way stays as it is; attach it with **Attach to question…** on the planning page.
 
 **A question card no longer stays *Unknown* after an agent edits its document.** The page re-read a document's comments only when a comment changed, so an edit left them paired with the version before it, and the card read *Unknown* until the page was opened afresh; going back to it was not enough. Now an edit to a listed document re-reads its comments, and the card's status follows once the page shows the new version (after **Apply updates**, if it is holding updates back).
