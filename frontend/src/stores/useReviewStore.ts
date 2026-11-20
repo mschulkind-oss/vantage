@@ -699,6 +699,8 @@ export interface PendingSelection {
   displayText: string;
   /** True when the selection's start and end blocks differed and we clamped. */
   clamped?: boolean;
+  /** The question the comment is filed under (`questionIdAt`), if any. */
+  questionId?: string;
 }
 
 interface ReviewState {

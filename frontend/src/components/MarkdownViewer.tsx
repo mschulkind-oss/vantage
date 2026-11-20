@@ -26,6 +26,7 @@ import {
 } from "../hooks/useReviewHighlights";
 import {
   locateQuestion,
+  questionIdAt,
   useOpenQuestionButtons,
   type AnswerQuestion,
   type InlineReviewEntry,
@@ -392,12 +393,13 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
   // the button: the same anchor and fallback text, so what it files is the
   // comment the planning card's Answer… files.
   const answerQuestion = useCallback<AnswerQuestion>(
-    (anchor, fallbackText, rect) =>
+    (anchor, fallbackText, rect, questionId) =>
       setPendingSelection({
         anchor,
         rect,
         displayText: fallbackText,
         clamped: false,
+        questionId,
       }),
     [setPendingSelection],
   );
@@ -558,6 +560,7 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
       rect: captured.rect,
       displayText: captured.displayText,
       clamped: captured.clamped,
+      questionId: questionIdAt(el, startBlock),
     });
     return true;
   }, [setPendingSelection]);
@@ -676,6 +679,7 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
         rect: captured.rect,
         displayText: captured.displayText,
         clamped: false,
+        questionId: questionIdAt(el, block as HTMLElement),
       });
     };
 
@@ -1026,6 +1030,7 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
                 pendingSelection.anchor,
                 "",
                 pendingSelection.displayText,
+                pendingSelection.questionId,
               ),
             );
           }}

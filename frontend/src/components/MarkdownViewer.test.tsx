@@ -14,7 +14,7 @@ import { useReviewStore } from "../stores/useReviewStore";
 import { useRepoStore } from "../stores/useRepoStore";
 import { blockVisibleText, hashBlockText } from "../lib/reviewAnchor";
 import { anchorFromRange } from "../lib/selectionAnchor";
-import { layout } from "../test/layout";
+import { layout, place } from "../test/layout";
 import type { CommentReaction, ReviewComment } from "../types";
 import { installReviewServer } from "../test/reviewServer";
 import { resetBoxesForTest } from "../lib/commentAutosave";
@@ -1116,6 +1116,81 @@ describe("MarkdownViewer — the one-click Open Question answer", () => {
     expect(comment.comment).toBe("Front of the queue.");
     expect(container.querySelector(".review-oq-answered")).not.toBeNull();
     expect(screen.queryByRole("button", { name: "Answer…" })).toBeNull();
+  });
+
+  // Every open question carries the same empty Answer, so its block's hash is
+  // at several lines and the anchor alone names no block: only the question id
+  // keeps the comment on the question it was typed under.
+  const twoAnswers = (id: string) =>
+    [
+      `1. **${id}: Queue position?** Where?`,
+      "",
+      `   <!-- vantage: oq id=${id} leaning="Back of the queue." -->`,
+      "",
+      "   _Leaning:_ back of the queue.",
+      "",
+      "   **Answer:**",
+      "   > _(empty — fill in when decided)_",
+      "",
+    ].join("\n");
+  const TWO_ANSWERS = twoAnswers("OQ-1") + "\n" + twoAnswers("OQ-2");
+
+  it("files a click on a question's empty Answer under that question, and paints it there", async () => {
+    installReviewServer([]);
+    const { container } = renderDoc(TWO_ANSWERS);
+    const placeholders = Array.from(
+      container.querySelectorAll<HTMLElement>("blockquote p[data-source-line]"),
+    );
+    expect(placeholders).toHaveLength(2);
+    place(placeholders[0], { top: 100, bottom: 120, left: 0, right: 600 });
+    fireEvent.mouseMove(container.querySelector(".prose")!, { clientY: 110 });
+    fireEvent.click(placeholders[0]);
+    const textarea =
+      screen.getByPlaceholderText<HTMLTextAreaElement>("Your comment...");
+    fireEvent.change(textarea, { target: { value: "Take the leaning." } });
+    fireEvent.keyDown(textarea, { key: "Enter", ctrlKey: true });
+
+    await waitFor(() =>
+      expect(useReviewStore.getState().comments).toHaveLength(1),
+    );
+    expect(useReviewStore.getState().comments[0].question_id).toBe("OQ-1");
+    expect(container.querySelector(".review-inline-comment--outdated")).toBe(
+      null,
+    );
+    expect(useReviewStore.getState().commentsDrifted).toBe(false);
+  });
+
+  it("files Answer… under its question's id", async () => {
+    installReviewServer([]);
+    renderDoc(TWO_ANSWERS);
+    fireEvent.click(screen.getAllByRole("button", { name: "Answer…" })[1]);
+    const textarea =
+      screen.getByPlaceholderText<HTMLTextAreaElement>("Your comment...");
+    fireEvent.change(textarea, { target: { value: "Front of the queue." } });
+    fireEvent.keyDown(textarea, { key: "Enter", ctrlKey: true });
+
+    await waitFor(() =>
+      expect(useReviewStore.getState().comments).toHaveLength(1),
+    );
+    expect(useReviewStore.getState().comments[0].question_id).toBe("OQ-2");
+  });
+
+  it("files a comment outside every question under none", async () => {
+    installReviewServer([]);
+    const { container } = renderDoc("Intro paragraph.\n\n" + TWO_ANSWERS);
+    const intro = container.querySelector('p[data-source-line="1"]')!;
+    place(intro, { top: 100, bottom: 120, left: 0, right: 600 });
+    fireEvent.mouseMove(container.querySelector(".prose")!, { clientY: 110 });
+    fireEvent.click(intro);
+    const textarea =
+      screen.getByPlaceholderText<HTMLTextAreaElement>("Your comment...");
+    fireEvent.change(textarea, { target: { value: "A note." } });
+    fireEvent.keyDown(textarea, { key: "Enter", ctrlKey: true });
+
+    await waitFor(() =>
+      expect(useReviewStore.getState().comments).toHaveLength(1),
+    );
+    expect(useReviewStore.getState().comments[0].question_id).toBeUndefined();
   });
 
   it("offers Take this leaning on an open question declared with `question`, and nothing on a closed one", () => {

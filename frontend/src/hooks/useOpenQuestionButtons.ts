@@ -334,6 +334,45 @@ export function commentsOnQuestions(
 }
 
 /**
+ * The id to file a new comment on `block` under: the innermost question unit
+ * holding it, as `commentsOnQuestions` credits an unbound comment, and only
+ * when exactly one question here has that id. Undefined for a block no unit
+ * holds, a question with no id, or a duplicated id.
+ *
+ * Filed with the id, the comment needs nothing from its anchor to stay on its
+ * question. Without it, a block whose text recurs — every open question's
+ * empty `**Answer:**` reads the same — is at several lines, so the anchor
+ * names no block and the comment shows as lost the moment it is filed.
+ */
+export function questionIdAt(
+  root: HTMLElement,
+  block: HTMLElement,
+): string | undefined {
+  const questions = documentQuestions(root);
+  if (questions.length === 0) return undefined;
+  const byUnit = new Map<HTMLElement, DocumentQuestion>();
+  for (const question of questions) {
+    for (const unit of questionUnitBlocks(question.stamped, root, questions)) {
+      if (!byUnit.has(unit)) byUnit.set(unit, question);
+    }
+  }
+  let owner: DocumentQuestion | undefined;
+  for (
+    let n: HTMLElement | null = block;
+    n !== null && n !== root;
+    n = n.parentElement
+  ) {
+    owner = byUnit.get(n);
+    if (owner !== undefined) break;
+  }
+  const id = owner?.stamped.id;
+  if (!id) return undefined;
+  return questions.filter((q) => q.stamped.id === id).length === 1
+    ? id
+    : undefined;
+}
+
+/**
  * Where a question's row goes: at the end of its unit, so the controls come
  * after everything the question says — its options, its leaning, its
  * `**Answer:**` — rather than between the leaning and the answer, where the
