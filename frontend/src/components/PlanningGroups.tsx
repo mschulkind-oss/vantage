@@ -236,7 +236,7 @@ function Capped<T>({
 }
 
 /** A group's heading line: a button that opens and closes it, with counts. */
-const GroupHeading: React.FC<{
+export const GroupHeading: React.FC<{
   id: string;
   title: string;
   count: number;

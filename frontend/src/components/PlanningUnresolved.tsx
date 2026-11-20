@@ -1,8 +1,6 @@
-import { useRef, useState } from "react";
-import { Link2 } from "lucide-react";
-import { ReservedLabel } from "./ReservedLabel";
+import { useState } from "react";
 import type { PlanningQuestion } from "vantage-md/planning";
-import { AnchoredMenu } from "./AnchoredMenu";
+import { GroupHeading } from "./PlanningGroups";
 import {
   UNRESOLVED_TITLES,
   unassignedRequestsText,
@@ -10,6 +8,9 @@ import {
   type UnresolvedKind,
 } from "../lib/questionOwnership";
 import { copyTextOrWarn } from "../lib/clipboard";
+
+/** The group's heading id, which a link to `#unattached` opens. */
+export const UNATTACHED_ID = "unattached";
 
 const KINDS: readonly UnresolvedKind[] = [
   "unassigned",
@@ -33,21 +34,26 @@ const proofText = (q: PlanningQuestion): string =>
   q.unitText.replace(/\s+/g, " ").trim().slice(0, 400);
 
 /**
- * "M with unresolved ownership" (`planning-question-state.md` §4): the pending
- * comments no question owns — Unassigned, Ambiguous, Removed or Unknown —
- * counted apart from the answers, listed with the quote they were filed on,
- * and copied only by their own button, never with Copy answers. While the
- * reviews are not all read the count reads "unknown", never zero.
+ * **Comments without a question (N)**
+ * (`docs/design/planning-page-freshness.md` §4.3): the pending comments no
+ * question owns, and the notes on text outside every question, as a section
+ * group after the page's others. Each is listed with the reason in plain
+ * words and the quote it was filed on, offered **Attach to question…** unless
+ * it is a note, and copied only by **Copy requests**, never with Copy answers.
+ * Automatic binds the server refused are listed on their own.
+ *
+ * The page decides whether the group is drawn: never while it is empty, and
+ * once drawn it stays, at 0, until the next layout, so nothing painted moves.
  */
 export function PlanningUnresolved({
   groups,
-  known,
   questionsOf,
   onAttach,
   refusals = {},
+  open,
+  onToggle,
 }: {
   groups: Readonly<Record<UnresolvedKind, readonly CommentOwnership[]>>;
-  known: boolean;
   /** The document's questions that name exactly one question each (unique ids). */
   questionsOf?: (path: string) => readonly PlanningQuestion[];
   /** Attach `entry`'s comment to `question`; resolves to a refusal message or null. */
@@ -57,8 +63,9 @@ export function PlanningUnresolved({
   ) => Promise<string | null>;
   /** Refusals of automatic binds, by `path\ncomment id`, in plain words. */
   refusals?: Readonly<Record<string, string>>;
+  open: boolean;
+  onToggle: () => void;
 }) {
-  const [open, setOpen] = useState(false);
   // The comment being attached, its chosen target (none until chosen) and the
   // last refusal of an attach.
   const [attaching, setAttaching] = useState<string | null>(null);
@@ -66,61 +73,28 @@ export function PlanningUnresolved({
   const [attachRefusal, setAttachRefusal] = useState<
     Readonly<Record<string, string>>
   >({});
-  const anchorRef = useRef<HTMLButtonElement>(null);
-  const anchor = useRef<HTMLElement | null>(null);
   const total = KINDS.reduce((n, k) => n + groups[k].length, 0);
   const refused = Object.entries(refusals);
-  // Keep the same toolbar room through Unknown -> known, including zero.
-  // Removing the control let header labels expand and moved painted buttons.
-  const shown = !known || total > 0 || refused.length > 0;
-  // Notes on text outside every question are not a fault: when they are all
-  // there is, the control says what they are rather than sounding an alarm.
-  const onlyNotes =
-    known && total > 0 && total === groups.note.length && refused.length === 0;
-  const label =
-    total === 0 && known
-      ? `${refused.length} not attached`
-      : onlyNotes
-        ? `${total} ${total === 1 ? "note" : "notes"} for the agent`
-        : `${known ? total : "Unknown"} with unresolved ownership`;
+  const count = total > 0 ? total : refused.length;
   return (
-    <>
-      <button
-        ref={anchorRef}
-        type="button"
-        data-testid="unresolved-ownership"
-        aria-label={label}
-        data-tip={label}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-hidden={shown ? undefined : true}
-        tabIndex={shown ? undefined : -1}
-        disabled={!known || !shown}
-        onClick={() => {
-          anchor.current = anchorRef.current;
-          setOpen((v) => !v);
-        }}
-        className={
-          "inline-flex items-center gap-1.5 rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 disabled:opacity-40 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700" +
-          (shown ? "" : " invisible")
-        }
-      >
-        <ReservedLabel
-          icon={<Link2 size={14} aria-hidden="true" />}
-          label={label}
-          reserve={["Unknown with unresolved ownership", "9999 not attached"]}
-          labelClassName="hdr-label"
-        />
-      </button>
-      <AnchoredMenu
-        open={open && shown}
-        onClose={() => setOpen(false)}
-        anchorRef={anchor}
-        width={440}
-        aria-label="Comments with unresolved ownership"
-      >
-        <div className="px-3 py-2 text-xs text-slate-600 dark:text-slate-300">
-          <p className="font-semibold">Comments with unresolved ownership</p>
+    <section
+      aria-labelledby={UNATTACHED_ID}
+      className="mb-6"
+      data-testid="unattached-group"
+    >
+      <GroupHeading
+        id={UNATTACHED_ID}
+        title="Comments without a question"
+        count={count}
+        open={open}
+        controls="group-unattached"
+        onToggle={onToggle}
+      />
+      {open && (
+        <div
+          id="group-unattached"
+          className="mt-2 text-sm text-slate-600 dark:text-slate-300"
+        >
           <p>
             No question owns these, so Copy answers does not carry them and no
             card counts them.
@@ -151,8 +125,8 @@ export function PlanningUnresolved({
               {kind === "note" && (
                 <p>
                   Comments on text outside every question. Nothing is wrong and
-                  there is nothing to attach; Copy unassigned requests below
-                  sends them to the agent.
+                  there is nothing to attach; Copy requests below sends them to
+                  the agent.
                 </p>
               )}
               {kind === "compacted" && (
@@ -282,10 +256,10 @@ export function PlanningUnresolved({
               if (text !== null) void copyTextOrWarn(text);
             }}
           >
-            Copy unassigned requests
+            Copy requests
           </button>
         </div>
-      </AnchoredMenu>
-    </>
+      )}
+    </section>
   );
 }

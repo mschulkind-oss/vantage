@@ -1,5 +1,5 @@
 /**
- * The unresolved-ownership menu (`docs/design/planning-question-state.md` §4):
+ * Comments without a question (`docs/design/planning-page-freshness.md` §4.3):
  * groups with the quote each comment was filed on, counted apart, and
  * Attach to question… with proof, no preselection and a confirm.
  */
@@ -66,65 +66,68 @@ function open(onAttach = vi.fn().mockResolvedValue(null), refusals = {}) {
   render(
     <PlanningUnresolved
       groups={groupsOf([legacy])}
-      known
       questionsOf={questionsOf}
       onAttach={onAttach}
       refusals={refusals}
+      open
+      onToggle={vi.fn()}
     />,
   );
-  fireEvent.click(screen.getByTestId("unresolved-ownership"));
   return onAttach;
 }
 
 describe("PlanningUnresolved", () => {
+  it("is a section group, Comments without a question (N), that opens and closes from its heading", () => {
+    const onToggle = vi.fn();
+    const { rerender } = render(
+      <PlanningUnresolved
+        groups={groupsOf([legacy])}
+        open={false}
+        onToggle={onToggle}
+      />,
+    );
+    const group = screen.getByRole("region", {
+      name: /Comments without a question/,
+    });
+    const heading = within(group).getByRole("button", {
+      name: /Comments without a question/,
+    });
+    expect(heading).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByTestId("unattached-count")).toHaveTextContent("1");
+    expect(screen.queryByTestId("unresolved-item")).toBeNull();
+    fireEvent.click(heading);
+    expect(onToggle).toHaveBeenCalledOnce();
+    rerender(
+      <PlanningUnresolved
+        groups={groupsOf([legacy])}
+        open
+        onToggle={onToggle}
+      />,
+    );
+    expect(screen.getByTestId("unresolved-item")).toHaveTextContent(
+      "My old answer",
+    );
+    expect(
+      screen.getByRole("button", { name: "Copy requests" }),
+    ).toBeInTheDocument();
+  });
+
   it("calls notes outside every question notes, with nothing to attach", () => {
     render(
       <PlanningUnresolved
         groups={groupsOf([{ ...legacy, ownership: "unowned" }])}
-        known
         questionsOf={questionsOf}
         onAttach={vi.fn()}
+        open
+        onToggle={vi.fn()}
       />,
     );
-    const control = screen.getByTestId("unresolved-ownership");
-    expect(control).toHaveAttribute("aria-label", "1 note for the agent");
-    fireEvent.click(control);
     const notes = screen.getByTestId("unresolved-note");
     expect(notes).toHaveTextContent("Notes (1)");
+    expect(notes).not.toHaveTextContent(/unresolved|error/i);
     expect(
       within(notes).queryByRole("button", { name: "Attach to question…" }),
     ).toBeNull();
-  });
-
-  it("keeps an inert reserved slot when ownership finishes loading with no unresolved comments", () => {
-    const { rerender } = render(
-      <PlanningUnresolved groups={groupsOf([])} known={false} />,
-    );
-    const slot = screen.getByTestId("unresolved-ownership");
-    expect(slot).toBeDisabled();
-    rerender(<PlanningUnresolved groups={groupsOf([])} known />);
-    expect(screen.getByTestId("unresolved-ownership")).toBe(slot);
-    expect(slot).toHaveAttribute("aria-hidden", "true");
-    expect(slot).toHaveAttribute("tabindex", "-1");
-    expect(slot).toHaveClass("invisible");
-    expect(slot).toBeDisabled();
-    expect(screen.queryByRole("button")).not.toBeInTheDocument();
-  });
-
-  it("keeps an accessible name when the header hides its visible label", () => {
-    render(<PlanningUnresolved groups={groupsOf([legacy])} known />);
-    const control = screen.getByTestId("unresolved-ownership");
-    (control.querySelector(".hdr-label") as HTMLElement).style.display = "none";
-    expect(control).toHaveAccessibleName("1 with unresolved ownership");
-  });
-
-  it("keeps the ownership control's words until the primary labels must yield and provides a tooltip", () => {
-    render(<PlanningUnresolved groups={groupsOf([legacy])} known />);
-    const control = screen.getByTestId("unresolved-ownership");
-    expect(control.querySelector(".hdr-label")).not.toHaveClass(
-      "hdr-label-minor",
-    );
-    expect(control).toHaveAttribute("data-tip", "1 with unresolved ownership");
   });
 
   it("explains that a ledger-recorded ID is not a new unanswered question or proof of a reply", () => {
@@ -138,25 +141,12 @@ describe("PlanningUnresolved", () => {
     render(
       <PlanningUnresolved
         groups={{ ...groups, compacted: [compacted] }}
-        known
+        open
+        onToggle={vi.fn()}
       />,
     );
-    fireEvent.click(screen.getByTestId("unresolved-ownership"));
     expect(screen.getByTestId("unresolved-compacted")).toHaveTextContent(
       "The question ID is recorded in the Decision Ledger, not newly unanswered. Its review comment still awaits an agent reply; the ledger entry is not a delivery receipt.",
-    );
-  });
-
-  it("counts the unresolved comments and says Unknown while the reviews are not all read", () => {
-    const { rerender } = render(
-      <PlanningUnresolved groups={groupsOf([legacy])} known />,
-    );
-    expect(screen.getByTestId("unresolved-ownership")).toHaveTextContent(
-      "1 with unresolved ownership",
-    );
-    rerender(<PlanningUnresolved groups={groupsOf([legacy])} known={false} />);
-    expect(screen.getByTestId("unresolved-ownership")).toHaveTextContent(
-      "Unknown with unresolved ownership",
     );
   });
 
@@ -165,8 +155,7 @@ describe("PlanningUnresolved", () => {
       legacy,
       { ...legacy, id: "c2", question_id: "OQ-GONE9" },
     ]);
-    render(<PlanningUnresolved groups={groups} known />);
-    fireEvent.click(screen.getByTestId("unresolved-ownership"));
+    render(<PlanningUnresolved groups={groups} open onToggle={vi.fn()} />);
     expect(screen.getByTestId("unresolved-unassigned")).toHaveTextContent(
       "the words it was filed on",
     );
@@ -233,12 +222,12 @@ describe("PlanningUnresolved", () => {
     render(
       <PlanningUnresolved
         groups={groups}
-        known
         questionsOf={questionsOf}
         onAttach={vi.fn()}
+        open
+        onToggle={vi.fn()}
       />,
     );
-    fireEvent.click(screen.getByTestId("unresolved-ownership"));
     const unknown = screen.getByTestId("unresolved-unknown");
     expect(
       within(unknown).queryByRole("button", { name: "Attach to question…" }),
@@ -249,16 +238,14 @@ describe("PlanningUnresolved", () => {
     render(
       <PlanningUnresolved
         groups={groupsOf([])}
-        known
+        open
+        onToggle={vi.fn()}
         refusals={{
           "a.md\nc1": "Not attached: the comments changed since this was read.",
         }}
       />,
     );
-    expect(screen.getByTestId("unresolved-ownership")).toHaveTextContent(
-      "1 not attached",
-    );
-    fireEvent.click(screen.getByTestId("unresolved-ownership"));
+    expect(screen.getByTestId("unattached-count")).toHaveTextContent("1");
     expect(screen.getByRole("alert")).toHaveTextContent(
       "the comments changed since this was read",
     );

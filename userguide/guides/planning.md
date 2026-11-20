@@ -910,8 +910,8 @@ files nothing.
 
 A comment belongs to a question by the question's `id`, not by where it sits. When
 the page cannot prove that, the comment is not counted as an answer and not copied
-by **Copy answers**. It is listed instead, under _M with unresolved ownership_, in
-groups:
+by **Copy answers**. It is listed instead in the page's last section, **Comments
+without a question (N)**, after _Maintenance_, by why:
 
 | Group      | Why                                                                                                                   |
 | :--------- | :-------------------------------------------------------------------------------------------------------------------- |
@@ -919,13 +919,15 @@ groups:
 | Ambiguous  | Its question's `id` is written on more than one question                                                              |
 | Removed    | Its `id` is no longer in the document                                                                                 |
 | Compacted  | Its `id` is now only a row of the document's decision ledger                                                          |
-| Unknown    | The document was not read, was read at a different version than the comments, or its `id` is only written in the text |
+| Unknown    | The document was not read, or its `id` is only written in the text, outside a question |
 
-_Unknown_ is shown instead of 0 until every listed document has been read. A
+The section appears only when a comment is there, once every listed document has
+been read; notes on text outside every question are listed there as notes, with
+nothing to attach. A
 comment shows _(ownership unknown)_ when the server could not prove which question
 holds the text it is anchored to. **Attach to question…** on a listed comment
 shows what you wrote beside the question's current text and ties it only when you
-confirm; **Copy unassigned requests** copies these comments, separately from your
+confirm; **Copy requests** copies these comments, separately from your
 answers. A card also shows what has happened to its question: _Open_, _Response
 saved, waiting for agent_, _Agent replied, question still open_, _Ruling recorded_,
 _Compacted_ or _Question removed from document_, or a fact about its document that

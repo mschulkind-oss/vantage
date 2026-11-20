@@ -166,31 +166,34 @@ reviews:
 | :--------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | bound      | id is declared exactly once; it appears on that question's card, in the counts and in Copy answers                                                                                                             |
 | Unassigned | binding is absent                                                                                                                                                                                              |
-| Note       | binding is absent and the server placed the anchor outside every question unit (`ownership: unowned`), with no auto-bind candidate: a note on the document, never offered Attach; when notes are all there is, the control reads "N notes for the agent" |
+| Note       | binding is absent and the server placed the anchor outside every question unit (`ownership: unowned`), with no auto-bind candidate: a note on the document, never offered Attach, and listed as notes rather than as a fault |
 | Ambiguous  | id is declared more than once; credited to no card                                                                                                                                                             |
 | Removed    | id is in no directive and nowhere in the text                                                                                                                                                                  |
 | Compacted  | id is in `ledgerIds` and in no directive                                                                                                                                                                       |
 | Unknown    | document is not scanned, or the id is written in the text outside a directive |
 
-The header counts "M with unresolved ownership" apart from the questions that
-need you, and says Unknown until every listed document's reviews are read as
-one reading with its scan. A document held as an older reading (no evidence,
-`sample_changed`, or a `content_hash` not the scan's) is **unpaired**: its
-comments are in no group and in no Copy answers, and both counts read Unknown
-until the next read pairs it. What is unread is not unowned — listing those
-comments as without a question made every answer on a just-edited document
-look lost. The
-groups ([PlanningUnresolved.tsx](../../frontend/src/components/PlanningUnresolved.tsx))
-carry the original quote and their own **Copy unassigned requests**; a comment is
-in Copy answers or in a group, never both. Filters narrow what is displayed and
-what Copy answers copies ([planning-index.md §6.7](./planning-index.md#67-answering-and-copy-answers));
+The comments in a group are listed in their own section,
+**Comments without a question (N)**, drawn after the page's other groups
+([PlanningUnresolved.tsx](../../frontend/src/components/PlanningUnresolved.tsx)).
+It is not drawn while it is empty, or before every listed document's reviews
+are read as one reading with its scan; once drawn it stays, at 0, until the
+next layout. It comes after _Maintenance_, not under _Needs you_, because it
+can appear late, after the layout is painted, and nothing painted may move. A
+document held as an older reading (no evidence, `sample_changed`, or a
+`content_hash` not the scan's) is **unpaired**: its comments are in no group
+and in no Copy answers until the next read pairs it. What is unread is not
+unowned — listing those comments as without a question made every answer on a
+just-edited document look lost. Each entry carries the original quote, and the
+section has its own **Copy requests**; a comment is in Copy answers or in a
+group, never both. Filters narrow what is displayed and what Copy answers
+copies ([planning-index.md §6.7](./planning-index.md#67-answering-and-copy-answers));
 they never reclassify a comment. A **Compacted** group explicitly distinguishes
 an ID recorded in the Decision Ledger from an agent reply: the thread can
 still be pending, and no reaction is invented. Its copied request asks the
 agent to check the saved ruling against the existing comment and acknowledge
 that comment or report remaining work, not re-ask the recorded decision.
-The ownership control has a tooltip and keeps its words until the primary
-header labels must yield; it no longer disappears with minor shorthand labels.
+Automatic binds the server refused are listed in the section too, each with
+its reason. The header has no control for any of this.
 
 **Legacy auto-bind** (`useLegacyAutoBind`) binds an unbound comment only when its
 anchor hash is one block of the whole document (`blockLines[hash] > 0`), that

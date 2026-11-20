@@ -9800,12 +9800,10 @@ describe("legacy comments: automatic bind and Attach to question…", () => {
       evidence: { unit_fingerprint: unitOf().unitFingerprint },
       preconditions: { boot_id: "boot-1", document_generation: 1 },
     });
-    // It is the question's now: no accessible unresolved control holds it.
-    expect(
-      screen.queryByRole("button", {
-        name: /with unresolved ownership|not attached/,
-      }),
-    ).toBeNull();
+    // It is the question's now: no group lists it, and the header has no
+    // control for it.
+    expect(screen.queryByTestId("unresolved-item")).toBeNull();
+    expect(screen.queryByTestId("unresolved-ownership")).toBeNull();
   });
 
   it("does not bind a comment whose block text is not found once in the document", async () => {
@@ -9813,9 +9811,19 @@ describe("legacy comments: automatic bind and Attach to question…", () => {
     await renderPage();
     await settle();
     expect(binds).toEqual([]);
-    expect(screen.getByTestId("unresolved-ownership")).toHaveTextContent(
-      "1 with unresolved ownership",
+    // Listed in its own group after the others, not in the header.
+    expect(screen.queryByTestId("unresolved-ownership")).toBeNull();
+    const group = screen.getByRole("region", {
+      name: /Comments without a question/,
+    });
+    expect(within(group).getByTestId("unattached-count")).toHaveTextContent(
+      "1",
     );
+    expect(within(group).getByTestId("unresolved-item")).toHaveTextContent(
+      "Old answer",
+    );
+    const regions = screen.getAllByRole("region");
+    expect(regions[regions.length - 1]).toBe(group);
   });
 
   it("shows a refused automatic bind plainly, and does not ask again", async () => {
@@ -9825,18 +9833,16 @@ describe("legacy comments: automatic bind and Attach to question…", () => {
     await settle();
     await settle();
     expect(binds).toHaveLength(1);
-    fireEvent.click(screen.getByTestId("unresolved-ownership"));
     expect(screen.getByRole("alert")).toHaveTextContent(
       "Not attached: the document changed since this was read.",
     );
     expect(binds).toHaveLength(1);
   });
 
-  it("attaches by hand: shows the original quote and the question's text, preselects nothing, and binds only on confirm", async () => {
+  it("attaches by hand: shows the original quote and the question's text, preselects nothing, binds only on confirm, and keeps the group at 0", async () => {
     reviews["plans/unrouted.md"] = [legacyOn("words that are gone")];
     await renderPage();
     await settle();
-    fireEvent.click(screen.getByTestId("unresolved-ownership"));
     fireEvent.click(
       screen.getByRole("button", { name: "Attach to question…" }),
     );
@@ -9861,6 +9867,14 @@ describe("legacy comments: automatic bind and Attach to question…", () => {
       question_id: "OQ-U1",
       allow_rebind: false,
     });
+    // The comment is the question's now; the group stays, at 0, until the
+    // next layout, so nothing painted moves.
+    await waitFor(() =>
+      expect(screen.getByTestId("unattached-count")).toHaveTextContent("0"),
+    );
+    expect(
+      screen.getByRole("region", { name: /Comments without a question/ }),
+    ).toBeInTheDocument();
   });
 
   it("says plainly when a manual attach is refused, and leaves the comment where it was", async () => {
@@ -9868,7 +9882,6 @@ describe("legacy comments: automatic bind and Attach to question…", () => {
     await renderPage();
     await settle();
     bindRefusalReason = "unit_fingerprint";
-    fireEvent.click(screen.getByTestId("unresolved-ownership"));
     fireEvent.click(
       screen.getByRole("button", { name: "Attach to question…" }),
     );
@@ -9930,19 +9943,17 @@ describe("legacy comments: automatic bind and Attach to question…", () => {
     expect(band()).toHaveTextContent(/^Response saved, waiting for agent$/);
   });
 
-  it("lists an answer read against another version of its document nowhere, and says the counts are unknown", async () => {
+  it("lists an answer read against another version of its document nowhere, and draws no group for it", async () => {
     staleEvidence = true;
     reviews["plans/unrouted.md"] = [
       { ...legacyOn(DETAIL), question_id: "OQ-U1" },
     ];
     await renderPage();
-    // Not an answer yet, and not without a question either: unread.
-    const control = screen.getByTestId("unresolved-ownership");
-    expect(control).toHaveAttribute(
-      "aria-label",
-      "Unknown with unresolved ownership",
-    );
-    expect(control).toBeDisabled();
+    // Not an answer yet, and not without a question either: unread, so the
+    // group is not drawn.
+    expect(
+      screen.queryByRole("region", { name: /Comments without a question/ }),
+    ).toBeNull();
     expect(screen.queryByTestId("unresolved-unknown")).toBeNull();
   });
 });

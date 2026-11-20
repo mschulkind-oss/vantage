@@ -2978,6 +2978,40 @@ export const PlanningPage: React.FC = () => {
       return next;
     });
   }, []);
+  // Comments without a question (§4.3 of the freshness design): drawn after
+  // the other groups once the comments are read and any is there, and kept,
+  // at 0, until the next layout, so its going moves nothing either. Open
+  // unless the reader closed it.
+  const [unattachedOpen, setUnattachedOpen] = useState(
+    () => readPreference("vantage:planningUnattachedOpen") !== "false",
+  );
+  const toggleUnattached = useCallback(() => {
+    setUnattachedOpen((prev) => {
+      writePreference("vantage:planningUnattachedOpen", String(!prev));
+      return !prev;
+    });
+  }, []);
+  const unattachedNow =
+    countKnown &&
+    (Object.values(unresolved).some((g) => g.length > 0) ||
+      Object.keys(bindRefusals).length > 0);
+  const shownLayoutObject = shown?.inputs.layout ?? null;
+  const [unattachedHeld, setUnattachedHeld] = useState<{
+    layout: typeof shownLayoutObject;
+    drawn: boolean;
+  }>({ layout: null, drawn: false });
+  if (
+    unattachedHeld.layout !== shownLayoutObject ||
+    (unattachedNow && !unattachedHeld.drawn)
+  ) {
+    setUnattachedHeld({
+      layout: shownLayoutObject,
+      drawn:
+        unattachedNow ||
+        (unattachedHeld.layout === shownLayoutObject && unattachedHeld.drawn),
+    });
+  }
+  const unattachedDrawn = unattachedNow || unattachedHeld.drawn;
   // A heading or a row in a group: the group opened first, then brought into
   // view once it has rendered.
   const goTo = useCallback(
@@ -3972,13 +4006,6 @@ export const PlanningPage: React.FC = () => {
               </>
             }
           >
-            <PlanningUnresolved
-              groups={unresolved}
-              known={countKnown}
-              questionsOf={questionsOf}
-              onAttach={attachComment}
-              refusals={bindRefusals}
-            />
             <PlanningPendingAnswers
               key={repo}
               groups={pendingGroups}
@@ -4343,6 +4370,16 @@ export const PlanningPage: React.FC = () => {
                                 requestOf={requestOf}
                                 onOpenHere={saveScroll}
                               />
+                              {unattachedDrawn && (
+                                <PlanningUnresolved
+                                  groups={unresolved}
+                                  questionsOf={questionsOf}
+                                  onAttach={attachComment}
+                                  refusals={bindRefusals}
+                                  open={unattachedOpen}
+                                  onToggle={toggleUnattached}
+                                />
+                              )}
                             </>
                           )}
                         </>

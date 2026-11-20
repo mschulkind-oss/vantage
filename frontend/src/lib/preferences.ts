@@ -59,6 +59,11 @@ export const PREFERENCE_KEYS = [
   "vantage:planningBlockedOpen",
   "vantage:planningMaintenanceOpen",
   /**
+   * Whether the planning page's *Comments without a question* group is open,
+   * `"true"` or `"false"`; absent, open (§6.2).
+   */
+  "vantage:planningUnattachedOpen",
+  /**
    * The kinds of *Maintenance* that the planning page's Copy answers +
    * maintenance leaves out: their request ids, comma-separated, `""` for
    * none (`lib/planningCopy.ts`, §6.7 of the same reference). Absent, Ready to
@@ -182,6 +187,10 @@ export const UNSYNCED_PREFERENCES: Partial<
     "reader's own action may do (planning-index.md §12.1). Read once per " +
     "visit, as the page opens.",
   "vantage:planningMaintenanceOpen":
+    "Opening or closing a group moves everything below it, which only the " +
+    "reader's own action may do (planning-index.md §12.1). Read once per " +
+    "visit, as the page opens.",
+  "vantage:planningUnattachedOpen":
     "Opening or closing a group moves everything below it, which only the " +
     "reader's own action may do (planning-index.md §12.1). Read once per " +
     "visit, as the page opens.",

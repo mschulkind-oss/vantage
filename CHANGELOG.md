@@ -16,6 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 **The planning page has one button for updates: *Update · N*.** It replaces *Apply updates*, and pressing it also reads the listed documents' comments again, so it ends in what the server holds. *Reload from server* and its *Unknown* pill are gone: the page reads again by itself when the connection comes back, and when its reads have failed for 30 seconds the header says *Offline since HH:MM · retrying*, with **Retry now**. Update now waits while any answer box is open, and never closes one for you; it says *Close the open answer first — what you typed is saved*.
 
+**Comments no question owns have their own section on the planning page.** The header's *M with unresolved ownership* control is gone. Those comments, and notes on text outside every question, are listed in **Comments without a question (N)**, after *Maintenance*, each with why it has no question and the text it was filed on, with **Attach to question…** and **Copy requests** as before. The section appears only when there is something in it.
+
 **Slow-call log lines say where they were slow.** A slow request names its repository, and a slow git, file or checker call names its directory, so a server serving many projects shows which one is slow. `/api/perf/diagnostics` is unchanged.
 
 ### Fixed
@@ -26,9 +28,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 **An answer saved while its document was changing no longer loses its question for good.** When the server could not confirm the question an answer was filed under — an agent had just edited the document — it saved the answer with no question and forgot which one it was. It now keeps that id and the planning page attaches the answer to it on the next reading where the server can confirm it.
 
-**A comment on text outside every question no longer reads as an error.** The planning page listed it among comments with *unresolved ownership* and offered to attach it to a question, as if it had been lost. It is now a *note*, with nothing to attach, and when notes are all there is the header says *N notes for the agent*.
+**A comment on text outside every question no longer reads as an error.** The planning page listed it among comments with *unresolved ownership* and offered to attach it to a question, as if it had been lost. It is now a *note*, with nothing to attach.
 
-**Answers on a document an agent just edited no longer show as *not attached*.** Until the page re-read that document's comments, it listed every pending answer on it under the header's link control, as if they had lost their question. They are now listed nowhere for that moment, and the counts read *Unknown* until the read lands.
+**Answers on a document an agent just edited no longer show as *not attached*.** Until the page re-read that document's comments, it listed every pending answer on it under the header's link control, as if they had lost their question. They are now listed nowhere for that moment, and the page shows the last reading it held until the read lands.
 
 **A comment on a question's empty *Answer* no longer shows as "original text no longer found" the moment it is saved.** Every open question's empty answer reads the same, so a comment filed on one by clicking it, selecting it or pressing **Answer…** could not be told apart from the others and was drawn as lost. Those comments are now filed under their question's id, as **Take this leaning** already was. A comment already saved this way stays as it is; attach it with **Attach to question…** on the planning page.
 
