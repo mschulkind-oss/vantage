@@ -2970,7 +2970,8 @@ describe("Reload from server and the reply guard (planning-question-state.md §6
       expect.stringContaining("Save or Restore the open answer first"),
     );
     expect(box.isOpen).toBe(true);
-    box.close();
+    // Closing would send the text; this test's box ends unsaved, as it began.
+    await box.retireAndSettle();
   });
 });
 
