@@ -2195,8 +2195,14 @@ export const PlanningPage: React.FC = () => {
   const countKnown = useMemo(
     () =>
       index !== null &&
-      listedQuestions.every((q) => reviews.byPath[q.path] !== undefined),
-    [index, listedQuestions, reviews.byPath],
+      // A document held as an older reading is not read yet either: its
+      // answers are in neither Copy answers nor a group until it is.
+      listedQuestions.every(
+        (q) =>
+          reviews.byPath[q.path] !== undefined &&
+          !ownership.unpaired.has(q.path),
+      ),
+    [index, listedQuestions, reviews.byPath, ownership.unpaired],
   );
   // The request for the listed documents no shown page holds failed after
   // the sections painted, and the count is unknown for it. A line above them

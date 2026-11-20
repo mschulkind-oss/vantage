@@ -66,7 +66,8 @@ export interface OwnershipMap {
   /**
    * The paths whose reviews and scan are not one reading (no evidence, the
    * document changed while read, or another version than the scan's): their
-   * comments are Unknown, and their questions' lifecycle is Unknown.
+   * comments are Unknown, and their questions' lifecycle is Unknown. Those
+   * comments are in no unresolved group: what is unread is not unowned.
    */
   unpaired: ReadonlySet<string>;
   /** The comments whose ownership is unresolved, pending ones only. */
@@ -285,6 +286,11 @@ export function ownershipMap(
         else list.push(comment);
       }
       if (!isPendingForAgent(comment)) continue;
+      // A document held as an older reading says nothing yet about who owns
+      // its comments: their ids have not changed, and the next read of the
+      // pair replaces this one. Listing them as without a question made every
+      // answer on a document an agent had just edited look lost.
+      if (unpaired.has(path)) continue;
       if (entry.kind === "bound") {
         const list = boundPending.get(path);
         if (list === undefined) boundPending.set(path, [comment]);

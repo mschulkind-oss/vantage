@@ -205,11 +205,10 @@ describe("PlanningUnresolved", () => {
 
   it("offers no Attach for a comment whose ownership is Unknown", () => {
     const groups = unresolvedGroups(
-      ownershipMap(
-        index,
-        { "a.md": [{ ...legacy, question_id: "OQ-A1" }] },
-        { evidence: {}, hashes: { "a.md": "h" } },
-      ),
+      // A document the scan does not hold: what became of the id is unread.
+      ownershipMap(index, {
+        "elsewhere.md": [{ ...legacy, question_id: "OQ-A1" }],
+      }),
       new Set(),
     );
     render(

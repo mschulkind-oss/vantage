@@ -278,14 +278,22 @@ describe("ownership keyed on the reviews' reading", () => {
     expect(kinds.map((e) => e.kind)).toEqual(["unknown", "unknown", "unknown"]);
     expect(kinds[0].reason).toMatch(/changed while/);
     expect(kinds[1].reason).toMatch(/another version/);
-    // An Unknown comment is counted as unresolved, never credited to a card.
-    const map = ownershipMap(
-      idx,
-      { "a.md": [c] },
-      { evidence: {}, hashes: { "a.md": "h1" } },
-    );
-    expect(map.unresolved.unknown).toHaveLength(1);
-    expect(map.boundPending.size).toBe(0);
+    // Never credited to a card, and never listed as without a question: its
+    // id has not changed, the page only holds an older reading of its
+    // document, which the next read replaces.
+    for (const evidence of [
+      {},
+      { "a.md": reading({ content_hash: "other" }) },
+    ]) {
+      const map = ownershipMap(
+        idx,
+        { "a.md": [c, legacy("Detail for OQ-A1 only.")] },
+        { evidence, hashes: { "a.md": "h1" } },
+      );
+      expect(map.unpaired.has("a.md")).toBe(true);
+      expect(unresolvedCount(map)).toBe(0);
+      expect(map.boundPending.size).toBe(0);
+    }
   });
 
   it("does not propose a bind from an unpaired reading", () => {
