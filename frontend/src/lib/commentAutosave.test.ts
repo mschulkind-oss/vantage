@@ -80,6 +80,14 @@ afterEach(() => {
 });
 
 describe("a comment box's saves", () => {
+  it("sends nothing after resetBoxesForTest, so no test's typing reaches the next", async () => {
+    const box = newBox();
+    box.input("typed in an earlier test");
+    resetBoxesForTest();
+    await vi.advanceTimersByTimeAsync(SAVE_MAX_WAIT_MS * 2);
+    expect(sent).toEqual([]);
+  });
+
   it("saves 1,000 ms after the last keystroke", async () => {
     const box = newBox();
     box.input("h");

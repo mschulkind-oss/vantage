@@ -847,8 +847,11 @@ export function savedAgo(ms: number): string {
 /** How often a foot reads the clock again, for *Saved N min ago*. */
 export const STATUS_TICK_MS = 15_000;
 
-/** For tests: forget every box. */
+/** For tests: retire and forget every box, so none sends after its test. */
 export function resetBoxesForTest(): void {
+  // Retired, not just forgotten: a box's pause timer and retries outlive the
+  // registry, and would send its text into whichever test runs next.
+  for (const box of [...boxes]) box.retire();
   boxes.clear();
   pendingDeletions.clear();
   notifyRegistry();
