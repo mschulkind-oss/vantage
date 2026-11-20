@@ -33,17 +33,20 @@ import {
   PLANNING_ROADMAP_PARAM,
   PLANNING_SPACE_PARAM,
   PLANNING_SECTION_IDS,
+  PLANNING_REQUEST_TITLES,
   PLANNING_SECTION_TITLES,
   answeredQuestions,
   applyPlanningFilter,
   derivePlanningSections,
   encodePlanningQueryValue,
   filterKeepsQuestion,
+  idProblems,
   parsePlanningFilter,
   questionFor,
   questionState,
   sectionExplanation,
   type FilteredPlanningSections,
+  type IdProblem,
   type PlanningFilterSummary,
   type PlanningIndex,
   type PlanningQuestion,
@@ -89,7 +92,8 @@ export interface QuestionEntry {
  * The kinds *Maintenance* lists, in the order it lists them
  * (`planning-index.md` §6.2): each agent section, the ✅ questions to
  * fold into the ledger (`compact`, a request and not a section of the
- * index), and the files the index could not read.
+ * index), the ids no question holds (`fix-ids`, likewise), and the files the
+ * index could not read.
  */
 export const MAINTENANCE_KIND_IDS = [
   "unrouted",
@@ -97,6 +101,7 @@ export const MAINTENANCE_KIND_IDS = [
   "graduate",
   "disagrees",
   "compact",
+  "fix-ids",
   "skipped",
   "could-not-read",
 ] as const;
@@ -109,6 +114,7 @@ export const MAINTENANCE_TITLES: Readonly<Record<MaintenanceKindId, string>> = {
   graduate: PLANNING_SECTION_TITLES.graduate,
   disagrees: PLANNING_SECTION_TITLES.disagrees,
   compact: "To fold into the ledger",
+  "fix-ids": PLANNING_REQUEST_TITLES["fix-ids"],
   skipped: PLANNING_SECTION_TITLES.skipped,
   "could-not-read": PLANNING_SECTION_TITLES["could-not-read"],
 };
@@ -124,6 +130,11 @@ export type MaintenanceKind =
       id: "ready" | "graduate" | "disagrees";
       kind: "documents";
       items: readonly string[];
+    }
+  | {
+      id: "fix-ids";
+      kind: "ids";
+      items: readonly IdProblem[];
     }
   | {
       id: "skipped";
@@ -269,6 +280,23 @@ export function compactEntries(
 }
 
 /**
+ * The ids *Maintenance* lists as *Duplicate or stray id*
+ * (`planning-page-freshness.md` §4.5): the ones the `fix-ids` request lists,
+ * from the same function (`idProblems`, P7), with the applied filter's
+ * question test.
+ */
+export function idProblemEntries(
+  index: PlanningIndex,
+  filter: string,
+): IdProblem[] {
+  const parsed = understoodFilter(filter);
+  return idProblems(
+    index,
+    parsed === null ? undefined : (q) => filterKeepsQuestion(parsed, q),
+  );
+}
+
+/**
  * Lay the page out (`planning-index.md` §6.2): *Needs you*'s open
  * questions, *Blocked* and *Maintenance*. `sections` are `sectionsOf(index,
  * roadmap, filter)`, and `filter` the canonical text they were filtered by,
@@ -307,6 +335,11 @@ export function layoutPlanningPage(
     if (id === "compact") {
       const items = compactEntries(index, filter);
       if (items.length > 0) maintenance.push({ id, kind: "questions", items });
+      continue;
+    }
+    if (id === "fix-ids") {
+      const items = idProblemEntries(index, filter);
+      if (items.length > 0) maintenance.push({ id, kind: "ids", items });
       continue;
     }
     const section = entries.get(id);

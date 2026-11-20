@@ -119,7 +119,7 @@ export interface IndexOptions {
   roadmap?: string;
   /**
    * `--request`: print the agent request for these sections instead of the
-   * index. Empty asks for every request, the four agent sections and `compact`, as Copy all agent requests
+   * index. Empty asks for every request, the four agent sections, `compact` and `fix-ids`, as Copy all agent requests
    * does.
    */
   request?: PlanningRequestId[];

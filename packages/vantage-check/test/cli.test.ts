@@ -183,11 +183,11 @@ describe("parseArgs", () => {
   it.each([
     [
       ["index", "--request", "needs-you"],
-      "--request takes the requests an agent is given: unrouted (Not on a roadmap), ready (Ready to build), graduate (Ready to graduate), disagrees (Stage conflict), compact (Compact) (got needs-you)",
+      "--request takes the requests an agent is given: unrouted (Not on a roadmap), ready (Ready to build), graduate (Ready to graduate), disagrees (Stage conflict), compact (Compact), fix-ids (Duplicate or stray id) (got needs-you)",
     ],
     [
       ["index", "--request=Ready to build"],
-      "--request takes the requests an agent is given: unrouted (Not on a roadmap), ready (Ready to build), graduate (Ready to graduate), disagrees (Stage conflict), compact (Compact) (got Ready to build)",
+      "--request takes the requests an agent is given: unrouted (Not on a roadmap), ready (Ready to build), graduate (Ready to graduate), disagrees (Stage conflict), compact (Compact), fix-ids (Duplicate or stray id) (got Ready to build)",
     ],
     [
       ["index", "--request", "--format", "json"],
@@ -208,12 +208,13 @@ describe("parseArgs", () => {
 
     expect(USAGE).toContain(
       [
-        "                                     (default: all five):",
+        "                                     (default: all six):",
         "                                       unrouted   Not on a roadmap",
         "                                       ready      Ready to build",
         "                                       graduate   Ready to graduate",
         "                                       disagrees  Stage conflict",
         "                                       compact    Compact",
+        "                                       fix-ids    Duplicate or stray id",
         "  --roadmap <path>",
       ].join("\n"),
     );

@@ -465,6 +465,10 @@ export function groupKeys(entries: readonly QuestionEntry[]): string[] {
   return entries.map((entry) => itemKey(entry.question));
 }
 
+/** A *Duplicate or stray id* row's key: one per id, not per document. */
+export const idProblemKey = (path: string, id: string): string =>
+  `fix-ids\n${path}\n${id}`;
+
 /** The keys of every *Maintenance* item, kind by kind. */
 export function maintenanceKeys(kinds: readonly MaintenanceKind[]): string[] {
   return kinds.flatMap((kind) =>
@@ -472,7 +476,9 @@ export function maintenanceKeys(kinds: readonly MaintenanceKind[]): string[] {
       ? kind.items.map((e) => `${kind.id}\n${itemKey(e.question)}`)
       : kind.kind === "documents"
         ? kind.items.map((path) => `${kind.id}\n${path}`)
-        : kind.items.map(({ path }) => `${kind.id}\n${path}`),
+        : kind.kind === "ids"
+          ? kind.items.map(({ path, id }) => idProblemKey(path, id))
+          : kind.items.map(({ path }) => `${kind.id}\n${path}`),
   );
 }
 
@@ -635,6 +641,8 @@ export function layoutItemKeys(layout: PlanningLayout): Set<string> {
       for (const entry of kind.items) out.add(itemKey(entry.question));
     } else if (kind.kind === "documents") {
       for (const path of kind.items) out.add(`doc\n${path}`);
+    } else if (kind.kind === "ids") {
+      for (const { path, id } of kind.items) out.add(idProblemKey(path, id));
     } else {
       for (const { path } of kind.items) out.add(`doc\n${path}`);
     }

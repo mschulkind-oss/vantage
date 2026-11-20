@@ -19,6 +19,7 @@ export const COPY_KINDS: readonly PlanningRequestId[] = [
   "unrouted",
   "disagrees",
   "compact",
+  "fix-ids",
   "graduate",
 ];
 

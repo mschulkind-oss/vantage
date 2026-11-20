@@ -1,8 +1,8 @@
 ---
 title: "The planning page keeps itself current — the reader is told what changed, never asked to understand the machinery"
 status: accepted
-stage: DECIDED
-next: "Build it, in §11's order: reconcile, the band, the header, then the group and the maintenance kind"
+stage: BUILT
+next: "Matt tries it; then graduate into planning-ownership.md and planning-index.md"
 depends-on: [planning-question-state.md]
 ---
 
@@ -311,6 +311,11 @@ _Maintenance_ section as a kind of its own, **Duplicate or stray id**, with a
 request in _Copy answers + maintenance_ asking the agent to make each id unique
 and inside a directive. The checker's own rule, `vantage/oq-id-duplicate`,
 already reports it; this makes the planning page say so where the reader is.
+**As built** (2026-11-20) the kind's id is `fix-ids`, and `idProblems` in
+`vantage-md` lists it from the scan alone: a directive id no question holds,
+and an id a question's title names that no directive carries. The scan keeps
+no rejected id on its question and no count of declarations, so the entries
+and the band say _more than once_, not _N times_.
 
 The server-side conditions (checker not installed, refused, failed, too large)
 are named once in the frame's notices, as the refused state is today, and on

@@ -205,7 +205,9 @@ export function agentSectionCount(
 
 /**
  * Every agent request an agent can be handed: the four agent sections, then
- * `compact`. `compact` is a request, not a section
+ * `compact` and `fix-ids`. Those two are requests, not sections: `fix-ids`
+ * lists the ids no question holds because they are declared more than once
+ * or written outside a directive (`idProblems`). `compact` is a request, not a section
  * (`docs/reference/planning-index.md` §6.2): it has no entry in the index's
  * sections, JSON or text, so it is not in `PLANNING_AGENT_SECTION_IDS`, which
  * every section consumer reads. It lists the ✅ questions an agent folds into
@@ -214,6 +216,7 @@ export function agentSectionCount(
 export const PLANNING_REQUEST_IDS = [
   ...PLANNING_AGENT_SECTION_IDS,
   "compact",
+  "fix-ids",
 ] as const;
 export type PlanningRequestId = (typeof PLANNING_REQUEST_IDS)[number];
 
@@ -227,6 +230,7 @@ export const PLANNING_REQUEST_TITLES: Readonly<
 > = Object.freeze({
   ...PLANNING_SECTION_TITLES,
   compact: "Compact",
+  "fix-ids": "Duplicate or stray id",
 });
 
 /** Whether a question is kept: a planning filter's test, or all of them. */
@@ -253,6 +257,83 @@ export function answeredQuestions(
 }
 
 /**
+ * An id that no question holds because of how the document writes it:
+ * declared by more than one question directive (`duplicate`), or written in
+ * a question's title while its directive carries no id (`stray`). Either way
+ * the question it names is credited no answer until an edit fixes it, which
+ * is the agent's (`docs/design/planning-page-freshness.md` §4.5).
+ */
+export interface IdProblem {
+  path: string;
+  id: string;
+  problem: "duplicate" | "stray";
+  /** Where the first question naming it starts, or the document's line 1. */
+  line: number;
+}
+
+/**
+ * The ids `fix-ids` lists, by document in index order, then line: in every
+ * live document that does not opt out with `planning-actions: none`,
+ *
+ * - each id a question directive carries that no question holds, which the
+ *   scan leaves unheld when several questions claim it (§3.3);
+ * - each id a question's title names while no directive in its document
+ *   carries it and no question holds it.
+ *
+ * With `keeps`, an id is listed when a question that names it is kept, as
+ * `compact` keeps a ✅ question; an id no question names is kept only with no
+ * filter.
+ */
+export function idProblems(
+  index: PlanningIndex,
+  keeps?: PlanningQuestionKeeper,
+): IdProblem[] {
+  const out: IdProblem[] = [];
+  for (const doc of index.documents) {
+    if (!isLive(index, doc) || doc.planningActions === "none") continue;
+    const held = new Set(doc.questions.map((q) => q.id));
+    const declared = new Set(doc.directiveIds);
+    const naming = (id: string) =>
+      doc.questions.filter((q) => q.id === null && titleNames(q.title, id));
+    const found: IdProblem[] = [];
+    const add = (id: string, problem: IdProblem["problem"]) => {
+      const named = naming(id);
+      const kept = keeps === undefined ? true : named.some((q) => keeps(q));
+      if (!kept) return;
+      found.push({
+        path: doc.path,
+        id,
+        problem,
+        line: named[0]?.unitLine ?? 1,
+      });
+    };
+    for (const id of doc.directiveIds) {
+      if (!held.has(id)) add(id, "duplicate");
+    }
+    for (const id of doc.ids) {
+      if (held.has(id) || declared.has(id)) continue;
+      if (naming(id).length > 0) add(id, "stray");
+    }
+    found.sort((a, b) => a.line - b.line);
+    out.push(...found);
+  }
+  return out;
+}
+
+/** Whether a title names `id` as a whole token, not inside a longer one. */
+function titleNames(title: string, id: string): boolean {
+  const at = title.indexOf(id);
+  if (at < 0) return false;
+  const after = title[at + id.length];
+  const before = at === 0 ? undefined : title[at - 1];
+  const word = /[A-Za-z0-9-]/;
+  return (
+    (before === undefined || !word.test(before)) &&
+    (after === undefined || !word.test(after))
+  );
+}
+
+/**
  * How many items a request lists: a section's entries, or the ✅ questions
  * `compact` lists. `keeps` is the applied filter's question test, which only
  * `compact` reads; the sections are already filtered.
@@ -265,7 +346,9 @@ export function planningRequestCount(
 ): number {
   return id === "compact"
     ? answeredQuestions(index, keeps).length
-    : agentSectionCount(sections, id);
+    : id === "fix-ids"
+      ? idProblems(index, keeps).length
+      : agentSectionCount(sections, id);
 }
 
 /**
@@ -395,7 +478,9 @@ export function planningAgentRequest(
   const blocks = ids.map((id) =>
     id === "compact"
       ? compactBlock(index, keeps)
-      : requestBlock(index, sections, id),
+      : id === "fix-ids"
+        ? fixIdsBlock(index, keeps)
+        : requestBlock(index, sections, id),
   );
   const filter =
     options.filter === undefined || options.filter.text === ""
@@ -423,6 +508,24 @@ function compactBlock(
   return lines(
     `${PLANNING_REQUEST_TITLES.compact} (${count(refs.length)}): questions the human has ruled (✅), whose rulings are still in their question directives. Compact each in its document. ${COMPACTION_RULE} An entry is where the question's item starts.`,
     refs.map((ref) => questionItem(index, ref)),
+  );
+}
+
+/**
+ * The `fix-ids` block: its heading line, then one line per id, where the
+ * first question naming it starts.
+ */
+function fixIdsBlock(
+  index: PlanningIndex,
+  keeps: PlanningQuestionKeeper | undefined,
+): string {
+  const problems = idProblems(index, keeps);
+  return lines(
+    `${PLANNING_REQUEST_TITLES["fix-ids"]} (${count(problems.length)}): question ids declared by more than one question, or written in a question's title with no id in its directive, so no question holds them and no answer filed under them is credited. Make each id declared once, by its own question's directive. Where two questions share one, keep it on the question the comments and links mean, give the other a new id, and say which you renamed. An entry is where the first question naming the id starts.`,
+    problems.map(
+      (p) =>
+        `- ${p.path}:${p.line}  ${p.id} ${p.problem === "duplicate" ? "declared more than once" : "outside a directive"}`,
+    ),
   );
 }
 

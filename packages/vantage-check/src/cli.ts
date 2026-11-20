@@ -163,7 +163,7 @@ function parseCheck(argv: string[]): Invocation {
  * `--config` does.
  *
  * `--request` takes the words after it, up to the next option, as agent
- * request ids (the four agent sections and `compact`), none meaning all five; given twice, the ids add up. It prints
+ * request ids (the four agent sections, `compact` and `fix-ids`), none meaning all six; given twice, the ids add up. It prints
  * text, so it refuses `--format json`.
  *
  * `--document` narrows the output to one document's entry, for the server's

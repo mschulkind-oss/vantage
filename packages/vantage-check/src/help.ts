@@ -59,7 +59,7 @@ Options for index:
   --request [<section>...]           print instead the request to give an agent
                                      for these sections, as the planning page's
                                      Copy agent request buttons copy it
-                                     (default: all five):
+                                     (default: all six):
 ${REQUEST_SECTION_LIST}
   --roadmap <path>                   the roadmap Needs you follows, relative to
                                      the project root (default: the one nearest
