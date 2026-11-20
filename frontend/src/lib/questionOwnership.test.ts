@@ -52,6 +52,25 @@ const agent = {
   timestamp: 1,
 };
 
+describe("an answer the server could not confirm when it was saved", () => {
+  it("proposes the id it was filed under, and says so", () => {
+    const index = indexOf({ "a.md": doc(q("OQ-A1"), "", q("OQ-B1")) }, STAGES);
+    const c = comment({ requested_question_id: "OQ-B1" });
+    const [entry] = ownershipMap(index, { "a.md": [c] }).unresolved.unassigned;
+    expect(entry.candidate?.id).toBe("OQ-B1");
+    expect(entry.reason).toBe(
+      "filed under OQ-B1, which the server could not confirm then; it is tried again",
+    );
+  });
+
+  it("proposes nothing when that id no longer names one question", () => {
+    const index = indexOf({ "a.md": doc(q("OQ-A1"), "", q("OQ-A1")) }, STAGES);
+    const c = comment({ requested_question_id: "OQ-A1", ownership: "unowned" });
+    const [entry] = ownershipMap(index, { "a.md": [c] }).unresolved.unassigned;
+    expect(entry.candidate).toBeUndefined();
+  });
+});
+
 describe("a note outside every question", () => {
   it("is a note, not an unassigned answer, when the server placed it outside every question", () => {
     const index = indexOf({ "a.md": doc(q("OQ-A1")) }, STAGES);

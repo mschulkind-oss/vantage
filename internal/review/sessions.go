@@ -113,6 +113,7 @@ func (s *Store) BindQuestion(filePath, repo string, req BindRequest) (*model.Rev
 		}
 	}
 	c.QuestionID = req.QuestionID
+	c.RequestedQuestionID = ""
 	c.QuestionEvidence = proven
 	bindOwnership(c, doc)
 	if err := s.saveLocked(filePath, repo, data); err != nil {

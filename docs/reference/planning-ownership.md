@@ -123,7 +123,9 @@ a block hash or unit text.
   after whitespace collapse, by containment; a checker too old to report
   `unitText` falls back to the Markdown source. Unproven — no scanner, scan
   failed, id absent or duplicated, stale `boot_id`, `document_generation` or `content_hash` — stores the comment
-  **unbound**; it never fails the create. The review's `mutation_revision` is
+  **unbound**, keeping the asked-for id as `requested_question_id`; it never
+  fails the create. Only the server sets that field (a client's is dropped),
+  and a successful bind clears it. The review's `mutation_revision` is
   **not** checked on create (an unrelated write between evidence and create must
   not unbind the answer; the server proves the id itself under the lock); it is
   checked on bind.
@@ -193,7 +195,10 @@ header labels must yield; it no longer disappears with minor shorthand labels.
 **Legacy auto-bind** (`useLegacyAutoBind`) binds an unbound comment only when its
 anchor hash is one block of the whole document (`blockLines[hash] > 0`), that
 block lies in exactly one question's unit, that id is unique, and the reading is
-coherent. It sends one `bind-comment-question` per (comment, reading), carrying
+coherent — or, for a comment carrying `requested_question_id`, when that id
+names exactly one question of a coherent reading. The requested id is the
+reader's own choice, not a synthesized identity, and the server proves it again
+on every attempt. It sends one `bind-comment-question` per (comment, reading), carrying
 the scanner fingerprint, the quote and the reading; a refusal is shown in the
 server's reason and not retried until a new reading.
 

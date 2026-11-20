@@ -275,6 +275,11 @@ export interface ReviewComment {
   ownership?: "proven" | "unowned" | "unknown";
   /** Why `ownership` is `unknown`, in the server's words (an id, not prose). */
   ownership_reason?: string;
+  /**
+   * The id this comment was filed under when the server could not prove it
+   * at create (server-derived); retried by the automatic bind, never identity.
+   */
+  requested_question_id?: string;
 }
 
 /** `GET /review/evidence`: the reading a bind or create is checked against. */

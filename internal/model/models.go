@@ -339,6 +339,11 @@ type ReviewComment struct {
 	QuestionID string `json:"question_id,omitempty"`
 	// QuestionEvidence is the scan evidence recorded with QuestionID.
 	QuestionEvidence *QuestionEvidence `json:"question_evidence,omitempty"`
+	// RequestedQuestionID is the id a create asked for when the server could
+	// not prove it then (a stale reading, a raced or missing scan): the
+	// reader's own choice, kept unbound so a later bind can prove it. Never
+	// identity on its own; cleared when the comment is bound.
+	RequestedQuestionID string `json:"requested_question_id,omitempty"`
 	// Ownership says what the shared scanner proved about who owns the block
 	// this comment captured, the last time the capture was considered:
 	// OwnershipProven (the question it is bound to holds the anchor),

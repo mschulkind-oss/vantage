@@ -52,9 +52,11 @@ export interface CommentOwnership {
   /**
    * For an unassigned legacy comment: the one question whose unit holds the
    * comment's block, when that block's hash is unique in the whole document
-   * and the question's id is unique. The only thing that may be bound
-   * automatically (`legacyBindCandidate`); never set for a comment that
-   * already names a question.
+   * and the question's id is unique (`legacyBindCandidate`); or, for an
+   * answer the server could not prove at create, the one question named by
+   * the id it was filed under (`requested_question_id`). The only things that
+   * may be bound automatically; never set for a comment that already names a
+   * question.
    */
   candidate?: PlanningQuestion;
   /** The reading the classification rests on, when the map was keyed on one. */
@@ -111,6 +113,22 @@ export function classifyComment(
 ): CommentOwnership {
   const id = comment.question_id;
   if (!id) {
+    const requested = comment.requested_question_id;
+    if (requested) {
+      // The reader filed it under this id and the server could not prove it
+      // then: the id is their choice, not a guess, so it is what the
+      // automatic bind tries again — still proved by the server each time.
+      const named = document?.questions.filter((q) => q.id === requested);
+      const candidate =
+        incoherent === undefined && named?.length === 1 ? named[0] : undefined;
+      return {
+        path,
+        comment,
+        kind: "unassigned",
+        reason: `filed under ${requested}, which the server could not confirm then; it is tried again`,
+        ...(candidate ? { candidate } : {}),
+      };
+    }
     const candidate =
       document === undefined || incoherent !== undefined
         ? undefined

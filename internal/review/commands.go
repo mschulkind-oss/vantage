@@ -120,6 +120,8 @@ func (s *Store) AddCommentWith(filePath, repo string, c model.ReviewComment, doc
 	if c.Reactions == nil {
 		c.Reactions = []model.CommentReaction{}
 	}
+	// Only the server records what it could not prove; a client never sets it.
+	c.RequestedQuestionID = ""
 	if c.QuestionID != "" {
 		reason := ""
 		if p := opts.Preconditions; p != nil {
@@ -134,6 +136,7 @@ func (s *Store) AddCommentWith(filePath, repo string, c model.ReviewComment, doc
 			c.QuestionEvidence, reason = proveQuestion(doc, c.QuestionID, c.QuestionEvidence)
 		}
 		if reason != "" {
+			c.RequestedQuestionID = c.QuestionID
 			c.QuestionID = ""
 			c.QuestionEvidence = nil
 		} else {
