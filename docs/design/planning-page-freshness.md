@@ -2,7 +2,7 @@
 title: "The planning page keeps itself current — the reader is told what changed, never asked to understand the machinery"
 status: in-review
 stage: DESIGN
-next: "Rule OQ-FS1 — whether Update lays out first or reads first shapes the one button everything else hangs on"
+next: "Rule OQ-FS2 to OQ-FS5; OQ-FS1 is settled (lay out now, verify after)"
 depends-on: [planning-question-state.md]
 ---
 
@@ -40,7 +40,7 @@ synthesized identity, a coherent pair, nothing shown on a guess) are kept whole.
 **Start at [§4](#4-the-readers-state-model)** — the state model. [§5](#5-the-readers-situations) walks every
 situation through it; [§6](#6-what-happens-to-todays-surface) disposes of today's controls.
 
-**Needs your ruling:** [OQ-FS1](#OQ-FS1), [OQ-FS2](#OQ-FS2), [OQ-FS3](#OQ-FS3), [OQ-FS4](#OQ-FS4), [OQ-FS5](#OQ-FS5).
+**Needs your ruling:** [OQ-FS2](#OQ-FS2), [OQ-FS3](#OQ-FS3), [OQ-FS4](#OQ-FS4), [OQ-FS5](#OQ-FS5).
 
 **Reads with:** [`planning-question-state.md`](planning-question-state.md) (the
 design this one narrows: its ownership, labels and live-versus-applied rules
@@ -180,11 +180,14 @@ and leaves four header controls where one belongs.
 - **Update while an answer box holds unsaved changes** keeps today's guard: the
   button is disabled with "Save or Restore the open answer first"
   ([OQ-FS4](#OQ-FS4) asks whether to narrow that).
-- **Update ends in the truth.** Pressing it lays out from data in hand and, in
-  the same press, verifies every listed document's reading against the server.
+- **Update ends in the truth.** Pressing it lays out from data in hand at once
+  and, in the same press, verifies every listed document's reading against the
+  server; the layout does not wait for the verification ([OQ-FS1](#OQ-FS1)).
   Should the verification find anything newer, the page is behind again at
-  once, with the new count. Whether the layout waits for that verification is
-  [OQ-FS1](#OQ-FS1).
+  once, with the new count. That should almost never happen: the server pushes
+  every change, so data in hand is behind the server for milliseconds, not
+  minutes. The verification is a backstop, and a second **Update** after a
+  press means a push was missed — a defect to find, not a routine state.
 - **Offline is a page state, never a card's.** Cards keep the last status they
   were read with; counts keep their last values ([OQ-FS3](#OQ-FS3) asks whether
   they should). The page says once, in the header, that what is shown is as of
@@ -414,28 +417,7 @@ the rest and can go in either order.
 
 ## Open Questions
 
-1. 💬 **OQ-FS1: When the reader presses Update, should the page lay out at once and verify afterwards, or read first and then lay out?**
-
-   Matt has the planning page open; the header reads **Update · 7**. He presses
-   it. Today's _Apply updates_ lays the page out from data in hand in the same
-   frame, and never contacts the server. The design wants the press to also
-   confirm with the server that nothing newer exists, which takes a request.
-
-   - **A — Lay out now, verify after.** The page changes instantly. If the
-     verification finds something newer, **Update · 1** reappears a moment
-     later, and Matt presses again.
-   - **B — Read first, then lay out.** One press, one result, but the layout
-     waits for the request; on a slow link the press does nothing visible for a
-     second or more.
-
-   <!-- vantage: question id=OQ-FS1 leaning="A (Lay out now, verify after) — an instant press is what the button has always been, and a second Update appearing is the honest way to say the server had more." -->
-
-   _Leaning:_ A (Lay out now, verify after) — an instant press is what the button has always been, and a second Update appearing is the honest way to say the server had more.
-
-   **Answer:**
-   > _(empty — fill in when decided)_
-
-2. 💬 **OQ-FS2: Where should the comments no question owns be listed — a group among the page's sections, or a control of their own?**
+1. 💬 **OQ-FS2: Where should the comments no question owns be listed — a group among the page's sections, or a control of their own?**
 
    A legacy comment on a document has no question id. Today the header's link
    icon reads **1 not attached**, and reads **0 not attached** on every page
@@ -456,7 +438,7 @@ the rest and can go in either order.
    **Answer:**
    > _(empty — fill in when decided)_
 
-3. 💬 **OQ-FS3: While the page is offline, should counts and card statuses keep their last values, or go blank?**
+2. 💬 **OQ-FS3: While the page is offline, should counts and card statuses keep their last values, or go blank?**
 
    Matt's laptop drops its connection. Today each affected count reads
    _Unknown_ and the header shows a pill with the last good time. The design
@@ -475,7 +457,7 @@ the rest and can go in either order.
    **Answer:**
    > _(empty — fill in when decided)_
 
-4. 💬 **OQ-FS4: While an answer box holds unsaved text, should Update be refused outright, or apply everywhere but that card?**
+3. 💬 **OQ-FS4: While an answer box holds unsaved text, should Update be refused outright, or apply everywhere but that card?**
 
    Matt is typing an answer on one card when **Update · 12** appears. Today the
    button is disabled with "Save or Restore the open answer first", so the
@@ -494,7 +476,7 @@ the rest and can go in either order.
    **Answer:**
    > _(empty — fill in when decided)_
 
-5. 💬 🤷 **OQ-FS5: What should the one button be called?**
+4. 💬 🤷 **OQ-FS5: What should the one button be called?**
 
    The header's one freshness control, today **Apply updates 7**. Its title
    lists the changes by kind. The name is read dozens of times a day and is
@@ -510,3 +492,9 @@ the rest and can go in either order.
 
    **Answer:**
    > _(empty — fill in when decided)_
+
+## Decision Ledger
+
+| ID | Ruling / Decision | Date | Settled in |
+| :--- | :--- | :--- | :--- |
+| OQ-FS1 | A — Update lays out at once and verifies afterwards. Pushes keep held data within milliseconds of the server, so a second Update after the verification signals a missed push to be fixed, not a routine state | 2026-11-20 | [§4.1](#41-page-freshness-three-states-one-button) |
