@@ -155,6 +155,29 @@ func TestFlushForgetsTheRecentFilesOfAWrittenMarkdownFile(t *testing.T) {
 	require.Equal(t, []string{"b.md"}, recentPaths(otherSvc, 3), "the other repository's list is still the cached one")
 }
 
+// A commit or a checkout changes its repository's recent files and no other's.
+// The watcher dropped every repository's cached list for one, so each commit
+// anywhere made every tab's next refetch a fresh walk of its repository; on a
+// daemon serving several busy repositories that was most lists over a second.
+func TestFlushOfGitStateForgetsOnlyItsOwnRepositorysRecentFiles(t *testing.T) {
+	root := gitRepo(t, map[string]string{"a.md": "# A\n"})
+	other := gitRepo(t, map[string]string{"b.md": "# B\n"})
+
+	gitsvc.ClearRecentFilesCache()
+	t.Cleanup(gitsvc.ClearRecentFilesCache)
+	svc, otherSvc := gitsvc.NewService(root, gitsvc.Options{}), gitsvc.NewService(other, gitsvc.Options{})
+	require.Equal(t, []string{"a.md"}, recentPaths(svc, 30))
+	require.Equal(t, []string{"b.md"}, recentPaths(otherSvc, 30))
+
+	w, err := NewWatcher(root, "", NewManager(quietLogger(), nil), nil, false, quietLogger())
+	require.NoError(t, err)
+	writeTree(t, root, map[string]string{"a2.md": "# A2\n"})
+	writeTree(t, other, map[string]string{"b2.md": "# B2\n"})
+	w.flush([]string{".git/index"})
+	require.ElementsMatch(t, []string{"a.md", "a2.md"}, recentPaths(svc, 30))
+	require.Equal(t, []string{"b.md"}, recentPaths(otherSvc, 30), "the other repository's list is still the cached one")
+}
+
 // gitRepo makes a git repository holding files, with nothing committed.
 func gitRepo(t *testing.T, files map[string]string) string {
 	t.Helper()

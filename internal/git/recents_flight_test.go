@@ -1,0 +1,97 @@
+package git
+
+import (
+	"sync"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"github.com/mschulkind-oss/vantage/internal/model"
+	"github.com/stretchr/testify/require"
+)
+
+// Every open tab refetches the recent files on each push, and a walk can take
+// seconds, so callers asking for the same list at once share one walk instead
+// of each running their own: six tabs ran six identical `git ls-files` walks.
+func TestRecentsCallersAtOnceShareOneWalk(t *testing.T) {
+	c := newRecentsCache(time.Minute)
+	key := recentsKey{repoPath: "/r", limit: 30}
+	release := make(chan struct{})
+	var walks atomic.Int32
+	compute := func() []model.RecentFile {
+		walks.Add(1)
+		<-release
+		return []model.RecentFile{{Path: "a.md"}}
+	}
+
+	first := make(chan recentsSource)
+	go func() { _, src := c.load(key, compute); first <- src }()
+	waitForFlight(t, c, key)
+
+	var wg sync.WaitGroup
+	sources := make([]recentsSource, 5)
+	for i := range sources {
+		wg.Go(func() {
+			data, src := c.load(key, compute)
+			require.Equal(t, "a.md", data[0].Path)
+			sources[i] = src
+		})
+	}
+	waitForWaiters(t)
+	close(release)
+	wg.Wait()
+
+	require.Equal(t, recentsWalked, <-first)
+	require.Equal(t, int32(1), walks.Load())
+	for _, src := range sources {
+		require.Contains(t, []recentsSource{recentsJoined, recentsHit}, src)
+	}
+	_, src := c.load(key, compute)
+	require.Equal(t, recentsHit, src, "the shared walk's list is cached")
+}
+
+// A walk that began before its repository's list was dropped may have read the
+// state the drop was for: a caller after the drop starts a walk of its own,
+// and the earlier walk's list is not cached.
+func TestRecentsWalkBeforeAClearIsNeitherJoinedNorCached(t *testing.T) {
+	c := newRecentsCache(time.Minute)
+	key := recentsKey{repoPath: "/r", limit: 30}
+	release := make(chan struct{})
+	stale := make(chan []model.RecentFile)
+	go func() {
+		data, _ := c.load(key, func() []model.RecentFile {
+			<-release
+			return []model.RecentFile{{Path: "old.md"}}
+		})
+		stale <- data
+	}()
+	waitForFlight(t, c, key)
+
+	c.clearRepo("/r")
+	data, src := c.load(key, func() []model.RecentFile { return []model.RecentFile{{Path: "new.md"}} })
+	require.Equal(t, recentsWalked, src)
+	require.Equal(t, "new.md", data[0].Path)
+
+	close(release)
+	require.Equal(t, "old.md", (<-stale)[0].Path)
+	data, src = c.load(key, func() []model.RecentFile { t.Fatal("walked again"); return nil })
+	require.Equal(t, recentsHit, src)
+	require.Equal(t, "new.md", data[0].Path, "the walk from before the drop did not overwrite it")
+}
+
+func waitForFlight(t *testing.T, c *recentsCache, key recentsKey) {
+	t.Helper()
+	require.Eventually(t, func() bool {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		return c.flights[key] != nil
+	}, 5*time.Second, time.Millisecond)
+}
+
+// waitForWaiters gives the joining goroutines a moment to block on the flight.
+// One that is late finds the list cached instead, which the test accepts: what
+// it asserts is one walk either way.
+func waitForWaiters(t *testing.T) {
+	t.Helper()
+	time.Sleep(20 * time.Millisecond)
+}
