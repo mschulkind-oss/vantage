@@ -777,19 +777,18 @@ func (w *Watcher) flush(batch []string) {
 		fssvc.ClearMarkdownDirCache()
 	}
 	// The recent files are cached for half a minute, since working them out
-	// reads git's log. A Markdown file written is the newest of them, though,
-	// and a directory that went takes every recent file in it along, and
-	// neither touches git state: the list the viewer refetches on this push
+	// reads git's log. A commit or a checkout changes them, a Markdown file
+	// written is the newest of them, and a directory that went takes every
+	// recent file in it along: the list the viewer refetches on this push
 	// would still be the one from before it, and the viewer refetches only on
-	// a push, so it would show that list until something else changed. That
+	// a push, so it would show that list until something else changed. Each
 	// changes this repository's list alone, and in daemon mode every served
-	// repository shares the cache, so only this one's is dropped.
-	if hasGitState {
-		gitsvc.ClearRecentFilesCache()
-		w.logger.Debug("cleared recent-files cache due to git state change")
-	} else if hasMarkdown {
+	// repository shares the cache, so only this one's is dropped. Dropping all
+	// of it on every commit anywhere made each push a fresh walk of every
+	// repository a tab had open: 7,060 lists over a second in one week.
+	if hasGitState || hasMarkdown {
 		gitsvc.ClearRecentFilesCacheOf(w.root)
-		w.logger.Debug("cleared this repository's recent-files cache", "paths", len(paths), "removed_dirs", len(removedDirs))
+		w.logger.Debug("cleared this repository's recent-files cache", "git_state", hasGitState, "paths", len(paths), "removed_dirs", len(removedDirs))
 	}
 
 	msg := filesChangedMessage{Type: "files_changed", Paths: paths, RemovedDirs: removedDirs}

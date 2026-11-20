@@ -822,12 +822,34 @@ func (c *ttlMapCache) clear() {
 }
 
 // recentsCache is a TTL cache of recent-files results keyed by a struct that
-// captures every input that affects the result.
+// captures every input that affects the result. It also holds the walks in
+// flight, so callers asking for the same list at once share one walk: every
+// open tab refetches the list on each push, and a walk can take seconds, so
+// without it six tabs ran six identical walks side by side.
 type recentsCache struct {
-	mu  sync.Mutex
-	ttl time.Duration
-	m   map[recentsKey]recentsEntry
+	mu      sync.Mutex
+	ttl     time.Duration
+	m       map[recentsKey]recentsEntry
+	flights map[recentsKey]*recentsFlight
+	// gen counts clears. A walk that began before a clear may have read the
+	// state the clear was for, so it is neither stored nor joined after one.
+	gen uint64
 }
+
+// recentsFlight is one walk in progress; done closes once data is set.
+type recentsFlight struct {
+	done chan struct{}
+	data []model.RecentFile
+}
+
+// recentsSource says where [recentsCache.load] got its list.
+type recentsSource int
+
+const (
+	recentsHit    recentsSource = iota // a cached list
+	recentsJoined                      // a walk another caller had started
+	recentsWalked                      // a walk of this caller's own
+)
 
 type recentsKey struct {
 	repoPath       string
@@ -843,29 +865,49 @@ type recentsEntry struct {
 }
 
 func newRecentsCache(ttl time.Duration) *recentsCache {
-	return &recentsCache{ttl: ttl, m: map[recentsKey]recentsEntry{}}
+	return &recentsCache{ttl: ttl, m: map[recentsKey]recentsEntry{}, flights: map[recentsKey]*recentsFlight{}}
 }
 
-func (c *recentsCache) get(key recentsKey) ([]model.RecentFile, bool) {
+// load returns the list for key: the cached one while it is fresh, else the
+// result of the walk already in flight for key, else that of compute, which it
+// runs and stores.
+func (c *recentsCache) load(key recentsKey, compute func() []model.RecentFile) ([]model.RecentFile, recentsSource) {
 	c.mu.Lock()
-	defer c.mu.Unlock()
-	e, ok := c.m[key]
-	if !ok || time.Since(e.at) >= c.ttl {
-		return nil, false
+	if e, ok := c.m[key]; ok && time.Since(e.at) < c.ttl {
+		c.mu.Unlock()
+		return e.data, recentsHit
 	}
-	return e.data, true
-}
+	if f, ok := c.flights[key]; ok {
+		c.mu.Unlock()
+		<-f.done
+		return f.data, recentsJoined
+	}
+	f := &recentsFlight{done: make(chan struct{})}
+	c.flights[key] = f
+	gen := c.gen
+	c.mu.Unlock()
 
-func (c *recentsCache) set(key recentsKey, data []model.RecentFile) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.m[key] = recentsEntry{at: time.Now(), data: data}
+	defer func() {
+		c.mu.Lock()
+		if c.flights[key] == f {
+			delete(c.flights, key)
+		}
+		if c.gen == gen {
+			c.m[key] = recentsEntry{at: time.Now(), data: f.data}
+		}
+		c.mu.Unlock()
+		close(f.done)
+	}()
+	f.data = compute()
+	return f.data, recentsWalked
 }
 
 func (c *recentsCache) clear() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.m = map[recentsKey]recentsEntry{}
+	c.flights = map[recentsKey]*recentsFlight{}
+	c.gen++
 }
 
 // clearRepo drops the entries of the repository at repoPath, a canonical path,
@@ -878,6 +920,12 @@ func (c *recentsCache) clearRepo(repoPath string) {
 			delete(c.m, key)
 		}
 	}
+	for key := range c.flights {
+		if key.repoPath == repoPath {
+			delete(c.flights, key)
+		}
+	}
+	c.gen++
 }
 
 const (
@@ -897,8 +945,9 @@ func ClearStatusCache() {
 	slog.Debug("git: status cache cleared")
 }
 
-// ClearRecentFilesCache flushes the shared recent-files cache. The file watcher
-// calls it alongside ClearStatusCache after commits, branch switches, etc.
+// ClearRecentFilesCache flushes the shared recent-files cache, every
+// repository's. The watcher drops only its own repository's, through
+// [ClearRecentFilesCacheOf]; tests start from an empty cache with this.
 func ClearRecentFilesCache() {
 	recentFilesCache.clear()
 	slog.Debug("git: recent-files cache cleared")
@@ -906,9 +955,10 @@ func ClearRecentFilesCache() {
 
 // ClearRecentFilesCacheOf flushes the recent files cached for the repository
 // at repoPath alone, which is resolved the way [NewService] resolves its own.
-// The watcher calls it when it pushes a Markdown file of its repository or a
-// directory of it that went: either changes the repository's recent files and
-// no other's, and in daemon mode every served repository shares the one cache.
+// The watcher calls it when its repository's git state changes, or it pushes a
+// Markdown file of its repository or a directory of it that went: each changes
+// the repository's recent files and no other's, and in daemon mode every served
+// repository shares the one cache.
 func ClearRecentFilesCacheOf(repoPath string) {
 	recentFilesCache.clearRepo(canonicalRepoPath(repoPath))
 	slog.Debug("git: recent-files cache cleared for one repository", "repo", repoPath)
@@ -1008,15 +1058,18 @@ func (s *GitService) recents(limit int, extensions []string, showHidden, showGit
 		showHidden:     showHidden,
 		showGitignored: showGitignored,
 	}
-	if cached, ok := recentFilesCache.get(key); ok {
+	result, source := recentFilesCache.load(key, func() []model.RecentFile {
+		return s.computeRecents(limit, extLower, showHidden, showGitignored, report)
+	})
+	switch source {
+	case recentsHit:
 		perf.Default.Count("recent_files_cache_hit")
-		slog.Debug("git: recent-files cache hit", "items", len(cached))
-		return cached
+		slog.Debug("git: recent-files cache hit", "items", len(result))
+	case recentsJoined:
+		perf.Default.Count("recent_files_walk_joined")
+	case recentsWalked:
+		perf.Default.Count("recent_files_cache_miss")
 	}
-	perf.Default.Count("recent_files_cache_miss")
-
-	result := s.computeRecents(limit, extLower, showHidden, showGitignored, report)
-	recentFilesCache.set(key, result)
 	return result
 }
 

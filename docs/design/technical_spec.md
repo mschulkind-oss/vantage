@@ -140,26 +140,26 @@ review store, perf store, and live Manager) are built once.
     diff (`git diff HEAD -- <path>` for tracked files, a synthetic all-add diff
     for untracked ones), porcelain status, and recently changed files.
   - Two package-level TTL caches back the hottest calls (status and recent
-    files); the file watcher flushes them via `ClearStatusCache` /
-    `ClearRecentFilesCache` when git state changes on disk. It flushes its own
-    repository's recent files (`ClearRecentFilesCacheOf`) whenever it pushes a
-    Markdown file or a watched directory renamed away or removed: a file
-    written is the newest of them, a directory that went takes every recent
-    file inside it along, and neither touches git state. The viewer refetches
-    its recent files only on a push, so a list cached from before the push
-    would stay on screen until something else changed. In daemon mode the other
-    repositories' lists are left alone. A directory of repositories served as
-    one project caches its list whole, not each repository's, so that flush
-    drops all of it. The price is that every such push sends the next request
-    for each limit and filter back to git — the log, the untracked-file and
-    status probes, and with gitignored files shown a walk of every ignored
-    tree — where before a list was worked out at most once per 30 seconds
-    between changes to git's state, and nothing merges requests that arrive
-    together. On a checkout of this repository that is about 10 ms, and the
-    ignored-tree walk about 0.15 s on a working tree holding its build output.
-    A tree where it shows would want requests that arrive together to share
-    one result, or the cached lists updated with the pushed paths rather than
-    dropped.
+    files). The file watcher flushes the status cache (`ClearStatusCache`)
+    when git state changes on disk, and its own repository's recent files
+    (`ClearRecentFilesCacheOf`) on git state, on a Markdown file, and on a
+    watched directory renamed away or removed: a commit or checkout changes the
+    list, a file written is the newest of it, and a directory that went takes
+    every recent file inside it along. The viewer refetches its recent files
+    only on a push, so a list cached from before the push would stay on screen
+    until something else changed. In daemon mode the other repositories' lists
+    are left alone; until 2026-11-19 a git state change in any repository
+    dropped all of them, which on a host serving several busy repositories
+    left most refetches uncached: 7,060 recent-file requests there took over a
+    second in one week, 5.4 s on average. A directory of repositories served as one project caches its
+    list whole, not each repository's, so that flush drops all of it.
+  - Requests for the same recent-files list that arrive together share one
+    walk: every open tab refetches the list on each push, and a walk can take
+    seconds. A walk that began before its repository's list was dropped is
+    neither joined nor cached, since it may have read the state the drop was
+    for. The perf counters split a request's outcome three ways:
+    `recent_files_cache_hit`, `recent_files_walk_joined` and
+    `recent_files_cache_miss` (a walk of its own).
   - Every invocation carries `--no-optional-locks`. All of them are reads, and
     without it `git status` refreshes `.git/index` as a side effect — a write
     the watcher sees, broadcasts, and gets asked for status over again.
