@@ -376,21 +376,6 @@ export class CommentBox {
     return this.retired;
   }
 
-  /**
-   * Whether closing this open box would lose or decide something: its
-   * editing session has a typed difference or an earlier text write
-   * (`CommentSession.unchanged`), or, with no session, text the server does
-   * not hold yet; an open reply box with any typed text. Page-level actions that must never save or restore for the
-   * reader (Apply updates) are refused while any open box says so.
-   */
-  get holdsChanges(): boolean {
-    if (!this.opened) return false;
-    // A reply box has no session: any text typed in it, saved or not, is
-    // something closing the box would decide for the reader.
-    if (this.subject.kind === "reply" && this.typed !== "") return true;
-    return this.session !== null ? !this.session.unchanged : this.state.unsaved;
-  }
-
   /** Whether the box is open on a surface. */
   get isOpen(): boolean {
     return this.opened;

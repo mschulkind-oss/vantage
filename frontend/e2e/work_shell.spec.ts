@@ -603,7 +603,7 @@ test.describe("Work in the shared shell", () => {
     });
     await page.keyboard.press("Escape");
     await header.getByRole("button", { name: "Toolbar actions" }).click();
-    await expect(header.getByRole("button", { name: "Reload from server" })).toBeVisible();
+    await expect(header.getByRole("button", { name: /^Review answers/ })).toBeVisible();
     await page.keyboard.press("Escape");
     await header.getByRole("link", { name: "Overview" }).click();
     await expect(page).toHaveURL(new RegExp(`\\.vantage/work/${repoSegment}$`));

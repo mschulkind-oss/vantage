@@ -665,7 +665,7 @@ test.describe("several roadmaps", () => {
         await expect(
           painted.getByText("Answered elsewhere", { exact: true }),
         ).toBeVisible();
-        await page.getByRole("button", { name: /^Apply updates:/ }).click();
+        await page.getByRole("button", { name: /^Update:/ }).click();
       }
       await expect(
         a1.getByText("My answer to OQ-A1.", { exact: true }),
@@ -720,7 +720,7 @@ test.describe("several roadmaps", () => {
 
   // A cold visit: every answer filed before the page was ever opened, on
   // questions of both roadmaps and of none. Counts update as their proof loads;
-  // late answers rearrange the painted cards only after Apply updates.
+  // late answers rearrange the painted cards only after Update.
   for (const chosen of ["roadmap.md", NESTED]) {
     test(`counts every answer on a cold visit to ${chosen}`, async ({
       page,
@@ -746,7 +746,7 @@ test.describe("several roadmaps", () => {
         await expect(page.getByTestId("other-roadmaps")).toHaveText(
           "No more questions need you on other roadmaps.",
         );
-        const apply = page.getByRole("button", { name: /^Apply updates:/ });
+        const apply = page.getByRole("button", { name: /^Update:/ });
         if (await apply.count()) await apply.click();
         // Needs you's last line says so, under its answered rows.
         await expect(page.getByTestId("needs-you-end")).toHaveText(

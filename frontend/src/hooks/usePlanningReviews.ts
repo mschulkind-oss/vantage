@@ -309,43 +309,6 @@ export function fetchPlanningReviews(
   return Promise.all(waiting).then((all) => all.every(Boolean));
 }
 
-/** What the last Reload from server did, for one repository. */
-export interface ReloadStatus {
-  /** `Date.now()` of the last answered reload, or null. */
-  lastSuccessAt: number | null;
-  /** `Date.now()` of the last reload whose request failed, or null. */
-  lastFailureAt: number | null;
-  /** The last answered reload saw a document change while it was read. */
-  sampleChanged: boolean;
-  running: boolean;
-}
-
-const NO_RELOAD: ReloadStatus = {
-  lastSuccessAt: null,
-  lastFailureAt: null,
-  sampleChanged: false,
-  running: false,
-};
-
-/** Reload status by repository; renders the header's Unknown pill. */
-export const useReloadStatus = create<{
-  byRepo: Readonly<Record<string, ReloadStatus>>;
-}>(() => ({ byRepo: {} }));
-
-const noteReload = (repo: string, change: Partial<ReloadStatus>) =>
-  useReloadStatus.setState((state) => ({
-    byRepo: {
-      ...state.byRepo,
-      [repo]: { ...(state.byRepo[repo] ?? NO_RELOAD), ...change },
-    },
-  }));
-
-/** The reload status of `repo` (`null` for none yet asked). */
-export const useReloadStatusOf = (repo: string | null): ReloadStatus =>
-  useReloadStatus((state) =>
-    repo === null ? NO_RELOAD : (state.byRepo[repo] ?? NO_RELOAD),
-  );
-
 /** A failed reconcile's first retry, after 1 s; it doubles from there. */
 export const RECONCILE_RETRY_MIN_MS = 1000;
 /** The longest wait between retries, as a comment box's save waits. */
@@ -485,10 +448,11 @@ export function retryPlanningReviews(
 /**
  * Reconcile (`docs/design/planning-page-freshness.md` §4.4): read every path's
  * review in one request regardless of what is held (requests in flight are
- * discarded), together with every path a failed read left waiting, adopt the
- * answer through `hold`, which refuses an older document generation of the
- * same boot, and ask for a rescan. An answer from another boot id discards
- * everything held for the repository first, and rescans without the cache.
+ * discarded), together with every path a failed read left waiting, and adopt
+ * the answer through `hold`, which refuses an older document generation of the
+ * same boot. A reading of a version the scan does not hold asks for a rescan.
+ * An answer from another boot id discards everything held for the repository
+ * first, and rescans without the cache.
  *
  * A failed request is retried after 1 s, doubling to 30 s, indefinitely, and
  * 30 s of failure calls the page offline (`useFreshnessOf`); the first good
@@ -511,7 +475,6 @@ export async function reconcilePlanningReviews(
   }
   const listed = [...new Set([...paths, ...waiting])].sort();
   if (listed.length === 0) return "adopted";
-  noteReload(repo, { running: true });
   const sent = listed.map((path) => {
     const seq = (book.seq.get(path) ?? 0) + 1;
     book.seq.set(path, seq);
@@ -529,7 +492,6 @@ export async function reconcilePlanningReviews(
     answered = null;
   }
   if (answered === null) {
-    noteReload(repo, { lastFailureAt: Date.now(), running: false });
     noteFailure(repo, listed);
     return "failed";
   }
@@ -558,11 +520,6 @@ export async function reconcilePlanningReviews(
   const changed = Object.entries(evidence)
     .filter(([, e]) => e?.sample_changed)
     .map(([path]) => path);
-  noteReload(repo, {
-    lastSuccessAt: Date.now(),
-    sampleChanged: changed.length > 0,
-    running: false,
-  });
   // The retry's wait starts again from 1 s only once every read is coherent:
   // a document that keeps changing while it is read backs off as a failure does.
   if (changed.length === 0) noteSuccess(repo, listed);
@@ -570,7 +527,21 @@ export async function reconcilePlanningReviews(
     if (freshnessOf(repo).failingSince !== null) setFreshness(repo, CURRENT);
     retryLater(repo, changed);
   }
-  usePlanningStore.getState().rescan(repo, { bypassCache: bootChanged });
+  // The scan is read again only when it is behind what the reviews were read
+  // against, or the server restarted: pushes keep it current otherwise, and
+  // Update's verification read would rescan the project on every press.
+  const load = usePlanningStore.getState().byRepo[repo];
+  const hashes = load?.status === "ready" ? load.hashes : {};
+  const scanBehind = Object.entries(evidence).some(
+    ([path, e]) =>
+      e !== null &&
+      !e.sample_changed &&
+      hashes[path] !== undefined &&
+      e.content_hash !== hashes[path],
+  );
+  if (bootChanged || scanBehind) {
+    usePlanningStore.getState().rescan(repo, { bypassCache: bootChanged });
+  }
   return changed.length > 0 ? "changed" : "adopted";
 }
 

@@ -691,31 +691,29 @@ edited, a new question. Each one only marks what it concerns, and counts:
 | A blocked or maintenance entry came or went | The group's count changes; an opened group marks a gone entry *Done* | Listed, or gone |
 
 The counts in the headings and on the header's buttons follow at once. The
-header says how many changes are waiting, as **3 updates · Refresh**, with what
-they are in its tooltip, such as *2 new replies, 1 done*; its room is kept, so
-it appearing moves nothing, and a narrow header shows its icon and count.
-**Refresh** lays the page out again from what is in hand, with no request,
-keeping the first entry on screen where it was. It closes the comment boxes you
-have open that hold nothing new, and it **never saves or undoes an answer for
-you**: while an open answer has text you have typed or has been saved in this
-session of the box, the button is disabled and says _Save or Restore the open
-answer first_. Close the box (which keeps the text) or press Esc and choose
-([below](#leaving-an-answer-box-close-keeps-esc-asks)), and Refresh works again. Nothing else applies the changes on its own:
-choosing a filter, a roadmap or a page size lays the page out too, and so does
-opening it again. After Refresh the focus goes to the entry it kept in place,
-or to *Needs you*'s heading, so pressing it never leaves the focus nowhere. What
-you do yourself is never counted: a card you are answering, while its box saves
-as you type, is not marked *Answered elsewhere*, and your own Undo is no
-update.
+header says how many changes are waiting, as **Update · 3**, with what they are
+in its tooltip, such as *2 new replies, 1 done*; its room is kept, so it
+appearing moves nothing. **Update** lays the page out again from what is in
+hand, keeping the first entry on screen where it was, and in the same press
+reads the listed documents' comments again, so it ends in what the server
+holds. It waits while an answer box is open and **never closes, saves or undoes
+an answer for you**: it is disabled and says _Close the open answer first — what
+you typed is saved_. Close the box (which keeps the text) or press Esc and
+choose ([below](#leaving-an-answer-box-close-keeps-esc-asks)), and Update works
+again. Nothing else applies the changes on its own: choosing a filter, a roadmap
+or a page size lays the page out too, and so does opening it again. After
+Update the focus goes to the entry it kept in place, or to *Needs you*'s
+heading, so pressing it never leaves the focus nowhere. What you do yourself is
+never counted: a card you are answering, while its box saves as you type, is not
+marked *Answered elsewhere*, and your own Undo is no update.
 
-**Reload from server**, beside it, is the only button that asks the server again:
-it reads the listed documents' reviews and rescans, updating their live status
-bands and marks without replacing card text, comment lists, or open boxes.
-Every card's status band keeps the same height, so a new label moves nothing.
-**Refresh** is what lays the new data out. If the server cannot be read, the header says _Unknown · last
-successful read 14:02 · last attempt failed 14:09_, and counts that depend on it
-read _Unknown_, never 0. If the document changed while it was read, it says so
-and asks you to Reload again.
+You never need to ask the server again yourself. When the connection comes
+back, or a tab you left for half a minute or more is shown again, the page reads
+the listed documents' comments again, updating their status bands and marks
+without replacing card text, comment lists or open boxes. If the server cannot
+be read for 30 seconds, the header says _Offline since 14:02 · retrying_, with
+**Retry now**; cards and counts keep what they last showed, and the line clears
+by itself once the server answers.
 
 ### The contents column
 

@@ -1,21 +1,27 @@
 /**
- * The planning page header's updates slot (`docs/reference/planning-index.md`
- * §6.3, §6.4): *Apply updates N* while the page holds late data back
- * from its layout, and nothing otherwise.
+ * The planning page header's freshness slot
+ * (`docs/design/planning-page-freshness.md` §4.1): **Update · N** while the
+ * page holds late data back from its layout, **Offline since HH:MM ·
+ * retrying** with **Retry now** once its reads have failed for 30 s, and
+ * nothing while it is current.
  *
- * Its room is kept from the first paint, as Copy answers' count is: the
- * button is always in the header, invisible while there is nothing to apply,
- * with the count in a slot of a few digits and its words in a cell as wide
- * as the longer of them. So its appearing moves nothing. Where the header is
- * narrow, its label shortens to Apply alongside the list/check icon and count,
- * so it cannot become a second anonymous refresh arrow beside Reload from
- * server. It is never folded into the "⋯", where an update would
- * be hidden. Its title lists the updates by kind.
+ * Update's room is kept from the first paint, as Copy answers' count is: the
+ * button is always in the header, invisible while there is nothing to lay
+ * out, with the count in a slot of a few digits. So its appearing moves
+ * nothing. Its word is short enough never to yield, and it is never folded
+ * into the "⋯", where an update would be hidden. Its title lists the updates
+ * by kind.
  */
 import React from "react";
-import { CloudDownload, ListChecks } from "lucide-react";
+import { CloudOff, ListChecks, RotateCw } from "lucide-react";
 import { planningLimits } from "../planningScan/limits";
-import type { ReloadStatus } from "../hooks/usePlanningReviews";
+
+/** Why Update waits while an answer box is open (OQ-FS4). */
+export const UPDATE_BLOCKED =
+  "Close the open answer first — what you typed is saved";
+
+const clock = (at: number) =>
+  new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
 export const PlanningUpdates: React.FC<{
   /** The held updates' count; `0` hides the button and keeps its room. */
@@ -24,15 +30,49 @@ export const PlanningUpdates: React.FC<{
   title: string;
   onRefresh: () => void;
   /**
-   * Why applying is refused now (an open answer holds changes), or null.
-   * Apply updates never saves, restores or closes such an answer itself.
+   * Why updating is refused now (an answer box is open), or null. Update
+   * never saves, restores or closes an answer itself.
    */
   blockedReason?: string | null;
-}> = ({ count, title, onRefresh, blockedReason: blocked = null }) => {
+  /**
+   * `Date.now()` of the first of the reads that have failed for 30 s, when
+   * the page is offline; null otherwise. The slot then says so instead.
+   */
+  offlineSince?: number | null;
+  /** Retry now: read again at once what failed. */
+  onRetry?: () => void;
+}> = ({
+  count,
+  title,
+  onRefresh,
+  blockedReason: blocked = null,
+  offlineSince = null,
+  onRetry,
+}) => {
+  if (offlineSince !== null) {
+    return (
+      <span
+        data-planning-offline
+        role="status"
+        className="inline-flex items-center gap-1.5 rounded-md border border-amber-600 px-2 py-1 text-xs whitespace-nowrap text-amber-700 print:hidden dark:border-amber-400 dark:text-amber-400"
+      >
+        <CloudOff size={14} aria-hidden="true" />
+        <span>Offline since {clock(offlineSince)} · retrying</span>
+        <button
+          type="button"
+          onClick={onRetry}
+          className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-medium hover:bg-amber-50 dark:hover:bg-amber-900/30"
+        >
+          <RotateCw size={12} aria-hidden="true" />
+          Retry now
+        </button>
+      </span>
+    );
+  }
   const shown = count > 0;
-  let blockedReason = blocked;
-  // Nothing to apply, nothing to refuse: the reason shows with the button.
-  if (!shown) blockedReason = null;
+  // Nothing to lay out, nothing to refuse: the reason shows with the button.
+  const blockedReason = shown ? blocked : null;
+  const noun = count === 1 ? "update" : "updates";
   return (
     <button
       type="button"
@@ -43,29 +83,25 @@ export const PlanningUpdates: React.FC<{
         blockedReason !== null
           ? blockedReason
           : shown
-            ? `Apply changes already received, without fetching again: ${title}`
+            ? `Lay out what has changed, and check the server for anything newer: ${title}`
             : undefined
       }
       aria-label={
         shown
-          ? `Apply updates: ${count.toLocaleString("en-US")} ${count === 1 ? "update" : "updates"} (${title})${blockedReason === null ? "" : `. ${blockedReason}`}`
-          : blockedReason === null
-            ? undefined
-            : blockedReason
+          ? `Update: ${count.toLocaleString("en-US")} ${noun} (${title})${blockedReason === null ? "" : `. ${blockedReason}`}`
+          : undefined
       }
-      aria-hidden={shown || blockedReason !== null ? undefined : true}
-      tabIndex={shown || blockedReason !== null ? undefined : -1}
+      aria-hidden={shown ? undefined : true}
+      tabIndex={shown ? undefined : -1}
       className={
         "inline-flex items-center gap-1.5 rounded-md border border-blue-300 px-2.5 py-1.5 text-xs font-medium text-blue-600 transition-colors hover:bg-blue-50 print:hidden dark:border-blue-700 dark:text-blue-400 dark:hover:bg-blue-900/30" +
-        (shown || blockedReason !== null ? "" : " invisible") +
+        (shown ? "" : " invisible") +
         (blockedReason !== null ? " cursor-not-allowed opacity-60" : "")
       }
     >
       <ListChecks size={14} aria-hidden="true" />
-      <span className="hdr-label whitespace-nowrap">Apply updates</span>
-      <span className="hdr-updates-short" aria-hidden="true">
-        Apply
-      </span>
+      <span className="whitespace-nowrap">Update</span>
+      <span aria-hidden="true">·</span>
       <span
         data-testid="planning-updates-count"
         className="inline-block text-right tabular-nums"
@@ -74,56 +110,5 @@ export const PlanningUpdates: React.FC<{
         {shown ? count.toLocaleString("en-US") : ""}
       </span>
     </button>
-  );
-};
-
-const clock = (at: number) =>
-  new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-
-/**
- * *Reload from server*, and beside it the Unknown pill once a reload has
- * failed or has seen the document change while it was read. It reads the
- * server again and changes no painted body: Apply updates is what lays the
- * page out.
- */
-export const PlanningReload: React.FC<{
-  status: ReloadStatus;
-  onReload: () => void;
-}> = ({ status, onReload }) => {
-  const failed = status.lastFailureAt !== null;
-  const unknown = failed || status.sampleChanged;
-  const parts: string[] = [];
-  if (status.lastSuccessAt !== null) {
-    parts.push(`last successful read ${clock(status.lastSuccessAt)}`);
-  }
-  if (status.lastFailureAt !== null) {
-    parts.push(`last attempt failed ${clock(status.lastFailureAt)}`);
-  }
-  if (status.sampleChanged) {
-    parts.push("the document changed while it was read, so Reload again");
-  }
-  return (
-    <>
-      {unknown && (
-        <span
-          data-planning-reload-status
-          role="status"
-          className="rounded-md border border-blue-300 px-2 py-1 text-xs text-blue-600 print:hidden dark:border-blue-700 dark:text-blue-400"
-        >
-          Unknown · {parts.join(" · ")}
-        </span>
-      )}
-      <button
-        type="button"
-        data-planning-reload
-        onClick={onReload}
-        disabled={status.running}
-        data-tip="Read the document and its reviews from the server again. Layout waits for Apply updates."
-        className="inline-flex items-center gap-1.5 rounded-md border border-blue-300 px-2.5 py-1.5 text-xs font-medium text-blue-600 transition-colors hover:bg-blue-50 disabled:opacity-60 print:hidden dark:border-blue-700 dark:text-blue-400 dark:hover:bg-blue-900/30"
-      >
-        <CloudDownload size={14} aria-hidden="true" />
-        <span className="hdr-label">Reload from server</span>
-      </button>
-    </>
   );
 };

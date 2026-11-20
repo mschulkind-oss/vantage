@@ -166,7 +166,7 @@ const EMPTY_OWNERSHIP: OwnershipMap = {
 };
 import { AnsweredRow, PlanningNeedsYou } from "../components/PlanningNeedsYou";
 import { PlanningGroups, type GroupId } from "../components/PlanningGroups";
-import { PlanningReload, PlanningUpdates } from "../components/PlanningUpdates";
+import { PlanningUpdates, UPDATE_BLOCKED } from "../components/PlanningUpdates";
 import { PlanningCopyPanel } from "../components/PlanningCopyPanel";
 import { maintenancePayload } from "../lib/planningCopy";
 import {
@@ -187,8 +187,8 @@ import { usePersistentFlag } from "../hooks/usePersistentFlag";
 import {
   fetchPlanningReviews,
   reconcilePlanningReviews,
+  retryPlanningReviews,
   useFreshnessOf,
-  useReloadStatusOf,
   usePlanningReviews,
 } from "../hooks/usePlanningReviews";
 import { repoLabel, useRepoRoot } from "../hooks/useRepoRoot";
@@ -252,10 +252,8 @@ import { planningLimits } from "../planningScan/limits";
 import type { OnSaved } from "../lib/reviewBoxes";
 import {
   boxesVersion,
-  closeBoxes,
   liveBoxes,
   subscribeBoxes,
-  type CommentBox,
 } from "../lib/commentAutosave";
 import { useRepoStore } from "../stores/useRepoStore";
 import {
@@ -731,7 +729,6 @@ const spokenLine = (line: PlanningNoticeLine): string =>
   line.map((part) => (typeof part === "string" ? part : part.code)).join("");
 
 /** What the filter's live region says after a clear, when there is no notice. */
-const APPLY_BLOCKED = "Save or Restore the open answer first";
 const FILTER_CLEARED = "The filter is cleared. Every entry is shown.";
 
 /**
@@ -1294,33 +1291,6 @@ function focusItem(key: string | null, on: FocusAfter["on"]): void {
 
 /** How many frames the focus waits for an opened card's heading. */
 const HEADLINE_FRAMES = 10;
-
-/**
- * Once `box`'s last save has landed, failed into its retries, or the reviews
- * deadline has passed: Refresh lays out after the boxes it closed have saved
- * (planning-index.md §6.4).
- */
-function boxSettled(box: CommentBox): Promise<void> {
-  return new Promise((resolve) => {
-    const done = () => {
-      const { status } = box.getState();
-      return status !== "saving";
-    };
-    if (done()) {
-      resolve();
-      return;
-    }
-    const timer = setTimeout(finish, planningLimits.reviewsDeadlineMs);
-    const unsubscribe = box.subscribe(() => {
-      if (done()) finish();
-    });
-    function finish() {
-      clearTimeout(timer);
-      unsubscribe();
-      resolve();
-    }
-  });
-}
 
 /** Which folded group a heading's or a row's id is in, if any. */
 function groupOf(
@@ -2914,31 +2884,26 @@ export const PlanningPage: React.FC = () => {
     [repo, changeInPlace, refreshCard],
   );
 
-  // Refresh (§6.4): every open comment box closed first, which saves what it
-  // holds (`lib/commentAutosave.ts`), and its saves waited for, at most the
-  // reviews deadline; then a new layout from the data in hand, with the first
-  // item on screen kept at the same height, or Needs you's top when it is
-  // gone. A card whose box closed holding text is an answered row in it.
+  // Update (§6.4, planning-page-freshness.md §4.1): a new layout from the
+  // data in hand, with the first item on screen kept at the same height, or
+  // Needs you's top when it is gone; then, in the same press, a verification
+  // read of every listed document, which the layout does not wait for
+  // (OQ-FS1). Should it find anything newer, the page is behind again.
   const placeRef = useRef<{
     generation: number;
     key: string | null;
     top: number;
   } | null>(null);
-  // Apply updates is guarded by the page's editors: an open answer with
-  // buffered changes or earlier text writes blocks it. It never saves,
-  // restores or deletes a session itself (planning-question-state.md §6).
+  // Update waits while any answer box is open, and never closes one itself:
+  // what the box holds is saved as it is typed, and closing it is the
+  // reader's (OQ-FS4).
   useSyncExternalStore(subscribeBoxes, boxesVersion);
-  const applyBlocked = liveBoxes().some((box) => box.holdsChanges);
-  // Reload from server: reads again, repaints nothing (Apply updates does).
-  const reloadStatus = useReloadStatusOf(onThisRepo ? repo : null);
-  const reloadFromServer = useCallback(() => {
-    if (repo !== null) void reconcilePlanningReviews(repo, listedPaths);
-  }, [repo, listedPaths]);
-  const refresh = useCallback(async () => {
-    if (liveBoxes().some((box) => box.holdsChanges)) return;
-    const open = liveBoxes().filter((box) => box.isOpen);
-    closeBoxes(() => true);
-    await Promise.all(open.map(boxSettled));
+  const updateBlocked = liveBoxes().some((box) => box.isOpen);
+  const retryNow = useCallback(() => {
+    if (repo !== null) void retryPlanningReviews(repo);
+  }, [repo]);
+  const refresh = useCallback(() => {
+    if (liveBoxes().some((box) => box.isOpen)) return;
     const pane = contentRef.current;
     const place = firstOnScreen(pane);
     placeRef.current = { generation: generation + 1, ...place };
@@ -2953,7 +2918,8 @@ export const PlanningPage: React.FC = () => {
     }
     setPageSize(readPageSize());
     setGeneration((g) => g + 1);
-  }, [generation]);
+    if (repo !== null) void reconcilePlanningReviews(repo, listedPaths);
+  }, [generation, repo, listedPaths]);
   useLayoutEffect(() => {
     const place = placeRef.current;
     if (place === null || current === null) return;
@@ -3987,8 +3953,10 @@ export const PlanningPage: React.FC = () => {
           <PlanningUpdates
             count={updateCount}
             title={updatesTitle(updates)}
-            onRefresh={() => void refresh()}
-            blockedReason={applyBlocked ? APPLY_BLOCKED : null}
+            onRefresh={refresh}
+            blockedReason={updateBlocked ? UPDATE_BLOCKED : null}
+            offlineSince={freshness.offline ? freshness.failingSince : null}
+            onRetry={retryNow}
           />
           <HeaderOverflow
             extra={
@@ -4004,7 +3972,6 @@ export const PlanningPage: React.FC = () => {
               </>
             }
           >
-            <PlanningReload status={reloadStatus} onReload={reloadFromServer} />
             <PlanningUnresolved
               groups={unresolved}
               known={countKnown}

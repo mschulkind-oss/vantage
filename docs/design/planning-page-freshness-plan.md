@@ -101,7 +101,7 @@ Each task is one commit, in this order.
 
 - Reference docs:
   - [`planning-index.md`](../reference/planning-index.md) [§6.3](../reference/planning-index.md#63-the-frame-and-the-header), [§6.4](../reference/planning-index.md#64-needs-you-as-a-to-do-list), [§6.6](../reference/planning-index.md#66-question-cards), [§6.7](../reference/planning-index.md#67-answering-and-copy-answers);
-  - [`planning-ownership.md` §8](../reference/planning-ownership.md#8-apply-updates-reload-from-server-and-selection-anchors);
+  - [`planning-ownership.md` §8](../reference/planning-ownership.md#8-update-reconcile-and-selection-anchors);
   - [`planning-question-state.md`](planning-question-state.md), where it
     names Unknown or the header control;
   - [`userguide/guides/planning.md`](../../userguide/guides/planning.md).
