@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+**A question card no longer stays *Unknown* after an agent edits its document.** The page re-read a document's comments only when a comment changed, so an edit left them paired with the version before it, and the card read *Unknown* until the page was opened afresh; going back to it was not enough. Now an edit to a listed document re-reads its comments, and the card's status follows once the page shows the new version (after **Apply updates**, if it is holding updates back).
+
 **Take this leaning, editing an answer and replying no longer wait on a scan of the whole project.** Proving which question an answer belongs to ran the checker over every planning document, which took 10–27 s on a project of about 700, and other writes to that document's review waited behind it. The server now scans only the one document. With a checker older than this release it falls back to the whole project, as before.
 
 **A commit in one repository no longer slows every repository's recent files list.** A commit in any repository dropped every repository's cached list, so each open tab's next refetch walked its repository again, and tabs asking at once each ran their own walk. On a server with several busy repositories, 7,060 of these requests took over a second in a week. Now a commit drops only its own repository's list, requests that arrive together share one walk, and a tab no longer refetches its tree and recent files when another repository changes. The file tree's caches are likewise dropped only for the repository that changed.

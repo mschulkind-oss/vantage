@@ -3079,8 +3079,14 @@ returns. `reviews` is `[]`, never null.
   degrades to `null`.
 
 It replaces one `GET /review` per listed document. A `review_changed` push
-refetches its one document with a single-path `POST …/planning/reviews`, not
-`GET /review`: only this answer carries the reading the pair is keyed on (each
+refetches its one document with a single-path `POST …/planning/reviews`, and so
+does a `files_changed` push naming a listed Markdown document: an edit leaves
+the reviews held for it paired with the version before it, so its cards would
+read *Unknown* until something read them again, and the server pushes
+`review_changed` only when a review changes (until 2026-11-20, a document
+edited by an agent kept its cards *Unknown* until the next visit). It uses
+`POST …/planning/reviews`, not `GET /review`, because only this answer carries
+the reading the pair is keyed on (each
 entry's `evidence`: `boot_id`, `document_generation`, `content_hash`,
 `mutation_revision`, `sample_changed`).
 [planning-ownership.md §2](./planning-ownership.md#2-evidence-which-reading-a-pair-belongs-to)

@@ -11,9 +11,10 @@
  * shows, and once they have painted, one more asks for every other listed
  * document (`usePlanningPageInputs.ts`). A `review_changed` push still fetches
  * its one document again with a single-path `POST …/planning/reviews` (which, unlike
- * `GET /review`, carries the reading the pair is keyed on): the planning store counts those
- * pushes in `reviewEpoch`, for every document and not only the one on screen,
- * which is why the page can follow them.
+ * `GET /review`, carries the reading the pair is keyed on), and so does a push of
+ * the document itself, whose edit leaves its held reviews paired with the version
+ * before it: the planning store counts both in `reviewEpoch`, for every document
+ * and not only the one on screen, which is why the page can follow them.
  *
  * What was read is kept by repository for the tab, outside any component, so
  * a page returned to, or prefetched from the viewer, renders its comments in
