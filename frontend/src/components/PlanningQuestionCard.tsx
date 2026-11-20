@@ -77,7 +77,7 @@
  * in place — the reader's own action, so the page may grow. Show question goes
  * with it, so the focus it had goes to the card.
  */
-import { questionQuote, type Lifecycle } from "../lib/questionOwnership";
+import { questionQuote, type CardStatus } from "../lib/questionOwnership";
 import { ownershipCue, replyCoverageLabel } from "../lib/replyCoverage";
 import React, {
   useCallback,
@@ -234,7 +234,12 @@ interface PlanningQuestionCardProps {
    * card's top of one fixed height so a status that changes moves nothing;
    * `null` for a question with no id, which owns no comments.
    */
-  lifecycle?: Lifecycle | null;
+  lifecycle?: CardStatus | null;
+  /**
+   * The band's status is the last one read, and its document is being read
+   * again: the band adds _· checking_.
+   */
+  checking?: boolean;
   /**
    * The comments were not in hand when the card painted, so they are listed
    * only once the reader opens the count.
@@ -717,6 +722,7 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
   notOnRoadmap = false,
   comments,
   lifecycle,
+  checking = false,
   commentsLate = false,
   href,
   onOpenHere,
@@ -1461,7 +1467,7 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
       </div>
 
       {lifecycle !== undefined && lifecycle !== null && (
-        <PlanningLifecycleBanner status={lifecycle} />
+        <PlanningLifecycleBanner status={lifecycle} checking={checking} />
       )}
 
       {headed && <Headline question={question} id={headlineId} />}

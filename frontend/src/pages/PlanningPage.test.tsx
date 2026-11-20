@@ -18,6 +18,7 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
   within,
 } from "@testing-library/react";
 import {
@@ -2629,7 +2630,7 @@ describe("what arrives late (planning-index.md §6.4)", () => {
       expect(statusOf("OQ-T1")).toBe("Compacted");
     });
 
-    it("says Unknown, not Open or Removed, when the id is declared twice", async () => {
+    it("says the id appears more than once, not Open, Removed or Unknown, when it is declared twice", async () => {
       await changedElsewhere((tree) => ({
         ...tree,
         "plans/todo.md": doc(
@@ -2639,7 +2640,7 @@ describe("what arrives late (planning-index.md §6.4)", () => {
           q("OQ-T3", OPEN),
         ),
       }));
-      expect(statusOf("OQ-T1")).toBe("Unknown");
+      expect(statusOf("OQ-T1")).toBe("Id appears more than once");
     });
 
     it("reserves one height for the band whatever it says", async () => {
@@ -9870,15 +9871,44 @@ describe("legacy comments: automatic bind and Attach to question…", () => {
     expect(new Set(labels)).toEqual(new Set(["Open"]));
   });
 
-  it("reads Unknown on a card when its reviews were read against another version of the document", async () => {
+  it("reads Checking, never Unknown or Open, on a card whose reviews were never read as one reading with the scan", async () => {
     staleEvidence = true;
     reviews["plans/unrouted.md"] = [
       { ...legacyOn(DETAIL), question_id: "OQ-U1", resolved: true },
     ];
     await renderPage();
     expect(within(cardFor("OQ-U1")).getByTestId("lifecycle")).toHaveTextContent(
-      "Unknown",
+      /^Checking$/,
     );
+  });
+
+  it("keeps a card's last status while its reviews are paired with another version, and marks it checking after 1 s", async () => {
+    reviews["plans/unrouted.md"] = [
+      { ...legacyOn(DETAIL), question_id: "OQ-U1", resolved: true },
+    ];
+    await renderPage();
+    const band = () => within(cardFor("OQ-U1")).getByTestId("lifecycle");
+    expect(band()).toHaveTextContent(/^Open$/);
+    // An answer lands, read against another version of the document: it is
+    // not the card's status until the two are one reading again.
+    staleEvidence = true;
+    reviews["plans/unrouted.md"] = [
+      ...reviews["plans/unrouted.md"],
+      { ...legacyOn(DETAIL), id: "c-new", question_id: "OQ-U1" },
+    ];
+    await reviewPushed("plans/unrouted.md");
+    expect(band()).toHaveTextContent(/^Open$/);
+    expect(band()).not.toHaveAttribute("data-planning-checking");
+    await waitFor(
+      () => expect(band()).toHaveAttribute("data-planning-checking"),
+      { timeout: 3000 },
+    );
+    expect(band()).toHaveTextContent(/^Open · checking$/);
+    // Read as one again: the mark goes, and the status is the new reading's.
+    staleEvidence = false;
+    await reviewPushed("plans/unrouted.md");
+    expect(band()).not.toHaveAttribute("data-planning-checking");
+    expect(band()).toHaveTextContent(/^Response saved, waiting for agent$/);
   });
 
   it("lists an answer read against another version of its document nowhere, and says the counts are unknown", async () => {

@@ -682,7 +682,9 @@ edited, a new question. Each one only marks what it concerns, and counts:
 | A question became ✅ | *Ruling recorded* in its status band; the card stays | Gone from *Needs you* and listed under *Maintenance* |
 | A question was folded into the Decision Ledger | *Compacted* in its status band; the card stays | Gone from *Needs you* |
 | A question left its document | *Question removed from document* in its status band; the card stays | Gone from *Needs you* |
-| Its document and reviews cannot be verified together | *Unknown* in its status band, never an inferred removal | Determined only once coherent evidence is available |
+| Its document changed and its comments are being read again | The status it last read, with *· checking* if the read takes longer than a second | The new status, as soon as the read lands |
+| An id is declared twice, or written outside a directive | *Id appears more than once* or *Id outside a directive* in its status band | Unchanged until the document is fixed |
+| The scan did not check its document | *Not checked — scan refused*, *too large to scan* or *scan failed* in its status band | Unchanged until the server or the document changes |
 | A question's text changed | *Newer than shown*; the card keeps the text it showed | The new text |
 | A new question needs you | Counted only | In roadmap order |
 | The roadmap was reordered | Counted once | The new order |
@@ -927,8 +929,10 @@ holds the text it is anchored to. **Attach to question…** on a listed comment
 shows what you wrote beside the question's current text and ties it only when you
 confirm; **Copy unassigned requests** copies these comments, separately from your
 answers. A card also shows what has happened to its question: _Open_, _Response
-saved, waiting for agent_, _Agent replied, question still open_, _Ruling recorded_
-or _Unknown_. _Agent replied_ is not a ruling: the document is what records one.
+saved, waiting for agent_, _Agent replied, question still open_, _Ruling recorded_,
+_Compacted_ or _Question removed from document_, or a fact about its document that
+stops it being checked. While its comments are being read for the first time it
+says _Checking_. _Agent replied_ is not a ruling: the document is what records one.
 
 ### Review answers
 

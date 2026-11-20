@@ -190,7 +190,6 @@ describe("lifecycleOf", () => {
   const [open, ruled] = index.documents[0].questions;
   it("never claims more than the evidence", () => {
     expect(lifecycleOf(open, [])).toBe("Open");
-    expect(lifecycleOf(open, [], false)).toBe("Unknown");
     expect(lifecycleOf(ruled, [])).toBe("Ruling recorded");
     expect(lifecycleOf(open, [comment()])).toBe(
       "Response saved, waiting for agent",
@@ -463,15 +462,36 @@ describe("lifecycleFor", () => {
     );
   });
 
-  it("reads absent or unreadable evidence as Unknown, never Removed or Open", () => {
+  it("names a document condition instead of Unknown: an id declared twice, or written outside a directive", () => {
     expect(statusIn({ "a.md": doc(q("OQ-A1"), "", q("OQ-A1")) })).toBe(
-      "Unknown",
+      "Id appears more than once",
     );
     expect(statusIn({ "a.md": doc(own("OQ-B1"), "", "See OQ-A1 here.") })).toBe(
-      "Unknown",
+      "Id outside a directive",
     );
-    expect(statusIn({ "other.md": doc(own("OQ-B1")) })).toBe("Unknown");
-    expect(statusIn({ "a.md": here() }, [], false)).toBe("Unknown");
+  });
+
+  it("says why a document the scan does not hold was not checked, and a document gone is a question removed", () => {
+    const live = indexOf({ "other.md": doc(own("OQ-B1")) }, STAGES);
+    const status = (index: typeof live) =>
+      lifecycleFor(ownershipMap(index, {}), index, painted, true);
+    expect(status({ ...live, refused: true })).toBe(
+      "Not checked — scan refused",
+    );
+    expect(status({ ...live, skipped: [{ path: "a.md", size: 1 }] })).toBe(
+      "Not checked — too large to scan",
+    );
+    expect(
+      status({ ...live, unreadable: [{ path: "a.md", reason: "bad" }] }),
+    ).toBe("Not checked — scan failed");
+    expect(status(live)).toBe("Question removed from document");
+  });
+
+  it("is Checking, never Open, while a question's reviews have no reading to show", () => {
+    expect(statusIn({ "a.md": here() }, [], false)).toBe("Checking");
+    expect(
+      statusIn({ "a.md": doc(own("OQ-B1"), ledgerOf("OQ-A1")) }, [], false),
+    ).toBe("Compacted");
   });
 
   it("is null for a question with no id", () => {

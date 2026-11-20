@@ -133,6 +133,8 @@ import {
 import { PlanningOutline } from "../components/PlanningOutline";
 import { PlanningPendingAnswers } from "../components/PlanningPendingAnswers";
 import { PlanningUnresolved } from "../components/PlanningUnresolved";
+import { LastCoherent } from "../lib/coherentReadings";
+import { useLingering } from "../hooks/useLingering";
 import { useLegacyAutoBind } from "../hooks/useLegacyAutoBind";
 import {
   lifecycleFor,
@@ -142,6 +144,11 @@ import {
   type CommentOwnership,
   type OwnershipMap,
 } from "../lib/questionOwnership";
+
+/** How long a card's reading may be stale before its band says _checking_. */
+const CHECKING_AFTER_MS = 1000;
+const NO_HASHES: Readonly<Record<string, string>> = {};
+const NO_PATHS: ReadonlySet<string> = new Set();
 
 const EMPTY_OWNERSHIP: OwnershipMap = {
   entries: [],
@@ -180,6 +187,7 @@ import { usePersistentFlag } from "../hooks/usePersistentFlag";
 import {
   fetchPlanningReviews,
   reconcilePlanningReviews,
+  useFreshnessOf,
   useReloadStatusOf,
   usePlanningReviews,
 } from "../hooks/usePlanningReviews";
@@ -2047,28 +2055,44 @@ export const PlanningPage: React.FC = () => {
     [],
   );
 
+  // What ownership, the counts and the card statuses read: each document's
+  // reviews and scan as one reading. Between an agent's edit and the
+  // reconcile after it the live pair disagrees, and the page shows the
+  // reading it last held whole instead, so cards keep the status they last
+  // read and counts keep their last values (planning-page-freshness.md §4.6).
+  const lastCoherent = useMemo(() => new LastCoherent(repo), [repo]);
+  const readings = useMemo(
+    () =>
+      lastCoherent.take(
+        index,
+        reviews.byPath,
+        reviews.evidence,
+        hashes ?? NO_HASHES,
+      ),
+    [lastCoherent, index, reviews.byPath, reviews.evidence, hashes],
+  );
   // Keyed on the evidence each document's reviews were read with, so a pair
-  // read at different moments reads Unknown rather than a guess.
+  // read at different moments is never classified as one.
   const ownership = useMemo(
     () =>
-      index === null
+      readings.index === null
         ? EMPTY_OWNERSHIP
-        : ownershipMap(index, reviews.byPath, {
-            evidence: reviews.evidence,
-            hashes: hashes ?? {},
+        : ownershipMap(readings.index, readings.byPath, {
+            evidence: readings.evidence,
+            hashes: readings.hashes,
           }),
-    [index, reviews.byPath, reviews.evidence, hashes],
+    [readings],
   );
   // The reviews Copy answers and the counts may read: a document whose reviews
-  // and scan are not one reading holds no answer, its comments are Unknown.
+  // and scan were never one reading holds no answer yet.
   const answerable = useMemo(() => {
-    if (ownership.unpaired.size === 0) return reviews.byPath;
+    if (ownership.unpaired.size === 0) return readings.byPath;
     return Object.fromEntries(
-      Object.entries(reviews.byPath).filter(
+      Object.entries(readings.byPath).filter(
         ([path]) => !ownership.unpaired.has(path),
       ),
     );
-  }, [reviews.byPath, ownership.unpaired]);
+  }, [readings.byPath, ownership.unpaired]);
   // Copy answers (§6.7): every comment still
   // pending for the agent on a question listed on any page, grouped by
   // document — built from the reviews, never from the cards, so a comment
@@ -2085,9 +2109,11 @@ export const PlanningPage: React.FC = () => {
           answerable,
           scoped,
           frameKeeps,
-          index === null ? undefined : allQuestionsByPath(index),
+          readings.index === null
+            ? undefined
+            : allQuestionsByPath(readings.index),
         ),
-      [scoped, listedQuestions, answerable, frameKeeps, index],
+      [scoped, listedQuestions, answerable, frameKeeps, readings.index],
     );
 
   // The documents whose reviews the page's need-you numbers read (§6.7, §12):
@@ -2121,18 +2147,32 @@ export const PlanningPage: React.FC = () => {
   const countedReviews = useMemo(() => {
     const out: Record<string, readonly ReviewComment[]> = {};
     for (const path of counted.paths) {
-      const comments = reviews.byPath[path];
-      // Comments read as a pair with another version of the document are not
-      // answers to any question: the unresolved groups hold them instead.
+      const comments = readings.byPath[path];
+      // Comments never read as a pair with the scan are not answers to any
+      // question yet.
       if (comments !== undefined && !ownership.unpaired.has(path)) {
         out[path] = comments;
       }
     }
     return out;
-  }, [counted.paths, reviews.byPath, ownership.unpaired]);
+  }, [counted.paths, readings.byPath, ownership.unpaired]);
   // One ownership map over every scanned question, not the filtered listing:
   // the comments Copy answers does not carry sit in its unresolved groups.
-  const { refusals: bindRefusals } = useLegacyAutoBind(ownership.entries, {
+  // A stale document's entries are its last coherent reading's: binding from
+  // them would be refused as out of date, so they wait for the reconcile.
+  const bindable = useMemo(
+    () =>
+      readings.stale.size === 0
+        ? ownership.entries
+        : ownership.entries.filter((e) => !readings.stale.has(e.path)),
+    [ownership.entries, readings.stale],
+  );
+  // While the page is offline the header says so once, and no card is
+  // marked: it would be every card, saying the same thing (§4.6).
+  const freshness = useFreshnessOf(onThisRepo ? repo : null);
+  const staleLong = useLingering(readings.stale, CHECKING_AFTER_MS);
+  const checkingPaths = freshness.offline ? NO_PATHS : staleLong;
+  const { refusals: bindRefusals } = useLegacyAutoBind(bindable, {
     enabled: onThisRepo && index !== null,
     adopt: reviews.adopt,
   });
@@ -2200,10 +2240,10 @@ export const PlanningPage: React.FC = () => {
       // answers are in neither Copy answers nor a group until it is.
       listedQuestions.every(
         (q) =>
-          reviews.byPath[q.path] !== undefined &&
+          readings.byPath[q.path] !== undefined &&
           !ownership.unpaired.has(q.path),
       ),
-    [index, listedQuestions, reviews.byPath, ownership.unpaired],
+    [index, listedQuestions, readings.byPath, ownership.unpaired],
   );
   // The request for the listed documents no shown page holds failed after
   // the sections painted, and the count is unknown for it. A line above them
@@ -3398,9 +3438,9 @@ export const PlanningPage: React.FC = () => {
         block === undefined);
     const cardLifecycle = lifecycleFor(
       ownership,
-      index,
+      readings.index,
       question,
-      reviews.byPath[question.path] !== undefined,
+      readings.byPath[question.path] !== undefined,
     );
     // The card's status band says what became of the question exactly, so the
     // generic *Done* mark is not drawn beside it saying less (and, for a
@@ -3423,6 +3463,7 @@ export const PlanningPage: React.FC = () => {
         notOnRoadmap={item.entry.notOnRoadmap === true}
         comments={reviews.byPath[question.path]}
         lifecycle={cardLifecycle}
+        checking={checkingPaths.has(question.path)}
         listComments={
           current?.inPlace.opened.has(item.key)
             ? undefined

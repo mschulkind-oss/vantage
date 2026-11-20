@@ -226,7 +226,7 @@ export function legacyBindCandidate(
 }
 
 /** Why `evidence` and the scan's `hash` are not one reading, or undefined. */
-function incoherence(
+export function readingIncoherence(
   evidence: ReviewEvidence | undefined,
   hash: string | undefined,
 ): string | undefined {
@@ -294,7 +294,7 @@ export function ownershipMap(
     const incoherent =
       pairing === undefined
         ? undefined
-        : (incoherence(pairing.evidence[path], pairing.hashes[path]) ??
+        : (readingIncoherence(pairing.evidence[path], pairing.hashes[path]) ??
           undefined);
     // A document with no comments and no evidence has no review file: there
     // is nothing to pair with its scan.
@@ -357,21 +357,40 @@ export type Lifecycle =
   | "Agent replied, question still open"
   | "Ruling recorded"
   | "Compacted"
-  | "Question removed from document"
-  | "Unknown";
+  | "Question removed from document";
 
 /**
- * The label for `question` from its bound comments and the scan. `readable`
- * false (reviews not read, scan limit) is Unknown, never Open. "Compacted" and
- * "Question removed from document" are about ids the scan no longer holds, so
- * `lifecycleFor` says them, not this, which is for a question that is still here.
+ * A fact about a question's document that stops the page from reading the
+ * question as the checker would (`docs/design/planning-page-freshness.md`
+ * §3, §4.2): the browser's scan refused the repository, skipped the document
+ * as too large, or could not read it; or the card's id is declared more than
+ * once, or written in the text outside any directive. Not a freshness state:
+ * it stays until a person changes the document or the server.
+ */
+export type DocumentCondition =
+  | "Not checked — scan refused"
+  | "Not checked — too large to scan"
+  | "Not checked — scan failed"
+  | "Id appears more than once"
+  | "Id outside a directive";
+
+/**
+ * What a card's band says: the question's lifecycle, its document's
+ * condition, or _Checking_ while its reviews have no reading to show yet (a
+ * first read still under way). Never _Unknown_.
+ */
+export type CardStatus = Lifecycle | DocumentCondition | "Checking";
+
+/**
+ * The label for `question` from its bound comments and the scan. "Compacted"
+ * and "Question removed from document" are about ids the scan no longer
+ * holds, so `lifecycleFor` says them, not this, which is for a question that
+ * is still here.
  */
 export function lifecycleOf(
   question: PlanningQuestion,
   bound: readonly ReviewComment[],
-  readable = true,
 ): Lifecycle {
-  if (!readable) return "Unknown";
   if (question.state === "answered") return "Ruling recorded";
   if (bound.some(isPendingForAgent)) return "Response saved, waiting for agent";
   if (bound.some((c) => !c.resolved && hasAgentReaction(c))) {
@@ -440,40 +459,50 @@ export function questionQuote(question: PlanningQuestion): string {
 }
 
 /**
- * The label a card draws for `painted`, read from the **live** scan: the card's
- * id looked up in the document `index` holds now (the same scan `map` was made
- * from), never the question as the card was painted, so a ruling, a removal or
- * a compaction made elsewhere shows at once. `null` for a question with no id,
- * which owns no comments. Unknown, never Open, Removed or Compacted, when the
- * evidence cannot say: the reviews not read or not one reading with the scan,
- * the document absent from the scan, an id declared twice or written outside a
- * directive.
+ * The status a card draws for `painted`, read from the **live** scan: the
+ * card's id looked up in the document `index` holds now (the same scan `map`
+ * was made from), never the question as the card was painted, so a ruling, a
+ * removal or a compaction made elsewhere shows at once. `null` for a question
+ * with no id, which owns no comments.
+ *
+ * What the scan alone says — a document it did not check, an id declared
+ * twice or written outside a directive, compacted, removed — is said whatever
+ * the reviews. A question still here needs its reviews read as one reading
+ * with the scan; until they are (`reviewsRead` false, or the path unpaired)
+ * it is _Checking_, never _Open_.
  */
 export function lifecycleFor(
   map: OwnershipMap,
   index: PlanningIndex | null,
   painted: PlanningQuestion,
   reviewsRead: boolean,
-): Lifecycle | null {
+): CardStatus | null {
   const id = painted.id;
   if (!id) return null;
-  const document = index?.documents.find((d) => d.path === painted.path);
-  if (
-    !reviewsRead ||
-    map.unpaired.has(painted.path) ||
-    document === undefined
-  ) {
-    return "Unknown";
+  if (index === null) return "Checking";
+  const document = index.documents.find((d) => d.path === painted.path);
+  if (document === undefined) {
+    if (index.refused) return "Not checked — scan refused";
+    if (index.skipped.some((s) => s.path === painted.path)) {
+      return "Not checked — too large to scan";
+    }
+    if (index.unreadable.some((u) => u.path === painted.path)) {
+      return "Not checked — scan failed";
+    }
+    // Gone from the project, or no longer a planning document: the question
+    // is not there to read.
+    return "Question removed from document";
   }
   const named = document.questions.filter((q) => q.id === id);
   if (named.length === 1) {
+    if (!reviewsRead || map.unpaired.has(painted.path)) return "Checking";
     return lifecycleOf(
       named[0],
       map.boundBy.get(`${painted.path}\n${id}`) ?? [],
     );
   }
-  if (named.length > 1 || document.directiveIds.includes(id)) return "Unknown";
+  if (document.directiveIds.includes(id)) return "Id appears more than once";
   if (document.ledgerIds.includes(id)) return "Compacted";
-  if (document.ids.includes(id)) return "Unknown";
+  if (document.ids.includes(id)) return "Id outside a directive";
   return "Question removed from document";
 }
