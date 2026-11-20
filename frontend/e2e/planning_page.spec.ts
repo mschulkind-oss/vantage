@@ -535,8 +535,10 @@ test.describe("the planning page", () => {
     // becoming a circular arrow indistinguishable from server reload.
     const viewport = page.viewportSize()!;
     await page.setViewportSize({ width: 390, height: 844 });
-    const closeSidebar = page.getByRole("button", { name: "Close sidebar" });
-    if (await closeSidebar.isVisible()) await closeSidebar.click();
+    // Nothing opened the mobile drawer, so it slides off-screen, still
+    // "visible" to Playwright: wait it out rather than click its close button,
+    // which on CI was outside the viewport by then and never clickable.
+    await expect(page.getByTestId("sidebar")).not.toBeInViewport();
     const apply = page.locator("[data-planning-updates]");
     await expect(apply.getByText("Apply", { exact: true })).toBeVisible();
     const questions = page.getByTestId("planning-header").getByRole("link", { name: "Questions", exact: true });
