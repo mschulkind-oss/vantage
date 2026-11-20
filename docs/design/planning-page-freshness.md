@@ -244,7 +244,12 @@ and it is not the reader's fault.
 - **Where it lives.** A section group, **Comments without a question (N)**,
   beside the page's other groups, under _Needs you_ when any comment in it is
   pending for the agent and under _Maintenance_ otherwise ([OQ-FS2](#OQ-FS2)).
-  The header control goes. Notes on text outside every question are listed
+  The header control goes. **As built** (2026-11-20) it is drawn last, after
+  _Maintenance_: every comment in it is pending for the agent, so the rule
+  above would always put it under _Needs you_, and it appears once the reviews
+  are read, after the layout is painted — under _Needs you_ its arrival would
+  push _Blocked_ and _Maintenance_ down, which the late-data rule forbids.
+  Last, it moves nothing; once drawn it stays, at 0, until the next layout. Notes on text outside every question are listed
   here too, as notes: counted, never offered **Attach**, never worded as a
   fault.
 - **What each entry says.** Plain words for why, one per kind: _no question id
