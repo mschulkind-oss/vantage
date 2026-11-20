@@ -2,7 +2,7 @@
 title: "The planning page keeps itself current — the reader is told what changed, never asked to understand the machinery"
 status: in-review
 stage: DESIGN
-next: "Rule OQ-FS2 to OQ-FS5; OQ-FS1 is settled (lay out now, verify after)"
+next: "Rule OQ-FS2; OQ-FS1, OQ-FS3, OQ-FS4 and OQ-FS5 are settled"
 depends-on: [planning-question-state.md]
 ---
 
@@ -40,7 +40,7 @@ synthesized identity, a coherent pair, nothing shown on a guess) are kept whole.
 **Start at [§4](#4-the-readers-state-model)** — the state model. [§5](#5-the-readers-situations) walks every
 situation through it; [§6](#6-what-happens-to-todays-surface) disposes of today's controls.
 
-**Needs your ruling:** [OQ-FS2](#OQ-FS2), [OQ-FS3](#OQ-FS3), [OQ-FS4](#OQ-FS4), [OQ-FS5](#OQ-FS5).
+**Needs your ruling:** [OQ-FS2](#OQ-FS2).
 
 **Reads with:** [`planning-question-state.md`](planning-question-state.md) (the
 design this one narrows: its ownership, labels and live-versus-applied rules
@@ -177,9 +177,14 @@ and leaves four header controls where one belongs.
 - **Behind is reached only by data already received.** The page never says it
   is behind on suspicion; a change the socket missed is found by a reconcile
   ([§4.4](#44-when-the-system-reconciles)), which then counts it.
-- **Update while an answer box holds unsaved changes** keeps today's guard: the
-  button is disabled with "Save or Restore the open answer first"
-  ([OQ-FS4](#OQ-FS4) asks whether to narrow that).
+- **Update while an answer box is open** keeps today's refusal
+  ([OQ-FS4](#OQ-FS4)), and says it in words that match the box. Today the
+  button is disabled while a box holds edits made since it opened — saved or
+  not — and an open box with no edits is closed by the press, its text kept.
+  The refusal's tooltip, "Save or Restore the open answer first", names a
+  Save the box does not have: it saves as you type. It becomes **Close the
+  open answer first — what you typed is saved**, and the press never closes
+  a box itself: with any box open, Update waits.
 - **Update ends in the truth.** Pressing it lays out from data in hand at once
   and, in the same press, verifies every listed document's reading against the
   server; the layout does not wait for the verification ([OQ-FS1](#OQ-FS1)).
@@ -189,9 +194,8 @@ and leaves four header controls where one belongs.
   minutes. The verification is a backstop, and a second **Update** after a
   press means a push was missed — a defect to find, not a routine state.
 - **Offline is a page state, never a card's.** Cards keep the last status they
-  were read with; counts keep their last values ([OQ-FS3](#OQ-FS3) asks whether
-  they should). The page says once, in the header, that what is shown is as of
-  HH:MM.
+  were read with; counts keep their last values ([OQ-FS3](#OQ-FS3)). The page
+  says once, in the header, that what is shown is as of HH:MM.
 
 ### 4.2 A card's status: the question's state, or the document's condition
 
@@ -334,11 +338,11 @@ the code on 2026-11-20, six routes lead there; most need no reader at all.
 
 | Route | How it happens | Today's group | What this design does with it |
 | :--- | :--- | :--- | :--- |
-| **The page's two halves disagree** | An agent edits the document. Until the comments are read again against the new version, every bound pending comment on it is classified _Unknown_, so the whole document's answers move into the control at once | Unknown | Not an ownership state: it is a stale reading, which a reconcile clears ([§4.4](#44-when-the-system-reconciles)) and the card shows as _checking_ at most ([§4.6](#46-how-a-transient-is-shown-and-how-long-it-may-last)). Never listed as a comment without a question. The narrow fix in [§2.3](#23-the-fix-in-flight-and-what-it-does-not-fix) already re-reads on an edit |
+| **The page's two halves disagree** | An agent edits the document. Until the comments are read again against the new version, every bound pending comment on it is classified _Unknown_, so the whole document's answers move into the control at once | Unknown | Not an ownership state: it is a stale reading, which a reconcile clears ([§4.4](#44-when-the-system-reconciles)) and the card shows as _checking_ at most ([§4.6](#46-how-a-transient-is-shown-and-how-long-it-may-last)). Never listed as a comment without a question. **Built** (`d2bd1935`): an unpaired document's comments are in no group, and the counts read _Unknown_ until the next read; `70a50496` re-reads on an edit |
 | **The agent compacts before it replies** | The copied instructions tell the agent to record the ruling and compact the question into the Decision Ledger *first*, and deliver its reply *after*. Between the two saves, the answer is pending and its id is only in the ledger. If the reply never arrives, it stays there | Compacted | The comment is the ledger row's: the id it was filed under is still in the document, as a recorded decision. It is shown as _Ruling recorded, waiting for the agent's reply_ under that document, not as unattached |
-| **The server could not confirm the id when the answer was saved** | The page sends the question's id with evidence from the reading it holds. When the proof fails — the document moved since that reading, the question's text no longer contains the quote, the unit's fingerprint differs, or the scan raced — the server saves the comment with **no** id and keeps no record of the one requested (`internal/review/commands.go`). With agents editing constantly and the page holding its layout, an answer typed on a card whose question an agent has just reworded is filed this way | Unassigned | The server keeps the requested id alongside the comment and tries the proof again on each new coherent reading, binding it when it holds. The id is the one the reader filed under, so this synthesizes nothing |
+| **The server could not confirm the id when the answer was saved** | The page sends the question's id with evidence from the reading it holds. When the proof fails — the document moved since that reading, the question's text no longer contains the quote, the unit's fingerprint differs, or the scan raced — the server saved the comment with **no** id and kept no record of the one requested (`internal/review/commands.go`). With agents editing constantly and the page holding its layout, an answer typed on a card whose question an agent has just reworded is filed this way | Unassigned | The server keeps the requested id alongside the comment and tries the proof again on each new coherent reading, binding it when it holds. The id is the one the reader filed under, so this synthesizes nothing. **Built** (`31a6c274`): `requested_question_id`, retried by the automatic bind |
 | **The comment was filed in the document without an id** | Until `7a464072` (2026-11-20), only **Take this leaning** sent an id from the document view; a click, a selection or **Answer…** did not, and legacy auto-bind cannot prove a block whose text recurs | Unassigned | Fixed: every comment filed inside a question's unit carries its id ([`planning-ownership.md` §4.2](../reference/planning-ownership.md#42-binding)). Comments filed before the fix keep needing **Attach** |
-| **A note outside every question** | Matt comments on prose no question owns. It carries no id, so it is classified Unassigned like a lost answer, though the server already records it as a plain note (`ownership: unowned`, [`planning-ownership.md` §4.1](../reference/planning-ownership.md#41-what-a-comment-holds)) | Unassigned | Not a fault and not unattached: a note on the document. Listed with its document's work and copied with its answers, with no **Attach** offered |
+| **A note outside every question** | Matt comments on prose no question owns. It carries no id, so it is classified Unassigned like a lost answer, though the server already records it as a plain note (`ownership: unowned`, [`planning-ownership.md` §4.1](../reference/planning-ownership.md#41-what-a-comment-holds)) | Unassigned | Not a fault and not unattached: a note on the document, counted in a roll-up that never reads as an error and offers no button whose next step is unclear (Matt, 2026-11-20). **Built** (`c481488b`) inside today's control: a _Notes_ group with no **Attach**, and "N notes for the agent" when notes are all there is. Where the roll-up finally lives is [OQ-FS2](#OQ-FS2) |
 | **The question's id changed or was declared twice** | An agent renumbered or deleted the question without a ledger row, or copied a directive | Removed, Ambiguous | Genuinely the reader's or the agent's to resolve; the only routes left for the group in [§4.3](#43-comments-without-a-question). The duplicate is also a maintenance request ([§4.5](#45-a-document-condition-is-maintenance)) |
 
 With the other five handled as above, a comment without a question is one
@@ -357,7 +361,7 @@ happens by itself.
 | **An agent replies to a comment** | The card's _New reply_ mark and gutter bar; its band moves to _Agent replied_; _Needs you_'s count rises by one, in its slot | Read the reply; answer again if the question needs it | Reconciles on the `review_changed` push |
 | **Tab hidden for hours, then shown** | The page as it was, then within a second or two **Update · N** with everything that happened; cards whose status changed show it in their bands | Press Update | Socket reconnects, index rescans, every listed document reconciles. No card reads _Unknown_, and no card reads _checking_ for longer than the deadline |
 | **Network down** | After 30 s of failed reads: **Offline since HH:MM · retrying**; cards and counts keep their last values; _Copy answers_ still copies what is held | Nothing; Retry now if impatient | Retries with backoff; on success the page is current or behind |
-| **Reader mid-answer when something changes** | Their card unchanged — their own answer is never marked _Answered elsewhere_; **Update · N** disabled with "Save or Restore the open answer first" | Finish or restore the answer, then Update | Reconciles underneath; the answer box's text is never replaced |
+| **Reader mid-answer when something changes** | Their card unchanged — their own answer is never marked _Answered elsewhere_; **Update · N** disabled with "Close the open answer first — what you typed is saved" | Close or restore the answer, then Update | Reconciles underneath; the answer box's text is never replaced |
 | **A comment that cannot be tied to a question** | A group **Comments without a question (1)** with the reason in plain words and the quote | Attach to question…, or leave it | Attaches it the moment a reading proves a unique home; a refusal is shown on the entry |
 | **A document the server cannot check** | Each of its cards: _Not checked — checker not installed_ (or refused, failed, too large); the frame's notice names it once | Install the checker, or split the document | Reads the document again on every trigger; the condition clears itself when the server can scan |
 | **An id declared twice** | _Id appears 2 times_ on both cards; _Maintenance_ lists it under _Duplicate or stray id_ | Hand it to the agent with Copy answers + maintenance | Clears on the next reading after the edit; comments bound to it wait in the group until then and rebind themselves if the fingerprint still matches |
@@ -395,7 +399,7 @@ happens by itself.
 | Apply held updates automatically when the tab returns after hours hidden, since the reader was not looking | Rejected: the settled rule says nothing applies held updates on its own, the tab coming back included ([`planning-index.md` §6.4](../reference/planning-index.md#64-needs-you-as-a-to-do-list)). The reader may have left the page scrolled to a card they meant to come back to |
 | A periodic reconcile timer (every few minutes) to catch lost pushes | Rejected for now: ~489 planning documents and dozens of pushes an hour means the push path carries the load already; a timer adds reviews reads for a case bounded by the next reconnect or Update. Revisit if a lost push is ever observed to outlive a session |
 | Keep _Unknown_ but add its reason to the band | Rejected: five reasons with one word is still five states for the reader to decode, and three of them are the system's to resolve, not the reader's to read |
-| Blank every count while offline, as _Unknown_ reads today | Rejected in favor of [OQ-FS3](#OQ-FS3)'s leaning: a last-known value under a header that says "as of HH:MM" is honest; a blank is a fact withheld |
+| Blank every count while offline, as _Unknown_ reads today | Rejected by [OQ-FS3](#OQ-FS3): a last-known value under a header that says "as of HH:MM" is honest; a blank is a fact withheld |
 | Reconcile from each card (per-card review reads) | Rejected: one reading per document, one writer; a card never holds a reading of its own |
 | Keep the ownership control in the header, hidden at zero | Rejected: hiding it moves painted labels when it appears, which is why its room is kept today; the group has room of its own |
 | Show a document condition only in the frame's notice, not on the card | Rejected: the reader reads cards, and a card with no band where its neighbors have one says nothing |
@@ -462,63 +466,11 @@ the rest and can go in either order.
    **Answer:**
    > _(empty — fill in when decided)_
 
-2. 💬 **OQ-FS3: While the page is offline, should counts and card statuses keep their last values, or go blank?**
-
-   Matt's laptop drops its connection. Today each affected count reads
-   _Unknown_ and the header shows a pill with the last good time. The design
-   puts one line in the header, **Offline since HH:MM · retrying**.
-
-   - **A — Keep the last values** everywhere under that line. Matt reads the
-     page as it was at HH:MM and the header says so once.
-   - **B — Blank the counts** and show _checking_ on every band, so nothing on
-     the page can be mistaken for current. Matt sees a page full of marks for
-     what is one fact.
-
-   <!-- vantage: question id=OQ-FS3 leaning="A (Keep the last values) — a last-known value under a line that dates it is honest; blanks say the same thing fifty times." -->
-
-   _Leaning:_ A (Keep the last values) — a last-known value under a line that dates it is honest; blanks say the same thing fifty times.
-
-   **Answer:**
-   > _(empty — fill in when decided)_
-
-3. 💬 **OQ-FS4: While an answer box holds unsaved text, should Update be refused outright, or apply everywhere but that card?**
-
-   Matt is typing an answer on one card when **Update · 12** appears. Today the
-   button is disabled with "Save or Restore the open answer first", so the
-   twelve changes wait until he finishes.
-
-   - **A — Keep the refusal.** Matt finishes or restores, then presses. Simple,
-     and the card he is typing in never moves under him.
-   - **B — Apply around the open card.** Everything else lays out; his card
-     keeps its place and height. Twelve changes land while he is typing, and
-     the card above his may grow, which pushes his box down the screen.
-
-   <!-- vantage: question id=OQ-FS4 leaning="A (Keep the refusal) — a layout that moves the box someone is typing in is the one thing the late-data rule exists to prevent." -->
-
-   _Leaning:_ A (Keep the refusal) — a layout that moves the box someone is typing in is the one thing the late-data rule exists to prevent.
-
-   **Answer:**
-   > _(empty — fill in when decided)_
-
-4. 💬 🤷 **OQ-FS5: What should the one button be called?**
-
-   The header's one freshness control, today **Apply updates 7**. Its title
-   lists the changes by kind. The name is read dozens of times a day and is
-   the only word about freshness most readers ever see.
-
-   - **A — Update · 7.** One verb, what the reader wants done.
-   - **B — Show 7 changes.** Says what appears, not what the page does.
-   - **C — Keep Apply updates 7.** Already known to the people using it.
-
-   <!-- vantage: question id=OQ-FS5 leaning="A (Update · 7) — pure preference; the shortest word that is a verb and is not refresh." -->
-
-   _Leaning:_ A (Update · 7) — pure preference; the shortest word that is a verb and is not refresh.
-
-   **Answer:**
-   > _(empty — fill in when decided)_
-
 ## Decision Ledger
 
 | ID | Ruling / Decision | Date | Settled in |
 | :--- | :--- | :--- | :--- |
 | OQ-FS1 | A — Update lays out at once and verifies afterwards. Pushes keep held data within milliseconds of the server, so a second Update after the verification signals a missed push to be fixed, not a routine state | 2026-11-20 | [§4.1](#41-page-freshness-three-states-one-button) |
+| OQ-FS3 | A — while offline, cards and counts keep their last values under one header line that dates them | 2026-11-20 | [§4.1](#41-page-freshness-three-states-one-button) |
+| OQ-FS4 | A — Update is refused while an answer box is open, and never closes one itself; the refusal says "Close the open answer first — what you typed is saved" | 2026-11-20 | [§4.1](#41-page-freshness-three-states-one-button) |
+| OQ-FS5 | A — the button is **Update · N** | 2026-11-20 | [§6](#6-what-happens-to-todays-surface) |
