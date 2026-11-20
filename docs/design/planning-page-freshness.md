@@ -1,8 +1,8 @@
 ---
 title: "The planning page keeps itself current — the reader is told what changed, never asked to understand the machinery"
-status: in-review
-stage: DESIGN
-next: "Rule OQ-FS2; OQ-FS1, OQ-FS3, OQ-FS4 and OQ-FS5 are settled"
+status: accepted
+stage: DECIDED
+next: "Build it, in §11's order: reconcile, the band, the header, then the group and the maintenance kind"
 depends-on: [planning-question-state.md]
 ---
 
@@ -40,7 +40,7 @@ synthesized identity, a coherent pair, nothing shown on a guess) are kept whole.
 **Start at [§4](#4-the-readers-state-model)** — the state model. [§5](#5-the-readers-situations) walks every
 situation through it; [§6](#6-what-happens-to-todays-surface) disposes of today's controls.
 
-**Needs your ruling:** [OQ-FS2](#OQ-FS2).
+**Needs your ruling:** nothing; every question is in the [Decision Ledger](#decision-ledger).
 
 **Reads with:** [`planning-question-state.md`](planning-question-state.md) (the
 design this one narrows: its ownership, labels and live-versus-applied rules
@@ -241,8 +241,10 @@ and it is not the reader's fault.
 
 - **Where it lives.** A section group, **Comments without a question (N)**,
   beside the page's other groups, under _Needs you_ when any comment in it is
-  pending for the agent and under _Maintenance_ otherwise ([OQ-FS2](#OQ-FS2) asks
-  whether a group is the right home). The header control goes.
+  pending for the agent and under _Maintenance_ otherwise ([OQ-FS2](#OQ-FS2)).
+  The header control goes. Notes on text outside every question are listed
+  here too, as notes: counted, never offered **Attach**, never worded as a
+  fault.
 - **What each entry says.** Plain words for why, one per kind: _no question id
   was recorded_; _its question, OQ-X, is now in the Decision Ledger_; _its
   question, OQ-X, was removed from the document_; _OQ-X appears twice in the
@@ -441,35 +443,11 @@ remove Reload and the pill, rename and extend Update. Then the group for
 comments without a question and the maintenance kind, which are independent of
 the rest and can go in either order.
 
-## Open Questions
-
-1. 💬 **OQ-FS2: Where should the comments no question owns be listed — a group among the page's sections, or a control of their own?**
-
-   [§4.7](#47-why-a-comment-ends-up-without-a-question) traces why comments end
-   up here and removes most routes; what is left is a renamed, deleted or
-   duplicated id, and legacy comments with no id. Today the header's link
-   icon reads **1 not attached**, and reads **0 not attached** on every page
-   where nothing is wrong. Matt did not know what the icon meant.
-
-   - **A — A section group, _Comments without a question (1)_**, beside the
-     other groups, with Attach on each entry; nothing in the header. On a page
-     with nothing to attach, nothing is shown anywhere.
-   - **B — Keep a header control**, renamed, invisible at zero but keeping its
-     room so the header never moves. Matt still has to learn one icon.
-   - **C — On the card of the nearest question**, as a note. Rejected before it
-     was written: that is a guess at ownership, which the rules forbid.
-
-   <!-- vantage: question id=OQ-FS2 leaning="A (A section group) — a rare per-comment condition belongs with the other work, not in a permanent header slot." -->
-
-   _Leaning:_ A (A section group) — a rare per-comment condition belongs with the other work, not in a permanent header slot.
-
-   **Answer:**
-   > _(empty — fill in when decided)_
-
 ## Decision Ledger
 
 | ID | Ruling / Decision | Date | Settled in |
 | :--- | :--- | :--- | :--- |
+| OQ-FS2 | A — comments no question owns, and notes, are a section group, **Comments without a question (N)**, among the page's sections; nothing in the header | 2026-11-20 | [§4.3](#43-comments-without-a-question) |
 | OQ-FS1 | A — Update lays out at once and verifies afterwards. Pushes keep held data within milliseconds of the server, so a second Update after the verification signals a missed push to be fixed, not a routine state | 2026-11-20 | [§4.1](#41-page-freshness-three-states-one-button) |
 | OQ-FS3 | A — while offline, cards and counts keep their last values under one header line that dates them | 2026-11-20 | [§4.1](#41-page-freshness-three-states-one-button) |
 | OQ-FS4 | A — Update is refused while an answer box is open, and never closes one itself; the refusal says "Close the open answer first — what you typed is saved" | 2026-11-20 | [§4.1](#41-page-freshness-three-states-one-button) |
