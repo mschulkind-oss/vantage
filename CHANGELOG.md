@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+**The planning page has one button for updates: *Update · N*.** It replaces *Apply updates*, and pressing it also reads the listed documents' comments again, so it ends in what the server holds. *Reload from server* and its *Unknown* pill are gone: the page reads again by itself when the connection comes back, and when its reads have failed for 30 seconds the header says *Offline since HH:MM · retrying*, with **Retry now**. Update now waits while any answer box is open, and never closes one for you; it says *Close the open answer first — what you typed is saved*.
+
 **Slow-call log lines say where they were slow.** A slow request names its repository, and a slow git, file or checker call names its directory, so a server serving many projects shows which one is slow. `/api/perf/diagnostics` is unchanged.
 
 ### Fixed

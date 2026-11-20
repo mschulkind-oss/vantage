@@ -18,7 +18,7 @@ covers:
   - frontend/src/components/PlanningUnresolved.tsx
   - frontend/src/components/PlanningUpdates.tsx
 tags: [planning, review, comments, ownership, sessions]
-summary: "What is built of the planning question-state and review-action designs: comments bound to questions by directive id with scanner proof, the evidence pair, editing sessions with server-held restore, deleted ids, Apply updates versus Reload, and selection anchors — with the HTTP contract and the parts that are not built."
+summary: "What is built of the planning question-state and review-action designs: comments bound to questions by directive id with scanner proof, the evidence pair, editing sessions with server-held restore, deleted ids, Update and reconcile, and selection anchors — with the HTTP contract and the parts that are not built."
 ---
 
 # Planning question ownership, editing sessions and updates
@@ -321,27 +321,25 @@ Entries never expire. The card's **Delete** names the replies, focuses Keep
 answer, retries until the server confirms and holds the leave guard. Outside
 click, navigation and Close keep the text.
 
-## 8. Apply updates, Reload from server and selection anchors
+## 8. Update, reconcile and selection anchors
 
-- **Apply updates** (the header button, _Apply updates N_) lays the page out
-  from the data in hand with no request. It is **disabled** with "Save or Restore
-  the open answer first" while an open box holds changes: a session box not
-  `unchanged`, or a reply box with typed text. It never saves, restores or
-  deletes a session; unchanged boxes close first.
-- **Reload from server** reads every listed path's review in one
-  `POST …/planning/reviews` (waiting for requests in flight, discarding older
-  answers) and then asks the scan store for a rescan. It adopts only a
+- **Update** (the header button, _Update · N_) lays the page out from the data
+  in hand at once, then, in the same press, reconciles every listed document as
+  its verification read, which the layout does not wait for
+  ([OQ-FS1](../design/planning-page-freshness.md#OQ-FS1)). It is **disabled**
+  with "Close the open answer first — what you typed is saved" while any comment
+  box is open, and it never saves, restores, deletes or closes one
+  ([OQ-FS4](../design/planning-page-freshness.md#OQ-FS4)). Its label is short
+  enough never to yield, with a list/check icon and its pending count.
+- **Reconcile** (`reconcilePlanningReviews`,
+  [`planning-page-freshness.md` §4.4](../design/planning-page-freshness.md#44-when-the-system-reconciles))
+  reads every listed path's review in one `POST …/planning/reviews` regardless
+  of what is held, discarding older answers. It adopts only a
   `document_generation` not older than the held one for the same boot; a new
-  `boot_id` discards the repository's held reviews and evidence first. It touches
-  no box and no painted body. A failure keeps what was held; the header then
-  shows "Unknown · last successful read HH:MM · last attempt failed HH:MM", or
-  "the document changed while it was read, so Reload again" for a changed sample.
-  _Apply updates_ shortens to _Apply_ when toolbar labels yield, keeping a
-  meaningful visible label with a list/check icon and its pending count. _Reload from server_ uses a
-  cloud/download icon and folds into the toolbar overflow on a narrow header.
-  Fetching data and applying held changes do not share a refresh-arrow icon.
-- **Reconcile** ([`planning-page-freshness.md` §4.4](../design/planning-page-freshness.md#44-when-the-system-reconciles))
-  is that same read, run without a press. It runs for every listed document
+  `boot_id` discards the repository's held reviews and evidence first and
+  rescans without the cache. Otherwise it asks for a rescan only when an answer
+  was read against a version the scan does not hold. It touches no box and no
+  painted body. It runs for every listed document
   when the push connection comes back, which covers a tab hidden for 30 s or
   more, since that forces the reconnect. Any failed review read joins one
   retry per repository: the reconcile's own, a push's single-document re-read,
@@ -349,7 +347,11 @@ click, navigation and Close keep the text.
   a good answer sends whatever still waits at once. A document read while it
   changed (`sample_changed`) is read again on the same backoff. Reads that
   have failed for 30 s set the repository's freshness to offline
-  (`useFreshnessOf`), and the first good answer clears it.
+  (`useFreshnessOf`), and the first good answer clears it. Offline, the header
+  shows _Offline since HH:MM · retrying_ with **Retry now** in Update's slot;
+  cards and counts keep their last values
+  ([OQ-FS3](../design/planning-page-freshness.md#OQ-FS3)). There is no _Reload
+  from server_ button and no _Unknown_ pill.
 - **Selection anchors.** A settled selection (mouse-up, or a keyboard selection
   quiet for 300 ms) of at least 3 characters inside one question's unit offers
   **Comment on selection**; it opens the answer box on that anchor. A headline
@@ -364,14 +366,14 @@ These stay in the designs; none is claimed above.
 
 | Item                                                                                                                                                           | State                                                                                                                                                           | Where it is specified                                           |
 | :------------------------------------------------------------------------------------------------------------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------- | :-------------------------------------------------------------- |
-| "as of <revision>" and "N shown of current M" labels | Not built. The **Newer than shown** chip is built (fingerprint, or the old size heuristic for the block, differs from what the card painted); opening one row, or unfolding one card, that carries the chip (for either cause) repaints that card's body and chip from the live scan, a refresh that lands after the layout (its generation or its filter, roadmap and page size) or that card's live reading moved on is dropped, and Apply updates repaints all. The chip is a mark in the card's top line | question-state [§5](../design/planning-question-state.md#5-user-visible-states), [§6](../design/planning-question-state.md#6-live-data-vs-applied-layout) |
+| "as of <revision>" and "N shown of current M" labels | Not built. The **Newer than shown** chip is built (fingerprint, or the old size heuristic for the block, differs from what the card painted); opening one row, or unfolding one card, that carries the chip (for either cause) repaints that card's body and chip from the live scan, a refresh that lands after the layout (its generation or its filter, roadmap and page size) or that card's live reading moved on is dropped, and Update repaints all. The chip is a mark in the card's top line | question-state [§5](../design/planning-question-state.md#5-user-visible-states), [§6](../design/planning-question-state.md#6-live-data-vs-applied-layout) |
 | The _duplicate id_ chip, the "Removed questions" group by that name, _Restored — …_ card wording | Not built; a repeated id reads _Id appears more than once_ on the card; the layout's _Done_ mark is unchanged on rows and in the held-update count | question-state [§4](../design/planning-question-state.md#4-ownership-and-legacy-migration), [§5](../design/planning-question-state.md#5-user-visible-states)                                           |
 | Change detection by the unit fingerprint                                                                                                                       | Built as an addition: a differing `unitFingerprint` marks a card; the title/marker/state/length heuristic remains for the block outside the unit                                                                                                      | question-state [§6](../design/planning-question-state.md#6-live-data-vs-applied-layout)                                               |
 | Headline and leaning selections anchoring                                                                                                                      | Headline: built only when the scan holds the block at exactly that line. Leaning: not built (it is the directive's text, no block holds it)                     | review-actions                                                  |
 | Legacy `blockLines` for math, raw HTML, hidden content                                                                                                         | `blockLines` hashes the parsed text, not the rendered `innerText`, so those blocks are never auto-bound; fails toward Unassigned. Not measured on a real corpus | question-state [§4](../design/planning-question-state.md#4-ownership-and-legacy-migration)                                               |
 | Selected quote across source markup or a link destination                                                                                                      | Matches rendered text only; containment, not uniqueness                                                                                                         | [§4.2](#42-binding)                                             |
 | Scan cost                                                                                                                                                      | A whole-project `index` run per distinct document content, serialized                                                                                           | [§3](#3-the-scanner-bridge)                                     |
-| A scan failure in the Unknown pill                                                                                                                             | Only the reviews request is shown there; the scan has no generation or boot id of its own                                                                       | [§8](#8-apply-updates-reload-from-server-and-selection-anchors) |
+| A scan failure in the Unknown pill                                                                                                                             | Only the reviews request is shown there; the scan has no generation or boot id of its own                                                                       | [§8](#8-update-reconcile-and-selection-anchors) |
 | The changed-sample pill text at page level                                                                                                                     | Covered at hook level only                                                                                                                                      | —                                                               |
 | Reply outcome enum                                                                                                                                             | Not built, by decision: [OQ-AP1](../design/answer-publication.md#OQ-AP1) is open                                                                                                                          | answer-publication                                              |
 | Replies without an id on a discarded new root                                                                                                                  | Cannot be recorded in `deleted_ids`                                                                                                                             | [§6](#6-editing-sessions)                                       |
@@ -387,7 +389,7 @@ These stay in the designs; none is claimed above.
 | Evidence                        | `TestDocumentGenerationIncreasesOnlyWhenTheHashChanges`, `TestPlanningReviewsCarryEvidence`                                                                                                                            |
 | Page ownership, groups, filters | `questionOwnership` tests; `ownership under a filter` in `PlanningPage.test.tsx`                                                                                                                                       |
 | Session client                  | `commentSession.test.ts`, `CommentSessionViews.test.tsx`, `CommentSessionLifecycle.test.tsx`                                                                                                                           |
-| Apply guard and Reload          | `usePlanningReviews.test.ts`, `PlanningPage.test.tsx` (`Reload from server and the reply guard`)                                                                                                                       |
+| Update guard and reconcile      | `usePlanningReviews.test.ts`, `PlanningPage.test.tsx` (`Update's verification read, the offline line and the reply guard`)                                                                                                                       |
 
 The real-scanner Go tests run `bun packages/vantage-check/src/main.ts` and skip
 where `bun` is missing.

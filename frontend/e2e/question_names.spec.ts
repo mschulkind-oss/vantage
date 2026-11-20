@@ -283,7 +283,7 @@ test.describe("question and fallback directives", () => {
     ).toBeVisible();
     if (await card("OQ-4").count()) {
       await expect(card("OQ-4")).toContainText("Answered elsewhere");
-      await page.getByRole("button", { name: /^Apply updates:/ }).click();
+      await page.getByRole("button", { name: /^Update:/ }).click();
     }
     // The compact row still shows the answer; Show opens its card.
     await expect(
@@ -399,7 +399,7 @@ test.describe("a question written as paragraphs", () => {
     await expect(row.or(card("OQ-P1"))).toBeVisible();
     if (await card("OQ-P1").count()) {
       await expect(card("OQ-P1").getByText("Answered elsewhere", { exact: true })).toBeVisible();
-      await page.getByRole("button", { name: /^Apply updates:/ }).click();
+      await page.getByRole("button", { name: /^Update:/ }).click();
     }
     await expect(row.getByText("The first way, as leaned.")).toBeVisible();
     await row.getByRole("button", { name: /^Show/ }).click();

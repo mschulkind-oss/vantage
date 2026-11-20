@@ -85,16 +85,18 @@ the jobs it can do alone, and to show the reader only what is left.
 
 ### 2.1 The header's controls and the card's band
 
+As of `9a00a6a3`, before this design was built; the code it names has since changed.
+
 Verified 2026-11-20 against the tree.
 
 | Element | Where | What it does today |
 | :--- | :--- | :--- |
-| **Apply updates N** | `PlanningUpdates` in [`PlanningUpdates.tsx#L20-L78`](../../frontend/src/components/PlanningUpdates.tsx#L20-L78) | Lays the page out from data already in hand; never fetches. Disabled with "Save or Restore the open answer first" while an open answer holds changes. Room kept from first paint; invisible at zero |
-| **Reload from server** | `PlanningReload`, [`PlanningUpdates.tsx#L89-L129`](../../frontend/src/components/PlanningUpdates.tsx#L89-L129) | Re-reads every listed document's reviews in one batch, then asks the scan store for a rescan ([`usePlanningReviews.ts#L408`](../../frontend/src/hooks/usePlanningReviews.ts#L408)). Does not lay out. Its tooltip says so: "Layout waits for Apply updates" |
+| **Apply updates N** | `PlanningUpdates` in `PlanningUpdates.tsx` | Lays the page out from data already in hand; never fetches. Disabled with "Save or Restore the open answer first" while an open answer holds changes. Room kept from first paint; invisible at zero |
+| **Reload from server** | `PlanningReload`, `PlanningUpdates.tsx` | Re-reads every listed document's reviews in one batch, then asks the scan store for a rescan (`usePlanningReviews.ts`). Does not lay out. Its tooltip says so: "Layout waits for Apply updates" |
 | **Unknown pill** | beside Reload, same file | Appears after a failed reload or a changed sample: "Unknown · last successful read HH:MM · last attempt failed HH:MM" |
-| **N not attached / N with unresolved ownership** | [`PlanningUnresolved.tsx#L41-L107`](../../frontend/src/components/PlanningUnresolved.tsx#L41-L107) | A link icon whose room is kept even at zero, so it reads "0 not attached"; opens a menu grouping Unassigned, Ambiguous, Removed, Unknown and Compacted comments, each with **Attach to question…**, plus the automatic binds the server refused |
-| **Review answers**, **Copy answers N**, **Copy answers + maintenance N** | [`PlanningPendingAnswers.tsx`](../../frontend/src/components/PlanningPendingAnswers.tsx), `PlanningPage.tsx` | Hand the pending answers to the agent. About delivery, not freshness |
-| **Card status band** | [`PlanningLifecycleBanner.tsx#L20-L57`](../../frontend/src/components/PlanningLifecycleBanner.tsx#L20-L57) | One fixed-height band: Open, Response saved, Agent replied, Ruling recorded, Compacted, Question removed, or **Unknown** (dashed; tooltip "The document and its reviews cannot be read as one") |
+| **N not attached / N with unresolved ownership** | `PlanningUnresolved.tsx` | A link icon whose room is kept even at zero, so it reads "0 not attached"; opens a menu grouping Unassigned, Ambiguous, Removed, Unknown and Compacted comments, each with **Attach to question…**, plus the automatic binds the server refused |
+| **Review answers**, **Copy answers N**, **Copy answers + maintenance N** | `PlanningPendingAnswers.tsx`, `PlanningPage.tsx` | Hand the pending answers to the agent. About delivery, not freshness |
+| **Card status band** | `PlanningLifecycleBanner.tsx` | One fixed-height band: Open, Response saved, Agent replied, Ruling recorded, Compacted, Question removed, or **Unknown** (dashed; tooltip "The document and its reviews cannot be read as one") |
 
 ### 2.2 How a card comes to read Unknown, and stays there
 
@@ -102,7 +104,7 @@ The page holds, per document, the reviews it read and the **evidence** they
 came with — the content hash of the document as the server saw it when it read
 them ([`planning-ownership.md` §2](../reference/planning-ownership.md#2-evidence-which-reading-a-pair-belongs-to)).
 A card's label is derived from the live index plus the reviews
-(`lifecycleFor`, [`questionOwnership.ts#L412-L439`](../../frontend/src/lib/questionOwnership.ts#L412-L439)),
+(`lifecycleFor`, `questionOwnership.ts`),
 and it reads _Unknown_ in five distinct situations the band does not tell apart:
 
 1. The reviews are not read yet.
@@ -115,7 +117,7 @@ and it reads _Unknown_ in five distinct situations the band does not tell apart:
 
 Situation 2 is the one that held for 8.4 hours. The page re-reads a document's
 reviews only when that document's `reviewEpoch` moves
-([`usePlanningReviews.ts#L496-L517`](../../frontend/src/hooks/usePlanningReviews.ts#L496-L517)),
+(`usePlanningReviews.ts`),
 and until the fix below only a `review_changed` push moved it. An agent's edit
 pushes `files_changed`, which refreshes the index entry — new hash — and leaves
 the reviews paired with the old one. Nothing heals that but a review change or a
@@ -125,7 +127,7 @@ reviews disagree with the laid-out hash just as the old ones did.
 
 The tab being hidden for hours makes this the common case, not the edge: on
 return after 30 s hidden the socket reconnects by force
-([`useWebSocket.ts#L693-L705`](../../frontend/src/hooks/useWebSocket.ts#L693-L705)),
+(`useWebSocket.ts`),
 a reconnect rescans the index in full
 ([`planning-index.md` §8.3](../reference/planning-index.md#83-staying-fresh-change-pushes-reconnects-and-ordering)),
 and every document an agent touched meanwhile now has a hash its held reviews do
@@ -267,7 +269,7 @@ and it is not the reader's fault.
 **Reconcile** *(coined here)* — reading, for every listed document whose reading
 is stale or unread, the document's index entry and its reviews as one, and
 adopting the result only if it is not older than what is held
-([`planning-ownership.md` §8](../reference/planning-ownership.md#8-apply-updates-reload-from-server-and-selection-anchors)'s
+([`planning-ownership.md` §8](../reference/planning-ownership.md#8-update-reconcile-and-selection-anchors)'s
 adopt-if-not-older rule). Not a layout: a reconcile changes marks and counts,
 never an item's height, position or presence.
 

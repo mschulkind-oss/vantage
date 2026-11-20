@@ -11,7 +11,10 @@
  */
 import { replyBox } from "../lib/reviewBoxes";
 import { resetBoxesForTest } from "../lib/commentAutosave";
-import { useReloadStatus } from "../hooks/usePlanningReviews";
+import {
+  reconcilePlanningReviews,
+  usePlanningFreshness,
+} from "../hooks/usePlanningReviews";
 import {
   act,
   cleanup,
@@ -2843,7 +2846,7 @@ describe("Refresh (planning-index.md §6.4)", () => {
     return box;
   }
 
-  it("is disabled with the reason while an open answer holds changes, and never saves or closes it itself", async () => {
+  it("is disabled with the reason while an answer is open, and never saves or closes it itself", async () => {
     pageSize(2);
     seed(todoTree(3));
     await renderPage();
@@ -2852,7 +2855,7 @@ describe("Refresh (planning-index.md §6.4)", () => {
     expect(apply).toBeDisabled();
     expect(apply).toHaveAttribute(
       "data-tip",
-      expect.stringContaining("Save or Restore the open answer first"),
+      "Close the open answer first — what you typed is saved",
     );
     await act(async () => {
       fireEvent.click(apply);
@@ -2862,58 +2865,67 @@ describe("Refresh (planning-index.md §6.4)", () => {
     expect(reviews["plans/todo.md"]).toBeUndefined();
   });
 
-  it("closes an unchanged open answer box and lays the page out, with no request", async () => {
+  it("waits while an answer box is open even with nothing typed, and never closes it (OQ-FS4)", async () => {
     pageSize(2);
     seed(todoTree(3));
     await renderPage();
     await openAnswerWith(null);
-    expect(updatesButton()).not.toBeDisabled();
-    await refresh();
-    expect(screen.queryByPlaceholderText(/comment/i)).toBeNull();
+    const ids = cardIds();
+    expect(updatesButton()).toBeDisabled();
+    await act(async () => {
+      fireEvent.click(updatesButton());
+    });
+    await settle();
+    expect(screen.getByPlaceholderText(/comment/i)).toBeTruthy();
+    expect(cardIds()).toEqual(ids);
     expect(reviews["plans/todo.md"]).toBeUndefined();
   });
 });
 
-describe("Reload from server and the reply guard (planning-question-state.md §6)", () => {
+describe("Update's verification read, the offline line and the reply guard (planning-page-freshness.md §4.1)", () => {
   afterEach(() => {
-    // Open boxes and the pill outlive a test otherwise, in the registry.
+    // Open boxes outlive a test otherwise, in the registry.
     resetBoxesForTest();
-    useReloadStatus.setState({ byRepo: {} });
   });
-  const reloadButton = () =>
-    document.querySelector<HTMLButtonElement>("[data-planning-reload]")!;
-  const reloadPosts = () =>
+  const reviewPosts = () =>
     vi
       .mocked(axios.post)
       .mock.calls.filter(([url]) => String(url).endsWith("/planning/reviews"));
 
-  it("reads the reviews again with one request, leaves an open answer's text and the painted cards alone, and shows no pill", async () => {
+  it("has no Reload from server and no Unknown pill", async () => {
+    seed(todoTree(3));
+    await renderPage();
+    expect(
+      screen.queryByRole("button", { name: "Reload from server" }),
+    ).toBeNull();
+    expect(document.querySelector("[data-planning-reload-status]")).toBeNull();
+  });
+
+  it("lays the page out at once and, in the same press, reads every listed document again", async () => {
     pageSize(2);
     const tree = todoTree(3);
     seed(tree);
     await renderPage();
-    await act(async () => {
-      fireEvent.click(
-        within(cardFor("OQ-T2")).getByRole("button", { name: "Answer…" }),
-      );
-    });
-    const box = await screen.findByPlaceholderText(/comment/i);
-    fireEvent.change(box, { target: { value: "Go the second way." } });
-    const cards = cardIds();
-    const before = reloadPosts().length;
-    await act(async () => {
-      fireEvent.click(reloadButton());
-    });
+    const after = {
+      ...tree,
+      "roadmap.md":
+        "# Roadmap\n\n1. [First](plans/first.md)\n2. [The list](plans/todo.md)\n",
+      "plans/first.md": doc("stage: DESIGN", q("OQ-F1", OPEN)),
+    };
+    serveTree(after);
+    setLoad(readyOf(after));
     await settle();
-    expect(reloadPosts().length).toBe(before + 1);
-    expect(screen.getByPlaceholderText(/comment/i)).toHaveValue(
-      "Go the second way.",
-    );
-    expect(cardIds()).toEqual(cards);
-    expect(document.querySelector("[data-planning-reload-status]")).toBeNull();
+    const before = reviewPosts().length;
+    await refresh();
+    expect(cardIds()[0]).toBe("OQ-F1");
+    const verification = reviewPosts().slice(before);
+    expect(verification).toHaveLength(1);
+    expect(
+      [...(verification[0][1] as { paths: string[] }).paths].sort(),
+    ).toEqual(["plans/first.md", "plans/todo.md"]);
   });
 
-  it("shows the last success and the last failure as an Unknown pill, keeps what was held, and does not retry by itself", async () => {
+  it("says offline since when in Update's slot, keeps the cards and counts, and Retry now reads again at once", async () => {
     pageSize(2);
     const tree = todoTree(2);
     seed(tree);
@@ -2921,31 +2933,38 @@ describe("Reload from server and the reply guard (planning-question-state.md §6
     reviews[path] = [comment];
     await renderPage();
     const cards = cardIds();
-    await act(async () => {
-      fireEvent.click(reloadButton());
-    });
-    await settle();
     const ok = vi.mocked(axios.post).getMockImplementation()!;
     vi.mocked(axios.post).mockImplementation(async (url, ...rest) => {
       if (String(url).endsWith("/planning/reviews")) throw new Error("down");
       return ok(url, ...rest);
     });
-    const before = reloadPosts().length;
     await act(async () => {
-      fireEvent.click(reloadButton());
+      await reconcilePlanningReviews("", [path]);
+    });
+    const since = Date.now() - 31_000;
+    act(() =>
+      usePlanningFreshness.setState({
+        byRepo: { "": { failingSince: since, offline: true } },
+      }),
+    );
+    const line = document.querySelector("[data-planning-offline]")!;
+    expect(line).toHaveTextContent(/^Offline since .+ · retrying/);
+    expect(document.querySelector("[data-planning-updates]")).toBeNull();
+    expect(cardIds()).toEqual(cards);
+    expect(screen.getByTestId("pending-answers")).toHaveTextContent("1");
+
+    vi.mocked(axios.post).mockImplementation(ok);
+    const before = reviewPosts().length;
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Retry now" }));
     });
     await settle();
-    const pill = document.querySelector("[data-planning-reload-status]")!;
-    expect(pill.textContent).toMatch(
-      /^Unknown · last successful read .*last attempt failed /,
-    );
-    expect(reloadPosts().length).toBe(before + 1);
-    await new Promise((r) => setTimeout(r, 50));
-    expect(reloadPosts().length).toBe(before + 1);
+    expect(reviewPosts().length).toBe(before + 1);
+    expect(document.querySelector("[data-planning-offline]")).toBeNull();
     expect(cardIds()).toEqual(cards);
   });
 
-  it("disables Apply updates while a reply box holds typed text, and never closes or saves it", async () => {
+  it("disables Update while a reply box is open with typed text, and never closes or saves it", async () => {
     pageSize(2);
     const tree = todoTree(3);
     seed(tree);
@@ -2968,7 +2987,7 @@ describe("Reload from server and the reply guard (planning-question-state.md §6
     expect(updatesButton()).toBeDisabled();
     expect(updatesButton()).toHaveAttribute(
       "data-tip",
-      expect.stringContaining("Save or Restore the open answer first"),
+      "Close the open answer first — what you typed is saved",
     );
     expect(box.isOpen).toBe(true);
     // Closing would send the text; this test's box ends unsaved, as it began.

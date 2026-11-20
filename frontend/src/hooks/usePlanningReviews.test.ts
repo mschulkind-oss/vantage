@@ -455,8 +455,16 @@ describe("reconcilePlanningReviews (the page keeps itself current)", () => {
     vi.useRealTimers();
   });
 
-  it("reads every listed path in one request, even if held, and rescans the scan", async () => {
+  it("reads every listed path in one request, even if held, and rescans only a scan behind the reviews", async () => {
     stored = { "a.md": review("a.md", comment("old")) };
+    usePlanningStore.setState({
+      byRepo: {
+        "": {
+          status: "ready",
+          hashes: { "a.md": "an-older-version", "b.md": "hash-of-b.md" },
+        } as never,
+      },
+    });
     const { result } = renderHook(() =>
       usePlanningReviews("", ["a.md", "b.md"]),
     );
@@ -473,6 +481,22 @@ describe("reconcilePlanningReviews (the page keeps itself current)", () => {
     expect(ids(result.current.byPath["a.md"])).toEqual(["new"]);
     expect(rescan).toHaveBeenCalledWith("", { bypassCache: false });
     expect(freshnessOf("")).toEqual({ failingSince: null, offline: false });
+
+    // The scan holds the version the reviews were read against: no rescan.
+    rescan.mockClear();
+    usePlanningStore.setState({
+      byRepo: {
+        "": {
+          status: "ready",
+          hashes: { "a.md": "hash-of-a.md", "b.md": "hash-of-b.md" },
+        } as never,
+      },
+    });
+    await act(async () => {
+      await reconcilePlanningReviews("", ["a.md", "b.md"]);
+    });
+    expect(rescan).not.toHaveBeenCalled();
+    usePlanningStore.setState({ byRepo: {} });
   });
 
   it("reconciles every listed document when the socket reconnects, and not before", async () => {

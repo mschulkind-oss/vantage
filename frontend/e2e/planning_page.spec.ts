@@ -531,8 +531,8 @@ test.describe("the planning page", () => {
     const late = await shifted(page, true);
     expect(late, JSON.stringify(late)).toEqual([]);
 
-    // Even in the compact header this says what it does, instead of
-    // becoming a circular arrow indistinguishable from server reload.
+    // Even in the compact header this says what it does: Update, with
+    // its list/check icon, never an anonymous refresh arrow.
     const viewport = page.viewportSize()!;
     await page.setViewportSize({ width: 390, height: 844 });
     // Nothing opened the mobile drawer, so it slides off-screen, still
@@ -540,7 +540,7 @@ test.describe("the planning page", () => {
     // which on CI was outside the viewport by then and never clickable.
     await expect(page.getByTestId("sidebar")).not.toBeInViewport();
     const apply = page.locator("[data-planning-updates]");
-    await expect(apply.getByText("Apply", { exact: true })).toBeVisible();
+    await expect(apply.getByText("Update", { exact: true })).toBeVisible();
     const questions = page.getByTestId("planning-header").getByRole("link", { name: "Questions", exact: true });
     await expect(questions).toBeVisible();
     const questionsBox = await questions.boundingBox();
@@ -552,7 +552,7 @@ test.describe("the planning page", () => {
     await page.screenshot({ path: test.info().outputPath("apply-updates-narrow.png") });
     await page.setViewportSize(viewport);
 
-    // Apply lays it out: the take answered, it needs you again, a card.
+    // Update lays it out: the take answered, it needs you again, a card.
     await apply.click();
     await expect(row(page, "OQ-P1: Which way for part 1?")).toHaveCount(0);
     await expect(third).toBeVisible();
