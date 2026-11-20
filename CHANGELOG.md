@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+**An answer saved while its document was changing no longer loses its question for good.** When the server could not confirm the question an answer was filed under — an agent had just edited the document — it saved the answer with no question and forgot which one it was. It now keeps that id and the planning page attaches the answer to it on the next reading where the server can confirm it.
+
 **A comment on text outside every question no longer reads as an error.** The planning page listed it among comments with *unresolved ownership* and offered to attach it to a question, as if it had been lost. It is now a *note*, with nothing to attach, and when notes are all there is the header says *N notes for the agent*.
 
 **Answers on a document an agent just edited no longer show as *not attached*.** Until the page re-read that document's comments, it listed every pending answer on it under the header's link control, as if they had lost their question. They are now listed nowhere for that moment, and the counts read *Unknown* until the read lands.

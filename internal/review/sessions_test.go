@@ -338,7 +338,10 @@ func TestCreateBindsOnlyWhatTheScannerProves(t *testing.T) {
 		got := commentByID(data.Comments, name)
 		require.Empty(t, got.QuestionID, name)
 		require.Nil(t, got.QuestionEvidence, name)
+		// The id the reader filed under is kept, unbound, for a later proof.
+		require.Equal(t, qid, got.RequestedQuestionID, name)
 	}
+	require.Empty(t, commentByID(data.Comments, "bare").RequestedQuestionID)
 	data, err = s.AddCommentWith("a.md", "", mk("ghost", "nope"), cmdDoc, CreateOptions{Doc: doc, Preconditions: &good})
 	require.NoError(t, err)
 	require.Empty(t, commentByID(data.Comments, "ghost").QuestionID)
@@ -573,4 +576,27 @@ func TestLateAutosaveAfterFinishOrRestoreIsA404AndNeverResurrects(t *testing.T) 
 	_, _, err = s.RestoreSession("a.md", "", "c1", "s1")
 	require.NoError(t, err, "a closed session replays its outcome")
 	require.Equal(t, "original", mustGet(t, s).Comments[0].Comment)
+}
+
+func TestBindClearsTheRequestedQuestionID(t *testing.T) {
+	s := NewStore(t.TempDir())
+	doc := scannedDoc(s, cmdDoc, map[string]Unit{"q1": unitAt(cmdDoc, 3, 3)})
+	c := anchoredComment("c", "t", 3)
+	c.QuestionID = "q1"
+	data, err := s.AddCommentWith("a.md", "", c, cmdDoc, CreateOptions{Doc: StaticDoc(cmdDoc)})
+	require.NoError(t, err)
+	require.Equal(t, "q1", data.Comments[0].RequestedQuestionID)
+	ev := doc().Evidence
+	data, err = s.BindQuestion("a.md", "", BindRequest{
+		CommentID:  "c",
+		QuestionID: "q1",
+		Preconditions: BindPreconditions{
+			BootID: ev.BootID, DocumentGeneration: ev.DocumentGeneration,
+			ContentHash: ev.ContentHash, MutationRevision: data.MutationRevision,
+		},
+		Doc: doc,
+	})
+	require.NoError(t, err)
+	require.Equal(t, "q1", data.Comments[0].QuestionID)
+	require.Empty(t, data.Comments[0].RequestedQuestionID)
 }
