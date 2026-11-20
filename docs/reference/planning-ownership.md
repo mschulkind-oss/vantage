@@ -127,6 +127,14 @@ a block hash or unit text.
   **not** checked on create (an unrelated write between evidence and create must
   not unbind the answer; the server proves the id itself under the lock); it is
   checked on bind.
+- **Who sends an id.** Every comment the document view files on a block inside
+  a question's unit carries that question's directive id, when exactly one
+  question there has it: a take, **Answer…**, a click on a block and a selected
+  phrase alike (`questionIdAt`). Without it, a comment on text that recurs —
+  every open question's empty `**Answer:**` reads the same — has an anchor
+  hash at several lines, which legacy auto-bind cannot prove and the
+  highlighter will not place, so it showed as "original text no longer found"
+  the moment it was filed.
 - **`POST /review/bind-comment-question`** binds an existing comment. Body:
   `{comment_id, question_id, evidence?, preconditions: {boot_id,
 document_generation, mutation_revision, content_hash}, allow_rebind?}`. Missing

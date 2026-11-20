@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+**A comment on a question's empty *Answer* no longer shows as "original text no longer found" the moment it is saved.** Every open question's empty answer reads the same, so a comment filed on one by clicking it, selecting it or pressing **Answer…** could not be told apart from the others and was drawn as lost. Those comments are now filed under their question's id, as **Take this leaning** already was. A comment already saved this way stays as it is; attach it with **Attach to question…** on the planning page.
+
 **A question card no longer stays *Unknown* after an agent edits its document.** The page re-read a document's comments only when a comment changed, so an edit left them paired with the version before it, and the card read *Unknown* until the page was opened afresh; going back to it was not enough. Now an edit to a listed document re-reads its comments, and the card's status follows once the page shows the new version (after **Apply updates**, if it is holding updates back).
 
 **Take this leaning, editing an answer and replying no longer wait on a scan of the whole project.** Proving which question an answer belongs to ran the checker over every planning document, which took 10–27 s on a project of about 700, and other writes to that document's review waited behind it. The server now scans only the one document. With a checker older than this release it falls back to the whole project, as before.
