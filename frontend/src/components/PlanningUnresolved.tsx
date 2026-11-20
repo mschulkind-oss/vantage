@@ -13,6 +13,7 @@ import { copyTextOrWarn } from "../lib/clipboard";
 
 const KINDS: readonly UnresolvedKind[] = [
   "unassigned",
+  "note",
   "ambiguous",
   "removed",
   "unknown",
@@ -72,10 +73,16 @@ export function PlanningUnresolved({
   // Keep the same toolbar room through Unknown -> known, including zero.
   // Removing the control let header labels expand and moved painted buttons.
   const shown = !known || total > 0 || refused.length > 0;
+  // Notes on text outside every question are not a fault: when they are all
+  // there is, the control says what they are rather than sounding an alarm.
+  const onlyNotes =
+    known && total > 0 && total === groups.note.length && refused.length === 0;
   const label =
     total === 0 && known
       ? `${refused.length} not attached`
-      : `${known ? total : "Unknown"} with unresolved ownership`;
+      : onlyNotes
+        ? `${total} ${total === 1 ? "note" : "notes"} for the agent`
+        : `${known ? total : "Unknown"} with unresolved ownership`;
   return (
     <>
       <button
@@ -141,6 +148,13 @@ export function PlanningUnresolved({
               <p className="mt-2 font-semibold">
                 {UNRESOLVED_TITLES[kind]} ({groups[kind].length})
               </p>
+              {kind === "note" && (
+                <p>
+                  Comments on text outside every question. Nothing is wrong and
+                  there is nothing to attach; Copy unassigned requests below
+                  sends them to the agent.
+                </p>
+              )}
               {kind === "compacted" && (
                 <p>
                   The question ID is recorded in the Decision Ledger, not newly

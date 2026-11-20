@@ -77,6 +77,25 @@ function open(onAttach = vi.fn().mockResolvedValue(null), refusals = {}) {
 }
 
 describe("PlanningUnresolved", () => {
+  it("calls notes outside every question notes, with nothing to attach", () => {
+    render(
+      <PlanningUnresolved
+        groups={groupsOf([{ ...legacy, ownership: "unowned" }])}
+        known
+        questionsOf={questionsOf}
+        onAttach={vi.fn()}
+      />,
+    );
+    const control = screen.getByTestId("unresolved-ownership");
+    expect(control).toHaveAttribute("aria-label", "1 note for the agent");
+    fireEvent.click(control);
+    const notes = screen.getByTestId("unresolved-note");
+    expect(notes).toHaveTextContent("Notes (1)");
+    expect(
+      within(notes).queryByRole("button", { name: "Attach to question…" }),
+    ).toBeNull();
+  });
+
   it("keeps an inert reserved slot when ownership finishes loading with no unresolved comments", () => {
     const { rerender } = render(
       <PlanningUnresolved groups={groupsOf([])} known={false} />,

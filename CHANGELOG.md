@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+**A comment on text outside every question no longer reads as an error.** The planning page listed it among comments with *unresolved ownership* and offered to attach it to a question, as if it had been lost. It is now a *note*, with nothing to attach, and when notes are all there is the header says *N notes for the agent*.
+
 **Answers on a document an agent just edited no longer show as *not attached*.** Until the page re-read that document's comments, it listed every pending answer on it under the header's link control, as if they had lost their question. They are now listed nowhere for that moment, and the counts read *Unknown* until the read lands.
 
 **A comment on a question's empty *Answer* no longer shows as "original text no longer found" the moment it is saved.** Every open question's empty answer reads the same, so a comment filed on one by clicking it, selecting it or pressing **Answer…** could not be told apart from the others and was drawn as lost. Those comments are now filed under their question's id, as **Take this leaning** already was. A comment already saved this way stays as it is; attach it with **Attach to question…** on the planning page.
