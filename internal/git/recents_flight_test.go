@@ -1,6 +1,7 @@
 package git
 
 import (
+	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -94,4 +95,50 @@ func waitForFlight(t *testing.T, c *recentsCache, key recentsKey) {
 func waitForWaiters(t *testing.T) {
 	t.Helper()
 	time.Sleep(20 * time.Millisecond)
+}
+
+// A walk sorts every file it finds before it keeps limit of them, so a longer
+// list's first files are a shorter one's: the activity warm, which asks for one
+// file, reads the sidebar's thirty when their filters match, instead of walking
+// the repository again for it.
+func TestRecentsShorterListIsReadFromALongerOne(t *testing.T) {
+	c := newRecentsCache(time.Minute)
+	thirty := recentsKey{repoPath: "/r", limit: 30, showHidden: true}
+	three := []model.RecentFile{{Path: "a.md"}, {Path: "b.md"}, {Path: "c.md"}}
+	c.load(thirty, func() []model.RecentFile { return three })
+
+	one := thirty
+	one.limit = 1
+	data, src := c.load(one, func() []model.RecentFile { t.Fatal("walked again"); return nil })
+	require.Equal(t, recentsHit, src)
+	require.Equal(t, []model.RecentFile{{Path: "a.md"}}, data)
+
+	// Other filters are another list, and so is a longer one.
+	other := one
+	other.showGitignored = true
+	_, src = c.load(other, func() []model.RecentFile { return nil })
+	require.Equal(t, recentsWalked, src)
+	more := thirty
+	more.limit = 50
+	_, src = c.load(more, func() []model.RecentFile { return nil })
+	require.Equal(t, recentsWalked, src)
+}
+
+// A push changes its own repository's status, and the watcher clears that
+// alone: in daemon mode every served repository shares the cache.
+func TestClearStatusCacheOfKeepsOtherRepositories(t *testing.T) {
+	ClearStatusCache()
+	t.Cleanup(ClearStatusCache)
+	alpha, beta := canonicalRepoPath(t.TempDir()), canonicalRepoPath(t.TempDir())
+	for _, key := range []string{alpha, filepath.Join(alpha, "child"), beta, alpha + "-sibling"} {
+		statusCache.set(key, map[string]string{})
+	}
+
+	ClearStatusCacheOf(alpha)
+
+	cached := func(key string) bool { _, ok := statusCache.get(key); return ok }
+	require.False(t, cached(alpha))
+	require.False(t, cached(filepath.Join(alpha, "child")))
+	require.True(t, cached(beta))
+	require.True(t, cached(alpha+"-sibling"))
 }

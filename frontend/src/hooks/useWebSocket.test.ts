@@ -1380,6 +1380,24 @@ describe("useWebSocket", () => {
       expect(mockAllRecentsRefresh).toHaveBeenCalled();
     });
 
+    // Nor does another repository's written file: refetching this one's tree
+    // and recent files on every repository's push sent each tab back to the
+    // server after any commit anywhere on the daemon.
+    it("refreshes neither tree nor recent files for another repository's written files", async () => {
+      viewing("docs/a.md", { isMultiRepo: true, currentRepo: "alpha" });
+      renderHook(() => useWebSocket({ onMoved }));
+      send({ type: "files_changed", repo: "beta", paths: ["notes.md"] });
+      await settled();
+      expect(mockRefreshExpandedTree).not.toHaveBeenCalled();
+      expect(mockFetchRecentFiles).not.toHaveBeenCalled();
+      expect(mockAllRecentsRefresh).toHaveBeenCalled();
+
+      send({ type: "files_changed", repo: "alpha", paths: ["notes.md"] });
+      await settled();
+      expect(mockRefreshExpandedTree).toHaveBeenCalledTimes(1);
+      expect(mockFetchRecentFiles).toHaveBeenCalledTimes(1);
+    });
+
     // In daemon mode every repository's pushes reach every page, and a path
     // means something only in the repository that sent it.
     it("does not follow a rename in another repository", () => {

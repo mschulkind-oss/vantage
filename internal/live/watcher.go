@@ -759,7 +759,9 @@ func (w *Watcher) flush(batch []string) {
 	w.noteChange()
 	paths, removedDirs := splitBatch(batch)
 
-	gitsvc.ClearStatusCache()
+	// Every cache below is shared by all the repositories a daemon serves,
+	// and a push changes only its own repository's entries.
+	gitsvc.ClearStatusCacheOf(w.root)
 
 	// A directory that went away takes its Markdown with it, so which
 	// directories hold Markdown has changed although no .md path was pushed.
@@ -774,7 +776,7 @@ func (w *Watcher) flush(batch []string) {
 		}
 	}
 	if hasMarkdown {
-		fssvc.ClearMarkdownDirCache()
+		fssvc.ClearMarkdownDirCacheUnder(w.root)
 	}
 	// The recent files are cached for half a minute, since working them out
 	// reads git's log. A commit or a checkout changes them, a Markdown file

@@ -336,9 +336,14 @@ export const useWebSocket = (options: UseWebSocketOptions = {}) => {
       promises.push(viewDirectory(path));
     }
 
-    // A push from another repository that only removed directories changes
-    // nothing of this one's.
-    if (changedPaths.size > 0 || removedDirs.length > 0) {
+    // A push from another repository changes nothing of this one's tree or
+    // recent files. Refetching them on every repository's push anyway made
+    // each tab ask for this repository's recent files after any commit
+    // anywhere on the daemon.
+    const changedHere = isMultiRepo
+      ? (here?.paths.size ?? 0)
+      : changedPaths.size;
+    if (changedHere > 0 || removedDirs.length > 0) {
       promises.push(refreshExpandedTree());
       promises.push(fetchRecentFiles());
     }
