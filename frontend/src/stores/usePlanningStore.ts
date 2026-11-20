@@ -485,6 +485,22 @@ export const usePlanningStore = create<PlanningStore>((set, get) => {
       if (load === undefined || load.status === "idle") return;
       const tracker = trackerFor(repo);
 
+      // A document's reviews are paired with the version of it they were
+      // read against, so an edit leaves the held pair incoherent and its cards
+      // read Unknown. Nothing pushes review_changed for an edit, so the pushed
+      // document counts as one here, and the page reads its reviews again.
+      const edited = [...new Set(paths)].filter(isMarkdown);
+      if (edited.length > 0) {
+        set((state) => {
+          const reviewEpoch = { ...state.reviewEpoch };
+          for (const path of edited) {
+            const key = `${repo}\n${path}`;
+            reviewEpoch[key] = (reviewEpoch[key] ?? 0) + 1;
+          }
+          return { reviewEpoch };
+        });
+      }
+
       if (load.status !== "error") {
         for (const dir of removedDirs) {
           const seq = ++tracker.seq;

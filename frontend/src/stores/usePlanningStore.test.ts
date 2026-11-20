@@ -1447,6 +1447,26 @@ describe("review epochs", () => {
       "alpha\ndocs/design.md": 1,
     });
   });
+
+  // A document's reviews are paired with the version of it they were read
+  // against, so an edit to the document makes the held pair incoherent and its
+  // cards read Unknown. Nothing pushes review_changed for an edit, so the
+  // pushed document counts as one, and its reviews are read again.
+  it("counts a pushed Markdown document as a change to its reviews", async () => {
+    await readyWith();
+    store().noteFilesChanged("", ["docs/design.md", "notes.txt"], []);
+    store().noteFilesChanged("", ["docs/design.md"], []);
+    expect(store().reviewEpoch).toEqual({ "\ndocs/design.md": 2 });
+  });
+
+  it("counts it on a refused index too, whose reviews are still shown", async () => {
+    store().ensure("");
+    await flush();
+    answerRefused(take(STREAM));
+    await flush();
+    store().noteFilesChanged("", ["docs/design.md"], []);
+    expect(store().reviewEpoch).toEqual({ "\ndocs/design.md": 1 });
+  });
 });
 
 describe("usePlanningIndex", () => {
