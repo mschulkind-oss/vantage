@@ -12,6 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 **Scan one document with `vantage-check index --document <path>`.** It prints that document's entry in the planning index as JSON, reading no other file. See [one document's index](docs/reference/planning-index.md#137-one-documents-index---document).
 
+**The planning page lists question ids that need fixing.** A new *Maintenance* kind, **Duplicate or stray id**, lists each id two questions declare and each id written in a question's title that its directive does not carry, with a link to where it is. No answer filed under such an id counts until the document is fixed. **Copy answers + maintenance** and `vantage-check index --request fix-ids` hand an agent the request to fix them.
+
 ### Changed
 
 **The planning page has one button for updates: *Update · N*.** It replaces *Apply updates*, and pressing it also reads the listed documents' comments again, so it ends in what the server holds. *Reload from server* and its *Unknown* pill are gone: the page reads again by itself when the connection comes back, and when its reads have failed for 30 seconds the header says *Offline since HH:MM · retrying*, with **Retry now**. Update now waits while any answer box is open, and never closes one for you; it says *Close the open answer first — what you typed is saved*.

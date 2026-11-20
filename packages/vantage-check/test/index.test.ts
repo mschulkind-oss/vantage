@@ -2116,7 +2116,7 @@ describe("index --request --filter", () => {
     expect(code).toBe(EXIT_OK);
     expect(stdout).toBe("");
     expect(stderr).toBe(
-      "vantage-check: nothing to ask an agent: Not on a roadmap, Ready to build, Ready to graduate, Stage conflict and Compact have no entries the filter keeps\n",
+      "vantage-check: nothing to ask an agent: Not on a roadmap, Ready to build, Ready to graduate, Stage conflict, Compact and Duplicate or stray id have no entries the filter keeps\n",
     );
   });
 });
@@ -2455,6 +2455,59 @@ describe("index --filter, and the checkout's space id", () => {
       filter: "path:docs/b.md",
       roadmap: "roadmap.md",
     });
+  });
+});
+
+describe("index --request fix-ids (planning-page-freshness.md §4.5)", () => {
+  const tree = () =>
+    makeTree({
+      ...FULL_TREE,
+      "docs/twice.md": doc(
+        "status: draft\nstage: DESIGN",
+        `${questions("T", OPEN)}\n${questions("T", OPEN)}`,
+      ),
+    });
+
+  it("prints exactly planningAgentRequest over the same tree, listing the id declared twice", async () => {
+    const root = tree();
+    const { code, stdout, stderr } = await index(root, "--request", "fix-ids");
+    expect(code).toBe(EXIT_OK);
+    expect(stderr).toBe("");
+    expect(stdout).toMatch(
+      /^- docs\/twice\.md:\d+ {2}OQ-T1 declared more than once$/m,
+    );
+    const files = {
+      ...FULL_TREE,
+      "docs/twice.md": doc(
+        "status: draft\nstage: DESIGN",
+        `${questions("T", OPEN)}\n${questions("T", OPEN)}`,
+      ),
+    };
+    const sources = fullSources();
+    const built = buildPlanningIndex({
+      ...sources,
+      candidateCount: sources.candidateCount + 1,
+      files: [
+        ...sources.files,
+        { path: "docs/twice.md", content: files["docs/twice.md"] as string },
+      ].sort((a, b) => (a.path < b.path ? -1 : 1)),
+    });
+    const expected = planningAgentRequest(
+      built,
+      derivePlanningSections(built),
+      {
+        repository: root,
+        ids: ["fix-ids"],
+      },
+    );
+    expect(stdout).toBe(`${expected}\n`);
+  });
+
+  it("is in the request with no ids, after compact", async () => {
+    const { stdout } = await index(tree(), "--request");
+    const at = (head: string) => stdout.indexOf(head);
+    expect(at("Duplicate or stray id (1):")).toBeGreaterThan(at("Compact ("));
+    expect(at("Compact (")).toBeGreaterThan(-1);
   });
 });
 

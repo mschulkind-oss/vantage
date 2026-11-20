@@ -19,6 +19,7 @@ import {
   agentSectionsWithEntries,
   answeredQuestions,
   derivePlanningSections,
+  idProblems,
   isPlanningAgentSectionId,
   isPlanningRequestId,
   planningAgentRequest,
@@ -434,6 +435,62 @@ describe("agent requests", () => {
   });
 });
 
+describe("the fix-ids request (planning-page-freshness.md §4.5)", () => {
+  const TREE_WITH_BAD_IDS: Record<string, string> = {
+    ...TREE,
+    "docs/f.md": doc(
+      "status: draft\nstage: DESIGN",
+      [
+        question("OQ-F1", "First of two?"),
+        question("OQ-F1", "Second of two?"),
+        // A title that names an id its directive does not carry.
+        [
+          `1. ${OPEN} **OQ-F2: Stray?**`,
+          "",
+          "   <!-- vantage: question -->",
+          "",
+          "   _Leaning:_ yes.",
+          "",
+        ].join("\n"),
+        question("OQ-F3", "Fine?"),
+        // Another document's id, mentioned in prose, is not this one's.
+        "See OQ-A1 for the rest.",
+      ].join("\n"),
+    ),
+  };
+  const index = indexOf(TREE_WITH_BAD_IDS, { stages: STAGES });
+  const sections = derivePlanningSections(index);
+
+  it("lists each id declared more than once, and each written in a title but in no directive, where its first question starts", () => {
+    expect(idProblems(index)).toEqual([
+      { path: "docs/f.md", id: "OQ-F1", problem: "duplicate", line: 8 },
+      { path: "docs/f.md", id: "OQ-F2", problem: "stray", line: 20 },
+    ]);
+    expect(planningRequestCount(index, sections, "fix-ids")).toBe(2);
+    expect(PLANNING_REQUEST_TITLES["fix-ids"]).toBe("Duplicate or stray id");
+  });
+
+  it("asks the agent to make each id declared once, by its own question, after compact", () => {
+    const text = request(index, ["fix-ids", "compact"]) ?? "";
+    expect(text).toContain(
+      "Duplicate or stray id (2): question ids declared by more than one question",
+    );
+    expect(text).toContain(
+      "- docs/f.md:8  OQ-F1 declared more than once\n- docs/f.md:20  OQ-F2 outside a directive",
+    );
+  });
+
+  it("lists nothing for a tree whose ids are each declared once", () => {
+    expect(idProblems(indexOf(TREE, { stages: STAGES }))).toEqual([]);
+  });
+
+  it("keeps an id when the filter keeps a question that names it", () => {
+    expect(
+      idProblems(index, (q) => q.title.includes("Stray")).map((p) => p.id),
+    ).toEqual(["OQ-F2"]);
+  });
+});
+
 describe("the compact request", () => {
   const DONE = "✅";
   /** One ruled (✅) question, with its directive. */
@@ -463,6 +520,7 @@ describe("the compact request", () => {
       "graduate",
       "disagrees",
       "compact",
+      "fix-ids",
     ]);
     expect(PLANNING_AGENT_SECTION_IDS).not.toContain("compact");
     expect(PLANNING_SECTION_IDS).not.toContain("compact");
@@ -481,14 +539,21 @@ describe("the compact request", () => {
           planningRequestCount(index, sections, id),
         ]),
       ),
-    ).toEqual({ unrouted: 2, ready: 1, graduate: 1, disagrees: 1, compact: 2 });
+    ).toEqual({
+      unrouted: 2,
+      ready: 1,
+      graduate: 1,
+      disagrees: 1,
+      compact: 2,
+      "fix-ids": 0,
+    });
     expect(answeredQuestions(index).map((ref) => ref.id)).toEqual([
       "OQ-B1",
       "OQ-B2",
     ]);
-    expect(planningRequestsWithEntries(index, sections)).toEqual([
-      ...PLANNING_REQUEST_IDS,
-    ]);
+    expect(planningRequestsWithEntries(index, sections)).toEqual(
+      PLANNING_REQUEST_IDS.filter((id) => id !== "fix-ids"),
+    );
     expect(
       planningRequestsWithEntries(index, sections, ["compact", "ready"]),
     ).toEqual(["ready", "compact"]);

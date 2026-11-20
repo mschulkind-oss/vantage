@@ -148,6 +148,35 @@ describe("the layout (planning-index.md §6.2)", () => {
     ]);
   });
 
+  it("lists an id two questions declare under Maintenance, as Duplicate or stray id, and nowhere a filter hides it", () => {
+    const tree = {
+      "a.md": doc(
+        "stage: DESIGN",
+        `${separate("OQ-A", 1)}\n${separate("OQ-A", 1)}`,
+      ),
+      "b.md": doc("stage: DESIGN", separate("OQ-B", 1)),
+    };
+    const index = indexOf(tree, { stages: STAGES });
+    const layout = layoutPlanningPage(index, sectionsOf(index), 10);
+    const kind = layout.maintenance.find((k) => k.id === "fix-ids")!;
+    expect(kind.kind).toBe("ids");
+    expect(kind.items).toEqual([
+      expect.objectContaining({
+        path: "a.md",
+        id: "OQ-A1",
+        problem: "duplicate",
+      }),
+    ]);
+    expect(MAINTENANCE_TITLES["fix-ids"]).toBe("Duplicate or stray id");
+    const filtered = layoutPlanningPage(
+      index,
+      sectionsOf(index, null, "path:b.md"),
+      10,
+      "path:b.md",
+    );
+    expect(filtered.maintenance.map((k) => k.id)).not.toContain("fix-ids");
+  });
+
   it("puts Blocked, and Maintenance's kinds in their order, leaving out an empty one", () => {
     const layout = layoutOf({
       "a.md": doc("stage: DESIGN", separate("OQ-A", 1)),

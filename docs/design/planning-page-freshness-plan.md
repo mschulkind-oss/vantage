@@ -1,14 +1,14 @@
 ---
 title: "Plan: the planning page keeps itself current"
 status: accepted
-stage: DECIDED
-next: "Build tasks 1–5 in order; each is one commit"
+stage: BUILT
+next: "Delete with the design when it graduates"
 depends-on: [planning-page-freshness.md]
 ---
 
 # Plan: the planning page keeps itself current
 
-**Status:** 2026-11-20. Written against `9a00a6a3`, 2026-11-20.
+**Status:** 2026-11-20. Written against `9a00a6a3`, 2026-11-20; all five tasks built the same day.
 **Design:** [`planning-page-freshness.md`](planning-page-freshness.md).
 Precedence: the design wins on behavior, the tree wins on fact, this file is
 advice and is the first thing to be wrong.

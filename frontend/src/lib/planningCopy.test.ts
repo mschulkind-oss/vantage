@@ -14,11 +14,12 @@ import {
 } from "./planningCopy";
 
 describe("the kinds left out", () => {
-  it("offers only the four maintenance kinds for agents, in the panel's order", () => {
+  it("offers only the five maintenance kinds for agents, in the panel's order", () => {
     expect(COPY_KINDS).toEqual([
       "unrouted",
       "disagrees",
       "compact",
+      "fix-ids",
       "graduate",
     ]);
   });
@@ -30,6 +31,7 @@ describe("the kinds left out", () => {
       "unrouted",
       "disagrees",
       "compact",
+      "fix-ids",
       "graduate",
     ]);
   });

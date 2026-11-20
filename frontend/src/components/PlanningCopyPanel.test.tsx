@@ -307,7 +307,9 @@ describe("the button", () => {
     await act(async () => {
       fireEvent.click(button());
     });
-    expect(copied).toEqual([["unrouted", "disagrees", "compact", "graduate"]]);
+    expect(copied).toEqual([
+      ["unrouted", "disagrees", "compact", "fix-ids", "graduate"],
+    ]);
     expect(button()).toHaveTextContent(/^Copied/);
     expect(button()).toHaveAccessibleName("Copy answers + maintenance 12");
   });

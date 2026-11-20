@@ -512,6 +512,7 @@ From top to bottom, leaving out any that are empty:
 | **Ready to graduate** | Documents whose stage has the `built` role and no questions left, whether or not a `depends-on` still waits, unless the document opts out with `planning-actions: none` |
 | **Stage conflict** | Documents whose stage says `ready` or `built` while they still have open questions |
 | **To fold into the ledger** | ✅ questions: ruled, and waiting for an agent to fold the ruling into the document and record it, unless the document opts out with `planning-actions: none` |
+| **Duplicate or stray id** | Question ids no question holds: one two questions declare, or one written in a question's title that its directive does not carry. No answer filed under such an id counts until an agent fixes the document; each row links to where the id is |
 | **Too large** | Candidates over the size limit ([below](#limits)): the path, its size and the limit |
 | **Unreadable** | Candidates that could not be read, or whose frontmatter does not parse: the path and why |
 

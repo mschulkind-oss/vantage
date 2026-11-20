@@ -329,6 +329,10 @@ const NO_REFRESHED: ReadonlyMap<string, RefreshedCard> = new Map();
 const COMPACT_EXPLANATION =
   "Ruled, and waiting to be folded into the body they govern. An agent compacts each.";
 
+/** *Duplicate or stray id*'s line (`planning-page-freshness.md` §4.5). */
+const FIX_IDS_EXPLANATION =
+  "No question holds these ids, so no answer filed under one is credited. An agent makes each declared once, by its own question.";
+
 /**
  * Each visit's scroll position, by history entry. Module state, so it outlives
  * the page's own unmount: going Back from a document the page opened returns
@@ -3513,9 +3517,11 @@ export const PlanningPage: React.FC = () => {
         ? "Decided, with no open questions, but not marked built. Vantage reads the document’s stage; it does not verify whether the work is built."
         : id === "compact"
           ? COMPACT_EXPLANATION
-          : frameSections === null
-            ? ""
-            : sectionExplanation(id, frameSections),
+          : id === "fix-ids"
+            ? FIX_IDS_EXPLANATION
+            : frameSections === null
+              ? ""
+              : sectionExplanation(id, frameSections),
     [frameSections],
   );
 

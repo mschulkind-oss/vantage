@@ -113,6 +113,7 @@ export {
   blockedOnLabel,
   codeSpan,
   dependsOnLabel,
+  idProblems,
   isPlanningAgentSectionId,
   isPlanningRequestId,
   planningAgentRequest,
@@ -122,6 +123,7 @@ export {
   sectionExplanation,
 } from "./guide.js";
 export type {
+  IdProblem,
   PlanningActor,
   PlanningAgentRequestOptions,
   PlanningAgentSectionId,

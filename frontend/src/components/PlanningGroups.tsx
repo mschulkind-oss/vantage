@@ -23,7 +23,7 @@ import {
   type PlanningRequestId,
 } from "vantage-md/planning";
 import { isPlanningCopyKind } from "../lib/planningCopy";
-import { MARK_LABELS, itemKey } from "../lib/planningLayout";
+import { MARK_LABELS, idProblemKey, itemKey } from "../lib/planningLayout";
 import {
   MAINTENANCE_TITLES,
   type MaintenanceKind,
@@ -48,6 +48,7 @@ const SUMMARY_WORDS: Readonly<Record<MaintenanceKindId, string>> = {
   graduate: "to graduate",
   disagrees: "stage conflict",
   compact: "to fold into the ledger",
+  "fix-ids": "id to fix",
   skipped: "too large",
   "could-not-read": "unreadable",
 };
@@ -372,6 +373,31 @@ export const PlanningGroups: React.FC<{
                   {formatSize(index.config.maxFileBytes)})
                 </span>
                 <Done gone={key(path)} />
+              </li>
+            )}
+          />
+        );
+      case "ids":
+        return (
+          <Capped
+            items={kind.items}
+            label={title}
+            row={({ path, id, problem, line }) => (
+              <li key={`${path}\n${id}`} className={ROW}>
+                <AppLink
+                  to={`${href(path)}#L${line}`}
+                  onBeforeNavigate={() => onOpenHere?.()}
+                  className="shrink-0 font-medium text-blue-600 no-underline hover:underline dark:text-blue-400"
+                >
+                  {path}:{line}
+                </AppLink>{" "}
+                <span className="truncate text-slate-500 dark:text-slate-400">
+                  {id}{" "}
+                  {problem === "duplicate"
+                    ? "is declared by more than one question"
+                    : "is in a question's title, not its directive"}
+                </span>
+                <Done gone={gone(idProblemKey(path, id))} />
               </li>
             )}
           />
