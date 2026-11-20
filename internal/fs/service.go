@@ -84,7 +84,8 @@ type Options struct {
 
 // mdDirCache is a process-wide TTL cache of _dir_has_markdown results, keyed by
 // absolute directory path. It is shared across FileSystemService instances (the
-// answer depends only on disk contents) and flushed by the file watcher.
+// answer depends only on disk contents), and each repository's watcher flushes
+// the entries under its own root ([ClearMarkdownDirCacheUnder]).
 type mdDirCache struct {
 	mu  sync.Mutex
 	ttl time.Duration
@@ -122,6 +123,18 @@ func (c *mdDirCache) clear() {
 	c.m = map[string]mdDirEntry{}
 }
 
+// clearUnder drops the entries for root and every directory under it, both
+// absolute paths, and keeps the rest.
+func (c *mdDirCache) clearUnder(root string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for key := range c.m {
+		if key == root || strings.HasPrefix(key, root+string(filepath.Separator)) {
+			delete(c.m, key)
+		}
+	}
+}
+
 // markdownDirCache backs _dir_has_markdown for every FileSystemService.
 var markdownDirCache = newMDDirCache(mdDirCacheTTL)
 
@@ -131,6 +144,21 @@ var markdownDirCache = newMDDirCache(mdDirCacheTTL)
 func ClearMarkdownDirCache() {
 	markdownDirCache.clear()
 	slog.Debug("fs: markdown-dir cache cleared")
+}
+
+// ClearMarkdownDirCacheUnder flushes the answers for root and the directories
+// under it, which is all a change under root can alter: a directory's walk
+// stops at a repository nested inside it, so no answer outside root depends on
+// what is in it. The watcher calls it with its own root; in daemon mode every
+// served repository shares the cache, and dropping all of it for one
+// repository's write sent every other repository's tree back to disk.
+func ClearMarkdownDirCacheUnder(root string) {
+	abs := filepath.Clean(root)
+	markdownDirCache.clearUnder(abs)
+	if resolved := resolveRoot(root); resolved != abs {
+		markdownDirCache.clearUnder(resolved)
+	}
+	slog.Debug("fs: markdown-dir cache cleared under one root", "root", root)
 }
 
 // FileSystemService answers file-tree and file-content queries for one

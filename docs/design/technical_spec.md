@@ -140,8 +140,8 @@ review store, perf store, and live Manager) are built once.
     diff (`git diff HEAD -- <path>` for tracked files, a synthetic all-add diff
     for untracked ones), porcelain status, and recently changed files.
   - Two package-level TTL caches back the hottest calls (status and recent
-    files). The file watcher flushes the status cache (`ClearStatusCache`)
-    when git state changes on disk, and its own repository's recent files
+    files). On every push the file watcher flushes its own repository's
+    status (`ClearStatusCacheOf`), and its own repository's recent files
     (`ClearRecentFilesCacheOf`) on git state, on a Markdown file, and on a
     watched directory renamed away or removed: a commit or checkout changes the
     list, a file written is the newest of it, and a directory that went takes
@@ -159,7 +159,20 @@ review store, perf store, and live Manager) are built once.
     neither joined nor cached, since it may have read the state the drop was
     for. The perf counters split a request's outcome three ways:
     `recent_files_cache_hit`, `recent_files_walk_joined` and
-    `recent_files_cache_miss` (a walk of its own).
+    `recent_files_cache_miss` (a walk of its own). A request is also served
+    from a fresh or in-flight list with the same filters and a larger limit,
+    cut to its own: a walk sorts every file it finds before it keeps `limit`
+    of them, so a longer list starts with the shorter one. That is how the
+    daemon's activity check, which asks for one file, can read the sidebar's
+    thirty instead of walking again, when the two ask with the same filters.
+  - The file tree's answer to whether a directory holds Markdown is cached for
+    30 seconds in one cache all repositories share. The watcher drops only the
+    answers for its own root and the directories under it
+    (`ClearMarkdownDirCacheUnder`), on a Markdown push or a directory that
+    went: a directory's walk stops at a repository nested inside it, so no
+    answer outside the root depends on what changed. Until 2026-11-19 every
+    status and Markdown push dropped every repository's entries in both
+    caches.
   - Every invocation carries `--no-optional-locks`. All of them are reads, and
     without it `git status` refreshes `.git/index` as a side effect — a write
     the watcher sees, broadcasts, and gets asked for status over again.

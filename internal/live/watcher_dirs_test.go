@@ -14,6 +14,7 @@ import (
 	"github.com/fsnotify/fsnotify"
 	"github.com/stretchr/testify/require"
 
+	fssvc "github.com/mschulkind-oss/vantage/internal/fs"
 	gitsvc "github.com/mschulkind-oss/vantage/internal/git"
 	"github.com/mschulkind-oss/vantage/internal/gitenv"
 	"github.com/mschulkind-oss/vantage/internal/ignore"
@@ -176,6 +177,38 @@ func TestFlushOfGitStateForgetsOnlyItsOwnRepositorysRecentFiles(t *testing.T) {
 	w.flush([]string{".git/index"})
 	require.ElementsMatch(t, []string{"a.md", "a2.md"}, recentPaths(svc, 30))
 	require.Equal(t, []string{"b.md"}, recentPaths(otherSvc, 30), "the other repository's list is still the cached one")
+}
+
+// A Markdown file written changes which of its own repository's directories
+// hold Markdown, and no other's. The watcher dropped every repository's
+// answers for one, so each write anywhere sent every open tree back to disk.
+func TestFlushOfMarkdownForgetsOnlyItsOwnRepositorysMarkdownDirectories(t *testing.T) {
+	root := gitRepo(t, map[string]string{"docs/.keep": ""})
+	other := gitRepo(t, map[string]string{"docs/.keep": ""})
+
+	fssvc.ClearMarkdownDirCache()
+	t.Cleanup(fssvc.ClearMarkdownDirCache)
+	hasMarkdown := func(dir string) bool {
+		nodes, err := fssvc.New(fssvc.Config{RootPath: dir}).ListDirectory(".", fssvc.Options{ShowGitignored: true})
+		require.NoError(t, err)
+		for _, n := range nodes {
+			if n.Path == "docs" {
+				return n.HasMarkdown
+			}
+		}
+		t.Fatalf("no docs directory listed in %s", dir)
+		return false
+	}
+	require.False(t, hasMarkdown(root))
+	require.False(t, hasMarkdown(other))
+
+	w, err := NewWatcher(root, "", NewManager(quietLogger(), nil), nil, false, quietLogger())
+	require.NoError(t, err)
+	writeTree(t, root, map[string]string{"docs/a.md": "# A\n"})
+	writeTree(t, other, map[string]string{"docs/b.md": "# B\n"})
+	w.flush([]string{"docs/a.md"})
+	require.True(t, hasMarkdown(root))
+	require.False(t, hasMarkdown(other), "the other repository's answer is still the cached one")
 }
 
 // gitRepo makes a git repository holding files, with nothing committed.

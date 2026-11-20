@@ -11,8 +11,8 @@
 // error: the HTTP layer turns these into 200-with-[] or 404, never a 500.
 //
 // Two package-level TTL caches back the hottest calls — git status and recent
-// files — and are flushed by the file watcher via ClearStatusCache and
-// ClearRecentFilesCache when git state changes on disk.
+// files — and each repository's watcher flushes its own entries, via
+// ClearStatusCacheOf and ClearRecentFilesCacheOf.
 package git
 
 import (
@@ -868,19 +868,46 @@ func newRecentsCache(ttl time.Duration) *recentsCache {
 	return &recentsCache{ttl: ttl, m: map[recentsKey]recentsEntry{}, flights: map[recentsKey]*recentsFlight{}}
 }
 
-// load returns the list for key: the cached one while it is fresh, else the
-// result of the walk already in flight for key, else that of compute, which it
-// runs and stores.
+// covers reports whether k's list holds want's: the same repository and
+// filters, and at least as many files. A walk sorts every file it finds before
+// it keeps limit of them, so the first files of a longer list are the shorter
+// one. That is what lets the activity warm, which asks for one file, read the
+// sidebar's thirty when their filters match.
+func (k recentsKey) covers(want recentsKey) bool {
+	limit := k.limit
+	k.limit = want.limit
+	return k == want && limit >= want.limit
+}
+
+// prefix is data cut to limit files.
+func prefix(data []model.RecentFile, limit int) []model.RecentFile {
+	if len(data) > limit {
+		return data[:limit:limit]
+	}
+	return data
+}
+
+// load returns the list for key: a cached one that covers it while it is
+// fresh, else the result of a walk in flight that covers it, else that of
+// compute, which it runs and stores.
 func (c *recentsCache) load(key recentsKey, compute func() []model.RecentFile) ([]model.RecentFile, recentsSource) {
 	c.mu.Lock()
 	if e, ok := c.m[key]; ok && time.Since(e.at) < c.ttl {
 		c.mu.Unlock()
 		return e.data, recentsHit
 	}
-	if f, ok := c.flights[key]; ok {
-		c.mu.Unlock()
-		<-f.done
-		return f.data, recentsJoined
+	for k, e := range c.m {
+		if k.covers(key) && time.Since(e.at) < c.ttl {
+			c.mu.Unlock()
+			return prefix(e.data, key.limit), recentsHit
+		}
+	}
+	for k, f := range c.flights {
+		if k.covers(key) {
+			c.mu.Unlock()
+			<-f.done
+			return prefix(f.data, key.limit), recentsJoined
+		}
 	}
 	f := &recentsFlight{done: make(chan struct{})}
 	c.flights[key] = f
@@ -938,11 +965,28 @@ var (
 	recentFilesCache = newRecentsCache(recentFilesTTL)
 )
 
-// ClearStatusCache flushes the shared git-status cache. The file watcher calls
-// it when git state changes on disk so the next Status returns fresh data.
+// ClearStatusCache flushes the shared git-status cache, every repository's.
+// The watcher drops only its own repository's, through [ClearStatusCacheOf],
+// except when events were dropped and it cannot tell whose changed.
 func ClearStatusCache() {
 	statusCache.clear()
 	slog.Debug("git: status cache cleared")
+}
+
+// ClearStatusCacheOf flushes the status cached for the repository at
+// repoPath, resolved the way [NewService] resolves its own, and for any
+// repository under it. The watcher calls it with its root on every push: in
+// daemon mode every served repository shares the cache, and another's status
+// did not change.
+func ClearStatusCacheOf(repoPath string) {
+	root := canonicalRepoPath(repoPath)
+	statusCache.mu.Lock()
+	defer statusCache.mu.Unlock()
+	for key := range statusCache.m {
+		if key == root || strings.HasPrefix(key, root+string(filepath.Separator)) {
+			delete(statusCache.m, key)
+		}
+	}
 }
 
 // ClearRecentFilesCache flushes the shared recent-files cache, every
