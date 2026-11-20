@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+**A question card no longer reads *Unknown*.** While an agent's edit is being read again, a card keeps the status it last read, adding *· checking* if the read takes longer than a second, and the header's counts keep their last values. A card on a document the scan could not check says why — *Not checked — scan refused*, *too large to scan* or *scan failed* — and a card whose id is declared twice or written outside a directive says *Id appears more than once* or *Id outside a directive*.
+
 **The planning page catches up by itself after the connection drops.** A push the server sent while the connection was down was lost, and the comments it announced stayed out of date until the page was opened again or **Reload from server** was pressed. Now, when the connection comes back, including when a tab hidden for half a minute or more is shown again, the page reads every listed document's comments again. A read that fails is tried again after 1 s, then 2 s, and so on up to every 30 s, until it lands.
 
 **An answer saved while its document was changing no longer loses its question for good.** When the server could not confirm the question an answer was filed under — an agent had just edited the document — it saved the answer with no question and forgot which one it was. It now keeps that id and the planning page attaches the answer to it on the next reading where the server can confirm it.

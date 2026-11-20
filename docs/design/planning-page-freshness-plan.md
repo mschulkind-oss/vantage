@@ -71,7 +71,10 @@ Each task is one commit, in this order.
    is offline. The band never reads _Unknown_:
    - _Not checked — scan refused / too large to scan / scan failed_, from
      `index.refused`, `index.skipped` and `index.unreadable`;
-   - _Id appears N times_;
+   - _Id appears more than once_ — the design says _N times_, but the scan
+     records only that an id has several claims, not how many, and counting
+     them would change the published `vantage-md` scan shape. Flagged to the
+     owner;
    - _Id outside a directive_;
    - a document gone from the scan reads _Question removed from document_.
 
