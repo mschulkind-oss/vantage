@@ -52,6 +52,20 @@ const agent = {
   timestamp: 1,
 };
 
+describe("a note outside every question", () => {
+  it("is a note, not an unassigned answer, when the server placed it outside every question", () => {
+    const index = indexOf({ "a.md": doc(q("OQ-A1")) }, STAGES);
+    const note = comment({ ownership: "unowned" });
+    const lost = comment();
+    const map = ownershipMap(index, { "a.md": [note, lost] });
+    expect(map.unresolved.note.map((e) => e.comment)).toEqual([note]);
+    expect(map.unresolved.note[0].reason).toBe(
+      "on text outside every question",
+    );
+    expect(map.unresolved.unassigned.map((e) => e.comment)).toEqual([lost]);
+  });
+});
+
 describe("unassigned reasons and the quote", () => {
   it("says apart that the checker is not installed and that it refused the scan", () => {
     const index = indexOf({ "a.md": doc(q("OQ-A1")) }, STAGES);

@@ -164,6 +164,7 @@ reviews:
 | :--------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | bound      | id is declared exactly once; it appears on that question's card, in the counts and in Copy answers                                                                                                             |
 | Unassigned | binding is absent                                                                                                                                                                                              |
+| Note       | binding is absent and the server placed the anchor outside every question unit (`ownership: unowned`), with no auto-bind candidate: a note on the document, never offered Attach; when notes are all there is, the control reads "N notes for the agent" |
 | Ambiguous  | id is declared more than once; credited to no card                                                                                                                                                             |
 | Removed    | id is in no directive and nowhere in the text                                                                                                                                                                  |
 | Compacted  | id is in `ledgerIds` and in no directive                                                                                                                                                                       |
@@ -196,7 +197,7 @@ coherent. It sends one `bind-comment-question` per (comment, reading), carrying
 the scanner fingerprint, the quote and the reading; a refusal is shown in the
 server's reason and not retried until a new reading.
 
-**Attach to question…** (Unassigned, Ambiguous, Removed, Compacted) shows the
+**Attach to question…** (Unassigned, Ambiguous, Removed, Compacted; never Note) shows the
 original quote beside the chosen question's current text, preselects nothing and
 binds only on Confirm, with `allow_rebind` when the comment already names a
 question.

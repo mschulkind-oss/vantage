@@ -150,6 +150,7 @@ const EMPTY_OWNERSHIP: OwnershipMap = {
   unpaired: new Set(),
   unresolved: {
     unassigned: [],
+    note: [],
     ambiguous: [],
     removed: [],
     unknown: [],

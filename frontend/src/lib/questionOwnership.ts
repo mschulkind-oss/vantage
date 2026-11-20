@@ -25,8 +25,13 @@ import type {
 export type OwnershipKind =
   /** Its id names exactly one question of its document. */
   | "bound"
-  /** It carries no question id (a note, a legacy comment, an unproven bind). */
+  /** It carries no question id (a legacy comment, an unproven bind). */
   | "unassigned"
+  /**
+   * It carries no id, and the server placed it on text outside every question
+   * (`ownership: "unowned"`): a note on the document, not a lost answer.
+   */
+  | "note"
   /** Its id is declared more than once, so it names no single question. */
   | "ambiguous"
   /** Its id is in no directive and nowhere in the document. */
@@ -75,10 +80,11 @@ export interface OwnershipMap {
 }
 
 export type UnresolvedKind =
-  "unassigned" | "ambiguous" | "removed" | "unknown" | "compacted";
+  "unassigned" | "note" | "ambiguous" | "removed" | "unknown" | "compacted";
 
 const UNRESOLVED: readonly UnresolvedKind[] = [
   "unassigned",
+  "note",
   "ambiguous",
   "removed",
   "unknown",
@@ -88,6 +94,7 @@ const UNRESOLVED: readonly UnresolvedKind[] = [
 /** Words for a group of unresolved comments. */
 export const UNRESOLVED_TITLES: Readonly<Record<UnresolvedKind, string>> = {
   unassigned: "Unassigned",
+  note: "Notes",
   ambiguous: "Ambiguous",
   removed: "Removed",
   unknown: "Unknown",
@@ -108,6 +115,14 @@ export function classifyComment(
       document === undefined || incoherent !== undefined
         ? undefined
         : legacyBindCandidate(comment, document);
+    if (comment.ownership === "unowned" && candidate === undefined) {
+      return {
+        path,
+        comment,
+        kind: "note",
+        reason: "on text outside every question",
+      };
+    }
     return {
       path,
       comment,
@@ -251,6 +266,7 @@ export function ownershipMap(
   const unpaired = new Set<string>();
   const unresolved: Record<UnresolvedKind, CommentOwnership[]> = {
     unassigned: [],
+    note: [],
     ambiguous: [],
     removed: [],
     unknown: [],
