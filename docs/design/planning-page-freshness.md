@@ -323,6 +323,28 @@ lands — ordinarily a few hundred milliseconds. During that window:
   minutes, and no state in which the page is current while a card's reading is
   stale.
 
+### 4.7 Why a comment ends up without a question
+
+Matt's report (2026-11-20): he answers on the planning page, copies the
+answers to agents, the agents work, and answers he filed on a question turn up
+as not attached. The header control counts a comment there when it is pending
+for the agent and is not credited to exactly one question
+(`classifyComment` in `frontend/src/lib/questionOwnership.ts`). Read against
+the code on 2026-11-20, six routes lead there; most need no reader at all.
+
+| Route | How it happens | Today's group | What this design does with it |
+| :--- | :--- | :--- | :--- |
+| **The page's two halves disagree** | An agent edits the document. Until the comments are read again against the new version, every bound pending comment on it is classified _Unknown_, so the whole document's answers move into the control at once | Unknown | Not an ownership state: it is a stale reading, which a reconcile clears ([§4.4](#44-when-the-system-reconciles)) and the card shows as _checking_ at most ([§4.6](#46-how-a-transient-is-shown-and-how-long-it-may-last)). Never listed as a comment without a question. The narrow fix in [§2.3](#23-the-fix-in-flight-and-what-it-does-not-fix) already re-reads on an edit |
+| **The agent compacts before it replies** | The copied instructions tell the agent to record the ruling and compact the question into the Decision Ledger *first*, and deliver its reply *after*. Between the two saves, the answer is pending and its id is only in the ledger. If the reply never arrives, it stays there | Compacted | The comment is the ledger row's: the id it was filed under is still in the document, as a recorded decision. It is shown as _Ruling recorded, waiting for the agent's reply_ under that document, not as unattached |
+| **The server could not confirm the id when the answer was saved** | The page sends the question's id with evidence from the reading it holds. When the proof fails — the document moved since that reading, the question's text no longer contains the quote, the unit's fingerprint differs, or the scan raced — the server saves the comment with **no** id and keeps no record of the one requested (`internal/review/commands.go`). With agents editing constantly and the page holding its layout, an answer typed on a card whose question an agent has just reworded is filed this way | Unassigned | The server keeps the requested id alongside the comment and tries the proof again on each new coherent reading, binding it when it holds. The id is the one the reader filed under, so this synthesizes nothing |
+| **The comment was filed in the document without an id** | Until `7a464072` (2026-11-20), only **Take this leaning** sent an id from the document view; a click, a selection or **Answer…** did not, and legacy auto-bind cannot prove a block whose text recurs | Unassigned | Fixed: every comment filed inside a question's unit carries its id ([`planning-ownership.md` §4.2](../reference/planning-ownership.md#42-binding)). Comments filed before the fix keep needing **Attach** |
+| **A note outside every question** | Matt comments on prose no question owns. It carries no id, so it is classified Unassigned like a lost answer, though the server already records it as a plain note (`ownership: unowned`, [`planning-ownership.md` §4.1](../reference/planning-ownership.md#41-what-a-comment-holds)) | Unassigned | Not a fault and not unattached: a note on the document. Listed with its document's work and copied with its answers, with no **Attach** offered |
+| **The question's id changed or was declared twice** | An agent renumbered or deleted the question without a ledger row, or copied a directive | Removed, Ambiguous | Genuinely the reader's or the agent's to resolve; the only routes left for the group in [§4.3](#43-comments-without-a-question). The duplicate is also a maintenance request ([§4.5](#45-a-document-condition-is-maintenance)) |
+
+With the other five handled as above, a comment without a question is one
+whose id truly no longer names exactly one question, plus legacy comments filed
+before ids existed, which **Attach** still serves.
+
 ## 5. The reader's situations
 
 Each row says what the reader sees, what if anything they must do, and what
@@ -419,7 +441,9 @@ the rest and can go in either order.
 
 1. 💬 **OQ-FS2: Where should the comments no question owns be listed — a group among the page's sections, or a control of their own?**
 
-   A legacy comment on a document has no question id. Today the header's link
+   [§4.7](#47-why-a-comment-ends-up-without-a-question) traces why comments end
+   up here and removes most routes; what is left is a renamed, deleted or
+   duplicated id, and legacy comments with no id. Today the header's link
    icon reads **1 not attached**, and reads **0 not attached** on every page
    where nothing is wrong. Matt did not know what the icon meant.
 
