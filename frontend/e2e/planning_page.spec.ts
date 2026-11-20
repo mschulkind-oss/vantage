@@ -648,8 +648,10 @@ test.describe("the planning page", () => {
   }) => {
     await context.grantPermissions(["clipboard-read", "clipboard-write"]);
     // Wide enough for the header's labels beside the sidebar, now that it
-    // holds Copy answers + maintenance too (planning-index.md §6.3).
-    await page.setViewportSize({ width: 1440, height: 720 });
+    // holds Copy answers + maintenance too (planning-index.md §6.3). They
+    // need about 1550 px since that label grew; at 1440 the assertion below
+    // passed only when it caught a re-layout, and failed at rest.
+    await page.setViewportSize({ width: 1600, height: 720 });
     await page.goto("/.vantage/planning");
     await expect(
       page.getByRole("button", { name: "Collapse sidebar" }),
