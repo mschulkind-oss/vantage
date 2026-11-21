@@ -1,6 +1,6 @@
 /**
  * The planning page header's freshness slot
- * (`docs/design/planning-page-freshness.md` §4.1): **Update · N** while the
+ * (`docs/reference/planning-ownership.md` §8): **Update · N** while the
  * page holds late data back from its layout, **Offline since HH:MM ·
  * retrying** with **Retry now** once its reads have failed for 30 s, and
  * nothing while it is current.

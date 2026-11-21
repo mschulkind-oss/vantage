@@ -91,7 +91,7 @@ const CHECKING_NOTE =
  *
  * `checking` adds _· checking_ at the end, in the room the band has: the
  * status is the last one read, and the document is being read again
- * (`docs/design/planning-page-freshness.md` §4.6).
+ * (`docs/reference/planning-ownership.md` §5).
  */
 export const PlanningLifecycleBanner: React.FC<{
   status: CardStatus;

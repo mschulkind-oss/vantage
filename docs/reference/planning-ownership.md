@@ -17,6 +17,9 @@ covers:
   - frontend/src/hooks/useLegacyAutoBind.ts
   - frontend/src/components/PlanningUnresolved.tsx
   - frontend/src/components/PlanningUpdates.tsx
+  - frontend/src/components/PlanningLifecycleBanner.tsx
+  - frontend/src/lib/coherentReadings.ts
+  - frontend/src/hooks/useLingering.ts
 tags: [planning, review, comments, ownership, sessions]
 summary: "What is built of the planning question-state and review-action designs: comments bound to questions by directive id with scanner proof, the evidence pair, editing sessions with server-held restore, deleted ids, Update and reconcile, and selection anchors — with the HTTP contract and the parts that are not built."
 ---
@@ -195,6 +198,26 @@ that comment or report remaining work, not re-ask the recorded decision.
 Automatic binds the server refused are listed in the section too, each with
 its reason. The header has no control for any of this.
 
+How a comment comes to be in a group, and what keeps each route short:
+
+- **Its id now names no single question.** An agent renumbered or removed the
+  question without a ledger row, or copied a directive. The reader or the agent
+  resolves it, and a duplicate is also the _Duplicate or stray id_ maintenance
+  kind.
+- **The agent compacted the question before replying.** The copied instructions
+  record the ruling first and reply after; between the two, the answer is
+  pending and its id is only in the ledger, so it is _Compacted_ here.
+- **The server could not prove the id at create.** The comment keeps the id it
+  was filed under as `requested_question_id`, and the automatic bind proves it
+  again on each new reading, so it leaves the group once the proof holds.
+- **It was filed before every comment in a question's unit carried its id**
+  ([§4.2](#42-binding)). Those keep needing **Attach to question…**.
+- **It is on text outside every question.** A _Note_: listed, never offered
+  Attach, never worded as a fault.
+
+A stale reading is not a route: its comments are shown from the last coherent
+reading ([§5](#5-lifecycle-labels)), never listed here.
+
 **Legacy auto-bind** (`useLegacyAutoBind`) binds an unbound comment only when its
 anchor hash is one block of the whole document (`blockLines[hash] > 0`), that
 block lies in exactly one question's unit, that id is unique, and the reading is
@@ -236,7 +259,7 @@ declared twice or written outside a directive reads as that condition, never
 _Removed_, and a document gone from the scan for none of the scan's reasons reads
 _Question removed from document_. No band reads _Unknown_.
 
-**Stale readings** ([`planning-page-freshness.md` §4.6](../design/planning-page-freshness.md#46-how-a-transient-is-shown-and-how-long-it-may-last)).
+**Stale readings** (a _reading_ is defined in [§8](#8-update-reconcile-and-selection-anchors)).
 The page keeps each document's last coherent reading (`LastCoherent` in
 `frontend/src/lib/coherentReadings.ts`): its scan entry, comments, evidence and
 hash. While the live reviews and scan disagree, between an agent's edit and the
@@ -246,7 +269,15 @@ their last values. A card whose reading has been stale for 1 s adds _· checking
 to its band, and the mark clears while the repository is offline. Automatic binds
 wait for the new reading, since the server would refuse one made from the old.
 Only a document never yet read as one stays unpaired. The groups in
-[§4.3](#43-how-the-page-reads-ownership) still hold the comments. A comment whose
+[§4.3](#43-how-the-page-reads-ownership) still hold the comments.
+
+> [!WARNING]
+> `ownership.unpaired` holds only documents that never had a coherent reading —
+> a first load. Do not read it as "the document changed": a document an agent
+> just edited is substituted from its last coherent reading and is in
+> `stale`, not `unpaired`. And `LastCoherent.take` returns its very inputs
+> when nothing is stale; `ownershipMap` memoizes on object identity, so a
+> substitution built outside a memo recomputes the map on every render. A comment whose
 `ownership` is `unknown` shows a cue beside its text on a card — "(anchor moved)"
 for `question_not_at_anchor` (its question id stays proven), "(checker not
 installed)", "(scan refused)", else "(ownership unknown)" —
@@ -326,17 +357,71 @@ click, navigation and Close keep the text.
 
 ## 8. Update, reconcile and selection anchors
 
-- **Update** (the header button, _Update · N_) lays the page out from the data
+The planning page keeps itself current, and shows the reader only what is left
+to do. Four terms carry it:
+
+- A **reading** is one document version together with the comments read against
+  that same version, as one unit: the evidence pair of [§2](#2-evidence-which-reading-a-pair-belongs-to),
+  in a plain word. A reading is **coherent** when both halves carry the same
+  content hash, and **stale** when the document has moved on since its comments
+  were read. A layout is made *from* readings, and a reading can move on while
+  the layout stays.
+- **Page freshness** is one state for the whole page, drawn once in the header:
+  **current** (nothing shown), **behind** (_Update · N_), or **offline**
+  (_Offline since HH:MM · retrying_). It is not a card's status: a page can be
+  current with every card waiting on the agent.
+- A **document condition** is a fact about a document that stops the page from
+  reading it as the checker would — the scan refused, skipped or failed it, or an
+  id is declared more than once or written outside a directive. A document stays
+  in one until a person changes the document or the server; it is named on the
+  card's band ([§5](#5-lifecycle-labels)), and the id conditions are also a
+  _Maintenance_ kind ([`planning-index.md` §6.2](./planning-index.md#62-sections-top-to-bottom)).
+- A **reconcile** reads the reviews of a set of listed documents again and
+  adopts each answer only if it is not older than what is held. It changes marks
+  and counts, never an item's height, position or presence, so it is not a
+  layout.
+
+Five rules hold it together, and each mechanism below sits inside them:
+
+1. **Coherence is the system's job.** Whenever either half of a reading
+   changes, the page reads the two as one again. No reader action exists whose
+   purpose is to make a reading coherent.
+2. **One freshness state, one action.** Behind has one button. Offline has none
+   the reader must press; the system retries.
+3. **A card's status is about the question, never the machinery.** It says the
+   question's state, or names a document condition a person can fix. It never
+   says the page's internals disagree.
+4. **A transient is shown as transient, and bounded.** A stale reading keeps the
+   last status with a small mark; past the offline deadline the page as a whole
+   is offline. Nothing waits indefinitely in a per-card limbo.
+5. **The late-data rules hold** ([`planning-index.md` §12.1](./planning-index.md#121-the-rules)).
+   Nothing lays out on its own — not on a reconcile, a returning tab or a timer.
+
+What triggers a reconcile:
+
+| Trigger | What is reconciled |
+| :--- | :--- |
+| A `files_changed` push naming a listed Markdown document | That document |
+| A `review_changed` push naming a listed document | That document |
+| The push connection comes back, including the reconnect a tab forces once shown after being hidden long enough | Every listed document, alongside the rescan the reconnect runs |
+| **Update** | Every listed document, as its verification read |
+| **Retry now**, while offline | The reads that failed |
+
+> [!WARNING]
+> There is deliberately no polling timer. A push lost while the connection
+> stayed up is the one case the triggers miss, and it is bounded by the next
+> reconnect or **Update**. A second **Update** right after one means a push was
+> missed — a defect to find, not a state to design for.
+
+- **Update** (the header button, _Update · N_, [OQ-FS5](#why-its-this-way)) lays the page out from the data
   in hand at once, then, in the same press, reconciles every listed document as
   its verification read, which the layout does not wait for
-  ([OQ-FS1](../design/planning-page-freshness.md#OQ-FS1)). It is **disabled**
+  ([OQ-FS1](#why-its-this-way)). It is **disabled**
   with "Close the open answer first — what you typed is saved" while any comment
   box is open, and it never saves, restores, deletes or closes one
-  ([OQ-FS4](../design/planning-page-freshness.md#OQ-FS4)). Its label is short
+  ([OQ-FS4](#why-its-this-way)). Its label is short
   enough never to yield, with a list/check icon and its pending count.
-- **Reconcile** (`reconcilePlanningReviews`,
-  [`planning-page-freshness.md` §4.4](../design/planning-page-freshness.md#44-when-the-system-reconciles))
-  reads every listed path's review in one `POST …/planning/reviews` regardless
+- **Reconcile** (`reconcilePlanningReviews`) reads every listed path's review in one `POST …/planning/reviews` regardless
   of what is held, discarding older answers. It adopts only a
   `document_generation` not older than the held one for the same boot; a new
   `boot_id` discards the repository's held reviews and evidence first and
@@ -353,7 +438,7 @@ click, navigation and Close keep the text.
   (`useFreshnessOf`), and the first good answer clears it. Offline, the header
   shows _Offline since HH:MM · retrying_ with **Retry now** in Update's slot;
   cards and counts keep their last values
-  ([OQ-FS3](../design/planning-page-freshness.md#OQ-FS3)). There is no _Reload
+  ([OQ-FS3](#why-its-this-way)). There is no _Reload
   from server_ button and no _Unknown_ pill.
 - **Selection anchors.** A settled selection (mouse-up, or a keyboard selection
   quiet for 300 ms) of at least 3 characters inside one question's unit offers
@@ -376,7 +461,10 @@ These stay in the designs; none is claimed above.
 | Legacy `blockLines` for math, raw HTML, hidden content                                                                                                         | `blockLines` hashes the parsed text, not the rendered `innerText`, so those blocks are never auto-bound; fails toward Unassigned. Not measured on a real corpus | question-state [§4](../design/planning-question-state.md#4-ownership-and-legacy-migration)                                               |
 | Selected quote across source markup or a link destination                                                                                                      | Matches rendered text only; containment, not uniqueness                                                                                                         | [§4.2](#42-binding)                                             |
 | Scan cost                                                                                                                                                      | A whole-project `index` run per distinct document content, serialized                                                                                           | [§3](#3-the-scanner-bridge)                                     |
-| A scan failure in the Unknown pill                                                                                                                             | Only the reviews request is shown there; the scan has no generation or boot id of its own                                                                       | [§8](#8-update-reconcile-and-selection-anchors) |
+| A scan failure in the offline line | Only failed review reads count toward offline; the scan has no generation or boot id of its own | [§8](#8-update-reconcile-and-selection-anchors) |
+| _Not checked — checker not installed_ on a card | The band's conditions come from the browser's scan, which never yields this; the server's reason shows only as the comment's "(checker not installed)" cue | [§5](#5-lifecycle-labels) |
+| _Id appears N times_ | The band and the maintenance row say _more than once_: the scan records that an id has several claims, not how many, and counting them would change `vantage-md`'s published scan | [§5](#5-lifecycle-labels) |
+| A compacted answer shown under its document as _Ruling recorded, waiting for the agent's reply_ | Listed with the other comments without a question, as _Compacted_ | [§4.3](#43-how-the-page-reads-ownership) |
 | The changed-sample pill text at page level                                                                                                                     | Covered at hook level only                                                                                                                                      | —                                                               |
 | Reply outcome enum                                                                                                                                             | Not built, by decision: [OQ-AP1](../design/answer-publication.md#OQ-AP1) is open                                                                                                                          | answer-publication                                              |
 | Replies without an id on a discarded new root                                                                                                                  | Cannot be recorded in `deleted_ids`                                                                                                                             | [§6](#6-editing-sessions)                                       |
@@ -396,3 +484,15 @@ These stay in the designs; none is claimed above.
 
 The real-scanner Go tests run `bun packages/vantage-check/src/main.ts` and skip
 where `bun` is missing.
+
+## Why it's this way
+
+Rulings a maintainer reading only the sections above might undo on purpose.
+
+| ID | Ruling | Where it holds |
+| :--- | :--- | :--- |
+| OQ-FS1 | **Update** lays the page out from the data in hand at once and verifies afterwards; the layout never waits for the server. Pushes keep held data within milliseconds of the server, so the verification is a backstop | [§8](#8-update-reconcile-and-selection-anchors) |
+| OQ-FS2 | Comments no question owns, and notes, are a section group, **Comments without a question (N)**, among the page's sections — never a header control. It is drawn last, after _Maintenance_, because it can appear after the layout is painted and nothing painted may move | [§4.3](#43-how-the-page-reads-ownership) |
+| OQ-FS3 | While offline, cards and counts keep their last values under one header line that dates them; no card goes blank or reads _Unknown_ | [§8](#8-update-reconcile-and-selection-anchors) |
+| OQ-FS4 | **Update** is refused while any answer box is open, even with nothing typed, and never closes, saves or restores one | [§8](#8-update-reconcile-and-selection-anchors) |
+| OQ-FS5 | The button is **Update · N**: the reader wants the page brought up to date, not a mechanism applied | [§8](#8-update-reconcile-and-selection-anchors) |

@@ -361,8 +361,8 @@ export type Lifecycle =
 
 /**
  * A fact about a question's document that stops the page from reading the
- * question as the checker would (`docs/design/planning-page-freshness.md`
- * §3, §4.2): the browser's scan refused the repository, skipped the document
+ * question as the checker would (`docs/reference/planning-ownership.md`
+ * §5, §8): the browser's scan refused the repository, skipped the document
  * as too large, or could not read it; or the card's id is declared more than
  * once, or written in the text outside any directive. Not a freshness state:
  * it stays until a person changes the document or the server.
