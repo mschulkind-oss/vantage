@@ -28,6 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 **The planning page catches up by itself after the connection drops.** A push the server sent while the connection was down was lost, and the comments it announced stayed out of date until the page was opened again or **Reload from server** was pressed. Now, when the connection comes back, including when a tab hidden for half a minute or more is shown again, the page reads every listed document's comments again. A read that fails is tried again after 1 s, then 2 s, and so on up to every 30 s, until it lands.
 
+**The repository's *Folders* button on a phone-width planning page can be pressed again.** The header had no room for it and slid it under *Open sidebar*. At that width *Update · N* now shows its icon and count without the word, as the header's other buttons already drop theirs.
+
 **An answer saved while its document was changing no longer loses its question for good.** When the server could not confirm the question an answer was filed under — an agent had just edited the document — it saved the answer with no question and forgot which one it was. It now keeps that id and the planning page attaches the answer to it on the next reading where the server can confirm it.
 
 **A comment on text outside every question no longer reads as an error.** The planning page listed it among comments with *unresolved ownership* and offered to attach it to a question, as if it had been lost. It is now a *note*, with nothing to attach.

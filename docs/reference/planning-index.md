@@ -1144,8 +1144,10 @@ and it commits inside the transition at once.
   steps (`frontend/src/lib/headerFit.ts`); at 1280 px with the sidebar open the
   shorthand labels go first — _Review answers_ and _Copy answers + maintenance_ —
   and the two copies' _Copy answers_ is the one that stays readable longest.
-  _Update_ is short enough never to yield, and its list/check icon is never an
-  anonymous refresh arrow. While review reads have failed for 30 s the slot says
+  _Update_'s word yields in the `labels` step with the other toolbar labels,
+  which a phone's width reaches, so the repository's Folders control keeps its
+  room; its list/check icon and count stay, and the icon is never an anonymous
+  refresh arrow. While review reads have failed for 30 s the slot says
   _Offline since HH:MM · retrying_ with **Retry now** instead
   ([`planning-ownership.md` §8](planning-ownership.md#8-update-reconcile-and-selection-anchors)).
 - **The frame** is the header, then, while the contents column is drawn, the

@@ -75,9 +75,8 @@ The order is the one thing this file holds that no other document can. Each entr
 
 3. [Planning selection coverage](docs/design/planning-review-actions.md) — establish a provable source anchor for generated leaning text before offering selection comments on it; an attractive selection target is not evidence of where the text came from.
 
-4. Three end-to-end failures `just e2e` showed on 2026-11-20, none from the freshness work:
-   - [`work_shell.spec.ts`](frontend/e2e/work_shell.spec.ts) _keeps repository identity and controls reachable in a narrow Questions header_ fails every run: at 390 px wide, the _Open sidebar_ button covers the header's _Folders_ button, so the click never lands. It fails the same way at `7a464072`, before that work.
+4. Two intermittent end-to-end failures `just e2e` showed on 2026-11-20, neither from the freshness work:
    - [`renamed_folder.spec.ts`](frontend/e2e/renamed_folder.spec.ts) _follows a document in review with its comments, the one being written, and the reader's place_ failed in the full parallel suite: the page was still at the old address when the 5 s wait ended. Run alone, serially, it passes every time, at `7a464072` and after.
-   - [`toc.spec.ts`](frontend/e2e/toc.spec.ts) _recalculates the active heading when full width changes the layout_ failed once in the full suite and passed when run again.
+   - [`toc.spec.ts`](frontend/e2e/toc.spec.ts) _recalculates the active heading when full width changes the layout_ failed twice in the full parallel suite that day, and passes run alone, serially.
 
    An intermittent failure is a defect: each needs its cause found, not a retry.

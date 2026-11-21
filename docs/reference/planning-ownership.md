@@ -419,8 +419,9 @@ What triggers a reconcile:
   ([OQ-FS1](#why-its-this-way)). It is **disabled**
   with "Close the open answer first — what you typed is saved" while any comment
   box is open, and it never saves, restores, deletes or closes one
-  ([OQ-FS4](#why-its-this-way)). Its label is short
-  enough never to yield, with a list/check icon and its pending count.
+  ([OQ-FS4](#why-its-this-way)). It shows a list/check
+  icon and its pending count, and its word yields only with the header's other
+  labels, at a phone's width.
 - **Reconcile** (`reconcilePlanningReviews`) reads every listed path's review in one `POST …/planning/reviews` regardless
   of what is held, discarding older answers. It adopts only a
   `document_generation` not older than the held one for the same boot; a new
