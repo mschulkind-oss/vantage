@@ -826,7 +826,7 @@ describe("the sections, top to bottom (§6.2)", () => {
     ).toBeTruthy();
   });
 
-  it("lists an id two questions declare under Duplicate or stray id, linked to where it is, and offers its request (planning-page-freshness.md §4.5)", async () => {
+  it("lists an id two questions declare under Duplicate or stray id, linked to where it is, and offers its request (planning-index.md §6.2)", async () => {
     seed({
       ...TREE,
       "plans/twice.md": doc(
@@ -2904,7 +2904,7 @@ describe("Refresh (planning-index.md §6.4)", () => {
   });
 });
 
-describe("Update's verification read, the offline line and the reply guard (planning-page-freshness.md §4.1)", () => {
+describe("Update's verification read, the offline line and the reply guard (planning-ownership.md §8)", () => {
   afterEach(() => {
     // Open boxes outlive a test otherwise, in the registry.
     resetBoxesForTest();

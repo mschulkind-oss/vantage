@@ -93,7 +93,7 @@ interface PlanningStore {
    * How many times the push connection has come back after dropping. The
    * planning page reconciles every listed document's reviews on each, since
    * pushes may have been lost while it was down
-   * (`docs/design/planning-page-freshness.md` §4.4).
+   * (`docs/reference/planning-ownership.md` §8).
    */
   reconnects: number;
   /**

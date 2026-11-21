@@ -35,7 +35,7 @@ const proofText = (q: PlanningQuestion): string =>
 
 /**
  * **Comments without a question (N)**
- * (`docs/design/planning-page-freshness.md` §4.3): the pending comments no
+ * (`docs/reference/planning-ownership.md` §4.3): the pending comments no
  * question owns, and the notes on text outside every question, as a section
  * group after the page's others. Each is listed with the reason in plain
  * words and the quote it was filed on, offered **Attach to question…** unless

@@ -1,5 +1,5 @@
 /**
- * Comments without a question (`docs/design/planning-page-freshness.md` §4.3):
+ * Comments without a question (`docs/reference/planning-ownership.md` §4.3):
  * groups with the quote each comment was filed on, counted apart, and
  * Attach to question… with proof, no preselection and a confirm.
  */

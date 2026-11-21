@@ -435,7 +435,7 @@ describe("agent requests", () => {
   });
 });
 
-describe("the fix-ids request (planning-page-freshness.md §4.5)", () => {
+describe("the fix-ids request (planning-index.md §6.2)", () => {
   const TREE_WITH_BAD_IDS: Record<string, string> = {
     ...TREE,
     "docs/f.md": doc(

@@ -318,7 +318,7 @@ export const OFFLINE_AFTER_MS = 30_000;
 
 /**
  * Page freshness, as far as reading reviews goes, for one repository
- * (`docs/design/planning-page-freshness.md` §4.1): whether its reads are
+ * (`docs/reference/planning-ownership.md` §8): whether its reads are
  * failing, since when, and whether they have failed long enough that the
  * page says it is offline.
  */
@@ -446,7 +446,7 @@ export function retryPlanningReviews(
 }
 
 /**
- * Reconcile (`docs/design/planning-page-freshness.md` §4.4): read every path's
+ * Reconcile (`docs/reference/planning-ownership.md` §8): read every path's
  * review in one request regardless of what is held (requests in flight are
  * discarded), together with every path a failed read left waiting, and adopt
  * the answer through `hold`, which refuses an older document generation of the

@@ -261,7 +261,7 @@ export function answeredQuestions(
  * declared by more than one question directive (`duplicate`), or written in
  * a question's title while its directive carries no id (`stray`). Either way
  * the question it names is credited no answer until an edit fixes it, which
- * is the agent's (`docs/design/planning-page-freshness.md` §4.5).
+ * is the agent's (`docs/reference/planning-index.md` §6.2).
  */
 export interface IdProblem {
   path: string;

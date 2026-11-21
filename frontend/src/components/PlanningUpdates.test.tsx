@@ -1,6 +1,6 @@
 /**
- * The header's freshness slot (`docs/design/planning-page-freshness.md`
- * §4.1): Update · N, its refusal while an answer is open, and the offline
+ * The header's freshness slot (`docs/reference/planning-ownership.md`
+ * §8): Update · N, its refusal while an answer is open, and the offline
  * line with Retry now.
  */
 import { fireEvent, render, screen } from "@testing-library/react";

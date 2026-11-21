@@ -1,6 +1,6 @@
 /**
  * The last coherent reading of each document the planning page holds
- * (`docs/design/planning-page-freshness.md` §4.6).
+ * (`docs/reference/planning-ownership.md` §5).
  *
  * A reading is coherent when a document's reviews were read against the same
  * version of it as the scan (`readingIncoherence`). Between an edit and the

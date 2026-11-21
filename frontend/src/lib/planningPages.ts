@@ -281,7 +281,7 @@ export function compactEntries(
 
 /**
  * The ids *Maintenance* lists as *Duplicate or stray id*
- * (`planning-page-freshness.md` §4.5): the ones the `fix-ids` request lists,
+ * (`planning-index.md` §6.2): the ones the `fix-ids` request lists,
  * from the same function (`idProblems`, P7), with the applied filter's
  * question test.
  */

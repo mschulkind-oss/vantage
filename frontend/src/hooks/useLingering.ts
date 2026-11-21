@@ -8,7 +8,7 @@ const NONE: ReadonlySet<string> = new Set();
  * set last changed. So a transient shorter than `ms` never shows: the
  * planning card's _· checking_ mark waits 1 s, and an ordinary edit, whose
  * reconcile lands in a few hundred milliseconds, never flashes it
- * (`docs/design/planning-page-freshness.md` §4.6).
+ * (`docs/reference/planning-ownership.md` §5).
  */
 export function useLingering(
   keys: ReadonlySet<string>,

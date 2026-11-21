@@ -1,6 +1,6 @@
 /**
  * The last coherent reading of each document
- * (`docs/design/planning-page-freshness.md` §4.6): while a document's reviews
+ * (`docs/reference/planning-ownership.md` §5): while a document's reviews
  * are paired with another version than the scan's, the page shows the reading
  * it last held whole, and says which documents those are.
  */

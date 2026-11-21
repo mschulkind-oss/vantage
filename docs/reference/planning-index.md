@@ -961,8 +961,9 @@ opt out which a question directive carries and no question holds (the scan
 leaves such an id unheld when several questions claim it), or which a
 question's title names while no directive carries it. `idProblems` lists them,
 the same function the `fix-ids` request reads, and each row links to the line
-of the first question naming the id
-([`planning-page-freshness.md` §4.5](../design/planning-page-freshness.md#45-a-document-condition-is-maintenance)).
+of the first question naming the id. It is a _document condition_
+([`planning-ownership.md` §8](planning-ownership.md#8-update-reconcile-and-selection-anchors)):
+only an edit clears it, and the agent is who edits.
 _Maintenance_'s kinds, in its order: `unrouted`, `ready`, `graduate`,
 `disagrees`, `compact`, `fix-ids`, `skipped`, `could-not-read`
 (`MAINTENANCE_KIND_IDS`).
@@ -1146,7 +1147,7 @@ and it commits inside the transition at once.
   _Update_ is short enough never to yield, and its list/check icon is never an
   anonymous refresh arrow. While review reads have failed for 30 s the slot says
   _Offline since HH:MM · retrying_ with **Retry now** instead
-  ([`planning-page-freshness.md` §4.1](../design/planning-page-freshness.md#41-page-freshness-three-states-one-button)).
+  ([`planning-ownership.md` §8](planning-ownership.md#8-update-reconcile-and-selection-anchors)).
 - **The frame** is the header, then, while the contents column is drawn, the
   planning outline with the roadmap picker at its head ([§6.9](#69-the-planning-outline));
   then the notices (_Not filtered_

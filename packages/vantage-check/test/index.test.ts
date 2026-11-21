@@ -2458,7 +2458,7 @@ describe("index --filter, and the checkout's space id", () => {
   });
 });
 
-describe("index --request fix-ids (planning-page-freshness.md §4.5)", () => {
+describe("index --request fix-ids (planning-index.md §6.2)", () => {
   const tree = () =>
     makeTree({
       ...FULL_TREE,

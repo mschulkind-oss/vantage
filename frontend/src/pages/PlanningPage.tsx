@@ -329,7 +329,7 @@ const NO_REFRESHED: ReadonlyMap<string, RefreshedCard> = new Map();
 const COMPACT_EXPLANATION =
   "Ruled, and waiting to be folded into the body they govern. An agent compacts each.";
 
-/** *Duplicate or stray id*'s line (`planning-page-freshness.md` §4.5). */
+/** *Duplicate or stray id*'s line (`planning-index.md` §6.2). */
 const FIX_IDS_EXPLANATION =
   "No question holds these ids, so no answer filed under one is credited. An agent makes each declared once, by its own question.";
 
@@ -2033,7 +2033,7 @@ export const PlanningPage: React.FC = () => {
   // reviews and scan as one reading. Between an agent's edit and the
   // reconcile after it the live pair disagrees, and the page shows the
   // reading it last held whole instead, so cards keep the status they last
-  // read and counts keep their last values (planning-page-freshness.md §4.6).
+  // read and counts keep their last values (planning-ownership.md §5).
   const lastCoherent = useMemo(() => new LastCoherent(repo), [repo]);
   const readings = useMemo(
     () =>
@@ -2888,7 +2888,7 @@ export const PlanningPage: React.FC = () => {
     [repo, changeInPlace, refreshCard],
   );
 
-  // Update (§6.4, planning-page-freshness.md §4.1): a new layout from the
+  // Update (§6.4, planning-ownership.md §8): a new layout from the
   // data in hand, with the first item on screen kept at the same height, or
   // Needs you's top when it is gone; then, in the same press, a verification
   // read of every listed document, which the layout does not wait for
@@ -2982,7 +2982,7 @@ export const PlanningPage: React.FC = () => {
       return next;
     });
   }, []);
-  // Comments without a question (§4.3 of the freshness design): drawn after
+  // Comments without a question (`planning-ownership.md` §4.3): drawn after
   // the other groups once the comments are read and any is there, and kept,
   // at 0, until the next layout, so its going moves nothing either. Open
   // unless the reader closed it.
