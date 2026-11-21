@@ -21,6 +21,11 @@ describe("PlanningUpdates", () => {
       "Lay out what has changed, and check the server for anything newer: 1 new reply",
     );
     const label = screen.getByText("Update");
+    // The word yields with the header's other labels; the count never does.
+    expect(label).toHaveClass("hdr-label");
+    expect(screen.getByTestId("planning-updates-count")).not.toHaveClass(
+      "hdr-label",
+    );
     fireEvent.click(button);
     expect(onRefresh).toHaveBeenCalledOnce();
     rerender(

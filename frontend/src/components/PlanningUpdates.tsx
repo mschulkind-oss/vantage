@@ -8,8 +8,9 @@
  * Update's room is kept from the first paint, as Copy answers' count is: the
  * button is always in the header, invisible while there is nothing to lay
  * out, with the count in a slot of a few digits. So its appearing moves
- * nothing. Its word is short enough never to yield, and it is never folded
- * into the "⋯", where an update would be hidden. Its title lists the updates
+ * nothing. It is never folded into the "⋯", where an update would be
+ * hidden; at the narrowest widths its word yields with the other labels and
+ * the icon and count stay. Its title lists the updates
  * by kind.
  */
 import React from "react";
@@ -100,8 +101,14 @@ export const PlanningUpdates: React.FC<{
       }
     >
       <ListChecks size={14} aria-hidden="true" />
-      <span className="whitespace-nowrap">Update</span>
-      <span aria-hidden="true">·</span>
+      {/* The word and its dot give their room up with the other toolbar
+          labels (`labels`, `lib/headerFit.ts`), leaving the icon and the
+          count. At a phone's width the row has no room for the word and
+          the repository's Folders control both. */}
+      <span className="hdr-label whitespace-nowrap">Update</span>
+      <span aria-hidden="true" className="hdr-label">
+        ·
+      </span>
       <span
         data-testid="planning-updates-count"
         className="inline-block text-right tabular-nums"
