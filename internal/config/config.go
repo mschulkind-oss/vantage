@@ -19,6 +19,7 @@ import (
 	_ "embed"
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -154,6 +155,13 @@ type Config struct {
 	Port         int
 	PortExplicit bool
 
+	// Listen, when non-empty, replaces Host and Port: each entry is a whole
+	// address with a port of its own, so one run can answer on
+	// localhost:8001 and a tailnet name on :8000 at once. Every entry is
+	// explicit — bound exactly, never walked forward — and all of them are
+	// bound or none is.
+	Listen []ListenAddr
+
 	// AllowedOrigins are extra hostnames permitted to open the live-reload
 	// WebSocket, beyond the always-allowed loopback names. Required when the
 	// browser reaches Vantage under a non-localhost name (e.g. a machine's DNS
@@ -219,6 +227,7 @@ func Defaults() *Config {
 type envInputs struct {
 	TargetRepo     *string `env:"TARGET_REPO"`
 	Host           *string `env:"HOST"`
+	Listen         *string `env:"LISTEN"`
 	AllowedOrigins *string `env:"ALLOWED_ORIGINS"`
 	Port           *int    `env:"PORT"`
 	ShowHidden     *bool   `env:"SHOW_HIDDEN"`
@@ -249,6 +258,16 @@ func (c *Config) ApplyEnv() error {
 	if in.Port != nil {
 		c.Port = *in.Port
 		c.PortExplicit = true
+	}
+	if in.Listen != nil {
+		if in.Host != nil || in.Port != nil {
+			return fmt.Errorf("config: LISTEN names whole addresses; it cannot be combined with HOST or PORT")
+		}
+		addrs, err := ParseListen(normalizeHosts(*in.Listen))
+		if err != nil {
+			return fmt.Errorf("config: LISTEN: %w", err)
+		}
+		c.Listen = addrs
 	}
 	if in.ShowHidden != nil {
 		c.ShowHidden = *in.ShowHidden
@@ -309,6 +328,7 @@ type daemonFile struct {
 	Repos                 []RepoConfig `toml:"repos"`
 	SourceDirs            []string     `toml:"source_dirs"`
 	Host                  hostField    `toml:"host"`
+	Listen                hostField    `toml:"listen"`
 	AllowedOrigins        hostField    `toml:"allowed_origins"`
 	Port                  *int         `toml:"port"`
 	ExcludeDirs           *[]string    `toml:"exclude_dirs"`
@@ -350,24 +370,96 @@ func (h *hostField) UnmarshalTOML(v any) error {
 	return nil
 }
 
-// DaemonAddress reads only the address the daemon config at path binds: its
-// hosts and port, with the daemon's defaults for whichever the file leaves
-// out. Unlike [LoadDaemonFile] it resolves no path and scans no source dir,
+// DaemonAddress reads only the address a client should probe for the daemon
+// configured at path — see [Config.ProbeAddress] — with the daemon's defaults
+// for whatever the file leaves out. Unlike [LoadDaemonFile] it resolves no path and scans no source dir,
 // so it costs one small file read — what `serve` can afford before it knows
 // whether a service is running at all.
-func DaemonAddress(path string) (hosts []string, port int, err error) {
+func DaemonAddress(path string) (host string, port int, err error) {
 	var df daemonFile
 	if _, err := toml.DecodeFile(path, &df); err != nil {
-		return nil, 0, err
+		return "", 0, err
 	}
 	c := Defaults()
+	if err := c.applyAddress(&df); err != nil {
+		return "", 0, err
+	}
+	host, port = c.ProbeAddress()
+	return host, port, nil
+}
+
+// applyAddress overlays the file's bind settings — host and port, or listen
+// instead of both — onto c.
+func (c *Config) applyAddress(df *daemonFile) error {
+	if df.Listen.set {
+		if df.Host.set || df.Port != nil {
+			return fmt.Errorf("config: listen names whole addresses; remove host and port, or remove listen")
+		}
+		addrs, err := ParseListen(df.Listen.hosts)
+		if err != nil {
+			return fmt.Errorf("config: listen: %w", err)
+		}
+		c.Listen = addrs
+		return nil
+	}
 	if df.Host.set {
 		c.Host = df.Host.hosts
 	}
 	if df.Port != nil {
 		c.Port = *df.Port
+		c.PortExplicit = true
 	}
-	return c.Host, c.Port, nil
+	return nil
+}
+
+// ListenAddr is one address a run binds: a host (empty for every interface)
+// and a port of its own.
+type ListenAddr struct {
+	Host string
+	Port int
+}
+
+// String is the address as net.Listen takes it, an IPv6 host bracketed.
+func (a ListenAddr) String() string {
+	return net.JoinHostPort(a.Host, strconv.Itoa(a.Port))
+}
+
+// ParseListen reads "host:port" entries — "[::1]:8000" for an IPv6 host,
+// ":8000" for every interface. A port must be named and between 1 and 65535,
+// and no address may appear twice.
+func ParseListen(entries []string) ([]ListenAddr, error) {
+	out := make([]ListenAddr, 0, len(entries))
+	seen := make(map[ListenAddr]struct{}, len(entries))
+	for _, e := range entries {
+		host, portStr, err := net.SplitHostPort(strings.TrimSpace(e))
+		if err != nil {
+			return nil, fmt.Errorf("%q is not host:port (bracket an IPv6 host, as in [::1]:8000): %w", e, err)
+		}
+		port, err := strconv.Atoi(portStr)
+		if err != nil || port < 1 || port > 65535 {
+			return nil, fmt.Errorf("%q: the port must be a number from 1 to 65535", e)
+		}
+		a := ListenAddr{Host: host, Port: port}
+		if _, dup := seen[a]; dup {
+			return nil, fmt.Errorf("%q is listed twice", e)
+		}
+		seen[a] = struct{}{}
+		out = append(out, a)
+	}
+	return out, nil
+}
+
+// ProbeAddress is the one address a client should try to reach this
+// configuration at: the first listen entry, else the first host on Port.
+func (c *Config) ProbeAddress() (host string, port int) {
+	if len(c.Listen) > 0 {
+		return c.Listen[0].Host, c.Listen[0].Port
+	}
+	host = defaultHost
+	if len(c.Host) > 0 {
+		host = c.Host[0]
+	}
+	return host, c.Port
 }
 
 // LoadDaemonFile reads a daemon TOML config from path, overlays it onto Config
@@ -398,15 +490,11 @@ func LoadDaemonFile(path string) (*Config, error) {
 	c.Repos = df.Repos
 	c.SourceDirs = df.SourceDirs
 
-	if df.Host.set {
-		c.Host = df.Host.hosts
+	if err := c.applyAddress(&df); err != nil {
+		return nil, fmt.Errorf("decoding %s: %w", abs, err)
 	}
 	if df.AllowedOrigins.set {
 		c.AllowedOrigins = df.AllowedOrigins.hosts
-	}
-	if df.Port != nil {
-		c.Port = *df.Port
-		c.PortExplicit = true
 	}
 	if df.ExcludeDirs != nil {
 		c.SetExcludeDirs(*df.ExcludeDirs)

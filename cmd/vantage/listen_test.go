@@ -5,7 +5,10 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/require"
+
+	"github.com/mschulkind-oss/vantage/internal/config"
 )
 
 // freePort returns a port nothing is listening on, by binding one and letting
@@ -157,4 +160,86 @@ func TestListenAllStrictFailsOnOccupiedPortWithoutWalking(t *testing.T) {
 	nextLn, walkErr := net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(first+1)))
 	require.NoError(t, walkErr, "strict mode must not bind the next port up")
 	_ = nextLn.Close()
+}
+
+// Two addresses with ports of their own, both bound exactly.
+func TestBindConfiguredListenBindsEveryAddressOnItsOwnPort(t *testing.T) {
+	a, b := freePort(t), freePort(t)
+	cfg := config.Defaults()
+	cfg.Listen = []config.ListenAddr{{Host: "127.0.0.1", Port: a}, {Host: "127.0.0.1", Port: b}}
+	lns, bound, err := bindConfigured(cfg)
+	require.NoError(t, err)
+	defer closeAll(lns)
+	require.Equal(t, cfg.Listen, bound)
+	require.Len(t, lns, 2)
+	require.Equal(t, a, lns[0].Addr().(*net.TCPAddr).Port)
+	require.Equal(t, b, lns[1].Addr().(*net.TCPAddr).Port)
+}
+
+// A listen entry is explicit: a busy one fails the run, and the addresses
+// already bound are let go rather than left answering alone.
+func TestBindConfiguredListenIsAllOrNothing(t *testing.T) {
+	a, b := freePort(t), freePort(t)
+	blocker, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(b)))
+	require.NoError(t, err)
+	defer blocker.Close()
+
+	cfg := config.Defaults()
+	cfg.Listen = []config.ListenAddr{{Host: "127.0.0.1", Port: a}, {Host: "127.0.0.1", Port: b}}
+	_, _, err = bindConfigured(cfg)
+	require.ErrorContains(t, err, strconv.Itoa(b))
+
+	again, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(a)))
+	require.NoError(t, err, "the first address must have been released")
+	_ = again.Close()
+}
+
+// Without listen, host and port behave as before, and the bound addresses
+// report the port actually taken.
+func TestBindConfiguredFallsBackToHostAndPort(t *testing.T) {
+	p := freePort(t)
+	cfg := config.Defaults()
+	cfg.Port = p
+	lns, bound, err := bindConfigured(cfg)
+	require.NoError(t, err)
+	defer closeAll(lns)
+	require.Equal(t, []config.ListenAddr{{Host: "127.0.0.1", Port: p}}, bound)
+}
+
+func TestApplyAddressFlags(t *testing.T) {
+	newFlags := func(args ...string) (*pflag.FlagSet, *addressFlags) {
+		fs := pflag.NewFlagSet("t", pflag.ContinueOnError)
+		af := registerAddressFlags(fs)
+		require.NoError(t, fs.Parse(args))
+		return fs, af
+	}
+
+	// --listen replaces whatever host and port a lower tier set.
+	cfg := config.Defaults()
+	fs, af := newFlags("--listen", "localhost:8001", "--listen", "myhost.tail:8000")
+	require.NoError(t, af.apply(fs, cfg))
+	require.Equal(t, []config.ListenAddr{{Host: "localhost", Port: 8001}, {Host: "myhost.tail", Port: 8000}}, cfg.Listen)
+
+	// --host or --port overrides a lower tier's listen.
+	cfg = config.Defaults()
+	cfg.Listen = []config.ListenAddr{{Host: "localhost", Port: 8001}}
+	fs, af = newFlags("--port", "9000")
+	require.NoError(t, af.apply(fs, cfg))
+	require.Nil(t, cfg.Listen)
+	require.Equal(t, 9000, cfg.Port)
+	require.True(t, cfg.PortExplicit)
+
+	// Both on one command line is a contradiction.
+	fs, af = newFlags("--listen", "localhost:8001", "--host", "0.0.0.0")
+	require.ErrorContains(t, af.apply(fs, config.Defaults()), "--listen")
+
+	fs, af = newFlags("--listen", "localhost")
+	require.Error(t, af.apply(fs, config.Defaults()))
+
+	// No flags: nothing changes.
+	cfg = config.Defaults()
+	cfg.Listen = []config.ListenAddr{{Host: "localhost", Port: 8001}}
+	fs, af = newFlags()
+	require.NoError(t, af.apply(fs, cfg))
+	require.Len(t, cfg.Listen, 1)
 }

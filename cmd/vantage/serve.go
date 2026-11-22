@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/mschulkind-oss/vantage/internal/config"
@@ -44,9 +45,8 @@ const portScanLimit = 100
 // serveByDefault before cobra parses argv.
 func newServeCmd() *cobra.Command {
 	var (
-		host           string
+		addr           *addressFlags
 		allowedOrigins []string
-		port           int
 		showHidden     bool
 		excludeDirs    []string
 		useIgnore      bool
@@ -82,15 +82,11 @@ func newServeCmd() *cobra.Command {
 			// Flag overrides sit at the top of the precedence chain
 			// (flag > env > default). Only changed flags take effect.
 			flags := cmd.Flags()
-			if flags.Changed("host") {
-				cfg.Host = []string{host}
+			if err := addr.apply(flags, cfg); err != nil {
+				return err
 			}
 			if flags.Changed("allowed-origins") {
 				cfg.AllowedOrigins = allowedOrigins
-			}
-			if flags.Changed("port") {
-				cfg.Port = port
-				cfg.PortExplicit = true
 			}
 			if flags.Changed("show-hidden") {
 				cfg.ShowHidden = showHidden
@@ -125,25 +121,28 @@ func newServeCmd() *cobra.Command {
 			// must not find this process there.
 			announceServe(ctx, os.Stderr, runtime.GOOS, displayHome(), isTerminal(os.Stderr), cfg.TargetRepo, plan, httpRepoLister)
 
-			warnNonLocal(cfg.Host)
+			warnNonLocal(bindHosts(cfg))
 
 			s, err := server.NewServer(cfg)
 			if err != nil {
 				return err
 			}
 
-			listeners, boundPort, err := listenAll(cfg.Host, cfg.Port, cfg.PortExplicit)
+			listeners, bound, err := bindConfigured(cfg)
 			if err != nil {
 				return err
 			}
-			return runServers(cmd.Context(), s, listeners, boundPort, cfg.Host, !noOpen)
+			openURL := ""
+			if !noOpen {
+				openURL = browserURL(bound[0].Host, bound[0].Port)
+			}
+			return runServers(cmd.Context(), s, listeners, openURL)
 		},
 	}
 
 	f := cmd.Flags()
-	f.StringVar(&host, "host", "", "Server host (default 127.0.0.1)")
+	addr = registerAddressFlags(f)
 	f.StringSliceVar(&allowedOrigins, "allowed-origins", nil, "Extra hostnames allowed to open the live-reload WebSocket (loopback is always allowed)")
-	f.IntVar(&port, "port", 0, "Server port (default 8000; an explicitly set port must be free, only the default falls forward)")
 	f.BoolVar(&showHidden, "show-hidden", true, "Show hidden files/directories")
 	f.StringSliceVar(&excludeDirs, "exclude-dirs", nil, "Directory names to exclude from listings (replaces defaults)")
 	f.BoolVar(&useIgnore, "use-ignore-files", true, "Honor .vantageignore and the user ignore file")
@@ -200,24 +199,111 @@ func displayHome() string {
 	return home
 }
 
+// addressFlags are the --host, --port and --listen flags `serve` and
+// `daemon` share. --listen names whole addresses, so it replaces --host and
+// --port rather than combining with them.
+type addressFlags struct {
+	hosts  []string
+	port   int
+	listen []string
+}
+
+// registerAddressFlags adds the address flags to f.
+func registerAddressFlags(f *pflag.FlagSet) *addressFlags {
+	a := &addressFlags{}
+	f.StringSliceVar(&a.hosts, "host", nil, "Server host(s), all on one port (default 127.0.0.1; repeatable / comma-separated)")
+	f.IntVar(&a.port, "port", 0, "Server port (default 8000; an explicitly set port must be free, only the default falls forward)")
+	f.StringSliceVar(&a.listen, "listen", nil, "Whole host:port address(es) to serve on, each with its own port, e.g. --listen localhost:8001 --listen myhost.tail:8000; replaces --host and --port")
+	return a
+}
+
+// apply overlays the changed address flags onto cfg, the top of the
+// precedence chain: --listen replaces a lower tier's host and port, and
+// --host or --port replaces a lower tier's listen.
+func (a *addressFlags) apply(f *pflag.FlagSet, cfg *config.Config) error {
+	hostOrPort := f.Changed("host") || f.Changed("port")
+	if f.Changed("listen") {
+		if hostOrPort {
+			return fmt.Errorf("--listen names whole addresses; it cannot be combined with --host or --port")
+		}
+		addrs, err := config.ParseListen(a.listen)
+		if err != nil {
+			return fmt.Errorf("--listen: %w", err)
+		}
+		cfg.Listen = addrs
+		return nil
+	}
+	if hostOrPort {
+		cfg.Listen = nil
+	}
+	if f.Changed("host") {
+		cfg.Host = a.hosts
+	}
+	if f.Changed("port") {
+		cfg.Port = a.port
+		cfg.PortExplicit = true
+	}
+	return nil
+}
+
+// bindHosts are the hosts cfg binds, for the non-localhost warning.
+func bindHosts(cfg *config.Config) []string {
+	if len(cfg.Listen) == 0 {
+		return cfg.Host
+	}
+	hosts := make([]string, 0, len(cfg.Listen))
+	for _, a := range cfg.Listen {
+		hosts = append(hosts, a.Host)
+	}
+	return hosts
+}
+
+// bindConfigured opens every listener cfg asks for and returns them with the
+// addresses they hold. Listen entries are bound exactly, each on its own
+// port, all or none; without them every host shares one port, as
+// [listenAll] describes.
+func bindConfigured(cfg *config.Config) ([]net.Listener, []config.ListenAddr, error) {
+	if len(cfg.Listen) > 0 {
+		addrs := make([]string, 0, len(cfg.Listen))
+		for _, a := range cfg.Listen {
+			addrs = append(addrs, a.String())
+		}
+		lns, err := bindAll(addrs)
+		if err != nil {
+			return nil, nil, fmt.Errorf("listen addresses are explicit and could not all be bound: %w", err)
+		}
+		return lns, cfg.Listen, nil
+	}
+	lns, port, err := listenAll(cfg.Host, cfg.Port, cfg.PortExplicit)
+	if err != nil {
+		return nil, nil, err
+	}
+	bound := make([]config.ListenAddr, 0, len(cfg.Host))
+	for _, h := range cfg.Host {
+		bound = append(bound, config.ListenAddr{Host: h, Port: port})
+	}
+	return lns, bound, nil
+}
+
 // runServers runs one http.Server per already-bound listener sharing the
 // assembled handler, runs the server's background lifecycle, and shuts
 // everything down gracefully on SIGINT/SIGTERM. It returns the first
-// non-shutdown error.
+// non-shutdown error. A non-empty openURL is opened in the browser once the
+// listeners are up.
 //
-// It takes listeners rather than hosts and a port so that a caller who wants
-// to report the bound port — daemon's startup banner names it before this
+// It takes listeners rather than addresses so that a caller who wants to
+// report the bound port — daemon's startup banner names it before this
 // function starts logging its own "Serving on" lines — can resolve it first
-// with listenAll and print that report before handing the listeners over.
-func runServers(parent context.Context, s *server.Server, listeners []net.Listener, port int, hosts []string, open bool) error {
+// with bindConfigured and print that report before handing the listeners over.
+func runServers(parent context.Context, s *server.Server, listeners []net.Listener, openURL string) error {
 	if parent == nil {
 		parent = context.Background()
 	}
 	ctx, stop := signal.NotifyContext(parent, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	if open && len(hosts) > 0 {
-		url := browserURL(hosts[0], port)
+	if openURL != "" {
+		url := openURL
 		go func() {
 			// Give the listener a moment to come up before launching the browser.
 			time.Sleep(500 * time.Millisecond)
@@ -303,7 +389,7 @@ func listenAll(hosts []string, port int, strict bool) ([]net.Listener, int, erro
 	}
 
 	if strict {
-		lns, err := bindAll(hosts, port)
+		lns, err := bindAll(joinPort(hosts, port))
 		if err != nil {
 			return nil, 0, fmt.Errorf("port %d is configured explicitly and could not be bound: %w", port, err)
 		}
@@ -312,7 +398,7 @@ func listenAll(hosts []string, port int, strict bool) ([]net.Listener, int, erro
 
 	first := port
 	for p := first; p < first+portScanLimit && p <= 65535; p++ {
-		lns, bindErr := bindAll(hosts, p)
+		lns, bindErr := bindAll(joinPort(hosts, p))
 		if bindErr != nil {
 			// Only "someone else is already listening" is a reason to try the
 			// next port. Anything else — an invalid host, a permission error
@@ -334,13 +420,21 @@ func listenAll(hosts []string, port int, strict bool) ([]net.Listener, int, erro
 	return nil, 0, fmt.Errorf("no free port found in %d..%d", first, first+portScanLimit-1)
 }
 
-// bindAll binds every host in hosts to the same port, undoing any partial
-// bind before returning the failure, so a candidate port is owned everywhere
-// or nowhere.
-func bindAll(hosts []string, port int) ([]net.Listener, error) {
-	lns := make([]net.Listener, 0, len(hosts))
+// joinPort pairs every host with port as a net.Listen address.
+func joinPort(hosts []string, port int) []string {
+	addrs := make([]string, 0, len(hosts))
 	for _, h := range hosts {
-		ln, err := net.Listen("tcp", net.JoinHostPort(h, strconv.Itoa(port)))
+		addrs = append(addrs, net.JoinHostPort(h, strconv.Itoa(port)))
+	}
+	return addrs
+}
+
+// bindAll binds every address, undoing any partial bind before returning the
+// failure, so a set of addresses is owned everywhere or nowhere.
+func bindAll(addrs []string) ([]net.Listener, error) {
+	lns := make([]net.Listener, 0, len(addrs))
+	for _, a := range addrs {
+		ln, err := net.Listen("tcp", a)
 		if err != nil {
 			for _, l := range lns {
 				_ = l.Close()

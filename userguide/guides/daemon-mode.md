@@ -74,6 +74,10 @@ You can also override the host and port from the command line:
 vantage daemon --host 0.0.0.0 --port 9000
 ```
 
+To serve on addresses with ports of their own, such as `localhost:8001` and a
+Tailscale name on `:8000`, set `listen` in the config file or pass `--listen`.
+See [Listening on several addresses](../reference/configuration.md#listening-on-several-addresses).
+
 ## Running as a systemd Service
 
 On Linux, Vantage can run as a systemd user service that starts automatically when you log in. On macOS the same command writes a launchd agent instead — see [Running as a launchd Agent](#running-as-a-launchd-agent-macos).

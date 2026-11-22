@@ -225,12 +225,9 @@ func installServiceWithSourceDirs(out io.Writer, in serviceInstall, dirs []strin
 		return fmt.Errorf("the service was not started, because %s would not start the daemon: %s",
 			shown(in.configPath), strings.Join(errs, "; "))
 	}
-	host := "127.0.0.1"
-	if len(cfg.Host) > 0 {
-		host = cfg.Host[0]
-	}
-	probeURL := browserURL(host, cfg.Port) + "/api/repos"
-	serviceURL := "http://" + net.JoinHostPort(displayServiceHost(host), strconv.Itoa(cfg.Port))
+	host, port := cfg.ProbeAddress()
+	probeURL := browserURL(host, port) + "/api/repos"
+	serviceURL := "http://" + net.JoinHostPort(displayServiceHost(host), strconv.Itoa(port))
 	// Asked before the start as well: a foreground serve holding the port
 	// now — the one whose tip suggested this command, say — is what the
 	// service will find there.
@@ -280,7 +277,7 @@ func installServiceWithSourceDirs(out io.Writer, in serviceInstall, dirs []strin
 		fmt.Fprintf(out, "Vantage is running in the background at %s, serving %s.\n",
 			serviceURL, countOf(len(answer.Names), "project"))
 	case heldByServe || laterServe:
-		if cfg.PortExplicit {
+		if cfg.PortExplicit || len(cfg.Listen) > 0 {
 			fmt.Fprintf(out, "A foreground vantage serve is answering at %s, the service's address. "+
 				"The service starts serving there once that one stops.\n", serviceURL)
 		} else {
