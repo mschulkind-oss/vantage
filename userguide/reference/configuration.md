@@ -60,8 +60,10 @@ always wins over a derived one.
 
 | Key                        | Type             | Default       | Description                                          |
 | -------------------------- | ---------------- | ------------- | ---------------------------------------------------- |
-| `host`                     | string           | `"127.0.0.1"` | Server bind address                                  |
+| `host`                     | string or array of strings | `"127.0.0.1"` | Server bind address(es), all sharing `port`  |
 | `port`                     | integer          | `8000`        | Server port. Set explicitly (config, env, or flag) it must be free or startup fails; only the default falls forward, scanning up to 100 ports |
+| `listen`                   | string or array of strings | _unset_ | Whole `host:port` addresses, each with its own port; replaces `host` and `port` (see [Listening on several addresses](#listening-on-several-addresses)) |
+| `allowed_origins`          | string or array of strings | `[]`  | Extra hostnames a browser may reach Vantage under and still get live reload; loopback names are always allowed |
 | `repos`                    | array            | `[]`          | List of directories to serve                         |
 | `repos[].name`             | string           | the directory's own name | Display name and URL slug; with a numeric `-N` suffix when that name is taken |
 | `repos[].path`             | string           | _required_    | Path to the directory (supports `~`)                 |
@@ -505,6 +507,41 @@ until the page is reloaded. Serving a directory of clones as one project with
 `--one-project` puts every clone's working tree under one watcher, and only the
 directory's own `.vantageignore` applies to it, not any clone's.
 
+### Listening on several addresses
+
+`host` can name several addresses, but they all share one `port`. To give each
+address a port of its own — say `localhost:8001` for this machine and a
+Tailscale name on `:8000` — use `listen` instead:
+
+```toml
+listen = ["localhost:8001", "myhost.tail:8000"]
+allowed_origins = ["myhost.tail"]
+```
+
+Each entry is `host:port`. Write an IPv6 address in brackets (`"[::1]:8000"`)
+and leave the host empty (`":8000"`) for every interface. A file that sets
+`listen` may not also set `host` or `port`, because the two would disagree
+about where to bind.
+
+Every `listen` address is explicit, so it never falls forward to another port.
+If any one of them cannot be bound, startup fails and the ones already bound are
+released. A run either answers on all of its addresses or on none of them.
+
+A browser that reaches Vantage under a name other than `localhost`, `127.0.0.1`
+or `::1` needs that name in `allowed_origins`. Without it the page loads but
+live reload is refused, so the example above lists the Tailscale name. Binding a
+name other than loopback also prints a warning at startup, because Vantage has no
+authentication: anyone who can reach the address can read the files it serves.
+
+On the command line, `--listen` does the same for `vantage serve` and
+`vantage daemon`. Repeat it or separate entries with commas. It replaces the
+config file's `host`, `port` and `listen`, and it cannot be combined with
+`--host` or `--port`:
+
+```bash
+vantage daemon --listen localhost:8001 --listen myhost.tail:8000
+```
+
 ## Environment Variables
 
 When running in single-directory mode (`vantage serve`), you can also configure via environment variables:
@@ -514,6 +551,8 @@ When running in single-directory mode (`vantage serve`), you can also configure 
 | `TARGET_REPO`        | Path to the directory to serve                       |
 | `HOST`               | Server bind address                                  |
 | `PORT`               | Server port (explicit: must be free, never falls forward) |
+| `LISTEN`             | Comma-separated `host:port` addresses, each with its own port; replaces `HOST` and `PORT`, which may not be set with it |
+| `ALLOWED_ORIGINS`    | Comma-separated extra hostnames allowed to open the live-reload WebSocket |
 | `SHOW_HIDDEN`        | Show hidden files (`true`/`false`, default `true`)   |
 | `EXCLUDE_DIRS`       | Comma-separated directory names to hide (replaces defaults) |
 | `WALK_MAX_DEPTH`     | Max directory depth for untracked-file discovery     |

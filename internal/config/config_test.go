@@ -1067,17 +1067,100 @@ func TestDaemonAddress(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.toml")
 	require.NoError(t, os.WriteFile(path, []byte("host = [\"::\", \"127.0.0.1\"]\nport = 9123\nsource_dirs = [\"/nowhere\"]\n"), 0o644))
-	hosts, port, err := DaemonAddress(path)
+	host, port, err := DaemonAddress(path)
 	require.NoError(t, err)
-	require.Equal(t, []string{"::", "127.0.0.1"}, hosts)
+	require.Equal(t, "::", host)
 	require.Equal(t, 9123, port)
 
 	require.NoError(t, os.WriteFile(path, []byte("source_dirs = [\"/nowhere\"]\n"), 0o644))
-	hosts, port, err = DaemonAddress(path)
+	host, port, err = DaemonAddress(path)
 	require.NoError(t, err)
-	require.Equal(t, Defaults().Host, hosts)
+	require.Equal(t, Defaults().Host[0], host)
 	require.Equal(t, Defaults().Port, port)
 
 	_, _, err = DaemonAddress(filepath.Join(dir, "missing.toml"))
 	require.Error(t, err)
+}
+
+// listen names whole addresses, each with a port of its own — what host and
+// port cannot say, since every host shares the one port.
+func TestLoadDaemonFileListen(t *testing.T) {
+	repo := t.TempDir()
+	body := `
+listen = ["localhost:8001", "myhost.tail:8000", "[::1]:8002"]
+[[repos]]
+name = "a"
+path = "` + repo + `"
+`
+	c, err := LoadDaemonFile(writeTOML(t, body))
+	require.NoError(t, err)
+	require.Equal(t, []ListenAddr{
+		{Host: "localhost", Port: 8001},
+		{Host: "myhost.tail", Port: 8000},
+		{Host: "::1", Port: 8002},
+	}, c.Listen)
+	host, port := c.ProbeAddress()
+	require.Equal(t, "localhost", host)
+	require.Equal(t, 8001, port)
+}
+
+// One file saying where to bind twice is a mistake to report, not a
+// precedence to guess at.
+func TestLoadDaemonFileListenRefusesHostOrPort(t *testing.T) {
+	repo := t.TempDir()
+	for _, extra := range []string{`host = "0.0.0.0"`, `port = 9000`} {
+		body := extra + "\nlisten = [\"localhost:8001\"]\n[[repos]]\nname = \"a\"\npath = \"" + repo + "\"\n"
+		_, err := LoadDaemonFile(writeTOML(t, body))
+		require.ErrorContains(t, err, "listen", extra)
+	}
+}
+
+func TestLoadDaemonFileListenScalar(t *testing.T) {
+	repo := t.TempDir()
+	body := "listen = \"127.0.0.1:8001\"\n[[repos]]\nname = \"a\"\npath = \"" + repo + "\"\n"
+	c, err := LoadDaemonFile(writeTOML(t, body))
+	require.NoError(t, err)
+	require.Equal(t, []ListenAddr{{Host: "127.0.0.1", Port: 8001}}, c.Listen)
+}
+
+func TestParseListen(t *testing.T) {
+	got, err := ParseListen([]string{":8000", "127.0.0.1:8001"})
+	require.NoError(t, err)
+	require.Equal(t, []ListenAddr{{Host: "", Port: 8000}, {Host: "127.0.0.1", Port: 8001}}, got)
+
+	for _, bad := range []string{"localhost", "localhost:0", "localhost:-1", "localhost:65536", "localhost:http", "::1:8000", ""} {
+		_, err := ParseListen([]string{bad})
+		require.Error(t, err, bad)
+	}
+	_, err = ParseListen([]string{"localhost:8000", "localhost:8000"})
+	require.ErrorContains(t, err, "twice")
+}
+
+func TestApplyEnvListen(t *testing.T) {
+	t.Setenv("LISTEN", "localhost:8001, myhost.tail:8000")
+	c := Defaults()
+	require.NoError(t, c.ApplyEnv())
+	require.Equal(t, []ListenAddr{{Host: "localhost", Port: 8001}, {Host: "myhost.tail", Port: 8000}}, c.Listen)
+
+	t.Setenv("PORT", "9000")
+	require.ErrorContains(t, Defaults().ApplyEnv(), "LISTEN")
+}
+
+// Without listen the probe address is the first host on the shared port.
+func TestProbeAddressFallsBackToHostAndPort(t *testing.T) {
+	c := Defaults()
+	c.Host = []string{"::", "127.0.0.1"}
+	c.Port = 9123
+	host, port := c.ProbeAddress()
+	require.Equal(t, "::", host)
+	require.Equal(t, 9123, port)
+}
+
+func TestDaemonAddressReadsListen(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	require.NoError(t, os.WriteFile(path, []byte("listen = [\"localhost:8001\", \"myhost.tail:8000\"]\n"), 0o644))
+	host, port, err := DaemonAddress(path)
+	require.NoError(t, err)
+	require.Equal(t, "localhost", host)
+	require.Equal(t, 8001, port)
 }

@@ -12,6 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 **Scan one document with `vantage-check index --document <path>`.** It prints that document's entry in the planning index as JSON, reading no other file. See [one document's index](docs/reference/planning-index.md#137-one-documents-index---document).
 
+**Serve on several addresses with a port each.** `listen = ["localhost:8001", "myhost.tail:8000"]` in the config file, `--listen` on `vantage serve` and `vantage daemon`, or `LISTEN` in the environment binds every address on its own port, where `host` puts them all on one. Each address is explicit, so a busy one fails startup instead of moving to another port. See [Listening on several addresses](userguide/reference/configuration.md#listening-on-several-addresses).
+
 **The planning page lists question ids that need fixing.** A new *Maintenance* kind, **Duplicate or stray id**, lists each id two questions declare and each id written in a question's title that its directive does not carry, with a link to where it is. No answer filed under such an id counts until the document is fixed. **Copy answers + maintenance** and `vantage-check index --request fix-ids` hand an agent the request to fix them.
 
 ### Changed

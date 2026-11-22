@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -17,8 +18,7 @@ import (
 func newDaemonCmd() *cobra.Command {
 	var (
 		configPath string
-		hosts      []string
-		port       int
+		addr       *addressFlags
 	)
 
 	cmd := &cobra.Command{
@@ -51,13 +51,8 @@ func newDaemonCmd() *cobra.Command {
 			}
 
 			// Command-line overrides on top of the file.
-			flags := cmd.Flags()
-			if flags.Changed("host") {
-				cfg.Host = hosts
-			}
-			if flags.Changed("port") {
-				cfg.Port = port
-				cfg.PortExplicit = true
+			if err := addr.apply(cmd.Flags(), cfg); err != nil {
+				return err
 			}
 
 			if errs := cfg.Validate(); len(errs) > 0 {
@@ -68,18 +63,22 @@ func newDaemonCmd() *cobra.Command {
 				return fmt.Errorf("invalid configuration: %d error(s)", len(errs))
 			}
 
-			warnNonLocal(cfg.Host)
+			warnNonLocal(bindHosts(cfg))
 
 			// Bound before the banner: the configured port may be taken, and
 			// the banner has to name the port actually bound rather than the
 			// one that was asked for.
-			listeners, boundPort, err := listenAll(cfg.Host, cfg.Port, cfg.PortExplicit)
+			listeners, bound, err := bindConfigured(cfg)
 			if err != nil {
 				return err
 			}
 
-			fmt.Fprintf(os.Stderr, "Starting Vantage daemon %s on %v:%d\n",
-				buildinfo.Version(), cfg.Host, boundPort)
+			shown := make([]string, 0, len(bound))
+			for _, a := range bound {
+				shown = append(shown, a.String())
+			}
+			fmt.Fprintf(os.Stderr, "Starting Vantage daemon %s on %s\n",
+				buildinfo.Version(), strings.Join(shown, ", "))
 			fmt.Fprintf(os.Stderr, "Serving %d repositories:\n", len(cfg.Repos))
 			for _, repo := range cfg.Repos {
 				fmt.Fprintf(os.Stderr, "  - %s: %s\n", repo.Name, repo.Path)
@@ -91,14 +90,13 @@ func newDaemonCmd() *cobra.Command {
 			}
 
 			// Daemon mode serves many repos headlessly; never open a browser.
-			return runServers(cmd.Context(), s, listeners, boundPort, cfg.Host, false)
+			return runServers(cmd.Context(), s, listeners, "")
 		},
 	}
 
 	f := cmd.Flags()
 	f.StringVarP(&configPath, "config", "c", "", "Path to config file (default: per-user config dir)")
-	f.StringSliceVar(&hosts, "host", nil, "Override server host(s) from config (repeatable / comma-separated)")
-	f.IntVar(&port, "port", 0, "Override server port from config (an explicitly set port must be free; only the default falls forward)")
+	addr = registerAddressFlags(f)
 
 	return cmd
 }

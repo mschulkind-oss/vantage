@@ -146,12 +146,9 @@ func probeService(ctx context.Context, goos, home, target string, plan *clonesPl
 	host, port := "127.0.0.1", 8000
 	configPath := ""
 	if path, err := config.DefaultConfigPath(); err == nil {
-		if hosts, p, err := config.DaemonAddress(path); err == nil {
+		if h, p, err := config.DaemonAddress(path); err == nil {
 			configPath = path
-			if len(hosts) > 0 {
-				host = hosts[0]
-			}
-			port = p
+			host, port = h, p
 		}
 	}
 	st.URL = "http://" + net.JoinHostPort(displayServiceHost(host), strconv.Itoa(port))
