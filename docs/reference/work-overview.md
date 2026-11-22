@@ -3,7 +3,7 @@ title: "Work overview — saved document stages and transition evidence"
 status: accepted
 stage: CURRENT
 verified: 2026-10-14
-verified_commit: 3fd4099b7b28f72784e7dbfa4f564f69a448c37c
+verified_commit: fdb27df7ef9f6e4ace91ea5d1fd63ad829f0d332
 covers:
   - packages/vantage-md/src/planning/
   - frontend/src/pages/WorkPage.tsx
@@ -29,7 +29,7 @@ summary: "The Overview screen groups saved planning documents into compact stage
 # Work overview — saved document stages and transition evidence
 
 **Status:** Overview coverage presentation checked 2026-10-15 against source
-commit `302cb893` plus the local presentation change. Frontmatter records the
+commit `46ff3e10` plus the local presentation change. Frontmatter records the
 base-system verification. UNMEASURED: assistive-technology observation remains
 outstanding. See [Verification](#verification) for the checked behavior and viewports.
 
@@ -271,7 +271,7 @@ change authoritative priority until the roadmap's Markdown changes.
 
 ## Verification
 
-The coverage presentation was checked against source commit `302cb893` plus the
+The coverage presentation was checked against source commit `46ff3e10` plus the
 local UI change. Focused `WorkPage` tests cover removal of the unconditional
 banner, collapsed coverage details with full shallow-boundary and source-pair
 reasons, unavailable Git distinct from partial coverage, and preserved saved
@@ -288,7 +288,7 @@ viewport has horizontal overflow. Screenshots are retained in
 API responses, not a live repository's history completeness or arbitrary board
 scale. The temporary fixture source was removed after the run.
 
-The source-Vite acceptance fixture was rerun against `70fabf9b` plus the local
+The source-Vite acceptance fixture was rerun against `e202cba4` plus the local
 voluntary-disclosure change. All forty initial active tiles remain within the
 desktop content viewport, with terminal items collapsed and card handoffs usable
 on desktop and phone. A permanent large-inventory fixture matches the supplied
@@ -312,8 +312,8 @@ report records this run.
 
 ## Current values
 
-Base limits were reconciled at `3fd4099b` on 2026-10-14; the backend caps were
-rechecked at `302cb893` on 2026-10-15 and are unchanged. This table isolates
+Base limits were reconciled at `fdb27df7` on 2026-10-14; the backend caps were
+rechecked at `46ff3e10` on 2026-10-15 and are unchanged. This table isolates
 tunable limits and operational paths from the mechanisms above.
 
 | Value | Setting | Defined in |
