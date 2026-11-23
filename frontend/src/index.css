@@ -925,16 +925,19 @@ h6:hover > .heading-anchor,
    Review mode
    ────────────────────────────────────────── */
 
-/* Highlighted (commented) text */
-.review-highlight {
-  background: rgb(250 204 21 / 0.35); /* yellow-400/35 */
-  border-bottom: 2px solid rgb(234 179 8 / 0.6);
-  border-radius: 2px;
-  padding: 0 1px;
+/* Highlighted (commented) text. A CSS Custom Highlight, not an element: a
+   wrapper split the text nodes React renders, and the document then showed
+   spliced text after an in-place edit (useReviewHighlights.ts,
+   COMMENT_HIGHLIGHT). A highlight takes no border or padding, so the
+   underline stands in for the old bottom border. */
+::highlight(review-comment) {
+  background-color: rgb(250 204 21 / 0.35); /* yellow-400/35 */
+  text-decoration: underline 2px rgb(234 179 8 / 0.6);
+  text-underline-offset: 2px;
 }
-.dark .review-highlight {
-  background: rgb(234 179 8 / 0.2);
-  border-bottom-color: rgb(234 179 8 / 0.4);
+.dark ::highlight(review-comment) {
+  background-color: rgb(234 179 8 / 0.2);
+  text-decoration-color: rgb(234 179 8 / 0.4);
 }
 
 /* Inline comment block inserted after the paragraph */

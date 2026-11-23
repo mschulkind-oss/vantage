@@ -30,7 +30,58 @@ import {
   type DocumentQuestion,
 } from "./useOpenQuestionButtons";
 
-const MARK_ATTR = "data-review-comment-id";
+/**
+ * The name the commented substrings are painted under, styled by
+ * `::highlight(review-comment)` in `index.css`.
+ *
+ * They are painted with the CSS Custom Highlight API rather than wrapped in a
+ * `<mark>`, because wrapping a range splits the text nodes React rendered.
+ * React keeps writing to the node it made, so when the document changed in
+ * place the paragraph showed the new text joined to the old pieces left
+ * outside that node: a spliced sentence that was in no version of the file,
+ * and which the reviewer could select and comment on. Unwrapping the marks
+ * afterwards with `normalize()` could also detach React's node, after which no
+ * edit reached the screen until a reload. A highlight leaves the DOM untouched.
+ */
+export const COMMENT_HIGHLIGHT = "review-comment";
+/** Per comment layer, the ranges it has added to the shared highlight. */
+const rangesByLayer = new Map<HTMLElement, Range[]>();
+let commentHighlight: Highlight | null = null;
+
+/** The shared highlight, registered; `null` where the browser has no API. */
+function liveHighlight(): Highlight | null {
+  if (
+    typeof CSS === "undefined" ||
+    !("highlights" in CSS) ||
+    typeof Highlight !== "function"
+  ) {
+    return null;
+  }
+  commentHighlight ??= new Highlight();
+  if (CSS.highlights.get(COMMENT_HIGHLIGHT) !== commentHighlight) {
+    CSS.highlights.set(COMMENT_HIGHLIGHT, commentHighlight);
+  }
+  return commentHighlight;
+}
+
+function clearCommentRanges(el: HTMLElement): void {
+  const ranges = rangesByLayer.get(el);
+  if (!ranges) return;
+  rangesByLayer.delete(el);
+  for (const range of ranges) commentHighlight?.delete(range);
+}
+
+/** Paint `range` in `el`'s layer; false when the browser cannot. */
+function paintCommentRange(el: HTMLElement, range: Range): boolean {
+  const highlight = liveHighlight();
+  if (!highlight) return false;
+  highlight.add(range);
+  const ranges = rangesByLayer.get(el);
+  if (ranges) ranges.push(range);
+  else rangesByLayer.set(el, [range]);
+  return true;
+}
+
 /** Marks a thread entry with the id of the reviewer's reply it shows. */
 const REPLY_ATTR = "data-review-reply-id";
 
@@ -126,7 +177,9 @@ export function useReviewHighlights(
   useEffect(() => {
     const el = containerRef.current;
     return () => {
-      if (el) for (const open of boxesIn(el)) closeInlineBox(open);
+      if (!el) return;
+      for (const open of boxesIn(el)) closeInlineBox(open);
+      clearCommentRanges(el);
     };
   }, [containerRef]);
 
@@ -189,19 +242,9 @@ function rebuildLayer(
       armedDelete = null;
     }
 
-    // Clean up previous marks by unwrapping them. Not by replacing each with a
-    // text node of its `textContent`: a selection can span a whole link, and
-    // flattening it turned the link into plain text — and the planning badge
-    // beside it into words of the block, which changed the block's hash and
-    // drifted every comment on it (docs/reference/planning-index.md §5.3).
-    el.querySelectorAll(`mark[${MARK_ATTR}]`).forEach((mark) => {
-      const parent = mark.parentNode;
-      if (parent) {
-        while (mark.firstChild) parent.insertBefore(mark.firstChild, mark);
-        parent.removeChild(mark);
-        parent.normalize();
-      }
-    });
+    // Forget the previous pass's highlighted ranges. They were never in the
+    // DOM, so there is nothing in the document to undo.
+    clearCommentRanges(el);
 
     // Clean up previous inline comment blocks
     el.querySelectorAll(`[${INLINE_COMMENT_ATTR}]`).forEach((node) => {
@@ -397,16 +440,9 @@ function rebuildLayer(
           anchor.selection_length,
         );
         if (range) {
-          try {
-            const mark = document.createElement("mark");
-            mark.setAttribute(MARK_ATTR, comment.id);
-            mark.className = "review-highlight";
-            range.surroundContents(mark);
-          } catch {
-            // surroundContents fails when the range crosses element
-            // boundaries (e.g. inline `<code>`).  Fall back to
-            // whole-block highlight — communicates honestly that we
-            // couldn't pin down the substring.
+          // Without the Highlight API there is no way to pin the substring
+          // that leaves the text alone, so the whole block says it instead.
+          if (!paintCommentRange(el, range)) {
             block.classList.add("review-highlight-block");
           }
         } else {

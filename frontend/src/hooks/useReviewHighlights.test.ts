@@ -1,6 +1,7 @@
 import { renderHook, fireEvent, waitFor, act } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
+  COMMENT_HIGHLIGHT,
   useReviewHighlights,
   type InlineReviewActions,
 } from "./useReviewHighlights";
@@ -92,6 +93,12 @@ const renderInline = (comments: ReviewComment[]) => {
     { initialProps: { cs: comments } },
   );
 };
+
+/** The text of every range painted as a commented substring. */
+const paintedText = () =>
+  [...(CSS.highlights.get(COMMENT_HIGHLIGHT) ?? [])].map((r) =>
+    (r as Range).toString(),
+  );
 
 const blockFor = (id: string) =>
   container.querySelector<HTMLElement>(`[data-review-inline-comment="${id}"]`);
@@ -1202,9 +1209,9 @@ describe("useReviewHighlights — comments on table cells", () => {
 });
 
 describe("useReviewHighlights — a selection spanning a link", () => {
-  // A substring highlight is a <mark> wrapped around the selected range, and a
-  // range can hold a whole link. The pass removes its marks before each
-  // rebuild, and flattening a mark to its text took the link off the page.
+  // A range can hold a whole link. When the highlight was a <mark> the pass
+  // removed before each rebuild, flattening it to its text took the link off
+  // the page; the painted range must still cover the link after a rebuild.
   const LINKED = `<p data-source-line="1">See <a href="x.md">the design</a> for the reasons.</p>`;
 
   const spanningAnchor = (): CommentAnchor => ({
@@ -1220,9 +1227,9 @@ describe("useReviewHighlights — a selection spanning a link", () => {
     container.innerHTML = LINKED;
     const anchor = spanningAnchor();
     const { rerender } = renderInline([baseComment({ anchor })]);
-    expect(container.querySelector("mark a")).not.toBeNull();
+    expect(paintedText()).toEqual(["See the design for"]);
 
-    // A store write re-runs the pass, which removes its marks first.
+    // A store write re-runs the pass, which clears what it painted first.
     rerender({ cs: [baseComment({ anchor, comment: "edited" })] });
 
     const block = container.querySelector<HTMLElement>("p")!;
@@ -1230,7 +1237,7 @@ describe("useReviewHighlights — a selection spanning a link", () => {
       "the design",
     );
     expect(hashBlockText(blockVisibleText(block))).toBe(anchor.block_text_hash);
-    expect(container.querySelector("mark a")).not.toBeNull();
+    expect(paintedText()).toEqual(["See the design for"]);
   });
 });
 

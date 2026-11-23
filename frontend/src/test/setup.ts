@@ -9,6 +9,15 @@ import { afterAll, afterEach, beforeEach } from "vitest";
 // it is real; in a test it has nothing to do.
 Element.prototype.scrollIntoView = () => {};
 
+// jsdom has no CSS Custom Highlight API, which paints review comments'
+// substrings (useReviewHighlights.ts). A Highlight is a set of ranges and the
+// registry a map of them, which is all the painting side needs; nothing is
+// drawn, and a test reads what was painted from `CSS.highlights`.
+if (!("highlights" in CSS)) {
+  Object.assign(globalThis, { Highlight: class extends Set<AbstractRange> {} });
+  Object.assign(CSS, { highlights: new Map<string, Highlight>() });
+}
+
 // A test answers every request it sends, because nothing else will: there is no
 // server behind jsdom's origin (http://localhost:3000). A request left to the
 // network failed a few milliseconds later — by then usually after the test that
